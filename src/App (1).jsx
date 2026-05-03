@@ -228,14 +228,13 @@ const nextInvNum = (invoices) => `FAK-2026-${String(invoices.length + 1).padStar
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [attendance, setAttendance] = useState(initialAttendance);
 
   if (!currentUser) return <Login onLogin={setCurrentUser} />;
 
-  return <MainApp currentUser={currentUser} setCurrentUser={setCurrentUser} attendance={attendance} setAttendance={setAttendance} />;
+  return <MainApp currentUser={currentUser} setCurrentUser={setCurrentUser} />;
 }
 
-function MainApp({ currentUser, setCurrentUser, attendance, setAttendance }) {
+function MainApp({ currentUser, setCurrentUser }) {
   const [tab, setTab] = useState("dashboard");
   const [customers, setCustomers] = useState([]);
   const [deals, setDeals] = useState([]);
@@ -246,6 +245,7 @@ function MainApp({ currentUser, setCurrentUser, attendance, setAttendance }) {
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
   const [costs, setCosts] = useState([]);
+  const [attendance, setAttendance] = useState([]);
   const [templates, setTemplates] = useState(initialTemplates);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(null);
