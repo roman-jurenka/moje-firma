@@ -321,10 +321,12 @@ function MainApp({ currentUser, setCurrentUser }) {
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     if (todayRecord) {
-      await dbUpdate("attendance", todayRecord.id, { checkout: time });
+      await supabase.from("attendance").update({ checkout: time }).eq("id", todayRecord.id);
       setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, checkout: time } : a));
     } else {
-      const row = await dbAdd("attendance", { employee_id: myEmpId, date: todayStr, checkin: time, checkout: null });
+      const { data: row } = await supabase.from("attendance")
+        .upsert({ employee_id: myEmpId, date: todayStr, checkin: time, checkout: null }, { onConflict: "employee_id,date" })
+        .select().single();
       if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
     }
   };
