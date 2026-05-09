@@ -325,7 +325,17 @@ function MainApp({ currentUser, setCurrentUser }) {
       setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, checkout: time } : a));
     } else {
       const { data: row } = await supabase.from("attendance")
-        .upsert({ employee_id: myEmpId, date: todayStr, checkin: time, checkout: null }, { onConflict: "employee_id,date" })
+      .upsert(
+  {
+    employee_id: myEmpId,
+    work_date: todayStr,
+    check_in: time,
+    check_out: null
+  },
+  {
+    onConflict: "employee_id,work_date"
+  }
+)
         .select().single();
       if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
     }
