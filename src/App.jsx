@@ -294,7 +294,7 @@ function MainApp({ currentUser, setCurrentUser }) {
 
   const todayStr = fmt(new Date());
   const myEmpId = currentUser.employeeId;
-  const todayRecord = attendance.find(a => a.employeeId === myEmpId && a.date === todayStr);
+  const todayRecord = attendance.find(a => a.employeeId === myEmpId && a.work_date === todayStr);
 
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#0a0d14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "DM Sans, sans-serif" }}>
