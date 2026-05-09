@@ -24,22 +24,22 @@ const fmt = (d) => d.toISOString().slice(0, 10);
 const pad = (n) => String(n).padStart(2, "0");
 const initialAttendance = [
   // Markéta (emp 1)
-  { id: 1, employeeId: 1, date: "2026-04-07", checkin: "08:02", checkout: "16:45" },
-  { id: 2, employeeId: 1, date: "2026-04-08", checkin: "07:55", checkout: "17:10" },
-  { id: 3, employeeId: 1, date: "2026-04-09", checkin: "08:10", checkout: "16:30" },
-  { id: 4, employeeId: 1, date: "2026-04-10", checkin: "08:00", checkout: "17:00" },
+  { id: 1, employeeId: 1, date: "2026-04-07", check_in: "08:02", check_out: "16:45" },
+  { id: 2, employeeId: 1, date: "2026-04-08", check_in: "07:55", check_out: "17:10" },
+  { id: 3, employeeId: 1, date: "2026-04-09", check_in: "08:10", check_out: "16:30" },
+  { id: 4, employeeId: 1, date: "2026-04-10", check_in: "08:00", check_out: "17:00" },
   // Ondřej (emp 2)
-  { id: 5, employeeId: 2, date: "2026-04-07", checkin: "09:00", checkout: "18:00" },
-  { id: 6, employeeId: 2, date: "2026-04-08", checkin: "09:15", checkout: "18:30" },
-  { id: 7, employeeId: 2, date: "2026-04-09", checkin: "08:45", checkout: "17:45" },
-  { id: 8, employeeId: 2, date: "2026-04-10", checkin: "09:00", checkout: "18:00" },
+  { id: 5, employeeId: 2, date: "2026-04-07", check_in: "09:00", check_out: "18:00" },
+  { id: 6, employeeId: 2, date: "2026-04-08", check_in: "09:15", check_out: "18:30" },
+  { id: 7, employeeId: 2, date: "2026-04-09", check_in: "08:45", check_out: "17:45" },
+  { id: 8, employeeId: 2, date: "2026-04-10", check_in: "09:00", check_out: "18:00" },
   // Lucie (emp 3)
-  { id: 9,  employeeId: 3, date: "2026-04-07", checkin: "08:30", checkout: "16:00" },
-  { id: 10, employeeId: 3, date: "2026-04-08", checkin: "08:25", checkout: "16:10" },
-  { id: 11, employeeId: 3, date: "2026-04-09", checkin: "08:30", checkout: "15:55" },
+  { id: 9,  employeeId: 3, date: "2026-04-07", check_in: "08:30", check_out: "16:00" },
+  { id: 10, employeeId: 3, date: "2026-04-08", check_in: "08:25", check_out: "16:10" },
+  { id: 11, employeeId: 3, date: "2026-04-09", check_in: "08:30", check_out: "15:55" },
   // Pavel (emp 4)
-  { id: 12, employeeId: 4, date: "2026-04-07", checkin: "06:00", checkout: "14:00" },
-  { id: 13, employeeId: 4, date: "2026-04-08", checkin: "06:05", checkout: "14:15" },
+  { id: 12, employeeId: 4, date: "2026-04-07", check_in: "06:00", check_out: "14:00" },
+  { id: 13, employeeId: 4, date: "2026-04-08", check_in: "06:05", check_out: "14:15" },
 ];
 
 // ─── INITIAL DATA ────────────────────────────────────────────────────────────
@@ -317,12 +317,12 @@ function MainApp({ currentUser, setCurrentUser }) {
   const totalPayroll = employees.filter(e => e.status === "Aktivní").reduce((s, e) => s + e.salary, 0);
   const activeProjects = projects.filter(p => p.status === "Probíhá").length;
 
-  const checkin = async () => {
+  const check_in = async () => {
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     if (todayRecord) {
-      await supabase.from("attendance").update({ checkout: time }).eq("id", todayRecord.id);
-      setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, checkout: time } : a));
+      await supabase.from("attendance").update({ check_out: time }).eq("id", todayRecord.id);
+      setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, check_out: time } : a));
     } else {
       const { data: row } = await supabase.from("attendance")
       .upsert(
@@ -360,10 +360,10 @@ function MainApp({ currentUser, setCurrentUser }) {
               <span style={{ ...S.tag(ROLES[currentUser.role]?.color || "#6366f1"), fontSize: 10 }}>{ROLES[currentUser.role]?.label}</span>
             </div>
           </div>
-          {/* Quick checkin */}
+          {/* Quick check_in */}
           {myEmpId && (
-            <button onClick={checkin} style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#34d399" : "#6366f1"), width: "100%", marginTop: 10, fontSize: 11, padding: "7px" }}>
-              {todayRecord?.checkout ? `✓ Odchod ${todayRecord.checkout}` : todayRecord?.checkin ? `⏱ Zapsat odchod (${todayRecord.checkin})` : "▶ Zapsat příchod"}
+            <button onClick={check_in} style={{ ...S.btn(todayRecord?.check_in && !todayRecord?.check_out ? "#f59e0b" : todayRecord?.check_out ? "#34d399" : "#6366f1"), width: "100%", marginTop: 10, fontSize: 11, padding: "7px" }}>
+              {todayRecord?.check_out ? `✓ Odchod ${todayRecord.check_out}` : todayRecord?.check_in ? `⏱ Zapsat odchod (${todayRecord.check_in})` : "▶ Zapsat příchod"}
             </button>
           )}
         </div>
@@ -2096,10 +2096,10 @@ function Login({ onLogin }) {
 
 // ─── HELPERS PRO ČAS ─────────────────────────────────────────────────────────
 
-const calcHours = (checkin, checkout) => {
-  if (!checkin || !checkout) return 0;
-  const [h1, m1] = checkin.split(":").map(Number);
-  const [h2, m2] = checkout.split(":").map(Number);
+const calcHours = (check_in, check_out) => {
+  if (!check_in || !check_out) return 0;
+  const [h1, m1] = check_in.split(":").map(Number);
+  const [h2, m2] = check_out.split(":").map(Number);
   return Math.max(0, (h2 * 60 + m2 - (h1 * 60 + m1)) / 60);
 };
 
@@ -2129,13 +2129,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees }) {
   const empRecords = attendance.filter(a => a.employeeId === viewEmpId).sort((a, b) => b.date.localeCompare(a.date));
   const todayRecord = attendance.find(a => a.employeeId === viewEmpId && a.date === todayStr);
 
-  const checkinNow = () => {
+  const check_inNow = () => {
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     if (todayRecord) {
-      setAttendance(attendance.map(a => a.employeeId === viewEmpId && a.date === todayStr ? { ...a, checkout: time } : a));
+      setAttendance(attendance.map(a => a.employeeId === viewEmpId && a.date === todayStr ? { ...a, check_out: time } : a));
     } else {
-      setAttendance([...attendance, { id: Date.now(), employeeId: viewEmpId, date: todayStr, checkin: time, checkout: null }]);
+      setAttendance([...attendance, { id: Date.now(), employeeId: viewEmpId, date: todayStr, check_in: time, check_out: null }]);
     }
   };
 
@@ -2143,9 +2143,9 @@ function Attendance({ currentUser, attendance, setAttendance, employees }) {
     if (!manualDate || !manualIn) return;
     const existing = attendance.find(a => a.employeeId === viewEmpId && a.date === manualDate);
     if (existing) {
-      setAttendance(attendance.map(a => a.employeeId === viewEmpId && a.date === manualDate ? { ...a, checkin: manualIn, checkout: manualOut || null } : a));
+      setAttendance(attendance.map(a => a.employeeId === viewEmpId && a.date === manualDate ? { ...a, check_in: manualIn, check_out: manualOut || null } : a));
     } else {
-      setAttendance([...attendance, { id: Date.now(), employeeId: viewEmpId, date: manualDate, checkin: manualIn, checkout: manualOut || null }]);
+      setAttendance([...attendance, { id: Date.now(), employeeId: viewEmpId, date: manualDate, check_in: manualIn, check_out: manualOut || null }]);
     }
     setManualIn(""); setManualOut("");
   };
@@ -2154,12 +2154,12 @@ function Attendance({ currentUser, attendance, setAttendance, employees }) {
 
   // Stats
   const weekDates = getWeekDates();
-  const weekHours = weekDates.reduce((s, d) => { const r = attendance.find(a => a.employeeId === viewEmpId && a.date === d); return s + (r ? calcHours(r.checkin, r.checkout) : 0); }, 0);
+  const weekHours = weekDates.reduce((s, d) => { const r = attendance.find(a => a.employeeId === viewEmpId && a.date === d); return s + (r ? calcHours(r.check_in, r.check_out) : 0); }, 0);
   const monthStr = todayStr.slice(0, 7);
-  const monthHours = attendance.filter(a => a.employeeId === viewEmpId && a.date.startsWith(monthStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
+  const monthHours = attendance.filter(a => a.employeeId === viewEmpId && a.date.startsWith(monthStr)).reduce((s, a) => s + calcHours(a.check_in, a.check_out), 0);
   const yearStr = todayStr.slice(0, 4);
-  const yearHours = attendance.filter(a => a.employeeId === viewEmpId && a.date.startsWith(yearStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
-  const todayHours = todayRecord ? calcHours(todayRecord.checkin, todayRecord.checkout) : 0;
+  const yearHours = attendance.filter(a => a.employeeId === viewEmpId && a.date.startsWith(yearStr)).reduce((s, a) => s + calcHours(a.check_in, a.check_out), 0);
+  const todayHours = todayRecord ? calcHours(todayRecord.check_in, todayRecord.check_out) : 0;
   const viewEmp = employees.find(e => e.id === viewEmpId);
   const viewUser = USERS.find(u => u.employeeId === viewEmpId);
 
@@ -2195,7 +2195,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees }) {
       {/* Statistiky hodin */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { label: "Dnes", value: todayHours > 0 ? fmtHours(todayHours) : todayRecord?.checkin ? "Probíhá..." : "—", color: "#6366f1" },
+          { label: "Dnes", value: todayHours > 0 ? fmtHours(todayHours) : todayRecord?.check_in ? "Probíhá..." : "—", color: "#6366f1" },
           { label: "Tento týden", value: fmtHours(weekHours), color: "#60a5fa" },
           { label: "Tento měsíc", value: fmtHours(monthHours), color: "#34d399" },
           { label: "Tento rok", value: fmtHours(yearHours), color: "#f59e0b" },
@@ -2214,26 +2214,26 @@ function Attendance({ currentUser, attendance, setAttendance, employees }) {
           <div style={{ flex: 1, display: "flex", gap: 20 }}>
             <div>
               <div style={S.statLabel}>Příchod</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: todayRecord?.checkin ? "#34d399" : "#334155" }}>
-                {todayRecord?.checkin || "—"}
+              <div style={{ fontSize: 22, fontWeight: 800, color: todayRecord?.check_in ? "#34d399" : "#334155" }}>
+                {todayRecord?.check_in || "—"}
               </div>
             </div>
             <div>
               <div style={S.statLabel}>Odchod</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: todayRecord?.checkout ? "#f59e0b" : "#334155" }}>
-                {todayRecord?.checkout || (todayRecord?.checkin ? "probíhá..." : "—")}
+              <div style={{ fontSize: 22, fontWeight: 800, color: todayRecord?.check_out ? "#f59e0b" : "#334155" }}>
+                {todayRecord?.check_out || (todayRecord?.check_in ? "probíhá..." : "—")}
               </div>
             </div>
-            {todayRecord?.checkin && todayRecord?.checkout && (
+            {todayRecord?.check_in && todayRecord?.check_out && (
               <div>
                 <div style={S.statLabel}>Odpracováno</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#6366f1" }}>{fmtHours(calcHours(todayRecord.checkin, todayRecord.checkout))}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#6366f1" }}>{fmtHours(calcHours(todayRecord.check_in, todayRecord.check_out))}</div>
               </div>
             )}
           </div>
           {(viewEmpId === currentUser.employeeId || isHR) && (
-            <button onClick={checkinNow} style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#34d399" : "#6366f1"), padding: "14px 24px", fontSize: 14 }}>
-              {todayRecord?.checkout ? "✓ Záznam dokončen" : todayRecord?.checkin ? "⏹ Zapsat odchod" : "▶ Zapsat příchod"}
+            <button onClick={check_inNow} style={{ ...S.btn(todayRecord?.check_in && !todayRecord?.check_out ? "#f59e0b" : todayRecord?.check_out ? "#34d399" : "#6366f1"), padding: "14px 24px", fontSize: 14 }}>
+              {todayRecord?.check_out ? "✓ Záznam dokončen" : todayRecord?.check_in ? "⏹ Zapsat odchod" : "▶ Zapsat příchod"}
             </button>
           )}
         </div>
@@ -2245,7 +2245,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees }) {
         <div style={{ display: "flex", gap: 8 }}>
           {weekDates.map(d => {
             const r = attendance.find(a => a.employeeId === viewEmpId && a.date === d);
-            const h = r ? calcHours(r.checkin, r.checkout) : 0;
+            const h = r ? calcHours(r.check_in, r.check_out) : 0;
             const isToday = d === todayStr;
             const dayName = ["Po", "Út", "St", "Čt", "Pá"][weekDates.indexOf(d)];
             return (
@@ -2255,7 +2255,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees }) {
                   {h > 0 && <div style={{ background: isToday ? "#6366f1" : "#34d399", height: `${Math.min((h / 10) * 100, 100)}%`, opacity: 0.7, transition: "height 0.3s" }} />}
                 </div>
                 <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{h > 0 ? fmtHours(h) : "—"}</div>
-                {r?.checkin && <div style={{ fontSize: 9, color: "#334155" }}>{r.checkin}{r.checkout ? `–${r.checkout}` : "–..."}</div>}
+                {r?.check_in && <div style={{ fontSize: 9, color: "#334155" }}>{r.check_in}{r.check_out ? `–${r.check_out}` : "–..."}</div>}
               </div>
             );
           })}
@@ -2282,13 +2282,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees }) {
           <thead><tr>{["Datum", "Příchod", "Odchod", "Odpracováno", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {empRecords.slice(0, 30).map(r => {
-              const h = calcHours(r.checkin, r.checkout);
+              const h = calcHours(r.check_in, r.check_out);
               const isToday = r.date === todayStr;
               return (
                 <tr key={r.id}>
                   <td style={{ ...S.td, color: isToday ? "#6366f1" : "#e2e8f0", fontWeight: isToday ? 700 : 400 }}>{r.date}{isToday ? " (dnes)" : ""}</td>
-                  <td style={{ ...S.td, color: "#34d399", fontWeight: 600 }}>{r.checkin || "—"}</td>
-                  <td style={{ ...S.td, color: "#f59e0b", fontWeight: 600 }}>{r.checkout || <span style={{ color: "#334155" }}>probíhá</span>}</td>
+                  <td style={{ ...S.td, color: "#34d399", fontWeight: 600 }}>{r.check_in || "—"}</td>
+                  <td style={{ ...S.td, color: "#f59e0b", fontWeight: 600 }}>{r.check_out || <span style={{ color: "#334155" }}>probíhá</span>}</td>
                   <td style={{ ...S.td, color: "#fff", fontWeight: 700 }}>{h > 0 ? fmtHours(h) : "—"}</td>
                   <td style={S.td}>{isHR && <button onClick={() => deleteRecord(r.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}>×</button>}</td>
                 </tr>
@@ -2312,10 +2312,10 @@ function Profile({ currentUser, attendance, employees }) {
 
   const myRecords = attendance.filter(a => a.employeeId === currentUser.employeeId);
   const todayRec = myRecords.find(a => a.date === todayStr);
-  const weekHours = weekDates.reduce((s, d) => { const r = myRecords.find(a => a.date === d); return s + (r ? calcHours(r.checkin, r.checkout) : 0); }, 0);
-  const monthHours = myRecords.filter(a => a.date.startsWith(monthStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
-  const yearHours = myRecords.filter(a => a.date.startsWith(yearStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
-  const todayHours = todayRec ? calcHours(todayRec.checkin, todayRec.checkout) : 0;
+  const weekHours = weekDates.reduce((s, d) => { const r = myRecords.find(a => a.date === d); return s + (r ? calcHours(r.check_in, r.check_out) : 0); }, 0);
+  const monthHours = myRecords.filter(a => a.date.startsWith(monthStr)).reduce((s, a) => s + calcHours(a.check_in, a.check_out), 0);
+  const yearHours = myRecords.filter(a => a.date.startsWith(yearStr)).reduce((s, a) => s + calcHours(a.check_in, a.check_out), 0);
+  const todayHours = todayRec ? calcHours(todayRec.check_in, todayRec.check_out) : 0;
   const vacLeft = currentUser.vacationDays - currentUser.vacationUsed;
   const vacPct = Math.round((currentUser.vacationUsed / currentUser.vacationDays) * 100);
 
@@ -2323,7 +2323,7 @@ function Profile({ currentUser, attendance, employees }) {
   const last6 = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(); d.setMonth(d.getMonth() - (5 - i));
     const ms = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-    const h = myRecords.filter(a => a.date.startsWith(ms)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
+    const h = myRecords.filter(a => a.date.startsWith(ms)).reduce((s, a) => s + calcHours(a.check_in, a.check_out), 0);
     return { label: MONTHS[d.getMonth()], hours: h };
   });
   const maxH = Math.max(...last6.map(m => m.hours), 1);
@@ -2351,7 +2351,7 @@ function Profile({ currentUser, attendance, employees }) {
       {/* Hodiny přehled */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { label: "Dnes", value: todayHours > 0 ? fmtHours(todayHours) : todayRec?.checkin ? "Probíhá" : "—", color: "#6366f1" },
+          { label: "Dnes", value: todayHours > 0 ? fmtHours(todayHours) : todayRec?.check_in ? "Probíhá" : "—", color: "#6366f1" },
           { label: "Tento týden", value: fmtHours(weekHours), color: "#60a5fa" },
           { label: "Tento měsíc", value: fmtHours(monthHours), color: "#34d399" },
           { label: "Tento rok", value: fmtHours(yearHours), color: "#f59e0b" },
@@ -2399,16 +2399,16 @@ function Profile({ currentUser, attendance, employees }) {
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, fontSize: 14 }}>📅 Dnešní docházka</div>
           <div style={{ display: "flex", gap: 24 }}>
-            <div><div style={S.statLabel}>Příchod</div><div style={{ fontSize: 28, fontWeight: 800, color: todayRec?.checkin ? "#34d399" : "#334155" }}>{todayRec?.checkin || "—"}</div></div>
-            <div><div style={S.statLabel}>Odchod</div><div style={{ fontSize: 28, fontWeight: 800, color: todayRec?.checkout ? "#f59e0b" : "#334155" }}>{todayRec?.checkout || "—"}</div></div>
+            <div><div style={S.statLabel}>Příchod</div><div style={{ fontSize: 28, fontWeight: 800, color: todayRec?.check_in ? "#34d399" : "#334155" }}>{todayRec?.check_in || "—"}</div></div>
+            <div><div style={S.statLabel}>Odchod</div><div style={{ fontSize: 28, fontWeight: 800, color: todayRec?.check_out ? "#f59e0b" : "#334155" }}>{todayRec?.check_out || "—"}</div></div>
           </div>
-          {todayRec?.checkin && todayRec?.checkout && (
+          {todayRec?.check_in && todayRec?.check_out && (
             <div style={{ marginTop: 12 }}>
               <div style={S.statLabel}>Celkem dnes</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: "#6366f1" }}>{fmtHours(calcHours(todayRec.checkin, todayRec.checkout))}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#6366f1" }}>{fmtHours(calcHours(todayRec.check_in, todayRec.check_out))}</div>
             </div>
           )}
-          {todayRec?.checkin && !todayRec?.checkout && (
+          {todayRec?.check_in && !todayRec?.check_out && (
             <div style={{ marginTop: 10, color: "#f59e0b", fontSize: 12 }}>⏱ Směna probíhá...</div>
           )}
         </div>
@@ -2417,12 +2417,12 @@ function Profile({ currentUser, attendance, employees }) {
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, fontSize: 14 }}>🕐 Poslední záznamy</div>
           {myRecords.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map(r => {
-            const h = calcHours(r.checkin, r.checkout);
+            const h = calcHours(r.check_in, r.check_out);
             return (
               <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #1a2035" }}>
                 <div>
                   <div style={{ fontSize: 13, color: r.date === todayStr ? "#6366f1" : "#e2e8f0", fontWeight: 500 }}>{r.date}{r.date === todayStr ? " (dnes)" : ""}</div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>{r.checkin} → {r.checkout || "probíhá"}</div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{r.check_in} → {r.check_out || "probíhá"}</div>
                 </div>
                 <div style={{ fontWeight: 700, color: h > 0 ? "#fff" : "#334155", fontSize: 13 }}>{h > 0 ? fmtHours(h) : "—"}</div>
               </div>
