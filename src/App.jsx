@@ -90,10 +90,11 @@ function DatePicker({ value, onChange, placeholder = "Vyberte datum", style = {}
 // ─── AUTH & USERS ────────────────────────────────────────────────────────────
 
 const USERS = [
-  { id: 1, employeeId: 1, username: "roman",  password: "medvedelektro", role: "admin",    name: "Roman Jurenka", vacationDays: 25, vacationUsed: 0 },
-  { id: 2, employeeId: 2, username: "vaclav", password: "jajsemkral",    role: "employee", name: "Václav Jahn",   vacationDays: 20, vacationUsed: 0 },
-  { id: 3, employeeId: 3, username: "david",  password: "autojecesta",   role: "employee", name: "David Winige",  vacationDays: 20, vacationUsed: 0 },
-  { id: 4, employeeId: 4, username: "honza",  password: "mujusmev",      role: "employee", name: "Honza Vlček",   vacationDays: 20, vacationUsed: 0 },
+  { id: 1, employeeId: 1, username: "roman",   password: "medvedelektro", role: "admin",    name: "Roman Jurenka",    vacationDays: 25, vacationUsed: 0 },
+  { id: 5, employeeId: 5, username: "sarlota", password: "rozarka",       role: "employee", name: "Šarlota Jurenková", vacationDays: 20, vacationUsed: 0 },
+  { id: 2, employeeId: 2, username: "vaclav",  password: "jajsemkral",    role: "employee", name: "Václav Jahn",      vacationDays: 20, vacationUsed: 0 },
+  { id: 3, employeeId: 3, username: "david",   password: "autojecesta",   role: "employee", name: "David Winige",     vacationDays: 20, vacationUsed: 0 },
+  { id: 4, employeeId: 4, username: "honza",   password: "mujusmev",      role: "employee", name: "Honza Vlček",      vacationDays: 20, vacationUsed: 0 },
 ];
 
 const ROLES = {
@@ -1600,15 +1601,43 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
   const [taskUploading, setTaskUploading] = useState(false);
   const [taskPhotoPanel, setTaskPhotoPanel] = useState(false);
   const [filter, setFilter] = useState("all");
+  const [taskPhotos, setTaskPhotos] = useState([]); // [{url, name}]
+  const [detailTask, setDetailTask] = useState(null);
+  const [lightboxUrl, setLightboxUrl] = useState(null);
+
+  const loadHeic2any = () => new Promise((resolve) => {
+    if (window.heic2any) return resolve(window.heic2any);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.js";
+    s.onload = () => resolve(window.heic2any);
+    document.head.appendChild(s);
+  });
 
   const uploadTaskPhoto = async (file) => {
     if (!file) return;
     setTaskUploading(true);
-    const path = `task_global_${Date.now()}.${file.name.split(".").pop()}`;
-    const { error } = await supabase.storage.from("zakazky-fotky").upload(path, file, { upsert: true });
-    if (!error) {
+    const origName = file.name.replace(/\.[^.]+$/, "");
+    let uploadFile = file;
+    let ext = file.name.split(".").pop().toLowerCase();
+    if (ext === "heic" || ext === "heif" || file.type === "image/heic" || file.type === "image/heif") {
+      try {
+        const heic2any = await loadHeic2any();
+        const blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.85 });
+        uploadFile = new File([blob], origName + ".jpg", { type: "image/jpeg" });
+        ext = "jpg";
+      } catch (e) {
+        alert("Chyba převodu HEIC: " + e.message);
+        setTaskUploading(false);
+        return;
+      }
+    }
+    const path = `task_global_${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("zakazky-fotky").upload(path, uploadFile, { upsert: true });
+    if (error) {
+      alert("Chyba nahrání fotky: " + error.message);
+    } else {
       const { data: { publicUrl } } = supabase.storage.from("zakazky-fotky").getPublicUrl(path);
-      setNewT(t => ({ ...t, photo_url: publicUrl }));
+      setTaskPhotos(prev => [...prev, { url: publicUrl, name: origName }]);
     }
     setTaskUploading(false);
   };
@@ -1622,7 +1651,8 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
       deal_id: Number(newT.dealId) || null,
       created_by: currentUser?.name || "?",
       assigned_to: newT.assignedTo || "",
-      photo_url: newT.photo_url || "",
+      photo_url: newT.photo_url || (taskPhotos.length > 0 ? taskPhotos[0].url : ""),
+      photos: taskPhotos.length > 0 ? taskPhotos : null,
       visible_to: newT.visibleTo || [],
     };
     const { data: row } = await supabase.from("tasks").insert(row_data).select().single();
@@ -1636,6 +1666,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
       }
     }
     setNewT({ title: "", due: "", priority: "Střední", customerId: "", contractId: "", dealId: "", assignedTo: "", visibleTo: [], photo_url: "", created_by: "" });
+    setTaskPhotos([]);
     setTaskPhotoPanel(false);
     closeModal();
   };
@@ -1679,8 +1710,8 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               const contr = (contracts || []).find(c => c.id === t.contract_id);
               const deal  = (deals || []).find(d => d.id === t.deal_id);
               return (
-                <tr key={t.id} style={{ opacity: t.done ? 0.4 : 1 }}>
-                  <td style={S.td}><input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} style={{ accentColor: "#2563eb" }} /></td>
+                <tr key={t.id} style={{ opacity: t.done ? 0.4 : 1, cursor: "pointer" }} onClick={() => setDetailTask(t)}>
+                  <td style={S.td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} style={{ accentColor: "#2563eb" }} /></td>
                   <td style={{ ...S.td, textDecoration: t.done ? "line-through" : "none", color: "#fff", fontWeight: 500 }}>
                     {t.title}
                     {t.visible_to?.length > 0 && <span style={{ fontSize: 10, color: "#2563eb", marginLeft: 6 }}>👁 {t.visible_to.join(", ")}</span>}
@@ -1702,11 +1733,63 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
         {filtered.length === 0 && <Empty />}
       </div>
 
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div style={{ ...S.modal, zIndex: 300 }} onClick={() => setLightboxUrl(null)}>
+          <div style={{ maxWidth: "90vw", maxHeight: "90vh", position: "relative" }}>
+            <img src={lightboxUrl} alt="" style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain", borderRadius: 12, boxShadow: "0 20px 60px #000a" }} />
+            <button onClick={() => setLightboxUrl(null)} style={{ position: "absolute", top: -16, right: -16, background: "#ef4444", color: "#fff", border: "none", borderRadius: "50%", width: 32, height: 32, fontSize: 16, cursor: "pointer" }}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* Detail úkolu */}
+      {detailTask && (
+        <div style={S.modal}>
+          <div style={{ ...S.modalBox, width: 560 }}>
+            <ModalHeader title={detailTask.title} onClose={() => setDetailTask(null)} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <div><div style={S.statLabel}>Termín</div><div style={{ color: "#fff", fontWeight: 600 }}>{detailTask.due || "—"}</div></div>
+              <div><div style={S.statLabel}>Priorita</div><span style={S.tag(PRIO_COLORS[detailTask.priority] || "#64748b")}>{detailTask.priority}</span></div>
+              <div><div style={S.statLabel}>Zadal</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.created_by || "—"}</div></div>
+              <div><div style={S.statLabel}>Přiřazeno</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.assigned_to || "—"}</div></div>
+            </div>
+            {detailTask.description && (
+              <div style={{ background: "#1e293b", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#cbd5e1", fontSize: 14, lineHeight: 1.6 }}>
+                {detailTask.description}
+              </div>
+            )}
+            {(() => {
+              const photos = detailTask.photos || (detailTask.photo_url ? [{ url: detailTask.photo_url, name: "Fotka" }] : []);
+              if (photos.length === 0) return null;
+              return (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 8 }}>FOTKY ({photos.length})</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8 }}>
+                    {photos.map((ph, i) => (
+                      <div key={i} onClick={() => setLightboxUrl(ph.url)} style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "2px solid #334155" }}>
+                        <img src={ph.url} alt={ph.name} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
+                        {ph.name && <div style={{ padding: "3px 6px", fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "#1e293b" }}>{ph.name}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button style={S.btnGhost} onClick={() => setDetailTask(null)}>Zavřít</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {modal?.type === "addTask" && (
         <div style={S.modal}><div style={S.modalBox}>
           <ModalHeader title="Nový úkol" onClose={closeModal} />
           <label style={S.label}>Název úkolu</label>
           <input style={S.input} value={newT.title} onChange={e => setNewT({ ...newT, title: e.target.value })} />
+          <label style={S.label}>Popis</label>
+          <textarea style={{ ...S.input, minHeight: 72, resize: "vertical" }} placeholder="Podrobnosti, poznámky..." value={newT.description} onChange={e => setNewT({ ...newT, description: e.target.value })} />
           <label style={S.label}>Termín</label>
           <DatePicker value={newT.due} onChange={v => setNewT({ ...newT, due: v })} />
           <label style={S.label}>Priorita</label>
@@ -1756,23 +1839,36 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               })}
             </div>
           </div>
-          {/* Fotka */}
-          <label style={S.label}>Fotka k úkolu</label>
+          {/* Fotky */}
+          <label style={S.label}>Fotky k úkolu</label>
           <button style={{ ...S.btn("#1e293b"), padding: "6px 14px", fontSize: 12, marginBottom: 8 }}
             onClick={() => setTaskPhotoPanel(!taskPhotoPanel)}>
-            {taskPhotoPanel ? "▲ Skrýt" : "📷 Přidat fotku"}
+            {taskPhotoPanel ? "▲ Skrýt" : `📷 Přidat fotky${taskPhotos.length > 0 ? ` (${taskPhotos.length})` : ""}`}
           </button>
-          {newT.photo_url && <img src={newT.photo_url} alt="" style={{ width: "100%", maxHeight: 120, objectFit: "cover", borderRadius: 8, marginBottom: 8 }} />}
           {taskPhotoPanel && (
             <div style={{ background: "#f8fafc", borderRadius: 8, padding: 12, marginBottom: 10 }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                 <label style={{ ...S.btn("#334155"), padding: "6px 14px", display: "inline-flex", gap: 6, cursor: "pointer", fontSize: 12 }}>
                   {taskUploading ? "⏳ Nahrávám..." : "📤 Nahrát fotku"}
-                  <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => uploadTaskPhoto(e.target.files[0])} />
+                  <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => Array.from(e.target.files).forEach(f => uploadTaskPhoto(f))} />
                 </label>
                 <button style={{ ...S.btnGhost, padding: "6px 14px", fontSize: 12 }} onClick={() => setShowTaskPhotoPicker(true)}>📁 Ze zakázek</button>
               </div>
-              {showTaskPhotoPicker && <ContractPhotoPicker onSelect={url => { setNewT(t => ({ ...t, photo_url: url })); setShowTaskPhotoPicker(false); }} onClose={() => setShowTaskPhotoPicker(false)} />}
+              {taskPhotos.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {taskPhotos.map((ph, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", borderRadius: 8, padding: "6px 8px", border: "1px solid #e2e8f0" }}>
+                      <img src={ph.url} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                      <input style={{ ...S.input, marginBottom: 0, flex: 1, fontSize: 12 }} value={ph.name}
+                        onChange={e => setTaskPhotos(prev => prev.map((p, j) => j === i ? { ...p, name: e.target.value } : p))}
+                        placeholder="Název fotky..." />
+                      <button style={{ ...S.btn("#ef4444"), padding: "3px 8px", fontSize: 11, flexShrink: 0 }}
+                        onClick={() => setTaskPhotos(prev => prev.filter((_, j) => j !== i))}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {showTaskPhotoPicker && <ContractPhotoPicker onSelect={url => { setTaskPhotos(prev => [...prev, { url, name: "Ze zakázky" }]); setShowTaskPhotoPicker(false); }} onClose={() => setShowTaskPhotoPicker(false)} />}
             </div>
           )}
           <ModalActions onSave={save} onClose={closeModal} />
@@ -3825,6 +3921,7 @@ const getWeekDates = () => {
 function Attendance({ currentUser, attendance, setAttendance, employees, contracts, products }) {
   const isHR = ["admin", "hr", "manager"].includes(currentUser.role);
   const [viewEmpId, setViewEmpId] = useState(currentUser.employeeId);
+  const [viewMonth, setViewMonth] = useState(fmt(new Date()).slice(0, 7)); // YYYY-MM
   const [manualDate, setManualDate] = useState(fmt(new Date()));
   const [manualIn, setManualIn] = useState("");
   const [manualOut, setManualOut] = useState("");
@@ -3848,7 +3945,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
   const contractOpts = (contracts && contracts.length > 0) ? contracts : attLocalContracts;
 
-  const empRecords = attendance.filter(a => a.employeeId === viewEmpId).sort((a, b) => b.date.localeCompare(a.date));
+  const empRecords = attendance.filter(a => a.employeeId === viewEmpId && (viewMonth === "all" || (a.date && a.date.startsWith(viewMonth)))).sort((a, b) => b.date.localeCompare(a.date));
+  const viewMonthHours = empRecords.reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
   const todayRecord = attendance.find(a => a.employeeId === viewEmpId && a.date === todayStr);
 
   const syncCostEntries = async () => {
@@ -4028,11 +4126,22 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     <>
       <div style={S.header}>
         <h1 style={S.h1}>🕐 Docházka</h1>
-        {isHR && (
-          <select style={{ ...S.select, marginBottom: 0, width: 200 }} value={viewEmpId} onChange={e => setViewEmpId(Number(e.target.value))}>
-            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {isHR && (
+            <select style={{ ...S.select, marginBottom: 0, width: 180 }} value={viewEmpId} onChange={e => setViewEmpId(Number(e.target.value))}>
+              {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          )}
+          <select style={{ ...S.select, marginBottom: 0, width: 150 }} value={viewMonth} onChange={e => setViewMonth(e.target.value)}>
+            <option value="all">Vše</option>
+            {Array.from({ length: 12 }, (_, i) => {
+              const d = new Date(); d.setMonth(d.getMonth() - i);
+              const val = d.toISOString().slice(0, 7);
+              const label = d.toLocaleString("cs-CZ", { month: "long", year: "numeric" });
+              return <option key={val} value={val}>{label}</option>;
+            })}
           </select>
-        )}
+        </div>
       </div>
 
       {viewEmp && (
@@ -4056,7 +4165,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         {[
           { label: "Dnes (bez pauzy)", value: todayEffective > 0 ? fmtHours(todayEffective) : todayRecord?.checkin ? "Probíhá..." : "—", color: "#2563eb" },
           { label: "Tento týden", value: fmtHours(weekHours), color: "#60a5fa" },
-          { label: "Tento měsíc", value: fmtHours(monthHours), color: "#34d399" },
+          { label: viewMonth === "all" ? "Celkem" : new Date(viewMonth+"-01").toLocaleString("cs-CZ",{month:"long",year:"numeric"}), value: fmtHours(viewMonth === "all" ? yearHours : viewMonthHours), color: "#34d399" },
           { label: "Tento rok", value: fmtHours(yearHours), color: "#f59e0b" },
         ].map(s => (
           <div key={s.label} style={S.statCard(s.color)}>
