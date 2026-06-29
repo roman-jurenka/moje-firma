@@ -4037,8 +4037,6 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       unit: "h",
       unit_price_cost: Number(emp.hourly_rate_cost || 0),
       unit_price_client: Number(emp.hourly_rate_client || 0),
-      amount_cost: Math.round(effH * Number(emp.hourly_rate_cost || 0) * 100) / 100,
-      amount_client: Math.round(effH * Number(emp.hourly_rate_client || 0) * 100) / 100,
       employee_id: emp.id,
       attendance_id: attRecord.id,
     });

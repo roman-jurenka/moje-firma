@@ -190,10 +190,10 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     const e = entries.filter(x => x.contract_id === cid);
     const sum = (type, isExtra) =>
       e.filter(x => x.cost_type === type && x.is_extra === isExtra)
-       .reduce((s, x) => s + Number(x.amount_cost || 0), 0);
+       .reduce((s, x) => s + (x.amount_cost != null ? Number(x.amount_cost) : Number(x.quantity||1) * Number(x.unit_price_cost||0)), 0);
     const sumClient = (type, isExtra) =>
       e.filter(x => x.cost_type === type && x.is_extra === isExtra)
-       .reduce((s, x) => s + Number(x.amount_client || 0), 0);
+       .reduce((s, x) => s + (x.amount_client != null ? Number(x.amount_client) : Number(x.quantity||1) * Number(x.unit_price_client||0)), 0);
     return {
       prace:         sum("práce", false),
       material:      sum("materiál", false),
@@ -239,16 +239,16 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   // ── Nová nákladová položka ──
   async function saveCostEntry(form) {
     const { data: row } = await supabase.from("contract_cost_entries").insert({
-      contract_id:      form.contractId,
-      cost_type:        form.costType,
-      is_extra:         form.isExtra,
-      date:             form.date,
-      description:      form.description,
-      quantity:         Number(form.quantity) || 1,
-      unit:             form.unit,
-      unit_price_cost:  Number(form.unitPriceCost) || 0,
+      contract_id:       form.contractId,
+      cost_type:         form.costType,
+      is_extra:          form.isExtra,
+      date:              form.date,
+      description:       form.description,
+      quantity:          Number(form.quantity) || 1,
+      unit:              form.unit,
+      unit_price_cost:   Number(form.unitPriceCost) || 0,
       unit_price_client: Number(form.unitPriceClient) || 0,
-      employee_id:      form.employeeId ? Number(form.employeeId) : null,
+      employee_id:       form.employeeId ? Number(form.employeeId) : null,
     }).select().single();
     if (row) setEntries([...entries, row]);
     closeModal();
