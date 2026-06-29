@@ -213,7 +213,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     const attClient = attRecs.reduce((s, a) => {
       const emp = employees.find(e => e.id === (a.employee_id || a.employeeId));
       const h = calcEff(a.checkin, a.checkout);
-      return s + h * Number(emp?.hourly_rate_client || 0);
+      // billing_rate override má přednost před výchozí sazbou zaměstnance
+      const rate = a.billing_rate != null ? Number(a.billing_rate) : Number(emp?.hourly_rate_client || 0);
+      return s + h * rate;
     }, 0);
 
     return {
@@ -842,6 +844,14 @@ function FinanceTab({ contract, sums, totalCost, totalRevenue, profit, profitPct
 
 // ─── TAB: ZAMĚSTNANCI / DOCHÁZKA ─────────────────────────────────────────────
 function EmployeesTab({ attendance, employees, contracts, contractId }) {
+  const [rates, setRates] = useState({}); // {attendanceId: billing_rate}
+
+  useEffect(() => {
+    const init = {};
+    attendance.forEach(a => { if (a.billing_rate != null) init[a.id] = a.billing_rate; });
+    setRates(init);
+  }, [attendance]);
+
   const calcH = (ci, co) => {
     if (!ci || !co) return 0;
     const [h1, m1] = ci.split(":").map(Number);
@@ -852,23 +862,38 @@ function EmployeesTab({ attendance, employees, contracts, contractId }) {
 
   const sorted = [...attendance].sort((a, b) => b.date?.localeCompare(a.date));
   const totalH = attendance.reduce((s, a) => s + calcH(a.checkin, a.checkout), 0);
+  const totalBilled = sorted.reduce((s, r) => {
+    const emp = employees.find(e => e.id === r.employeeId || e.id === r.employee_id);
+    const rate = rates[r.id] ?? r.billing_rate ?? Number(emp?.hourly_rate_client || 0);
+    return s + calcH(r.checkin, r.checkout) * rate;
+  }, 0);
+
+  const saveRate = async (recId, val) => {
+    const num = val === "" ? null : Number(val);
+    setRates(prev => ({ ...prev, [recId]: num }));
+    await supabase.from("attendance").update({ billing_rate: num }).eq("id", recId);
+  };
 
   return (
     <div>
-      <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>
-        Celkem odpracováno na zakázce: <strong style={{ color: "#fff" }}>{fmtH(totalH)}</strong>
+      <div style={{ display: "flex", gap: 24, marginBottom: 12, fontSize: 12, color: "#475569" }}>
+        <span>Celkem odpracováno: <strong style={{ color: "#fff" }}>{fmtH(totalH)}</strong></span>
+        <span>Celkem fakturováno: <strong style={{ color: "#34d399" }}>{fmtKc(totalBilled)}</strong></span>
       </div>
       {sorted.length === 0 ? (
         <div style={{ color: "#334155", fontSize: 13 }}>Žádné záznamy docházky pro tuto zakázku.</div>
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr>{["Datum","Zaměstnanec","Příchod","Odchod","Hod.","Činnost"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+            <tr>{["Datum","Zaměstnanec","Příchod","Odchod","Hod.","Sazba (Kč/h)","Fakturováno","Činnost"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
           </thead>
           <tbody>
             {sorted.map(r => {
               const emp = employees.find(e => e.id === r.employeeId || e.id === r.employee_id);
               const h = calcH(r.checkin, r.checkout);
+              const defaultRate = Number(emp?.hourly_rate_client || 0);
+              const currentRate = rates[r.id] ?? r.billing_rate ?? defaultRate;
+              const billed = h * currentRate;
               return (
                 <tr key={r.id}>
                   <td style={S.td}>{r.date}</td>
@@ -876,7 +901,19 @@ function EmployeesTab({ attendance, employees, contracts, contractId }) {
                   <td style={{ ...S.td, color: "#34d399" }}>{r.checkin || "—"}</td>
                   <td style={{ ...S.td, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#334155" }}>probíhá</span>}</td>
                   <td style={{ ...S.td, color: "#fff", fontWeight: 700 }}>{h > 0 ? fmtH(h) : "—"}</td>
-                  <td style={{ ...S.td, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
+                  <td style={S.td}>
+                    <input
+                      type="number"
+                      style={{ ...S.input, marginBottom: 0, width: 80, padding: "3px 6px", fontSize: 12,
+                        borderColor: (rates[r.id] != null && rates[r.id] !== defaultRate) ? "#f59e0b" : undefined }}
+                      value={currentRate}
+                      onChange={e => setRates(prev => ({ ...prev, [r.id]: e.target.value }))}
+                      onBlur={e => saveRate(r.id, e.target.value)}
+                      title={`Výchozí sazba zaměstnance: ${defaultRate} Kč/h`}
+                    />
+                  </td>
+                  <td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{h > 0 ? fmtKc(billed) : "—"}</td>
+                  <td style={{ ...S.td, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
                 </tr>
               );
             })}
