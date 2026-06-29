@@ -3967,18 +3967,15 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const viewMonthHours = empRecords.reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
   const todayRecord = attendance.find(a => a.employeeId === viewEmpId && a.date === todayStr);
 
-  const syncCostEntries = async () => {
-    const toSync = attendance.filter(a =>
-      (a.employee_id === viewEmpId || a.employeeId === viewEmpId) &&
-      a.contract_id && a.checkin && a.checkout
-    );
-    let count = 0;
+  // Tichá synchronizace — bez alertu, spouští se automaticky
+  const syncCostEntriesQuiet = async (attList) => {
+    const list = attList || attendance;
+    const toSync = list.filter(a => a.contract_id && a.checkin && a.checkout);
     for (const rec of toSync) {
       const emp = employees.find(e => e.id === (rec.employee_id || rec.employeeId));
-      if (!emp) continue;
+      if (!emp || (!emp.hourly_rate_cost && !emp.hourly_rate_client)) continue;
       const effH = calcEffectiveHours(rec.checkin, rec.checkout);
       if (effH <= 0) continue;
-      if (!emp.hourly_rate_cost && !emp.hourly_rate_client) continue;
       await supabase.from("contract_cost_entries").delete().eq("attendance_id", rec.id);
       await supabase.from("contract_cost_entries").insert({
         contract_id: rec.contract_id,
@@ -3992,10 +3989,25 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         employee_id: emp.id,
         attendance_id: rec.id,
       });
-      count++;
     }
-    alert(`Synchronizováno ${count} záznamů do nákladů zakázek.`);
   };
+
+  // Manuální sync s alertem (tlačítko ⚡)
+  const syncCostEntries = async () => {
+    const toSync = attendance.filter(a => a.contract_id && a.checkin && a.checkout);
+    await syncCostEntriesQuiet(toSync);
+    alert(`Synchronizováno ${toSync.filter(a => {
+      const emp = employees.find(e => e.id === (a.employee_id || a.employeeId));
+      return emp && (emp.hourly_rate_cost || emp.hourly_rate_client);
+    }).length} záznamů do nákladů zakázek.`);
+  };
+
+  // Automatická synchronizace při načtení docházky
+  useEffect(() => {
+    if (attendance.length > 0 && employees.length > 0) {
+      syncCostEntriesQuiet(attendance);
+    }
+  }, [attendance.length, employees.length]);
 
   const loadRecordMaterials = async (attendanceId) => {
     if (recordMaterials[attendanceId]) return;
