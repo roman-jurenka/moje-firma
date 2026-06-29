@@ -152,6 +152,8 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const [activeTab, setActiveTab] = useState({});       // {contractId: tab}
   const [detailView, setDetailView] = useState({});     // {contractId: "prehled"|"popis"}
   const [modal, setModal] = useState(null);
+  const [searchQ, setSearchQ] = useState("");
+  const [filterStatus, setFilterStatus] = useState("vše");
   const closeModal = () => setModal(null);
 
   // ── Load ──
@@ -213,7 +215,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
 
   // ── Nová zakázka ──
   async function saveNewContract(form) {
-    const { data: row } = await supabase.from("contracts").insert({
+    const { data: row, error } = await supabase.from("contracts").insert({
       deal_id:     form.dealId || null,
       customer_id: Number(form.customerId) || null,
       code:        form.code || "",
@@ -229,6 +231,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       budget_vice_material: Number(form.budgetViceMaterial) || 0,
       budget_vice_doprava:  Number(form.budgetViceDoprava) || 0,
     }).select().single();
+    if (error) { alert("Chyba při ukládání zakázky: " + error.message); return; }
     if (row) setContracts([...contracts, row]);
     closeModal();
   }
@@ -380,6 +383,24 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         ))}
       </div>
 
+      {/* FILTR */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
+        <input
+          style={{ ...S.input, marginBottom: 0, flex: 1, fontSize: 13 }}
+          placeholder="🔍 Hledat zakázku..."
+          value={searchQ}
+          onChange={e => setSearchQ(e.target.value)} />
+        {["vše","Nová","Probíhá","Dokončena","Fakturována"].map(s => (
+          <button key={s} onClick={() => setFilterStatus(s)}
+            style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid", fontSize: 12, cursor: "pointer", fontWeight: filterStatus === s ? 700 : 400,
+              background: filterStatus === s ? "#6366f1" : "#1a2035",
+              color: filterStatus === s ? "#fff" : "#94a3b8",
+              borderColor: filterStatus === s ? "#6366f1" : "#252d45" }}>
+            {s === "vše" ? "Vše" : s}
+          </button>
+        ))}
+      </div>
+
       {/* SEZNAM ZAKÁZEK */}
       {contracts.length === 0 && (
         <div style={{ ...S.card, color: "#475569", textAlign: "center", padding: 40 }}>
@@ -387,7 +408,12 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         </div>
       )}
 
-      {contracts.map(contract => {
+      {contracts.filter(c => {
+        const q = searchQ.toLowerCase();
+        const matchSearch = !q || c.name?.toLowerCase().includes(q) || c.code?.toLowerCase().includes(q) || c.address?.toLowerCase().includes(q);
+        const matchStatus = filterStatus === "vše" || c.status === filterStatus;
+        return matchSearch && matchStatus;
+      }).map(contract => {
         const cust = customers.find(c => c.id === contract.customer_id);
         const sums = contractSums(contract.id);
         const { totalCost, totalRevenue, profit } = contractProfit(contract);
