@@ -3950,6 +3950,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [ciVehicleId, setCiVehicleId] = useState("");
   const [ciKmStart, setCiKmStart] = useState("");
   const [ciTripContractId, setCiTripContractId] = useState("");
+  const [ciActivity, setCiActivity] = useState("");
   const [attLocalContracts, setAttLocalContracts] = useState([]);
   const [editRecord, setEditRecord] = useState(null); // for editing project/activity on existing record
   const todayStr = fmt(new Date());
@@ -4061,7 +4062,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     const contractIdVal = ciContractId ? Number(ciContractId) : null;
     const { data: row } = await supabase.from("attendance")
-      .insert({ employee_id: viewEmpId, date: todayStr, checkin: time, checkout: null, contract_id: contractIdVal })
+      .insert({ employee_id: viewEmpId, date: todayStr, checkin: time, checkout: null, contract_id: contractIdVal, activity: ciActivity || null })
       .select().single();
     if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
     // Zapis zahajeni jizdy pokud bylo zadano vozidlo + km
