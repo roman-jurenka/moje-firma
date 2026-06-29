@@ -4295,7 +4295,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
           {isHR && <button onClick={syncCostEntries} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 12px" }}>⚡ Sync do nákladů</button>}
         </div>
         <table style={S.table}>
-          <thead><tr>{["Datum", "Příchod", "Odchod", "Odpracováno", "Zakázka", "Materiál", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Datum", "Příchod", "Odchod", "Odpracováno", "Zakázka", "Popis", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {empRecords.slice(0, 60).map(rec => {
               const hours = calcEffectiveHours(rec.checkin, rec.checkout);
@@ -4309,14 +4309,25 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                     <td style={{ ...S.td, color: "#16a34a" }}>{rec.checkin || "—"}</td>
                     <td style={{ ...S.td, color: "#f97316" }}>{rec.checkout || (rec.checkin ? <span style={{ color: "#94a3b8" }}>probíhá</span> : "—")}</td>
                     <td style={{ ...S.td, fontWeight: 700 }}>{rec.checkin && rec.checkout ? fmtHours(hours) : "—"}</td>
-                    <td style={S.td}>{contr ? <span style={S.tag("#2563eb")}>{contr.name}</span> : <span style={{ color: "#cbd5e1", fontSize: 12 }}>—</span>}</td>
+                    <td style={S.td}>
+                      <select style={{ ...S.select, marginBottom: 0, fontSize: 11, padding: "3px 6px", minWidth: 120 }}
+                        value={rec.contract_id || ""}
+                        onChange={async e => {
+                          const cid = e.target.value ? Number(e.target.value) : null;
+                          await supabase.from("attendance").update({ contract_id: cid }).eq("id", rec.id);
+                          setAttendance(attendance.map(a => a.id === rec.id ? { ...a, contract_id: cid } : a));
+                        }}>
+                        <option value="">— bez zakázky —</option>
+                        {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </td>
                     <td style={S.td}>
                       <button style={{ ...S.btnGhost, padding: "3px 10px", fontSize: 11 }}
                         onClick={() => {
                           if (!isExpanded) loadRecordMaterials(rec.id);
                           setExpandedMatRecord(isExpanded ? null : rec.id);
                         }}>
-                        {isExpanded ? "▲ skrýt" : "📦 materiál"}
+                        {isExpanded ? "▲ skrýt" : "✏️ detail"}
                       </button>
                     </td>
                     <td style={S.td}>
@@ -4326,7 +4337,19 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   {isExpanded && (
                     <tr>
                       <td colSpan={7} style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", marginBottom: 8 }}>Spotřebovaný materiál</div>
+                        {/* Popis práce */}
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", marginBottom: 6 }}>Popis práce</div>
+                        <textarea
+                          style={{ ...S.input, marginBottom: 0, minHeight: 54, fontSize: 12, resize: "vertical" }}
+                          placeholder="Popis práce..."
+                          defaultValue={rec.activity || ""}
+                          onBlur={async e => {
+                            await supabase.from("attendance").update({ activity: e.target.value }).eq("id", rec.id);
+                            setAttendance(attendance.map(a => a.id === rec.id ? { ...a, activity: e.target.value } : a));
+                          }} />
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", marginBottom: 8 }}>Spotřebovaný materiál</div>
                         {mats && mats.length > 0 && (
                           <table style={{ width: "100%", fontSize: 12, marginBottom: 10 }}>
                             <thead><tr>{["Položka", "Množství", "Jednotka"].map(h => <th key={h} style={{ ...S.th, fontSize: 11 }}>{h}</th>)}</tr></thead>
