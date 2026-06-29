@@ -268,7 +268,7 @@ const NAV = [
 
 const S = {
   app: { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1e293b", display: "flex" },
-  sidebar: { width: 220, background: "#1e293b", borderRight: "none", padding: "0", display: "flex", flexDirection: "column", position: "fixed", top: 0, bottom: 0, left: 0, overflowY: "auto", boxShadow: "2px 0 8px #0000001a" },
+  sidebar: (open) => ({ width: 220, background: "#1e293b", padding: "0", display: "flex", flexDirection: "column", position: "fixed", top: 0, bottom: 0, left: 0, overflowY: "auto", boxShadow: "2px 0 8px #0000001a", zIndex: 200, transition: "transform 0.25s ease" }),
   logo: { padding: "22px 20px 16px", fontSize: 19, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px", borderBottom: "1px solid #334155" },
   logoA: { color: "#60a5fa" },
   logoB: { color: "#f97316" },
@@ -399,6 +399,7 @@ function MainApp({ currentUser, setCurrentUser }) {
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const closeModal = () => setModal(null);
 
@@ -502,10 +503,26 @@ function MainApp({ currentUser, setCurrentUser }) {
 
   return (
     <div style={S.app}>
+      <style>{`
+        @media (max-width: 768px) {
+          .hamburger-btn { display: flex !important; }
+          .sidebar-close { display: flex !important; }
+          .main-content { margin-left: 0 !important; padding: 60px 14px 24px !important; }
+          .sidebar-nav { transform: translateX(-100%); }
+          .sidebar-nav.open { transform: translateX(0); }
+        }
+        @media (min-width: 769px) {
+          .sidebar-nav { transform: translateX(0) !important; }
+        }
+      `}</style>
+      <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} style={{ display: "none", position: "fixed", top: 10, left: 10, zIndex: 300, background: "#1e293b", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 22, color: "#fff", alignItems: "center", justifyContent: "center" }}>☰</button>
+      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "#0007", zIndex: 150 }} />}
+
       {/* SIDEBAR */}
-      <div style={S.sidebar}>
-        <div style={S.logo}>
-          Firma<span style={S.logoA}>CRM</span><span style={S.logoB}>+ERP</span>
+      <div className={`sidebar-nav${sidebarOpen ? " open" : ""}`} style={S.sidebar()}>
+        <div style={{ ...S.logo, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Firma<span style={S.logoA}>CRM</span><span style={S.logoB}>+ERP</span></span>
+          <button className="sidebar-close" onClick={() => setSidebarOpen(false)} style={{ display: "none", background: "none", border: "none", color: "#94a3b8", fontSize: 22, cursor: "pointer", padding: 0 }}>✕</button>
         </div>
 
         {/* User info + role */}
@@ -531,7 +548,7 @@ function MainApp({ currentUser, setCurrentUser }) {
           <div key={g}>
             <div style={S.groupLabel}>{g}</div>
             {visibleNav.filter(n => n.group === g).map(n => (
-              <div key={n.id} style={S.navItem(tab === n.id)} onClick={() => { setTab(n.id); setSearch(""); }}>
+              <div key={n.id} style={S.navItem(tab === n.id)} onClick={() => { setTab(n.id); setSearch(""); setSidebarOpen(false); }}>
                 <span style={{ fontSize: 15 }}>{n.icon}</span> {n.label}
               </div>
             ))}
@@ -555,7 +572,7 @@ function MainApp({ currentUser, setCurrentUser }) {
       </div>
 
       {/* MAIN */}
-      <div style={S.main}>
+      <div className="main-content" style={S.main}>
 
         {/* ── DASHBOARD ── */}
         {tab === "dashboard" && (currentUser?.role === "employee" || currentUser?.role === "hr"
