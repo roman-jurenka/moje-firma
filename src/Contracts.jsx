@@ -186,23 +186,46 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   }, []);
 
   // ── Výpočty pro zakázku ──
+  // Hodiny práce = docházka přímo (attendance) + ruční záznamy bez attendance_id
   function contractSums(cid) {
-    const e = entries.filter(x => x.contract_id === cid);
+    // Ruční záznamy (ne z docházky)
+    const e = entries.filter(x => x.contract_id === cid && !x.attendance_id);
     const sum = (type, isExtra) =>
       e.filter(x => x.cost_type === type && x.is_extra === isExtra)
        .reduce((s, x) => s + (x.amount_cost != null ? Number(x.amount_cost) : Number(x.quantity||1) * Number(x.unit_price_cost||0)), 0);
     const sumClient = (type, isExtra) =>
       e.filter(x => x.cost_type === type && x.is_extra === isExtra)
        .reduce((s, x) => s + (x.amount_client != null ? Number(x.amount_client) : Number(x.quantity||1) * Number(x.unit_price_client||0)), 0);
+
+    // Hodiny přímo z docházky (bez ohledu na sync)
+    const attRecs = attendance.filter(a => (a.contract_id || a.contractId) === cid && a.checkin && a.checkout);
+    const calcEff = (ci, co) => {
+      if (!ci || !co) return 0;
+      const [h1,m1] = ci.split(':').map(Number);
+      const [h2,m2] = co.split(':').map(Number);
+      return Math.max(0, (h2*60+m2 - h1*60-m1)/60 - 1);
+    };
+    const attPrace = attRecs.reduce((s, a) => {
+      const emp = employees.find(e => e.id === (a.employee_id || a.employeeId));
+      const h = calcEff(a.checkin, a.checkout);
+      return s + h * Number(emp?.hourly_rate_cost || 0);
+    }, 0);
+    const attClient = attRecs.reduce((s, a) => {
+      const emp = employees.find(e => e.id === (a.employee_id || a.employeeId));
+      const h = calcEff(a.checkin, a.checkout);
+      return s + h * Number(emp?.hourly_rate_client || 0);
+    }, 0);
+
     return {
-      prace:         sum("práce", false),
+      prace:         sum("práce", false) + attPrace,
       material:      sum("materiál", false),
       doprava:       sum("doprava", false),
       vicePrace:     sum("práce", true),
       viceMaterial:  sum("materiál", true),
       viceDoprava:   sum("doprava", true),
-      praceClient:   sumClient("práce", false),
+      praceClient:   sumClient("práce", false) + attClient,
       viceClient:    sumClient("práce", true) + sumClient("materiál", true) + sumClient("doprava", true),
+      attHours:      attRecs.reduce((s,a) => s + calcEff(a.checkin, a.checkout), 0),
     };
   }
 
