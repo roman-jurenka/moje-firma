@@ -4051,9 +4051,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       setAttendance(attendance.map(a => a.id === todayRecord.id ? updated : a));
       await createCostEntryFromAttendance(updated, time);
     } else {
-      // Příchod → otevřít modal
-      setCiContractId(""); setCiVehicleId(""); setCiKmStart(""); setCiTripContractId("");
-      setShowCheckinModal(true);
+      // Příchod — volat přímo bez modalu
+      doCheckin();
     }
   };
 
@@ -4192,78 +4191,80 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         ))}
       </div>
 
-      {/* Modal: Příchod */}
-      {showCheckinModal && (
-        <div style={S.modal}>
-          <div style={{ ...S.modalBox, width: 420 }}>
-            <ModalHeader title="▶ Zapsat příchod" onClose={() => setShowCheckinModal(false)} />
-            <div style={{ marginBottom: 10 }}>
-              <label style={S.label}>Zakázka práce (volitelné)</label>
-              <select style={S.select} value={ciContractId} onChange={e => setCiContractId(e.target.value)}>
-                <option value="">— bez zakázky —</option>
-                {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12, marginBottom: 6, fontWeight: 600, color: "#64748b", fontSize: 12 }}>JÍZDA (volitelné)</div>
-            <div style={{ marginBottom: 10 }}>
-              <label style={S.label}>Vozidlo</label>
-              <select style={S.select} value={ciVehicleId} onChange={e => setCiVehicleId(e.target.value)}>
-                <option value="">— nevyužívám vozidlo —</option>
-                {attVehicles.map(v => <option key={v.id} value={v.id}>{v.name}{v.spz ? " (" + v.spz + ")" : ""}</option>)}
-              </select>
-            </div>
-            {ciVehicleId && (<>
-              <div style={{ marginBottom: 10 }}>
-                <label style={S.label}>Počáteční stav km *</label>
-                <input type="number" style={S.input} placeholder="např. 12450" value={ciKmStart} onChange={e => setCiKmStart(e.target.value)} />
-              </div>
-              <div style={{ marginBottom: 10 }}>
-                <label style={S.label}>Zakázka jízdy (volitelné)</label>
-                <select style={S.select} value={ciTripContractId} onChange={e => setCiTripContractId(e.target.value)}>
-                  <option value="">— bez zakázky —</option>
-                  {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-            </>)}
-            <ModalActions onSave={doCheckin} onClose={() => setShowCheckinModal(false)} saveLabel="Zapsat příchod" />
-          </div>
-        </div>
-      )}
-
-      {/* Dnešní záznam */}
+      {/* Dnešní záznam — jeden blok */}
       <div style={{ ...S.card, marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, fontSize: 14 }}>Dnešní záznam — {todayStr}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
-          <div style={{ flex: 1, display: "flex", gap: 20 }}>
-            <div><div style={S.statLabel}>Příchod</div><div style={{ fontSize: 22, fontWeight: 800, color: todayRecord?.checkin ? "#34d399" : "#334155" }}>{todayRecord?.checkin || "—"}</div></div>
-            <div><div style={S.statLabel}>Odchod</div><div style={{ fontSize: 22, fontWeight: 800, color: todayRecord?.checkout ? "#f59e0b" : "#334155" }}>{todayRecord?.checkout || (todayRecord?.checkin ? "probíhá..." : "—")}</div></div>
-            {todayRecord?.checkin && todayRecord?.checkout && (
-              <div>
-                <div style={S.statLabel}>Odpracováno (bez pauzy)</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#2563eb" }}>{fmtHours(todayEffective)}</div>
-              </div>
-            )}
+        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>📅 Dnešní záznam — {todayStr}</div>
+
+        {/* Časy */}
+        <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
+          <div>
+            <div style={S.statLabel}>Příchod</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: todayRecord?.checkin ? "#34d399" : "#334155" }}>{todayRecord?.checkin?.slice(0,5) || "—"}</div>
           </div>
-          <button
-            onClick={checkinNow}
-            style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f97316" : todayRecord?.checkout ? "#64748b" : "#16a34a"), padding: "12px 28px", fontSize: 15, fontWeight: 700, minWidth: 160 }}>
-            {todayRecord?.checkout ? "✓ Odešel/a" : todayRecord?.checkin ? "⏹ Odchod" : "▶ Příchod"}
-          </button>
+          <div>
+            <div style={S.statLabel}>Odchod</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: todayRecord?.checkout ? "#f59e0b" : "#334155" }}>{todayRecord?.checkout?.slice(0,5) || (todayRecord?.checkin ? "probíhá..." : "—")}</div>
+          </div>
+          {todayRecord?.checkin && todayRecord?.checkout && (
+            <div>
+              <div style={S.statLabel}>Odpracováno</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "#2563eb" }}>{fmtHours(todayEffective)}</div>
+            </div>
+          )}
         </div>
 
-        {todayRecord && !todayRecord.checkout && (
-          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
-            <select style={{ ...S.select, marginBottom: 0, flex: 1 }} value={todayRecord.contract_id || ""}
-              onChange={async e => {
-                const cid = e.target.value ? Number(e.target.value) : null;
-                await supabase.from("attendance").update({ contract_id: cid }).eq("id", todayRecord.id);
-                setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, contract_id: cid } : a));
-              }}>
-              <option value="">— přiřadit zakázku (volitelné) —</option>
+        {/* Zakázka */}
+        <label style={S.label}>Zakázka</label>
+        <select style={S.select}
+          value={todayRecord?.contract_id || ciContractId}
+          onChange={async e => {
+            const cid = e.target.value ? Number(e.target.value) : null;
+            setCiContractId(e.target.value);
+            if (todayRecord) {
+              await supabase.from("attendance").update({ contract_id: cid }).eq("id", todayRecord.id);
+              setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, contract_id: cid } : a));
+            }
+          }}>
+          <option value="">— bez zakázky —</option>
+          {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+
+        {/* Popis práce */}
+        <label style={S.label}>Popis práce</label>
+        <textarea style={{ ...S.input, minHeight: 64, resize: "vertical" }}
+          placeholder="Co jsi dělal/a..."
+          value={todayRecord?.activity || ciActivity}
+          onChange={async e => {
+            setCiActivity(e.target.value);
+            if (todayRecord) {
+              await supabase.from("attendance").update({ activity: e.target.value }).eq("id", todayRecord.id);
+              setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, activity: e.target.value } : a));
+            }
+          }} />
+
+        {/* Vozidlo — jen pokud ještě není příchod */}
+        {!todayRecord && (<>
+          <label style={S.label}>Vozidlo (volitelné)</label>
+          <select style={S.select} value={ciVehicleId} onChange={e => setCiVehicleId(e.target.value)}>
+            <option value="">— nevyužívám vozidlo —</option>
+            {attVehicles.map(v => <option key={v.id} value={v.id}>{v.name}{v.spz ? " (" + v.spz + ")" : ""}</option>)}
+          </select>
+          {ciVehicleId && (<>
+            <label style={S.label}>Počáteční stav km</label>
+            <input type="number" style={S.input} placeholder="např. 12450" value={ciKmStart} onChange={e => setCiKmStart(e.target.value)} />
+            <label style={S.label}>Zakázka jízdy (volitelné)</label>
+            <select style={S.select} value={ciTripContractId} onChange={e => setCiTripContractId(e.target.value)}>
+              <option value="">— bez zakázky —</option>
               {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-        )}
+          </>)}
+        </>)}
+
+        {/* Tlačítko */}
+        <button onClick={checkinNow}
+          style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f97316" : todayRecord?.checkout ? "#64748b" : "#16a34a"), width: "100%", padding: "13px", fontSize: 16, fontWeight: 700, marginTop: 8 }}>
+          {todayRecord?.checkout ? "✓ Odešel/a" : todayRecord?.checkin ? "⏹ Zapsat odchod" : "▶ Zapsat příchod"}
+        </button>
       </div>
 
       {/* Ruční zadání */}
@@ -4767,7 +4768,7 @@ export default function App() {
           <div style={{ marginTop: 16, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
             <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8, textAlign: "center" }}>Rychlé přihlášení</div>
             {USERS.map(u => (
-              <button key={u.id} onClick={() => { setLoginName(u.name); setLoginPass(u.password); }}
+              <button key={u.id} onClick={() => { setLoginName(u.name); setLoginPass(""); }}
                 style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 12px", width: "100%", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
                 <span style={{ fontSize: 12, color: "#1e293b", fontWeight: 500 }}>{u.name}</span>
                 <span style={{ ...S.tag(ROLES[u.role]?.color || "#2563eb"), fontSize: 10 }}>{ROLES[u.role]?.label}</span>
