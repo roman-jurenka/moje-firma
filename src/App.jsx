@@ -4188,6 +4188,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [matSuggestions, setMatSuggestions] = useState([]);
   const [expandedMatRecord, setExpandedMatRecord] = useState(null);
   const [recordMaterials, setRecordMaterials] = useState({});
+  const [attTab, setAttTab] = useState("zaznam");
+  const [reportModal, setReportModal] = useState(false);
+  const [reportYear, setReportYear] = useState(new Date().getFullYear());
+  const [reportMonth, setReportMonth] = useState(new Date().getMonth() + 1);
+  const [reportEmpId, setReportEmpId] = useState(null);
+  const [expandedActivity, setExpandedActivity] = useState(null);
+  const [timelineDate, setTimelineDate] = useState(fmt(new Date()));
   const addManual = async () => {
     if (!manualDate || !manualIn) return;
     const existing = attendance.find(a => a.employeeId === effectiveEmpId && a.date === manualDate);
@@ -4227,271 +4234,428 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const vacDays = viewEmp?.vacation_days ?? currentUser?.vacationDays ?? 0;
   const vacUsed = viewEmp?.vacation_used ?? currentUser?.vacationUsed ?? 0;
 
+  // helper: label měsíce
+  const monthLabel = viewMonth !== "all"
+    ? new Date(viewMonth + "-01").toLocaleString("cs-CZ", { month: "long", year: "numeric" })
+    : "Vše";
+
+  // Timeline záznamy pro vybraný den
+  const timelineRecs = empRecords.filter(r => r.date === timelineDate);
+
+  // Generování výkazu práce — otevře tisknutelné okno
+  const generateReport = () => {
+    const empForReport = isHR && reportEmpId ? reportEmpId : effectiveEmpId;
+    const recs = attendance.filter(a => {
+      const empMatch = a.employeeId === empForReport || a.employee_id === empForReport;
+      const dateMatch = a.date && a.date.startsWith(reportYear + "-" + String(reportMonth).padStart(2,"0"));
+      return empMatch && dateMatch;
+    }).sort((a,b) => a.date.localeCompare(b.date));
+    const empObj = employees.find(e => e.id === empForReport);
+    const totalH = recs.reduce((s,r) => s + calcEffectiveHours(r.checkin, r.checkout), 0);
+    const rows = recs.map(r => {
+      const h = calcEffectiveHours(r.checkin, r.checkout);
+      const contract = contractOpts.find(c => c.id === r.contract_id);
+      return "<tr><td>" + r.date + "</td><td>" + (r.checkin||"—") + "</td><td>" + (r.checkout||"—") + "</td><td><strong>" + fmtHours(h) + "</strong></td><td>" + (contract ? contract.name : "—") + "</td><td>" + (r.activity||"—") + "</td></tr>";
+    }).join("");
+    const totalRow = "<tr class='total'><td colspan='3'>Celkem</td><td><strong>" + fmtHours(totalH) + "</strong></td><td colspan='2'>" + recs.length + " záznamů</td></tr>";
+    const monthNames = ["","Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
+    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Výkaz práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e293b;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}tr:nth-child(even) td{background:#f8fafc}.total{font-weight:bold}@media print{body{padding:16px}}</style></head><body><h1>Výkaz práce</h1><h2>" + (empObj ? empObj.name : "") + " · " + monthNames[reportMonth] + " " + reportYear + "</h2><table><thead><tr><th>Datum</th><th>Příchod</th><th>Odchod</th><th>Odpracováno</th><th>Zakázka</th><th>Popis</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>";
+    const win = window.open("", "_blank");
+    win.document.write(html);
+    win.document.close();
+    setReportModal(false);
+  };
+
   return (
     <>
-      <div style={S.header}>
-        <h1 style={S.h1}>🕐 Docházka</h1>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {isHR && (
-            <select style={{ ...S.select, marginBottom: 0, width: 180 }} value={viewEmpId} onChange={e => setViewEmpId(Number(e.target.value))}>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+      {/* TAB NAVIGATION — full width */}
+      <div style={{ borderBottom: "2px solid #1e293b", marginBottom: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+          <div style={{ display: "flex" }}>
+            {[
+              { id: "zaznam", label: "📅 Záznamy & Docházka" },
+              { id: "prehled", label: "📊 Přehled" + (viewMonth !== "all" ? " – " + monthLabel : "") },
+            ].map(t => (
+              <button key={t.id} onClick={() => setAttTab(t.id)} style={{
+                padding: "14px 28px", background: "none", border: "none",
+                borderBottom: attTab === t.id ? "3px solid #6366f1" : "3px solid transparent",
+                color: attTab === t.id ? "#fff" : "#475569",
+                fontWeight: attTab === t.id ? 700 : 400,
+                cursor: "pointer", fontSize: 14, marginBottom: -2,
+              }}>{t.label}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 0" }}>
+            {isHR && (
+              <select style={{ ...S.select, marginBottom: 0, width: 180 }} value={viewEmpId} onChange={e => setViewEmpId(Number(e.target.value))}>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            )}
+            <select style={{ ...S.select, marginBottom: 0, width: 150 }} value={viewMonth} onChange={e => setViewMonth(e.target.value)}>
+              <option value="all">Vše</option>
+              {Array.from({ length: 12 }, (_, i) => {
+                const d = new Date(); d.setMonth(d.getMonth() - i);
+                const val = d.toISOString().slice(0, 7);
+                const label = d.toLocaleString("cs-CZ", { month: "long", year: "numeric" });
+                return <option key={val} value={val}>{label}</option>;
+              })}
             </select>
-          )}
-          <select style={{ ...S.select, marginBottom: 0, width: 150 }} value={viewMonth} onChange={e => setViewMonth(e.target.value)}>
-            <option value="all">Vše</option>
-            {Array.from({ length: 12 }, (_, i) => {
-              const d = new Date(); d.setMonth(d.getMonth() - i);
-              const val = d.toISOString().slice(0, 7);
-              const label = d.toLocaleString("cs-CZ", { month: "long", year: "numeric" });
-              return <option key={val} value={val}>{label}</option>;
-            })}
-          </select>
+          </div>
         </div>
       </div>
 
-      {viewEmp && (
-        <div style={{ ...S.card, marginBottom: 20, display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ ...S.avatar("#2563eb"), width: 48, height: 48, fontSize: 18 }}>{getInitial(viewEmp.name)}</div>
-          <div>
-            <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{viewEmp.name}</div>
-            <div style={{ color: "#475569", fontSize: 12 }}>{viewEmp.position} · {viewEmp.department}</div>
-          </div>
-          {vacDays > 0 && (
-            <div style={{ marginLeft: "auto", textAlign: "right" }}>
-              <div style={{ fontSize: 12, color: "#475569" }}>Dovolená</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#34d399" }}>{vacDays - vacUsed} dní</div>
-              <div style={{ fontSize: 11, color: "#334155" }}>zbývá z {vacDays} dní</div>
+      {/* LIST 1: ZÁZNAMY & DOCHÁZKA */}
+      {attTab === "zaznam" && (
+        <>
+          {viewEmp && (
+            <div style={{ ...S.card, margin: "16px 0", display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ ...S.avatar("#2563eb"), width: 48, height: 48, fontSize: 18 }}>{getInitial(viewEmp.name)}</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{viewEmp.name}</div>
+                <div style={{ color: "#475569", fontSize: 12 }}>{viewEmp.position} · {viewEmp.department}</div>
+              </div>
+              {vacDays > 0 && (
+                <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                  <div style={{ fontSize: 12, color: "#475569" }}>Dovolená</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#34d399" }}>{vacDays - vacUsed} dní</div>
+                  <div style={{ fontSize: 11, color: "#334155" }}>zbývá z {vacDays} dní</div>
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 22 }}>
-        {[
-          { label: "Dnes (bez pauzy)", value: todayEffective > 0 ? fmtHours(todayEffective) : todayRecord?.checkin ? "Probíhá..." : "—", color: "#2563eb" },
-          { label: "Tento týden", value: fmtHours(weekHours), color: "#60a5fa" },
-          { label: viewMonth === "all" ? "Celkem" : new Date(viewMonth+"-01").toLocaleString("cs-CZ",{month:"long",year:"numeric"}), value: fmtHours(viewMonth === "all" ? yearHours : viewMonthHours), color: "#34d399" },
-          { label: "Tento rok", value: fmtHours(yearHours), color: "#f59e0b" },
-        ].map(s => (
-          <div key={s.label} style={S.statCard(s.color)}>
-            <div style={S.statLabel}>{s.label}</div>
-            <div style={{ ...S.statValue(s.color), fontSize: 20 }}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Dnešní záznam — jeden blok */}
-      <div style={{ ...S.card, marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>📅 Dnešní záznam — {todayStr}</div>
-
-        {/* Časy */}
-        <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
-          <div>
-            <div style={S.statLabel}>Příchod</div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: todayRecord?.checkin ? "#34d399" : "#334155" }}>{todayRecord?.checkin?.slice(0,5) || "—"}</div>
-          </div>
-          <div>
-            <div style={S.statLabel}>Odchod</div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: todayRecord?.checkout ? "#f59e0b" : "#334155" }}>{todayRecord?.checkout?.slice(0,5) || (todayRecord?.checkin ? "probíhá..." : "—")}</div>
-          </div>
-          {todayRecord?.checkin && todayRecord?.checkout && (
-            <div>
-              <div style={S.statLabel}>Odpracováno</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: "#2563eb" }}>{fmtHours(todayEffective)}</div>
+          {/* Dnešní záznam */}
+          <div style={{ ...S.card, marginBottom: 20 }}>
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>📅 Dnešní záznam — {todayStr}</div>
+            <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
+              <div>
+                <div style={S.statLabel}>Příchod</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: todayRecord?.checkin ? "#34d399" : "#334155" }}>{todayRecord?.checkin?.slice(0,5) || "—"}</div>
+              </div>
+              <div>
+                <div style={S.statLabel}>Odchod</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: todayRecord?.checkout ? "#f59e0b" : "#334155" }}>{todayRecord?.checkout?.slice(0,5) || (todayRecord?.checkin ? "probíhá..." : "—")}</div>
+              </div>
+              {todayRecord?.checkin && todayRecord?.checkout && (
+                <div>
+                  <div style={S.statLabel}>Odpracováno</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: "#2563eb" }}>{fmtHours(todayEffective)}</div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        {/* Zakázka */}
-        <label style={S.label}>Zakázka</label>
-        <select style={S.select}
-          value={todayRecord?.contract_id || ciContractId}
-          onChange={async e => {
-            const cid = e.target.value ? Number(e.target.value) : null;
-            setCiContractId(e.target.value);
-            if (todayRecord) {
-              await supabase.from("attendance").update({ contract_id: cid }).eq("id", todayRecord.id);
-              setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, contract_id: cid } : a));
-            }
-          }}>
-          <option value="">— bez zakázky —</option>
-          {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-
-        {/* Popis práce */}
-        <label style={S.label}>Popis práce</label>
-        <textarea style={{ ...S.input, minHeight: 64, resize: "vertical" }}
-          placeholder="Co jsi dělal/a..."
-          value={todayRecord?.activity || ciActivity}
-          onChange={async e => {
-            setCiActivity(e.target.value);
-            if (todayRecord) {
-              await supabase.from("attendance").update({ activity: e.target.value }).eq("id", todayRecord.id);
-              setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, activity: e.target.value } : a));
-            }
-          }} />
-
-        {/* Vozidlo — jen pokud ještě není příchod */}
-        {!todayRecord && (<>
-          <label style={S.label}>Vozidlo (volitelné)</label>
-          <select style={S.select} value={ciVehicleId} onChange={e => setCiVehicleId(e.target.value)}>
-            <option value="">— nevyužívám vozidlo —</option>
-            {attVehicles.map(v => <option key={v.id} value={v.id}>{v.name}{v.spz ? " (" + v.spz + ")" : ""}</option>)}
-          </select>
-          {ciVehicleId && (<>
-            <label style={S.label}>Počáteční stav km</label>
-            <input type="number" style={S.input} placeholder="např. 12450" value={ciKmStart} onChange={e => setCiKmStart(e.target.value)} />
-            <label style={S.label}>Zakázka jízdy (volitelné)</label>
-            <select style={S.select} value={ciTripContractId} onChange={e => setCiTripContractId(e.target.value)}>
-              <option value="">— bez zakázky —</option>
-              {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </>)}
-        </>)}
-
-        {/* Tlačítko */}
-        <button onClick={checkinNow}
-          style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f97316" : todayRecord?.checkout ? "#64748b" : "#16a34a"), width: "100%", padding: "13px", fontSize: 16, fontWeight: 700, marginTop: 8 }}>
-          {todayRecord?.checkout ? "✓ Odešel/a" : todayRecord?.checkin ? "⏹ Zapsat odchod" : "▶ Zapsat příchod"}
-        </button>
-      </div>
-
-      {/* Ruční zadání — dostupné všem */}
-      <div style={{ ...S.card, marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 12, fontSize: 13 }}>✏️ Ruční záznam</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr auto", gap: 10, alignItems: "end" }}>
-          <div><label style={S.label}>Datum</label><input type="date" style={S.input} value={manualDate} onChange={e => setManualDate(e.target.value)} /></div>
-          <div><label style={S.label}>Příchod</label><input type="time" style={S.input} value={manualIn} onChange={e => setManualIn(e.target.value)} /></div>
-          <div><label style={S.label}>Odchod</label><input type="time" style={S.input} value={manualOut} onChange={e => setManualOut(e.target.value)} /></div>
-          <div>
             <label style={S.label}>Zakázka</label>
-            <select style={{ ...S.select, marginBottom: 0 }} value={manualContractId} onChange={e => setManualContractId(e.target.value)}>
+            <select style={S.select}
+              value={todayRecord?.contract_id || ciContractId}
+              onChange={async e => {
+                const cid = e.target.value ? Number(e.target.value) : null;
+                setCiContractId(e.target.value);
+                if (todayRecord) {
+                  await supabase.from("attendance").update({ contract_id: cid }).eq("id", todayRecord.id);
+                  setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, contract_id: cid } : a));
+                }
+              }}>
               <option value="">— bez zakázky —</option>
               {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            <label style={S.label}>Popis práce</label>
+            <textarea style={{ ...S.input, minHeight: 64, resize: "vertical" }}
+              placeholder="Co jsi dělal/a..."
+              value={todayRecord?.activity || ciActivity}
+              onChange={async e => {
+                setCiActivity(e.target.value);
+                if (todayRecord) {
+                  await supabase.from("attendance").update({ activity: e.target.value }).eq("id", todayRecord.id);
+                  setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, activity: e.target.value } : a));
+                }
+              }} />
+            {!todayRecord && (<>
+              <label style={S.label}>Vozidlo (volitelné)</label>
+              <select style={S.select} value={ciVehicleId} onChange={e => setCiVehicleId(e.target.value)}>
+                <option value="">— nevyužívám vozidlo —</option>
+                {attVehicles.map(v => <option key={v.id} value={v.id}>{v.name}{v.spz ? " (" + v.spz + ")" : ""}</option>)}
+              </select>
+              {ciVehicleId && (<>
+                <label style={S.label}>Počáteční stav km</label>
+                <input type="number" style={S.input} placeholder="např. 12450" value={ciKmStart} onChange={e => setCiKmStart(e.target.value)} />
+                <label style={S.label}>Zakázka jízdy (volitelné)</label>
+                <select style={S.select} value={ciTripContractId} onChange={e => setCiTripContractId(e.target.value)}>
+                  <option value="">— bez zakázky —</option>
+                  {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </>)}
+            </>)}
+            <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#334155" : "#2563eb"), width: "100%", padding: "12px", fontWeight: 700, marginTop: 8, fontSize: 15 }}
+              onClick={checkinNow} disabled={!!todayRecord?.checkout}>
+              {todayRecord?.checkout ? "✓ Odchod zapsán (" + todayRecord.checkout + ")" : todayRecord?.checkin ? "⏱ Zapsat odchod (příchod " + todayRecord.checkin + ")" : "▶ Zapsat příchod"}
+            </button>
           </div>
-          <button style={{ ...S.btn(), marginBottom: 0 }} onClick={addManual}>Uložit</button>
-        </div>
-      </div>
 
-      {/* Historie docházky */}
-      <div style={S.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div style={{ fontWeight: 700, color: "#1e293b", fontSize: 14 }}>Historie docházky</div>
-          {isHR && <button onClick={syncCostEntries} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 12px" }}>⚡ Sync do nákladů</button>}
-        </div>
-        <table style={S.table}>
-          <thead><tr>{["Datum", "Příchod", "Odchod", "Odpracováno", "Zakázka", "Popis", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-          <tbody>
-            {empRecords.slice(0, 60).map(rec => {
-              const hours = calcEffectiveHours(rec.checkin, rec.checkout);
-              const contr = (contracts || []).find(c => c.id === rec.contract_id);
-              const mats = recordMaterials[rec.id];
-              const isExpanded = expandedMatRecord === rec.id;
-              return (
-                <React.Fragment key={rec.id}>
-                  <tr>
-                    <td style={{ ...S.td, fontWeight: 600, color: "#1e293b" }}>{rec.date}</td>
-                    <td style={{ ...S.td, color: "#16a34a" }}>{rec.checkin || "—"}</td>
-                    <td style={{ ...S.td, color: "#f97316" }}>{rec.checkout || (rec.checkin ? <span style={{ color: "#94a3b8" }}>probíhá</span> : "—")}</td>
-                    <td style={{ ...S.td, fontWeight: 700 }}>{rec.checkin && rec.checkout ? fmtHours(hours) : "—"}</td>
-                    <td style={S.td}>
-                      <select style={{ ...S.select, marginBottom: 0, fontSize: 11, padding: "3px 6px", minWidth: 120 }}
-                        value={rec.contract_id || ""}
-                        onChange={async e => {
-                          const cid = e.target.value ? Number(e.target.value) : null;
-                          await supabase.from("attendance").update({ contract_id: cid }).eq("id", rec.id);
-                          setAttendance(attendance.map(a => a.id === rec.id ? { ...a, contract_id: cid } : a));
-                        }}>
-                        <option value="">— bez zakázky —</option>
-                        {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </td>
-                    <td style={S.td}>
-                      <button style={{ ...S.btnGhost, padding: "3px 10px", fontSize: 11 }}
-                        onClick={() => {
-                          if (!isExpanded) loadRecordMaterials(rec.id);
-                          setExpandedMatRecord(isExpanded ? null : rec.id);
-                        }}>
-                        {isExpanded ? "▲ skrýt" : "✏️ detail"}
-                      </button>
-                    </td>
-                    <td style={S.td}>
-                      {isHR && <button style={{ ...S.btn("#ef4444"), padding: "3px 8px", fontSize: 11 }} onClick={() => deleteRecord(rec.id)}>✕</button>}
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={7} style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                        {/* Popis práce */}
-                      <div style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", marginBottom: 6 }}>Popis práce</div>
-                        <textarea
-                          style={{ ...S.input, marginBottom: 0, minHeight: 54, fontSize: 12, resize: "vertical" }}
-                          placeholder="Popis práce..."
-                          defaultValue={rec.activity || ""}
-                          onBlur={async e => {
-                            await supabase.from("attendance").update({ activity: e.target.value }).eq("id", rec.id);
-                            setAttendance(attendance.map(a => a.id === rec.id ? { ...a, activity: e.target.value } : a));
-                          }} />
-                      </div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", marginBottom: 8 }}>Spotřebovaný materiál</div>
-                        {mats && mats.length > 0 && (
-                          <table style={{ width: "100%", fontSize: 12, marginBottom: 10 }}>
-                            <thead><tr>{["Položka", "Množství", "Jednotka"].map(h => <th key={h} style={{ ...S.th, fontSize: 11 }}>{h}</th>)}</tr></thead>
-                            <tbody>
-                              {mats.map(m => (
-                                <tr key={m.id}>
-                                  <td style={S.td}>{m.item_name}</td>
-                                  <td style={S.td}>{m.quantity}</td>
-                                  <td style={S.td}>{m.unit}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
-                        {(!mats || mats.length === 0) && <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 8 }}>Žádný materiál.</div>}
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-                          <div style={{ position: "relative", flex: 2 }}>
-                            <input style={{ ...S.input, marginBottom: 0, fontSize: 12 }} placeholder="Název materiálu..."
-                              value={matItem}
-                              onChange={e => {
-                                const v = e.target.value; setMatItem(v);
-                                setMatSuggestions(v.length > 1 ? (products || []).filter(p => p.name.toLowerCase().includes(v.toLowerCase())).slice(0, 5) : []);
-                              }} />
-                            {matSuggestions.length > 0 && (
-                              <div style={{ position: "absolute", zIndex: 99, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, width: "100%", top: "100%", boxShadow: "0 4px 12px #0000001a" }}>
-                                {matSuggestions.map(p => {
-                                  const img = p.image_url || (p.emas_code ? `https://www.emas.cz/media/cache/product_image/img/product/${p.emas_code}.jpg` : null);
-                                  return (
-                                    <div key={p.id} style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 7, borderBottom: "1px solid #f1f5f9" }}
-                                      onClick={() => { setMatItem(p.name); setMatUnit(p.unit); setMatSuggestions([]); }}>
-                                      {img ? <img src={img} alt="" onError={e => e.target.style.display="none"} style={{ width: 24, height: 24, objectFit: "contain", borderRadius: 4 }} /> : <span>📦</span>}
-                                      <span style={{ color: "#1e293b" }}>{p.name}</span>
-                                      <span style={{ color: "#94a3b8", marginLeft: "auto", fontSize: 11 }}>{p.stock} {p.unit}</span>
-                                    </div>
-                                  );
-                                })}
+          {/* HARMONOGRAM DNE */}
+          <div style={{ ...S.card, marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>🗓 Harmonogram dne</div>
+              <input type="date" style={{ ...S.input, marginBottom: 0, width: 160 }} value={timelineDate} onChange={e => setTimelineDate(e.target.value)} />
+            </div>
+            {timelineRecs.length === 0 ? (
+              <div style={{ color: "#334155", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Žádné záznamy pro {timelineDate}</div>
+            ) : (
+              <div style={{ position: "relative", paddingLeft: 72 }}>
+                {(() => {
+                  const allTimes = timelineRecs.flatMap(r => [r.checkin, r.checkout].filter(Boolean).map(t => { const [h,m]=t.split(":").map(Number); return h*60+m; }));
+                  const minT = Math.max(0, (allTimes.length ? Math.min(...allTimes) : 6*60) - 30);
+                  const maxT = Math.min(23*60, (allTimes.length ? Math.max(...allTimes) : 18*60) + 30);
+                  const totalMin = maxT - minT || 60;
+                  const px = 300;
+                  const toY = (t) => { const [h,m]=t.split(":").map(Number); return ((h*60+m - minT) / totalMin) * px; };
+                  const hours = [];
+                  for (let h = Math.floor(minT/60); h <= Math.ceil(maxT/60); h++) {
+                    if (h >= 0 && h <= 23) hours.push({ h, y: ((h*60 - minT) / totalMin) * px });
+                  }
+                  const colors = ["#6366f1","#34d399","#f59e0b","#f87171","#38bdf8"];
+                  return (
+                    <div style={{ position: "relative", height: px + 40 }}>
+                      {hours.map(({ h, y }) => (
+                        <div key={h} style={{ position: "absolute", left: -72, right: 0, top: y + 12, display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 11, color: "#475569", minWidth: 38, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{pad(h)}:00</span>
+                          <div style={{ flex: 1, borderTop: "1px dashed #1e293b" }} />
+                        </div>
+                      ))}
+                      {timelineRecs.map((rec, ri) => {
+                        if (!rec.checkin) return null;
+                        const nowT = pad(new Date().getHours()) + ":" + pad(new Date().getMinutes());
+                        const checkoutT = rec.checkout || (fmt(new Date()) === timelineDate ? nowT : rec.checkin);
+                        const y1 = toY(rec.checkin);
+                        const y2 = toY(checkoutT);
+                        const h = calcEffectiveHours(rec.checkin, rec.checkout);
+                        const contract = contractOpts.find(c => c.id === rec.contract_id);
+                        const col = colors[ri % colors.length];
+                        const blockH = Math.max(44, y2 - y1);
+                        return (
+                          <div key={rec.id} style={{ position: "absolute", left: 0, right: 0, top: y1 + 12 }}>
+                            <div onClick={() => setExpandedActivity(expandedActivity === rec.id ? null : rec.id)}
+                              style={{ background: col + "22", border: "2px solid " + col, borderRadius: 8, padding: "6px 10px",
+                                cursor: "pointer", minHeight: blockH, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                              <div style={{ fontSize: 12, color: col, fontWeight: 700 }}>
+                                {rec.checkin.slice(0,5)} – {rec.checkout ? rec.checkout.slice(0,5) : "probíhá"} {h > 0 ? "(" + fmtHours(h) + ")" : ""}
+                              </div>
+                              <div style={{ fontSize: 13, color: "#fff", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {rec.activity || "— bez popisu —"}
+                              </div>
+                              {contract && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>📋 {contract.name}</div>}
+                            </div>
+                            {expandedActivity === rec.id && (
+                              <div style={{ ...S.card, marginTop: 6, borderLeft: "3px solid " + col, padding: "12px 16px" }}>
+                                <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>Detail záznamu</div>
+                                <div style={{ fontSize: 13, color: "#475569" }}>🕐 {rec.checkin} – {rec.checkout || "probíhá"} · {h > 0 ? fmtHours(h) : "—"}</div>
+                                {contract && <div style={{ fontSize: 13, color: "#60a5fa", marginTop: 4 }}>📋 Zakázka: {contract.name}</div>}
+                                <div style={{ marginTop: 8, fontSize: 13, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>{rec.activity || "Žádný popis"}</div>
                               </div>
                             )}
                           </div>
-  
-                          <input style={{ ...S.input, marginBottom: 0, width: 70, fontSize: 12 }} type="number" placeholder="Qty" value={matQty} onChange={e => setMatQty(e.target.value)} />
-                          <select style={{ ...S.select, marginBottom: 0, width: 70, fontSize: 12 }} value={matUnit} onChange={e => setMatUnit(e.target.value)}>
-                            {["ks","h","m","m²","m³","l","kg","t","den","pauš."].map(u => <option key={u} value={u}>{u}</option>)}
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Ruční zadání */}
+          <div style={{ ...S.card, marginBottom: 20 }}>
+            <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 12, fontSize: 13 }}>✏️ Ruční záznam</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr auto", gap: 10, alignItems: "end" }}>
+              <div><label style={S.label}>Datum</label><input type="date" style={S.input} value={manualDate} onChange={e => setManualDate(e.target.value)} /></div>
+              <div><label style={S.label}>Příchod</label><input type="time" style={S.input} value={manualIn} onChange={e => setManualIn(e.target.value)} /></div>
+              <div><label style={S.label}>Odchod</label><input type="time" style={S.input} value={manualOut} onChange={e => setManualOut(e.target.value)} /></div>
+              <div>
+                <label style={S.label}>Zakázka</label>
+                <select style={{ ...S.select, marginBottom: 0 }} value={manualContractId} onChange={e => setManualContractId(e.target.value)}>
+                  <option value="">— bez zakázky —</option>
+                  {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <button style={{ ...S.btn(), marginBottom: 0 }} onClick={addManual}>Uložit</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* LIST 2: PŘEHLED */}
+      {attTab === "prehled" && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, margin: "16px 0 20px" }}>
+            {[
+              { label: "Dnes (bez pauzy)", value: todayEffective > 0 ? fmtHours(todayEffective) : todayRecord?.checkin ? "Probíhá..." : "—", color: "#2563eb" },
+              { label: "Tento týden", value: fmtHours(weekHours), color: "#60a5fa" },
+              { label: viewMonth === "all" ? "Celkem" : monthLabel, value: fmtHours(viewMonth === "all" ? yearHours : viewMonthHours), color: "#34d399" },
+              { label: "Tento rok", value: fmtHours(yearHours), color: "#f59e0b" },
+            ].map(s => (
+              <div key={s.label} style={S.statCard(s.color)}>
+                <div style={S.statLabel}>{s.label}</div>
+                <div style={{ ...S.statValue(s.color), fontSize: 20 }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+            <button style={{ ...S.btn("#6366f1"), padding: "10px 22px", fontWeight: 700 }}
+              onClick={() => { setReportEmpId(effectiveEmpId); setReportModal(true); }}>
+              📄 Generovat výkaz práce
+            </button>
+          </div>
+
+          <div style={S.card}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, color: "#1e293b", fontSize: 14 }}>Historie docházky</div>
+              {isHR && <button onClick={syncCostEntries} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 12px" }}>⚡ Sync do nákladů</button>}
+            </div>
+            <table style={S.table}>
+              <thead><tr>{["Datum","Příchod","Odchod","Odpracováno","Zakázka","Popis",""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {empRecords.map(rec => {
+                  const h = calcEffectiveHours(rec.checkin, rec.checkout);
+                  const contract = contractOpts.find(c => c.id === rec.contract_id);
+                  const mats = recordMaterials[rec.id];
+                  return (
+                    <React.Fragment key={rec.id}>
+                      <tr>
+                        <td style={S.td}>{rec.date}</td>
+                        <td style={{ ...S.td, color: "#34d399" }}>{rec.checkin || "—"}</td>
+                        <td style={{ ...S.td, color: "#f59e0b" }}>{rec.checkout || <span style={{ color: "#334155" }}>probíhá</span>}</td>
+                        <td style={{ ...S.td, fontWeight: 700, color: "#fff" }}>{h > 0 ? fmtHours(h) : "—"}</td>
+                        <td style={S.td}>
+                          <select style={{ ...S.select, marginBottom: 0, fontSize: 12, padding: "3px 6px" }}
+                            value={rec.contract_id || ""}
+                            onChange={async e => {
+                              const cid = e.target.value ? Number(e.target.value) : null;
+                              await supabase.from("attendance").update({ contract_id: cid }).eq("id", rec.id);
+                              const updated = { ...rec, contract_id: cid };
+                              setAttendance(attendance.map(a => a.id === rec.id ? updated : a));
+                              if (cid && rec.checkout) await createCostEntryFromAttendance(updated, rec.checkout);
+                            }}>
+                            <option value="">—</option>
+                            {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
-                          <button style={{ ...S.btn(), padding: "7px 14px", fontSize: 12, flexShrink: 0 }}
-                            onClick={() => addMaterial(rec.id, rec.contract_id)}>+ Přidat</button>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                        </td>
+                        <td style={{ ...S.td, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rec.activity || "—"}</td>
+                        <td style={S.td}>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button style={{ ...S.btnGhost, padding: "3px 8px", fontSize: 11 }}
+                              onClick={async () => {
+                                setEditRecord(editRecord === rec.id ? null : rec.id);
+                                if (!mats) {
+                                  const { data } = await supabase.from("attendance_materials").select("*").eq("attendance_id", rec.id).order("created_at");
+                                  setRecordMaterials(prev => ({ ...prev, [rec.id]: data || [] }));
+                                }
+                              }}>✏️ detail</button>
+                            {isHR && <button style={{ ...S.btn("#ef4444"), padding: "3px 8px", fontSize: 11 }} onClick={() => deleteRecord(rec.id)}>✕</button>}
+                          </div>
+                        </td>
+                      </tr>
+                      {editRecord === rec.id && (
+                        <tr>
+                          <td colSpan={7} style={{ ...S.td, background: "#0f172a" }}>
+                            <div style={{ padding: "10px 0" }}>
+                              <label style={S.label}>Popis práce</label>
+                              <textarea style={{ ...S.input, minHeight: 60, resize: "vertical" }}
+                                defaultValue={rec.activity || ""}
+                                onBlur={async e => {
+                                  await supabase.from("attendance").update({ activity: e.target.value }).eq("id", rec.id);
+                                  setAttendance(attendance.map(a => a.id === rec.id ? { ...a, activity: e.target.value } : a));
+                                }} />
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginTop: 8, marginBottom: 6 }}>Materiál</div>
+                              {mats && mats.length > 0 && (
+                                <table style={{ width: "100%", fontSize: 12, marginBottom: 10 }}>
+                                  <thead><tr>{["Položka","Množství","Jednotka"].map(h => <th key={h} style={{ ...S.th, fontSize: 11 }}>{h}</th>)}</tr></thead>
+                                  <tbody>
+                                    {mats.map(m => (
+                                      <tr key={m.id}><td style={S.td}>{m.item_name}</td><td style={S.td}>{m.quantity}</td><td style={S.td}>{m.unit}</td></tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                              {(!mats || mats.length === 0) && <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 8 }}>Žádný materiál.</div>}
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                                <div style={{ position: "relative", flex: 2 }}>
+                                  <input style={{ ...S.input, marginBottom: 0, fontSize: 12 }} placeholder="Název materiálu..."
+                                    value={matItem}
+                                    onChange={e => {
+                                      const v = e.target.value; setMatItem(v);
+                                      setMatSuggestions(v.length > 1 ? (products || []).filter(p => p.name.toLowerCase().includes(v.toLowerCase())).slice(0, 5) : []);
+                                    }} />
+                                  {matSuggestions.length > 0 && (
+                                    <div style={{ position: "absolute", zIndex: 99, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, width: "100%", top: "100%", boxShadow: "0 4px 12px #0000001a" }}>
+                                      {matSuggestions.map(p => {
+                                        const img = p.image_url || (p.emas_code ? "https://www.emas.cz/media/cache/product_image/img/product/" + p.emas_code + ".jpg" : null);
+                                        return (
+                                          <div key={p.id} style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 7, borderBottom: "1px solid #f1f5f9" }}
+                                            onClick={() => { setMatItem(p.name); setMatUnit(p.unit); setMatSuggestions([]); }}>
+                                            {img ? <img src={img} alt="" onError={e => e.target.style.display="none"} style={{ width: 24, height: 24, objectFit: "contain", borderRadius: 4 }} /> : <span>📦</span>}
+                                            <span style={{ color: "#1e293b" }}>{p.name}</span>
+                                            <span style={{ color: "#94a3b8", marginLeft: "auto", fontSize: 11 }}>{p.stock} {p.unit}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                                <input style={{ ...S.input, marginBottom: 0, width: 70, fontSize: 12 }} type="number" placeholder="Qty" value={matQty} onChange={e => setMatQty(e.target.value)} />
+                                <select style={{ ...S.select, marginBottom: 0, width: 70, fontSize: 12 }} value={matUnit} onChange={e => setMatUnit(e.target.value)}>
+                                  {["ks","h","m","m²","m³","l","kg","t","den","pauš."].map(u => <option key={u} value={u}>{u}</option>)}
+                                </select>
+                                <button style={{ ...S.btn(), padding: "7px 14px", fontSize: 12, flexShrink: 0 }}
+                                  onClick={() => addMaterial(rec.id, rec.contract_id)}>+ Přidat</button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* MODAL: VÝKAZ PRÁCE */}
+      {reportModal && (
+        <div style={{ position: "fixed", inset: 0, background: "#0009", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "#1e293b", borderRadius: 16, padding: "28px 32px", minWidth: 360, maxWidth: 460, width: "100%" }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 20 }}>📄 Generovat výkaz práce</div>
+            {isHR && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={S.label}>Zaměstnanec</label>
+                <select style={S.select} value={reportEmpId || effectiveEmpId} onChange={e => setReportEmpId(Number(e.target.value))}>
+                  {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+              <div>
+                <label style={S.label}>Rok</label>
+                <select style={S.select} value={reportYear} onChange={e => setReportYear(Number(e.target.value))}>
+                  {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>Měsíc</label>
+                <select style={S.select} value={reportMonth} onChange={e => setReportMonth(Number(e.target.value))}>
+                  {["Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"].map((m,i) => (
+                    <option key={i+1} value={i+1}>{m}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button style={{ ...S.btn("#334155"), padding: "9px 20px" }} onClick={() => setReportModal(false)}>Zrušit</button>
+              <button style={{ ...S.btn("#6366f1"), padding: "9px 20px", fontWeight: 700 }} onClick={generateReport}>📥 Generovat & Tisknout</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
