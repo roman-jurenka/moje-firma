@@ -4012,6 +4012,8 @@ const getWeekDates = () => {
 function Attendance({ currentUser, attendance, setAttendance, employees, contracts, products }) {
   const isHR = ["admin", "hr", "manager"].includes(currentUser.role);
   const [viewEmpId, setViewEmpId] = useState(currentUser.employeeId);
+  // Tvrdý zámek — zaměstnanec vidí vždy jen sebe
+  const effectiveEmpId = isHR ? viewEmpId : (currentUser.employeeId || viewEmpId);
   const [viewMonth, setViewMonth] = useState(fmt(new Date()).slice(0, 7)); // YYYY-MM
   const [manualDate, setManualDate] = useState(fmt(new Date()));
   const [manualIn, setManualIn] = useState("");
@@ -4037,9 +4039,9 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
   const contractOpts = (contracts && contracts.length > 0) ? contracts : attLocalContracts;
 
-  const empRecords = attendance.filter(a => a.employeeId === viewEmpId && (viewMonth === "all" || (a.date && a.date.startsWith(viewMonth)))).sort((a, b) => b.date.localeCompare(a.date));
+  const empRecords = attendance.filter(a => a.employeeId === effectiveEmpId && (viewMonth === "all" || (a.date && a.date.startsWith(viewMonth)))).sort((a, b) => b.date.localeCompare(a.date));
   const viewMonthHours = empRecords.reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
-  const todayRecord = attendance.find(a => a.employeeId === viewEmpId && a.date === todayStr);
+  const todayRecord = attendance.find(a => a.employeeId === effectiveEmpId && a.date === todayStr);
 
   // Tichá synchronizace — bez alertu, spouští se automaticky
   const syncCostEntriesQuiet = async (attList) => {
@@ -4148,7 +4150,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     const contractIdVal = ciContractId ? Number(ciContractId) : null;
     const { data: row } = await supabase.from("attendance")
-      .insert({ employee_id: viewEmpId, date: todayStr, checkin: time, checkout: null, contract_id: contractIdVal, activity: ciActivity || null })
+      .insert({ employee_id: effectiveEmpId, date: todayStr, checkin: time, checkout: null, contract_id: contractIdVal, activity: ciActivity || null })
       .select().single();
     if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
     // Zapis zahajeni jizdy pokud bylo zadano vozidlo + km
@@ -4158,7 +4160,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       const tripContractId = ciTripContractId ? Number(ciTripContractId) : null;
       const tripContractName = contractOpts.find(c => c.id === tripContractId)?.name || null;
       await supabase.from("vehicle_log").insert({
-        employee_id: viewEmpId,
+        employee_id: effectiveEmpId,
         employee_name: employees.find(e => e.id === viewEmpId)?.name || currentUser?.name || "",
         date: todayStr,
         vehicle: vehicleStr,
@@ -4188,7 +4190,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [recordMaterials, setRecordMaterials] = useState({});
   const addManual = async () => {
     if (!manualDate || !manualIn) return;
-    const existing = attendance.find(a => a.employeeId === viewEmpId && a.date === manualDate);
+    const existing = attendance.find(a => a.employeeId === effectiveEmpId && a.date === manualDate);
     const contractIdVal = manualContractId ? Number(manualContractId) : null;
     if (existing) {
       await supabase.from("attendance").update({ checkin: manualIn, checkout: manualOut || null, contract_id: contractIdVal }).eq("id", existing.id);
@@ -4197,7 +4199,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       if (manualOut && contractIdVal) await createCostEntryFromAttendance(updated, manualOut);
     } else {
       const { data: row } = await supabase.from("attendance")
-        .insert({ employee_id: viewEmpId, date: manualDate, checkin: manualIn, checkout: manualOut || null, contract_id: contractIdVal })
+        .insert({ employee_id: effectiveEmpId, date: manualDate, checkin: manualIn, checkout: manualOut || null, contract_id: contractIdVal })
         .select().single();
       if (row) {
         const newRow = { ...row, employeeId: row.employee_id };
@@ -4214,14 +4216,14 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   };
 
   const weekDates = getWeekDates();
-  const weekHours = weekDates.reduce((s, d) => { const r = attendance.find(a => a.employeeId === viewEmpId && a.date === d); return s + (r ? calcHours(r.checkin, r.checkout) : 0); }, 0);
+  const weekHours = weekDates.reduce((s, d) => { const r = attendance.find(a => a.employeeId === effectiveEmpId && a.date === d); return s + (r ? calcHours(r.checkin, r.checkout) : 0); }, 0);
   const monthStr = todayStr.slice(0, 7);
-  const monthHours = attendance.filter(a => a.employeeId === viewEmpId && a.date.startsWith(monthStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
+  const monthHours = attendance.filter(a => a.employeeId === effectiveEmpId && a.date.startsWith(monthStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
   const yearStr = todayStr.slice(0, 4);
-  const yearHours = attendance.filter(a => a.employeeId === viewEmpId && a.date.startsWith(yearStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
+  const yearHours = attendance.filter(a => a.employeeId === effectiveEmpId && a.date.startsWith(yearStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
   const todayHours = todayRecord ? calcHours(todayRecord.checkin, todayRecord.checkout) : 0;
   const todayEffective = todayRecord ? calcEffectiveHours(todayRecord.checkin, todayRecord.checkout) : 0;
-  const viewEmp = employees.find(e => e.id === viewEmpId);
+  const viewEmp = employees.find(e => e.id === effectiveEmpId);
   const vacDays = viewEmp?.vacation_days ?? currentUser?.vacationDays ?? 0;
   const vacUsed = viewEmp?.vacation_used ?? currentUser?.vacationUsed ?? 0;
 
@@ -4354,25 +4356,23 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         </button>
       </div>
 
-      {/* Ruční zadání */}
-      {isHR && (
-        <div style={{ ...S.card, marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 12, fontSize: 13 }}>✏️ Ruční záznam</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr auto", gap: 10, alignItems: "end" }}>
-            <div><label style={S.label}>Datum</label><input type="date" style={S.input} value={manualDate} onChange={e => setManualDate(e.target.value)} /></div>
-            <div><label style={S.label}>Příchod</label><input type="time" style={S.input} value={manualIn} onChange={e => setManualIn(e.target.value)} /></div>
-            <div><label style={S.label}>Odchod</label><input type="time" style={S.input} value={manualOut} onChange={e => setManualOut(e.target.value)} /></div>
-            <div>
-              <label style={S.label}>Zakázka</label>
-              <select style={{ ...S.select, marginBottom: 0 }} value={manualContractId} onChange={e => setManualContractId(e.target.value)}>
-                <option value="">— bez zakázky —</option>
-                {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <button style={{ ...S.btn(), marginBottom: 0 }} onClick={addManual}>Uložit</button>
+      {/* Ruční zadání — dostupné všem */}
+      <div style={{ ...S.card, marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 12, fontSize: 13 }}>✏️ Ruční záznam</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr auto", gap: 10, alignItems: "end" }}>
+          <div><label style={S.label}>Datum</label><input type="date" style={S.input} value={manualDate} onChange={e => setManualDate(e.target.value)} /></div>
+          <div><label style={S.label}>Příchod</label><input type="time" style={S.input} value={manualIn} onChange={e => setManualIn(e.target.value)} /></div>
+          <div><label style={S.label}>Odchod</label><input type="time" style={S.input} value={manualOut} onChange={e => setManualOut(e.target.value)} /></div>
+          <div>
+            <label style={S.label}>Zakázka</label>
+            <select style={{ ...S.select, marginBottom: 0 }} value={manualContractId} onChange={e => setManualContractId(e.target.value)}>
+              <option value="">— bez zakázky —</option>
+              {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           </div>
+          <button style={{ ...S.btn(), marginBottom: 0 }} onClick={addManual}>Uložit</button>
         </div>
-      )}
+      </div>
 
       {/* Historie docházky */}
       <div style={S.card}>
