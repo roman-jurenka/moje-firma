@@ -4403,8 +4403,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>🗓 Harmonogram dne</div>
               <input type="date" style={{ ...S.input, marginBottom: 0, width: 160 }} value={timelineDate} onChange={e => setTimelineDate(e.target.value)} />
             </div>
-            {/* Přidat blok do harmonogramu */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr 2fr auto", gap: 8, alignItems: "end", marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #1e293b" }}>
+            {/* Přidat blok do harmonogramu — pouze admin a Šarlota */}
+            {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr 2fr auto", gap: 8, alignItems: "end", marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #1e293b" }}>
               <div><label style={{ ...S.label, fontSize: 11 }}>Od</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlIn} onChange={e => setTlIn(e.target.value)} /></div>
               <div><label style={{ ...S.label, fontSize: 11 }}>Do</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlOut} onChange={e => setTlOut(e.target.value)} /></div>
               <div>
@@ -4431,7 +4431,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   }
                   setTlIn(""); setTlOut(""); setTlActivity(""); setTlContractId("");
                 }}>+ Přidat</button>
-            </div>
+            </div>}
 
             {timelineRecs.length === 0 ? (
               <div style={{ color: "#334155", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Žádné záznamy pro {timelineDate} — přidejte první blok výše</div>
