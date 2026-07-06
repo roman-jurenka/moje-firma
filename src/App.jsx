@@ -4195,6 +4195,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [reportEmpId, setReportEmpId] = useState(null);
   const [expandedActivity, setExpandedActivity] = useState(null);
   const [timelineDate, setTimelineDate] = useState(fmt(new Date()));
+  const [tlIn, setTlIn] = useState("");
+  const [tlOut, setTlOut] = useState("");
+  const [tlActivity, setTlActivity] = useState("");
+  const [tlContractId, setTlContractId] = useState("");
   const addManual = async () => {
     if (!manualDate || !manualIn) return;
     const existing = attendance.find(a => a.employeeId === effectiveEmpId && a.date === manualDate);
@@ -4240,7 +4244,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     : "Vše";
 
   // Timeline záznamy pro vybraný den
-  const timelineRecs = empRecords.filter(r => r.date === timelineDate);
+  // Harmonogram — filtruje přímo z attendance (ne z empRecords omezených měsícem)
+  const timelineRecs = attendance.filter(r =>
+    (r.employeeId === effectiveEmpId || r.employee_id === effectiveEmpId) && r.date === timelineDate
+  ).sort((a,b) => (a.checkin||"").localeCompare(b.checkin||""));
 
   // Generování výkazu práce — otevře tisknutelné okno
   const generateReport = () => {
@@ -4396,8 +4403,38 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>🗓 Harmonogram dne</div>
               <input type="date" style={{ ...S.input, marginBottom: 0, width: 160 }} value={timelineDate} onChange={e => setTimelineDate(e.target.value)} />
             </div>
+            {/* Přidat blok do harmonogramu */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr 2fr auto", gap: 8, alignItems: "end", marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #1e293b" }}>
+              <div><label style={{ ...S.label, fontSize: 11 }}>Od</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlIn} onChange={e => setTlIn(e.target.value)} /></div>
+              <div><label style={{ ...S.label, fontSize: 11 }}>Do</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlOut} onChange={e => setTlOut(e.target.value)} /></div>
+              <div>
+                <label style={{ ...S.label, fontSize: 11 }}>Zakázka</label>
+                <select style={{ ...S.select, marginBottom: 0, fontSize: 12 }} value={tlContractId} onChange={e => setTlContractId(e.target.value)}>
+                  <option value="">— bez zakázky —</option>
+                  {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div><label style={{ ...S.label, fontSize: 11 }}>Popis činnosti</label><input type="text" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} placeholder="Co jsi dělal/a..." value={tlActivity} onChange={e => setTlActivity(e.target.value)} /></div>
+              <button style={{ ...S.btn(), marginBottom: 0, padding: "8px 14px", fontSize: 12 }}
+                onClick={async () => {
+                  if (!tlIn) return;
+                  const cid = tlContractId ? Number(tlContractId) : null;
+                  const existing = attendance.find(a => (a.employeeId === effectiveEmpId || a.employee_id === effectiveEmpId) && a.date === timelineDate && a.checkin === tlIn);
+                  if (existing) {
+                    await supabase.from("attendance").update({ checkout: tlOut||null, activity: tlActivity||null, contract_id: cid }).eq("id", existing.id);
+                    setAttendance(attendance.map(a => a.id === existing.id ? { ...a, checkout: tlOut||null, activity: tlActivity||null, contract_id: cid } : a));
+                  } else {
+                    const { data: row } = await supabase.from("attendance")
+                      .insert({ employee_id: effectiveEmpId, date: timelineDate, checkin: tlIn, checkout: tlOut||null, activity: tlActivity||null, contract_id: cid })
+                      .select().single();
+                    if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
+                  }
+                  setTlIn(""); setTlOut(""); setTlActivity(""); setTlContractId("");
+                }}>+ Přidat</button>
+            </div>
+
             {timelineRecs.length === 0 ? (
-              <div style={{ color: "#334155", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Žádné záznamy pro {timelineDate}</div>
+              <div style={{ color: "#334155", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Žádné záznamy pro {timelineDate} — přidejte první blok výše</div>
             ) : (
               <div style={{ position: "relative", paddingLeft: 72 }}>
                 {(() => {
