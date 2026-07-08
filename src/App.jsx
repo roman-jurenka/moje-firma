@@ -98,8 +98,8 @@ const USERS = [
 ];
 
 const ROLES = {
-  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","communication","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
-  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","deals","contracts","communication","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
+  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
+  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","profile"] },
   employee: { label: "Zaměstnanec",   color: "#60a5fa", nav: ["dashboard","attendance","calendar","knjiga","profile"] },
 };
@@ -248,7 +248,7 @@ const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "📊", group: "CRM" },
   { id: "customers", label: "Zákazníci", icon: "👥", group: "CRM" },
   { id: "deals", label: "Obchodní příp.", icon: "💼", group: "CRM" },
-  { id: "communication", label: "Komunikace", icon: "💬", group: "CRM" },
+  // { id: "communication", label: "Komunikace", icon: "💬", group: "CRM" }, // odebráno — data zachována pro detail zákazníka
   { id: "contracts", label: "Zakázky", icon: "🔧", group: "CRM" },
   { id: "tasks", label: "Úkoly", icon: "✅", group: "CRM" },
   { id: "invoices", label: "Fakturace", icon: "🧾", group: "ERP" },
@@ -623,6 +623,7 @@ function MainApp({ currentUser, setCurrentUser }) {
         {tab === "customers" && <Customers
           customers={customers} setCustomers={setCustomers}
           invoices={invoices} deals={deals} communication={communication}
+          contracts={contracts}
           search={search} setSearch={setSearch}
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
@@ -1056,7 +1057,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
 
 // ─── ZÁKAZNÍCI ────────────────────────────────────────────────────────────────
 
-function Customers({ customers, setCustomers, invoices, deals, communication, search, setSearch, modal, setModal, closeModal }) {
+function Customers({ customers, setCustomers, invoices, deals, communication, contracts, search, setSearch, modal, setModal, closeModal }) {
   const [newC, setNewC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový" });
   const filtered = customers.filter(c =>
     (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -1130,42 +1131,46 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
         const c = modal.data;
         const custInv = invoices.filter(i => i.customerId === c.id);
         const custDeals = deals.filter(d => d.customerId === c.id);
-        const custComm = communication.filter(cm => cm.customerId === c.id);
+        const custContracts = (contracts || []).filter(z => z.customer_id === c.id);
+        const CONTRACT_STATUS_COLOR = { "Příprava": "#f59e0b", "Probíhá": "#2563eb", "Dokončeno": "#34d399", "Pozastaveno": "#ef4444" };
         return (
           <div style={S.modal} onClick={closeModal}>
-            <div style={{ ...S.modalBox, width: 560 }} onClick={e => e.stopPropagation()}>
+            <div style={{ ...S.modalBox, width: 600 }} onClick={e => e.stopPropagation()}>
               <ModalHeader title={c.name} onClose={closeModal} />
-              <div style={{ color: "#475569", fontSize: 13, marginBottom: 8 }}>
-                {c.company && <span>{c.company} · </span>}
+              <div style={{ color: "#475569", fontSize: 13, marginBottom: 16 }}>
+                {c.company && <span style={{ fontWeight: 600, color: "#94a3b8" }}>{c.company} · </span>}
                 {c.email && <a href={`mailto:${c.email}`} style={{ color: "#2563eb" }}>{c.email}</a>}
                 {c.phone && <span> · <a href={`tel:${c.phone}`} style={{ color: "#16a34a" }}>📞 {c.phone}</a></span>}
                 {c.email_contact && c.email_contact !== c.email && <span> · <a href={`mailto:${c.email_contact}`} style={{ color: "#a78bfa" }}>✉️ {c.email_contact}</a></span>}
               </div>
 
-              <SectionTitle>Faktury</SectionTitle>
-              {custInv.length === 0 ? <Empty /> : custInv.map(inv => (
-                <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1a2035" }}>
-                  <span style={{ color: "#1e293b", fontSize: 13 }}>{inv.number}</span>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <span style={{ color: "#fff", fontWeight: 700, fontSize: 13 }}>{fmtKc(inv.amount)}</span>
-                    <span style={S.tag(INV_COLORS[inv.status])}>{inv.status}</span>
+              <SectionTitle>🔧 Zakázky ({custContracts.length})</SectionTitle>
+              {custContracts.length === 0 ? <Empty /> : custContracts.map(z => (
+                <div key={z.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: "1px solid #1a2035" }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: "#fff", fontWeight: 600 }}>{z.name}</div>
+                    {z.code && <div style={{ fontSize: 11, color: "#475569" }}>{z.code}{z.address ? " · " + z.address : ""}</div>}
                   </div>
+                  <span style={S.tag(CONTRACT_STATUS_COLOR[z.status] || "#64748b")}>{z.status || "—"}</span>
                 </div>
               ))}
 
-              <SectionTitle style={{ marginTop: 16 }}>Dealy</SectionTitle>
+              <SectionTitle style={{ marginTop: 16 }}>💼 Poptávky ({custDeals.length})</SectionTitle>
               {custDeals.length === 0 ? <Empty /> : custDeals.map(d => (
                 <div key={d.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1a2035" }}>
-                  <span style={{ color: "#1e293b", fontSize: 13 }}>{d.name}</span>
+                  <span style={{ color: "#e2e8f0", fontSize: 13 }}>{d.name}</span>
                   <span style={S.tag(STAGE_COLORS[d.stage])}>{d.stage}</span>
                 </div>
               ))}
 
-              <SectionTitle style={{ marginTop: 16 }}>Komunikace</SectionTitle>
-              {custComm.length === 0 ? <Empty /> : custComm.map(cm => (
-                <div key={cm.id} style={{ padding: "8px 0", borderBottom: "1px solid #1a2035" }}>
-                  <div style={{ fontSize: 11, color: "#475569" }}>{cm.type} · {cm.date}</div>
-                  <div style={{ fontSize: 13, color: "#1e293b" }}>{cm.note}</div>
+              <SectionTitle style={{ marginTop: 16 }}>🧾 Faktury ({custInv.length})</SectionTitle>
+              {custInv.length === 0 ? <Empty /> : custInv.map(inv => (
+                <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1a2035" }}>
+                  <span style={{ color: "#e2e8f0", fontSize: 13 }}>{inv.number}</span>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <span style={{ color: "#fff", fontWeight: 700, fontSize: 13 }}>{fmtKc(inv.amount)}</span>
+                    <span style={S.tag(INV_COLORS[inv.status])}>{inv.status}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1181,13 +1186,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
 function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, closeModal, onConvertToContract, currentUser }) {
   const [newD, setNewD] = useState({ name: "", value: "", stage: "Nový", customerId: "", assigned_to: "" });
   const [dragId, setDragId] = useState(null);
-  const [detailDeal, setDetailDeal] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [dealMessages, setDealMessages] = useState([]);
-  const [newMsg, setNewMsg] = useState("");
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [showDealPhotoPicker, setShowDealPhotoPicker] = useState(false);
+  const [selectedDeal, setSelectedDeal] = useState(null);
 
   const save = async () => {
     if (!newD.name) return;
@@ -1195,61 +1194,23 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
       name: newD.name, value: Number(newD.value), stage: newD.stage,
       customer_id: Number(newD.customerId), assigned_to: newD.assigned_to,
     }).select().single();
-    if (row) {
-      setDeals([...deals, { ...row, customerId: row.customer_id }]);
-      await supabase.from("deal_history").insert({ deal_id: row.id, user_name: currentUser?.name || "Systém", action: "Deal vytvořen" });
-    }
+    if (row) setDeals([...deals, { ...row, customerId: row.customer_id }]);
     setNewD({ name: "", value: "", stage: "Nový", customerId: "", assigned_to: "" });
     closeModal();
   };
 
-  const openDetail = async (deal) => {
-    setDetailDeal(deal);
-    setHistoryLoading(true);
-    const [h, m] = await Promise.all([
-      supabase.from("deal_history").select("*").eq("deal_id", deal.id).order("created_at"),
-      supabase.from("deal_messages").select("*").eq("deal_id", deal.id).order("created_at"),
-    ]);
-    setHistory(h.data || []);
-    setDealMessages(m.data || []);
-    setHistoryLoading(false);
-  };
-
   const moveStage = async (deal, newStage) => {
     await supabase.from("deals").update({ stage: newStage }).eq("id", deal.id);
-    await supabase.from("deal_history").insert({ deal_id: deal.id, user_name: currentUser?.name || "?", action: `Přesunuto: ${deal.stage} → ${newStage}` });
     setDeals(deals.map(d => d.id === deal.id ? { ...d, stage: newStage } : d));
-    if (detailDeal?.id === deal.id) {
-      setDetailDeal({ ...detailDeal, stage: newStage });
-      const { data: h } = await supabase.from("deal_history").select("*").eq("deal_id", deal.id).order("created_at");
-      setHistory(h || []);
-    }
+    if (selectedDeal?.id === deal.id) setSelectedDeal({ ...selectedDeal, stage: newStage });
   };
 
-  const sendMessage = async () => {
-    if (!newMsg.trim() || !detailDeal) return;
-    const { data: row } = await supabase.from("deal_messages").insert({
-      deal_id: detailDeal.id, user_name: currentUser?.name || "?", message: newMsg.trim(),
-    }).select().single();
-    if (row) setDealMessages([...dealMessages, row]);
-    setNewMsg("");
+  const deleteDeal = async (id) => {
+    await supabase.from("deals").delete().eq("id", id);
+    setDeals(deals.filter(d => d.id !== id));
+    setSelectedDeal(null);
   };
 
-  const uploadPhoto = async (file, dealId) => {
-    if (!file) return;
-    setUploading(true);
-    const path = `deal_${dealId}_${Date.now()}.${file.name.split(".").pop()}`;
-    const { error } = await supabase.storage.from("deal-photos").upload(path, file, { upsert: true });
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage.from("deal-photos").getPublicUrl(path);
-      await supabase.from("deal_history").insert({ deal_id: dealId, user_name: currentUser?.name || "?", action: `Přidána fotka: ${publicUrl}` });
-      const { data: h } = await supabase.from("deal_history").select("*").eq("deal_id", dealId).order("created_at");
-      setHistory(h || []);
-    }
-    setUploading(false);
-  };
-
-  // Drag & drop
   const onDragStart = (e, id) => { setDragId(id); e.dataTransfer.effectAllowed = "move"; };
   const onDrop = async (e, stage) => {
     e.preventDefault();
@@ -1259,134 +1220,13 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
     setDragId(null);
   };
 
-  if (detailDeal) {
-    const cust = customers.find(c => c.id === detailDeal.customerId || c.id === detailDeal.customer_id);
-    const assignedEmp = employees?.find(e => e.name === detailDeal.assigned_to);
-    const dealTasks = (tasks || []).filter(t => t.deal_id === detailDeal.id);
-    const photoEntries = history.filter(h => h.action?.startsWith("Přidána fotka:"));
-
-    return (
-      <div>
-        <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
-          <button onClick={() => setDetailDeal(null)} style={{ ...S.btn("#334155"), padding: "7px 16px" }}>← Zpět</button>
-          <span style={S.tag(STAGE_COLORS[detailDeal.stage])}>{detailDeal.stage}</span>
-          {detailDeal.stage === "Vyhráno" && onConvertToContract && (
-            <button style={{ ...S.btn("#0d9488"), padding: "7px 16px", fontWeight: 700 }}
-              onClick={() => { onConvertToContract(detailDeal); setDetailDeal(null); }}>
-              🔧 Převést na zakázku
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-          {/* Levý panel */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={S.card}>
-              <h2 style={{ color: "#fff", fontWeight: 800, fontSize: 20, marginBottom: 6 }}>{detailDeal.name}</h2>
-              <div style={{ color: "#475569", fontSize: 13, marginBottom: 14 }}>{cust?.name || "—"}</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-                {STAGES.map(s => (
-                  <button key={s} onClick={() => moveStage(detailDeal, s)}
-                    style={{ ...S.btn(detailDeal.stage === s ? STAGE_COLORS[s] : "#1e293b"), padding: "5px 12px", fontSize: 11, opacity: detailDeal.stage === s ? 1 : 0.6 }}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-              {[
-                ["Hodnota", fmtKc(detailDeal.value)],
-                ["Zákazník", cust?.name || "—"],
-                ["Vede případ", detailDeal.assigned_to || "—"],
-              ].map(([l, v]) => (
-                <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #1e293b" }}>
-                  <span style={{ color: "#64748b", fontSize: 12 }}>{l}</span>
-                  <span style={{ color: "#fff", fontWeight: 600, fontSize: 13 }}>{v}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Úkoly přiřazené k dealu */}
-            <div style={S.card}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 10 }}>ÚKOLY PŘÍPADU</div>
-              {dealTasks.length === 0
-                ? <div style={{ color: "#475569", fontSize: 12 }}>Žádné úkoly</div>
-                : dealTasks.map(t => (
-                  <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0", borderBottom: "1px solid #1e293b" }}>
-                    <span style={{ color: t.done ? "#34d399" : "#f59e0b", fontSize: 16 }}>{t.done ? "✅" : "⏳"}</span>
-                    <span style={{ color: "#1e293b", fontSize: 13, flex: 1, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</span>
-                    <span style={{ color: "#64748b", fontSize: 11 }}>{t.created_by || "?"}</span>
-                  </div>
-                ))
-              }
-            </div>
-
-            {/* Fotky */}
-            <div style={S.card}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 10 }}>FOTOGRAFIE</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                {photoEntries.map((h, i) => {
-                  const url = h.action.replace("Přidána fotka: ", "");
-                  return <a key={i} href={url} target="_blank" rel="noreferrer"><img src={url} alt="" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: "2px solid #334155" }} /></a>;
-                })}
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <label style={{ ...S.btn("#334155"), padding: "7px 14px", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                  {uploading ? "⏳ Nahrávám..." : "📷 Přidat foto"}
-                  <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => uploadPhoto(e.target.files[0], detailDeal.id)} />
-                </label>
-                <button style={{ ...S.btnGhost, padding: "7px 14px", fontSize: 13 }} onClick={() => setShowDealPhotoPicker(true)}>📁 Ze zakázek</button>
-              </div>
-              {showDealPhotoPicker && <ContractPhotoPicker onSelect={async url => {
-                await supabase.from("deal_history").insert({ deal_id: detailDeal.id, action: "Přidána fotka: " + url, date: fmt(new Date()), user_name: "" });
-                setDealHistory([...dealHistory, { deal_id: detailDeal.id, action: "Přidána fotka: " + url, date: fmt(new Date()), user_name: "" }]);
-                setShowDealPhotoPicker(false);
-              }} onClose={() => setShowDealPhotoPicker(false)} />}
-            </div>
-          </div>
-
-          {/* Pravý panel — komunikace + historie */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {/* Komunikace */}
-            <div style={{ ...S.card, flex: 1 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", letterSpacing: 1, marginBottom: 10 }}>💬 KOMUNIKACE</div>
-              <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
-                {dealMessages.length === 0 && <div style={{ color: "#475569", fontSize: 12 }}>Zatím žádné zprávy</div>}
-                {dealMessages.map(m => (
-                  <div key={m.id} style={{ background: "#1e293b", borderRadius: 10, padding: "8px 12px" }}>
-                    <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 600, marginBottom: 3 }}>{m.user_name} · {new Date(m.created_at).toLocaleString("cs")}</div>
-                    <div style={{ color: "#1e293b", fontSize: 13 }}>{m.message}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input style={{ ...S.input, marginBottom: 0, flex: 1 }} placeholder="Napište zprávu..." value={newMsg} onChange={e => setNewMsg(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && sendMessage()} />
-                <button style={{ ...S.btn(), padding: "0 14px" }} onClick={sendMessage}>Odeslat</button>
-              </div>
-            </div>
-
-            {/* Historie */}
-            <div style={{ ...S.card, flex: 1 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 10 }}>📋 HISTORIE PŘÍPADU</div>
-              {historyLoading && <div style={{ color: "#475569", fontSize: 12 }}>Načítám...</div>}
-              <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
-                {history.filter(h => !h.action?.startsWith("Přidána fotka:")).map(h => (
-                  <div key={h.id} style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: "1px solid #1e293b" }}>
-                    <span style={{ fontSize: 10, color: "#475569", minWidth: 90 }}>{new Date(h.created_at).toLocaleString("cs", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-                    <span style={{ fontSize: 11, color: "#2563eb", minWidth: 70 }}>{h.user_name}</span>
-                    <span style={{ color: "#1e293b", fontSize: 12 }}>{h.action}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
-      <div style={S.header}><h1 style={S.h1}>Obchodní příležitosti</h1><button style={S.btn()} onClick={() => setModal({ type: "addDeal" })}>+ Přidat deal</button></div>
+      <div style={S.header}>
+        <h1 style={S.h1}>Obchodní příležitosti</h1>
+        <button style={S.btn()} onClick={() => setModal({ type: "addDeal" })}>+ Přidat poptávku</button>
+      </div>
+
       <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 16 }}>
         {STAGES.map(stage => (
           <div key={stage} style={{ ...S.kanbanCol, minHeight: 300 }}
@@ -1396,20 +1236,21 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
               {stage.toUpperCase()} <span style={{ color: "#475569" }}>({deals.filter(d => d.stage === stage).length})</span>
             </div>
             {deals.filter(d => d.stage === stage).map(d => {
-              const cust = customers.find(c => c.id === d.customerId);
+              const cust = customers.find(c => c.id === d.customerId || c.id === d.customer_id);
               return (
-                <div key={d.id} style={{ ...S.kanbanCard, opacity: dragId === d.id ? 0.4 : 1, cursor: "grab" }}
+                <div key={d.id}
+                  style={{ ...S.kanbanCard, opacity: dragId === d.id ? 0.4 : 1, cursor: "grab", outline: selectedDeal?.id === d.id ? "2px solid #2563eb" : "none" }}
                   draggable onDragStart={e => onDragStart(e, d.id)}
-                  onClick={() => openDetail(d)}>
+                  onClick={() => setSelectedDeal(selectedDeal?.id === d.id ? null : d)}>
                   <div style={{ fontWeight: 600, color: "#fff", fontSize: 13, marginBottom: 3 }}>{d.name}</div>
-                  {d.assigned_to && <div style={{ fontSize: 10, color: "#2563eb", marginBottom: 3 }}>👤 {d.assigned_to}</div>}
-                  <div style={{ color: "#475569", fontSize: 11, marginBottom: 7 }}>{cust?.name || "—"}</div>
+                  {cust && <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3 }}>🏢 {cust.name}</div>}
+                  {d.assigned_to && <div style={{ fontSize: 11, color: "#2563eb", marginBottom: 4 }}>👤 {d.assigned_to}</div>}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ color: STAGE_COLORS[stage], fontWeight: 800, fontSize: 14 }}>{fmtKc(d.value)}</div>
+                    <div style={{ color: STAGE_COLORS[stage], fontWeight: 800, fontSize: 14 }}>{d.value ? fmtKc(d.value) : "—"}</div>
                     {stage === "Vyhráno" && onConvertToContract && (
                       <button title="Převést na zakázku" onClick={e => { e.stopPropagation(); onConvertToContract(d); }}
-                        style={{ background: "#0d948822", border: "1px solid #0d948855", borderRadius: 6, color: "#2dd4bf", fontSize: 10, padding: "3px 8px", cursor: "pointer", fontWeight: 700 }}>
-                        🔧 Zakázka
+                        style={{ background: "#0d948822", border: "1px solid #0d9488", borderRadius: 6, color: "#2dd4bf", fontSize: 11, padding: "4px 10px", cursor: "pointer", fontWeight: 700 }}>
+                        🔧 → Zakázka
                       </button>
                     )}
                   </div>
@@ -1419,18 +1260,78 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
           </div>
         ))}
       </div>
+
+      {/* Detail poptávky — inline panel */}
+      {selectedDeal && (() => {
+        const cust = customers.find(c => c.id === selectedDeal.customerId || c.id === selectedDeal.customer_id);
+        const dealTasks = (tasks || []).filter(t => t.deal_id === selectedDeal.id);
+        return (
+          <div style={{ ...S.card, marginTop: 8, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#2563eb") }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 16 }}>{selectedDeal.name}</div>
+                {cust && <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>🏢 {cust.name}{cust.phone ? " · " + cust.phone : ""}</div>}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {selectedDeal.stage === "Vyhráno" && onConvertToContract && (
+                  <button style={{ ...S.btn("#0d9488"), padding: "7px 16px", fontWeight: 700 }}
+                    onClick={() => { onConvertToContract(selectedDeal); setSelectedDeal(null); }}>
+                    🔧 Převést na zakázku
+                  </button>
+                )}
+                <button style={{ ...S.btn("#ef4444"), padding: "6px 12px", fontSize: 12 }}
+                  onClick={() => deleteDeal(selectedDeal.id)}>✕ Smazat</button>
+                <button style={{ ...S.btn("#334155"), padding: "6px 12px" }} onClick={() => setSelectedDeal(null)}>✕</button>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
+              <div><div style={{ fontSize: 11, color: "#64748b" }}>Hodnota</div><div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{selectedDeal.value ? fmtKc(selectedDeal.value) : "—"}</div></div>
+              <div><div style={{ fontSize: 11, color: "#64748b" }}>Vede případ</div><div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.assigned_to || "—"}</div></div>
+              <div><div style={{ fontSize: 11, color: "#64748b" }}>Fáze</div><span style={S.tag(STAGE_COLORS[selectedDeal.stage])}>{selectedDeal.stage}</span></div>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Přesunout do fáze:</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {STAGES.map(s => (
+                  <button key={s} onClick={() => moveStage(selectedDeal, s)}
+                    style={{ ...S.btn(selectedDeal.stage === s ? STAGE_COLORS[s] : "#1e293b"), padding: "5px 12px", fontSize: 11, opacity: selectedDeal.stage === s ? 1 : 0.65 }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {dealTasks.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Úkoly ({dealTasks.length})</div>
+                {dealTasks.map(t => (
+                  <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid #1e293b" }}>
+                    <span>{t.done ? "✅" : "⏳"}</span>
+                    <span style={{ color: "#e2e8f0", fontSize: 13, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {modal?.type === "addDeal" && (
         <div style={S.modal}><div style={S.modalBox}>
-          <ModalHeader title="Nový deal" onClose={closeModal} />
-          <label style={S.label}>Název</label><input style={S.input} value={newD.name} onChange={e => setNewD({ ...newD, name: e.target.value })} />
-          <label style={S.label}>Hodnota (Kč)</label><input style={S.input} type="number" value={newD.value} onChange={e => setNewD({ ...newD, value: e.target.value })} />
+          <ModalHeader title="Nová poptávka" onClose={closeModal} />
+          <label style={S.label}>Název / popis</label>
+          <input style={S.input} value={newD.name} onChange={e => setNewD({ ...newD, name: e.target.value })} placeholder="např. Elektroinstalace rodinný dům" />
+          <label style={S.label}>Odhadovaná hodnota (Kč)</label>
+          <input style={S.input} type="number" value={newD.value} onChange={e => setNewD({ ...newD, value: e.target.value })} />
           <label style={S.label}>Fáze</label>
           <select style={S.select} value={newD.stage} onChange={e => setNewD({ ...newD, stage: e.target.value })}>{STAGES.map(s => <option key={s}>{s}</option>)}</select>
           <label style={S.label}>Zákazník</label>
           <select style={S.select} value={newD.customerId} onChange={e => setNewD({ ...newD, customerId: e.target.value })}>
             <option value="">— vyberte —</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <label style={S.label}>Vede případ</label>
+          <label style={S.label}>Zodpovídá</label>
           <select style={S.select} value={newD.assigned_to} onChange={e => setNewD({ ...newD, assigned_to: e.target.value })}>
             <option value="">— vyberte —</option>{(employees || []).map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
           </select>
@@ -4036,6 +3937,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     supabase.from("vehicles").select("*").order("name").then(({ data }) => setAttVehicles(data || []));
     supabase.from("contracts").select("id, name").order("name").then(({ data }) => setAttLocalContracts(data || []));
     supabase.from("attendance_block_templates").select("*").order("name").then(({ data }) => setBlockTemplates(data || []));
+    supabase.from("harmonogram").select("*").order("date", { ascending: false }).then(({ data }) => setHarmonogramRecs(data || []));
   }, []);
 
   const contractOpts = (contracts && contracts.length > 0) ? contracts : attLocalContracts;
@@ -4204,6 +4106,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [tlSuggestions, setTlSuggestions] = useState([]);
   const [newTplName, setNewTplName] = useState("");
   const [newTplDesc, setNewTplDesc] = useState("");
+  const [harmonogramRecs, setHarmonogramRecs] = useState([]);
   const addManual = async () => {
     if (!manualDate || !manualIn) return;
     const existing = attendance.find(a => a.employeeId === effectiveEmpId && a.date === manualDate);
@@ -4286,6 +4189,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
           <div style={{ display: "flex", gap: 4, paddingLeft: 2 }}>
             {[
               { id: "zaznam", label: "📅 Záznamy & Docházka" },
+              { id: "harmonogram", label: "🗓 Harmonogram" },
               { id: "prehled", label: "📊 Přehled" + (viewMonth !== "all" ? " – " + monthLabel : "") },
               ...((currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") ? [{ id: "sablony", label: "📋 Šablony bloků" }] : []),
             ].map(t => (
@@ -4415,127 +4319,6 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             </button>
           </div>
 
-          {/* HARMONOGRAM DNE */}
-          <div style={{ ...S.card, marginBottom: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>🗓 Harmonogram dne</div>
-              <input type="date" style={{ ...S.input, marginBottom: 0, width: 160 }} value={timelineDate} onChange={e => setTimelineDate(e.target.value)} />
-            </div>
-            {/* Přidat blok do harmonogramu — pouze admin a Šarlota */}
-            {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr 2fr auto", gap: 8, alignItems: "end", marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #1e293b" }}>
-              <div><label style={{ ...S.label, fontSize: 11 }}>Od</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlIn} onChange={e => setTlIn(e.target.value)} /></div>
-              <div><label style={{ ...S.label, fontSize: 11 }}>Do</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlOut} onChange={e => setTlOut(e.target.value)} /></div>
-              <div>
-                <label style={{ ...S.label, fontSize: 11 }}>Zakázka</label>
-                <select style={{ ...S.select, marginBottom: 0, fontSize: 12 }} value={tlContractId} onChange={e => setTlContractId(e.target.value)}>
-                  <option value="">— bez zakázky —</option>
-                  {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div style={{ position: "relative" }}>
-                <label style={{ ...S.label, fontSize: 11 }}>Popis činnosti</label>
-                <input type="text" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} placeholder="Co jsi dělal/a..."
-                  value={tlActivity}
-                  onChange={e => {
-                    const v = e.target.value; setTlActivity(v);
-                    setTlSuggestions(v.length > 1 ? blockTemplates.filter(b => b.name.toLowerCase().includes(v.toLowerCase())).slice(0,6) : []);
-                  }}
-                  onBlur={() => setTimeout(() => setTlSuggestions([]), 150)} />
-                {tlSuggestions.length > 0 && (
-                  <div style={{ position: "absolute", zIndex: 200, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, width: "100%", top: "100%", boxShadow: "0 4px 16px #0006", maxHeight: 220, overflowY: "auto" }}>
-                    {tlSuggestions.map(b => (
-                      <div key={b.id} style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #0f172a" }}
-                        onMouseDown={() => { setTlActivity(b.description || b.name); setTlSuggestions([]); }}>
-                        <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{b.name}</div>
-                        {b.description && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.description}</div>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <button style={{ ...S.btn(), marginBottom: 0, padding: "8px 14px", fontSize: 12 }}
-                onClick={async () => {
-                  if (!tlIn) return;
-                  const cid = tlContractId ? Number(tlContractId) : null;
-                  const existing = attendance.find(a => (a.employeeId === effectiveEmpId || a.employee_id === effectiveEmpId) && a.date === timelineDate && a.checkin === tlIn);
-                  if (existing) {
-                    await supabase.from("attendance").update({ checkout: tlOut||null, activity: tlActivity||null, contract_id: cid }).eq("id", existing.id);
-                    setAttendance(attendance.map(a => a.id === existing.id ? { ...a, checkout: tlOut||null, activity: tlActivity||null, contract_id: cid } : a));
-                  } else {
-                    const { data: row } = await supabase.from("attendance")
-                      .insert({ employee_id: effectiveEmpId, date: timelineDate, checkin: tlIn, checkout: tlOut||null, activity: tlActivity||null, contract_id: cid })
-                      .select().single();
-                    if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
-                  }
-                  setTlIn(""); setTlOut(""); setTlActivity(""); setTlContractId("");
-                }}>+ Přidat</button>
-            </div>}
-
-            {timelineRecs.length === 0 ? (
-              <div style={{ color: "#334155", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Žádné záznamy pro {timelineDate} — přidejte první blok výše</div>
-            ) : (
-              <div style={{ position: "relative", paddingLeft: 72 }}>
-                {(() => {
-                  const allTimes = timelineRecs.flatMap(r => [r.checkin, r.checkout].filter(Boolean).map(t => { const [h,m]=t.split(":").map(Number); return h*60+m; }));
-                  const minT = Math.max(0, (allTimes.length ? Math.min(...allTimes) : 6*60) - 30);
-                  const maxT = Math.min(23*60, (allTimes.length ? Math.max(...allTimes) : 18*60) + 30);
-                  const totalMin = maxT - minT || 60;
-                  const px = 300;
-                  const toY = (t) => { const [h,m]=t.split(":").map(Number); return ((h*60+m - minT) / totalMin) * px; };
-                  const hours = [];
-                  for (let h = Math.floor(minT/60); h <= Math.ceil(maxT/60); h++) {
-                    if (h >= 0 && h <= 23) hours.push({ h, y: ((h*60 - minT) / totalMin) * px });
-                  }
-                  const colors = ["#6366f1","#34d399","#f59e0b","#f87171","#38bdf8"];
-                  return (
-                    <div style={{ position: "relative", height: px + 40 }}>
-                      {hours.map(({ h, y }) => (
-                        <div key={h} style={{ position: "absolute", left: -72, right: 0, top: y + 12, display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 11, color: "#475569", minWidth: 38, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{pad(h)}:00</span>
-                          <div style={{ flex: 1, borderTop: "1px dashed #1e293b" }} />
-                        </div>
-                      ))}
-                      {timelineRecs.map((rec, ri) => {
-                        if (!rec.checkin) return null;
-                        const nowT = pad(new Date().getHours()) + ":" + pad(new Date().getMinutes());
-                        const checkoutT = rec.checkout || (fmt(new Date()) === timelineDate ? nowT : rec.checkin);
-                        const y1 = toY(rec.checkin);
-                        const y2 = toY(checkoutT);
-                        const h = calcEffectiveHours(rec.checkin, rec.checkout);
-                        const contract = contractOpts.find(c => c.id === rec.contract_id);
-                        const col = colors[ri % colors.length];
-                        const blockH = Math.max(44, y2 - y1);
-                        return (
-                          <div key={rec.id} style={{ position: "absolute", left: 0, right: 0, top: y1 + 12 }}>
-                            <div onClick={() => setExpandedActivity(expandedActivity === rec.id ? null : rec.id)}
-                              style={{ background: col + "22", border: "2px solid " + col, borderRadius: 8, padding: "6px 10px",
-                                cursor: "pointer", minHeight: blockH, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                              <div style={{ fontSize: 12, color: col, fontWeight: 700 }}>
-                                {rec.checkin.slice(0,5)} – {rec.checkout ? rec.checkout.slice(0,5) : "probíhá"} {h > 0 ? "(" + fmtHours(h) + ")" : ""}
-                              </div>
-                              <div style={{ fontSize: 13, color: "#fff", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {rec.activity || "— bez popisu —"}
-                              </div>
-                              {contract && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>📋 {contract.name}</div>}
-                            </div>
-                            {expandedActivity === rec.id && (
-                              <div style={{ ...S.card, marginTop: 6, borderLeft: "3px solid " + col, padding: "12px 16px" }}>
-                                <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>Detail záznamu</div>
-                                <div style={{ fontSize: 13, color: "#475569" }}>🕐 {rec.checkin} – {rec.checkout || "probíhá"} · {h > 0 ? fmtHours(h) : "—"}</div>
-                                {contract && <div style={{ fontSize: 13, color: "#60a5fa", marginTop: 4 }}>📋 Zakázka: {contract.name}</div>}
-                                <div style={{ marginTop: 8, fontSize: 13, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>{rec.activity || "Žádný popis"}</div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-
           {/* Ruční zadání */}
           <div style={{ ...S.card, marginBottom: 20 }}>
             <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 12, fontSize: 13 }}>✏️ Ruční záznam</div>
@@ -4556,7 +4339,157 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         </>
       )}
 
-      {/* LIST 2: PŘEHLED */}
+      {/* LIST 2: HARMONOGRAM */}
+      {attTab === "harmonogram" && (() => {
+        const hlRecs = harmonogramRecs.filter(r =>
+          r.employee_id === effectiveEmpId && r.date === timelineDate
+        ).sort((a,b) => (a.checkin||"").localeCompare(b.checkin||""));
+        return (
+          <div>
+            {/* Hlavička — výběr dne + zaměstnance (HR) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>🗓 Harmonogram dne</div>
+              <input type="date" style={{ ...S.input, marginBottom: 0, width: 160 }} value={timelineDate} onChange={e => setTimelineDate(e.target.value)} />
+              {isHR && (
+                <select style={{ ...S.select, marginBottom: 0, width: 180 }} value={viewEmpId} onChange={e => setViewEmpId(Number(e.target.value))}>
+                  {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              )}
+            </div>
+
+            {/* Přidat blok — pouze admin a Šarlota */}
+            {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
+              <div style={{ ...S.card, marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 13, marginBottom: 12 }}>➕ Přidat blok</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr 2fr auto", gap: 8, alignItems: "end" }}>
+                  <div><label style={{ ...S.label, fontSize: 11 }}>Od</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlIn} onChange={e => setTlIn(e.target.value)} /></div>
+                  <div><label style={{ ...S.label, fontSize: 11 }}>Do</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlOut} onChange={e => setTlOut(e.target.value)} /></div>
+                  <div>
+                    <label style={{ ...S.label, fontSize: 11 }}>Zakázka</label>
+                    <select style={{ ...S.select, marginBottom: 0, fontSize: 12 }} value={tlContractId} onChange={e => setTlContractId(e.target.value)}>
+                      <option value="">— bez zakázky —</option>
+                      {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ position: "relative" }}>
+                    <label style={{ ...S.label, fontSize: 11 }}>Popis činnosti</label>
+                    <input type="text" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} placeholder="Název nebo popis..."
+                      value={tlActivity}
+                      onChange={e => {
+                        const v = e.target.value; setTlActivity(v);
+                        setTlSuggestions(v.length > 1 ? blockTemplates.filter(b => b.name.toLowerCase().includes(v.toLowerCase())).slice(0,6) : []);
+                      }}
+                      onBlur={() => setTimeout(() => setTlSuggestions([]), 150)} />
+                    {tlSuggestions.length > 0 && (
+                      <div style={{ position: "absolute", zIndex: 200, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, width: "100%", top: "100%", boxShadow: "0 4px 16px #0006", maxHeight: 220, overflowY: "auto" }}>
+                        {tlSuggestions.map(b => (
+                          <div key={b.id} style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #0f172a" }}
+                            onMouseDown={() => { setTlActivity(b.description || b.name); setTlSuggestions([]); }}>
+                            <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{b.name}</div>
+                            {b.description && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.description}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button style={{ ...S.btn(), marginBottom: 0, padding: "8px 14px", fontSize: 12 }}
+                    onClick={async () => {
+                      if (!tlIn) return;
+                      const cid = tlContractId ? Number(tlContractId) : null;
+                      const { data: row } = await supabase.from("harmonogram")
+                        .insert({ employee_id: effectiveEmpId, date: timelineDate, checkin: tlIn, checkout: tlOut||null, activity: tlActivity||null, contract_id: cid, created_by: currentUser.name })
+                        .select().single();
+                      if (row) setHarmonogramRecs([...harmonogramRecs, row]);
+                      setTlIn(""); setTlOut(""); setTlActivity(""); setTlContractId("");
+                    }}>+ Přidat</button>
+                </div>
+              </div>
+            )}
+
+            {/* Časová osa */}
+            {hlRecs.length === 0 ? (
+              <div style={{ ...S.card, color: "#334155", fontSize: 13, textAlign: "center", padding: "32px 0" }}>
+                Žádné bloky pro {timelineDate}
+                {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") ? " — přidejte první blok výše" : ""}
+              </div>
+            ) : (
+              <div style={{ ...S.card }}>
+                <div style={{ position: "relative", paddingLeft: 72 }}>
+                  {(() => {
+                    const allTimes = hlRecs.flatMap(r => [r.checkin, r.checkout].filter(Boolean).map(t => { const [h,m]=t.split(":").map(Number); return h*60+m; }));
+                    const minT = Math.max(0, (allTimes.length ? Math.min(...allTimes) : 6*60) - 30);
+                    const maxT = Math.min(23*60, (allTimes.length ? Math.max(...allTimes) : 18*60) + 30);
+                    const totalMin = maxT - minT || 60;
+                    const px = Math.max(300, hlRecs.length * 80);
+                    const toY = (t) => { const [h,m]=t.split(":").map(Number); return ((h*60+m - minT) / totalMin) * px; };
+                    const hours = [];
+                    for (let h = Math.floor(minT/60); h <= Math.ceil(maxT/60); h++) {
+                      if (h >= 0 && h <= 23) hours.push({ h, y: ((h*60 - minT) / totalMin) * px });
+                    }
+                    const colors = ["#6366f1","#34d399","#f59e0b","#f87171","#38bdf8"];
+                    return (
+                      <div style={{ position: "relative", height: px + 40 }}>
+                        {hours.map(({ h, y }) => (
+                          <div key={h} style={{ position: "absolute", left: -72, right: 0, top: y + 12, display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 11, color: "#475569", minWidth: 38, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{pad(h)}:00</span>
+                            <div style={{ flex: 1, borderTop: "1px dashed #1e293b" }} />
+                          </div>
+                        ))}
+                        {hlRecs.map((rec, ri) => {
+                          if (!rec.checkin) return null;
+                          const checkoutT = rec.checkout || rec.checkin;
+                          const y1 = toY(rec.checkin);
+                          const y2 = toY(checkoutT);
+                          const h = calcEffectiveHours(rec.checkin, rec.checkout);
+                          const contract = contractOpts.find(c => c.id === rec.contract_id);
+                          const col = colors[ri % colors.length];
+                          const blockH = Math.max(44, y2 - y1);
+                          return (
+                            <div key={rec.id} style={{ position: "absolute", left: 0, right: 0, top: y1 + 12 }}>
+                              <div onClick={() => setExpandedActivity(expandedActivity === rec.id ? null : rec.id)}
+                                style={{ background: col + "22", border: "2px solid " + col, borderRadius: 8, padding: "6px 10px",
+                                  cursor: "pointer", minHeight: blockH, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                                <div style={{ fontSize: 12, color: col, fontWeight: 700 }}>
+                                  {rec.checkin.slice(0,5)} – {rec.checkout ? rec.checkout.slice(0,5) : "—"} {h > 0 ? "(" + fmtHours(h) + ")" : ""}
+                                </div>
+                                <div style={{ fontSize: 13, color: "#fff", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {rec.activity || "— bez popisu —"}
+                                </div>
+                                {contract && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>📋 {contract.name}</div>}
+                              </div>
+                              {expandedActivity === rec.id && (
+                                <div style={{ ...S.card, marginTop: 6, borderLeft: "3px solid " + col, padding: "12px 16px" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                    <div>
+                                      <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>Detail bloku</div>
+                                      <div style={{ fontSize: 13, color: "#475569" }}>🕐 {rec.checkin.slice(0,5)} – {rec.checkout ? rec.checkout.slice(0,5) : "—"} {h > 0 ? " · " + fmtHours(h) : ""}</div>
+                                      {contract && <div style={{ fontSize: 13, color: "#60a5fa", marginTop: 4 }}>📋 Zakázka: {contract.name}</div>}
+                                      <div style={{ marginTop: 8, fontSize: 13, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>{rec.activity || "Žádný popis"}</div>
+                                    </div>
+                                    {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
+                                      <button style={{ ...S.btn("#ef4444"), padding: "4px 10px", fontSize: 12 }} onClick={async () => {
+                                        await supabase.from("harmonogram").delete().eq("id", rec.id);
+                                        setHarmonogramRecs(harmonogramRecs.filter(r => r.id !== rec.id));
+                                        setExpandedActivity(null);
+                                      }}>✕ Smazat</button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* LIST 3: PŘEHLED */}
       {attTab === "prehled" && (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, margin: "16px 0 20px" }}>
@@ -4695,7 +4628,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         </>
       )}
 
-      {/* LIST 3: ŠABLONY BLOKŮ */}
+      {/* LIST 4: ŠABLONY BLOKŮ */}
       {attTab === "sablony" && (currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
         <div style={{ marginTop: 16 }}>
           {/* Přidat šablonu */}
