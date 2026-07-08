@@ -4035,6 +4035,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     supabase.from("projects").select("id, name").order("name").then(({ data }) => { if (data) setProjects(data); });
     supabase.from("vehicles").select("*").order("name").then(({ data }) => setAttVehicles(data || []));
     supabase.from("contracts").select("id, name").order("name").then(({ data }) => setAttLocalContracts(data || []));
+    supabase.from("attendance_block_templates").select("*").order("name").then(({ data }) => setBlockTemplates(data || []));
   }, []);
 
   const contractOpts = (contracts && contracts.length > 0) ? contracts : attLocalContracts;
@@ -4199,6 +4200,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [tlOut, setTlOut] = useState("");
   const [tlActivity, setTlActivity] = useState("");
   const [tlContractId, setTlContractId] = useState("");
+  const [blockTemplates, setBlockTemplates] = useState([]);
+  const [tlSuggestions, setTlSuggestions] = useState([]);
+  const [newTplName, setNewTplName] = useState("");
+  const [newTplDesc, setNewTplDesc] = useState("");
   const addManual = async () => {
     if (!manualDate || !manualIn) return;
     const existing = attendance.find(a => a.employeeId === effectiveEmpId && a.date === manualDate);
@@ -4276,19 +4281,23 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   return (
     <>
       {/* TAB NAVIGATION — full width */}
-      <div style={{ borderBottom: "2px solid #1e293b", marginBottom: 0 }}>
+      <div style={{ borderBottom: "none", marginBottom: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-          <div style={{ display: "flex" }}>
+          <div style={{ display: "flex", gap: 4, paddingLeft: 2 }}>
             {[
               { id: "zaznam", label: "📅 Záznamy & Docházka" },
               { id: "prehled", label: "📊 Přehled" + (viewMonth !== "all" ? " – " + monthLabel : "") },
+              ...((currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") ? [{ id: "sablony", label: "📋 Šablony bloků" }] : []),
             ].map(t => (
               <button key={t.id} onClick={() => setAttTab(t.id)} style={{
-                padding: "14px 28px", background: "none", border: "none",
-                borderBottom: attTab === t.id ? "3px solid #6366f1" : "3px solid transparent",
-                color: attTab === t.id ? "#fff" : "#475569",
-                fontWeight: attTab === t.id ? 700 : 400,
-                cursor: "pointer", fontSize: 14, marginBottom: -2,
+                padding: "10px 22px",
+                background: attTab === t.id ? "#0d2137" : "rgba(100,116,139,0.25)",
+                border: attTab === t.id ? "1.5px solid #2563eb" : "1.5px solid #64748b",
+                borderBottom: attTab === t.id ? "1.5px solid #0d2137" : "1.5px solid #64748b",
+                borderRadius: "10px 10px 0 0",
+                color: attTab === t.id ? "#93c5fd" : "#1e293b",
+                fontWeight: attTab === t.id ? 700 : 500,
+                cursor: "pointer", fontSize: 14, marginBottom: -1,
               }}>{t.label}</button>
             ))}
           </div>
@@ -4310,6 +4319,15 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
           </div>
         </div>
       </div>
+
+      {/* TAB CONTENT PANEL */}
+      <div style={{
+        border: "1.5px solid #2563eb",
+        borderTop: "none",
+        borderRadius: "0 10px 10px 10px",
+        padding: "20px 16px",
+        marginBottom: 16,
+      }}>
 
       {/* LIST 1: ZÁZNAMY & DOCHÁZKA */}
       {attTab === "zaznam" && (
@@ -4414,7 +4432,27 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div><label style={{ ...S.label, fontSize: 11 }}>Popis činnosti</label><input type="text" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} placeholder="Co jsi dělal/a..." value={tlActivity} onChange={e => setTlActivity(e.target.value)} /></div>
+              <div style={{ position: "relative" }}>
+                <label style={{ ...S.label, fontSize: 11 }}>Popis činnosti</label>
+                <input type="text" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} placeholder="Co jsi dělal/a..."
+                  value={tlActivity}
+                  onChange={e => {
+                    const v = e.target.value; setTlActivity(v);
+                    setTlSuggestions(v.length > 1 ? blockTemplates.filter(b => b.name.toLowerCase().includes(v.toLowerCase())).slice(0,6) : []);
+                  }}
+                  onBlur={() => setTimeout(() => setTlSuggestions([]), 150)} />
+                {tlSuggestions.length > 0 && (
+                  <div style={{ position: "absolute", zIndex: 200, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, width: "100%", top: "100%", boxShadow: "0 4px 16px #0006", maxHeight: 220, overflowY: "auto" }}>
+                    {tlSuggestions.map(b => (
+                      <div key={b.id} style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #0f172a" }}
+                        onMouseDown={() => { setTlActivity(b.description || b.name); setTlSuggestions([]); }}>
+                        <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{b.name}</div>
+                        {b.description && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.description}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button style={{ ...S.btn(), marginBottom: 0, padding: "8px 14px", fontSize: 12 }}
                 onClick={async () => {
                   if (!tlIn) return;
@@ -4656,6 +4694,63 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
           </div>
         </>
       )}
+
+      {/* LIST 3: ŠABLONY BLOKŮ */}
+      {attTab === "sablony" && (currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
+        <div style={{ marginTop: 16 }}>
+          {/* Přidat šablonu */}
+          <div style={{ ...S.card, marginBottom: 20 }}>
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, fontSize: 14 }}>➕ Nová šablona bloku</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 10, alignItems: "end" }}>
+              <div>
+                <label style={S.label}>Název bloku</label>
+                <input style={S.input} placeholder="např. Montáž elektro" value={newTplName} onChange={e => setNewTplName(e.target.value)} />
+              </div>
+              <div>
+                <label style={S.label}>Popis (vyplní se při výběru)</label>
+                <input style={S.input} placeholder="Podrobný popis činnosti..." value={newTplDesc} onChange={e => setNewTplDesc(e.target.value)} />
+              </div>
+              <button style={{ ...S.btn(), marginBottom: 0 }} onClick={async () => {
+                if (!newTplName.trim()) return;
+                const { data: row } = await supabase.from("attendance_block_templates")
+                  .insert({ name: newTplName.trim(), description: newTplDesc.trim() || null, created_by: currentUser.name })
+                  .select().single();
+                if (row) setBlockTemplates([...blockTemplates, row].sort((a,b) => a.name.localeCompare(b.name)));
+                setNewTplName(""); setNewTplDesc("");
+              }}>Uložit</button>
+            </div>
+          </div>
+
+          {/* Seznam šablon */}
+          <div style={S.card}>
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, fontSize: 14 }}>📋 Předdefinované bloky ({blockTemplates.length})</div>
+            {blockTemplates.length === 0 ? (
+              <div style={{ color: "#334155", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Žádné šablony — přidejte první výše</div>
+            ) : (
+              <table style={S.table}>
+                <thead><tr>{["Název","Popis","Vytvořil/a",""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {blockTemplates.map(b => (
+                    <tr key={b.id}>
+                      <td style={{ ...S.td, fontWeight: 700, color: "#fff" }}>{b.name}</td>
+                      <td style={{ ...S.td, color: "#94a3b8", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.description || "—"}</td>
+                      <td style={{ ...S.td, color: "#475569", fontSize: 12 }}>{b.created_by || "—"}</td>
+                      <td style={S.td}>
+                        <button style={{ ...S.btn("#ef4444"), padding: "3px 10px", fontSize: 12 }} onClick={async () => {
+                          await supabase.from("attendance_block_templates").delete().eq("id", b.id);
+                          setBlockTemplates(blockTemplates.filter(x => x.id !== b.id));
+                        }}>✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      </div>{/* END TAB CONTENT PANEL */}
 
       {/* MODAL: VÝKAZ PRÁCE */}
       {reportModal && (
