@@ -4696,7 +4696,11 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         const daysInMonth = new Date(calYear, calMonthNum, 0).getDate();
         // 0=Ne,1=Po… shift to Mon-first
         const startDow = (firstDay.getDay() + 6) % 7;
-        const monthAttendance = attendance.filter(a => a.date && a.date.startsWith(calMonth));
+        const kalIsHR = isHR || currentUser.name === "Šarlota Jurenková";
+        const monthAttendance = attendance.filter(a =>
+          a.date && a.date.startsWith(calMonth) &&
+          (kalIsHR || (a.employeeId === effectiveEmpId || a.employee_id === effectiveEmpId))
+        );
         const empColors = ["#6366f1","#10b981","#f59e0b","#ef4444","#3b82f6","#8b5cf6","#ec4899","#14b8a6"];
         const empColorMap = {};
         employees.forEach((e, i) => { empColorMap[e.id] = empColors[i % empColors.length]; });
@@ -5331,5 +5335,5 @@ export default function App() {
     );
   }
 
-  return <MainApp currentUser={currentUser} setCurrentUser={handleLogout} />;
+  return <MainApp currentUser={currentUser} setCurrentUser={setCurrentUser} />;
 }
