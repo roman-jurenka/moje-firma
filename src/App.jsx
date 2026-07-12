@@ -3941,6 +3941,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   }, []);
 
   const contractOpts = (contracts && contracts.length > 0) ? contracts : attLocalContracts;
+  const activeContractOpts = contractOpts.filter(c => !c.status || c.status === "Nová" || c.status === "Probíhá");
 
   const empRecords = attendance.filter(a => a.employeeId === effectiveEmpId && (viewMonth === "all" || (a.date && a.date.startsWith(viewMonth)))).sort((a, b) => b.date.localeCompare(a.date));
   const viewMonthHours = empRecords.reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
@@ -4288,7 +4289,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 }
               }}>
               <option value="">— bez zakázky —</option>
-              {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {activeContractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <label style={S.label}>Popis práce</label>
             <textarea style={{ ...S.input, minHeight: 64, resize: "vertical" }}
@@ -4313,7 +4314,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 <label style={S.label}>Zakázka jízdy (volitelné)</label>
                 <select style={S.select} value={ciTripContractId} onChange={e => setCiTripContractId(e.target.value)}>
                   <option value="">— bez zakázky —</option>
-                  {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {activeContractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </>)}
             </>)}
@@ -4334,7 +4335,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 <label style={S.label}>Zakázka</label>
                 <select style={{ ...S.select, marginBottom: 0 }} value={manualContractId} onChange={e => setManualContractId(e.target.value)}>
                   <option value="">— bez zakázky —</option>
-                  {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {activeContractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <button style={{ ...S.btn(), marginBottom: 0 }} onClick={addManual}>Uložit</button>
@@ -4372,7 +4373,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                     <label style={{ ...S.label, fontSize: 11 }}>Zakázka</label>
                     <select style={{ ...S.select, marginBottom: 0, fontSize: 12 }} value={tlContractId} onChange={e => setTlContractId(e.target.value)}>
                       <option value="">— bez zakázky —</option>
-                      {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      {activeContractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                   <div style={{ position: "relative" }}>
