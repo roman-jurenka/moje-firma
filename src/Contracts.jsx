@@ -2197,17 +2197,3 @@ function BillingTab({ contractId, entries, summaries, employees, onMarkBilled, o
     </div>
   );
 }
-ontSize: 11, fontWeight: 700 }}>✓ Schváleno</span>
-                          : <span style={{ background: "#47556922", color: "#475569", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>Čeká</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
