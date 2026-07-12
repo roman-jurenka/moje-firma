@@ -4092,6 +4092,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [expandedMatRecord, setExpandedMatRecord] = useState(null);
   const [recordMaterials, setRecordMaterials] = useState({});
   const [attTab, setAttTab] = useState("zaznam");
+  const [kalDay, setKalDay] = useState(null);
+  const [soupisEmpId, setSoupisEmpId] = useState("vše");
   const [reportModal, setReportModal] = useState(false);
   const [reportYear, setReportYear] = useState(new Date().getFullYear());
   const [reportMonth, setReportMonth] = useState(new Date().getMonth() + 1);
@@ -4191,6 +4193,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               { id: "zaznam", label: "📅 Záznamy & Docházka" },
               { id: "harmonogram", label: "🗓 Harmonogram" },
               { id: "prehled", label: "📊 Přehled" + (viewMonth !== "all" ? " – " + monthLabel : "") },
+              { id: "kalendar", label: "📆 Kalendář" },
+              { id: "soupis", label: "📋 Soupis práce" },
               ...((currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") ? [{ id: "sablony", label: "📋 Šablony bloků" }] : []),
             ].map(t => (
               <button key={t.id} onClick={() => setAttTab(t.id)} style={{
@@ -4682,6 +4686,213 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
           </div>
         </div>
       )}
+
+
+      {/* LIST 5: KALENDÁŘ */}
+      {attTab === "kalendar" && (() => {
+        const calMonth = viewMonth !== "all" ? viewMonth : fmt(new Date()).slice(0,7);
+        const [calYear, calMonthNum] = calMonth.split("-").map(Number);
+        const firstDay = new Date(calYear, calMonthNum - 1, 1);
+        const daysInMonth = new Date(calYear, calMonthNum, 0).getDate();
+        // 0=Ne,1=Po… shift to Mon-first
+        const startDow = (firstDay.getDay() + 6) % 7;
+        const monthAttendance = attendance.filter(a => a.date && a.date.startsWith(calMonth));
+        const empColors = ["#6366f1","#10b981","#f59e0b","#ef4444","#3b82f6","#8b5cf6","#ec4899","#14b8a6"];
+        const empColorMap = {};
+        employees.forEach((e, i) => { empColorMap[e.id] = empColors[i % empColors.length]; });
+        const dayLabel = new Date(calYear, calMonthNum - 1, 1).toLocaleString("cs-CZ", { month: "long", year: "numeric" });
+        return (
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 16 }}>
+              📆 {dayLabel.charAt(0).toUpperCase() + dayLabel.slice(1)}
+            </div>
+            {/* Legend */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {employees.map(e => (
+                <span key={e.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#94a3b8" }}>
+                  <span style={{ width: 12, height: 12, borderRadius: "50%", background: empColorMap[e.id], display: "inline-block" }} />
+                  {e.name}
+                </span>
+              ))}
+            </div>
+            {/* Calendar grid header */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
+              {["Po","Út","St","Čt","Pá","So","Ne"].map(d => (
+                <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#475569", padding: "4px 0" }}>{d}</div>
+              ))}
+            </div>
+            {/* Calendar cells */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+              {Array.from({ length: startDow }).map((_, i) => <div key={"e"+i} />)}
+              {Array.from({ length: daysInMonth }, (_, i) => {
+                const day = i + 1;
+                const dateStr = calMonth + "-" + String(day).padStart(2,"0");
+                const dayRecs = monthAttendance.filter(a => a.date === dateStr);
+                const isToday = dateStr === fmt(new Date());
+                const isSelected = kalDay === dateStr;
+                const dow = (new Date(dateStr).getDay() + 6) % 7; // Mon=0
+                return (
+                  <div key={day}
+                    onClick={() => setKalDay(isSelected ? null : dateStr)}
+                    style={{
+                      background: isSelected ? "#1e3a5f" : isToday ? "#0f2d47" : "#0f172a",
+                      border: isSelected ? "1.5px solid #3b82f6" : isToday ? "1.5px solid #2563eb55" : "1px solid #1e293b",
+                      borderRadius: 8,
+                      padding: "6px 4px",
+                      cursor: dayRecs.length > 0 ? "pointer" : "default",
+                      minHeight: 56,
+                    }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: dow >= 5 ? "#64748b" : "#94a3b8", textAlign: "right", marginBottom: 4 }}>{day}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}>
+                      {dayRecs.map(r => {
+                        const emp = employees.find(e => e.id === (r.employee_id || r.employeeId));
+                        if (!emp) return null;
+                        return (
+                          <span key={r.id} title={emp.name} style={{
+                            width: 18, height: 18, borderRadius: "50%",
+                            background: empColorMap[emp.id] || "#475569",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 8, fontWeight: 700, color: "#fff",
+                          }}>{emp.name.charAt(0)}</span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Day detail */}
+            {kalDay && (() => {
+              const dayRecs = monthAttendance.filter(a => a.date === kalDay);
+              return (
+                <div style={{ marginTop: 16, background: "#0f172a", border: "1px solid #1e3a5f", borderRadius: 12, padding: "16px 20px" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#93c5fd", marginBottom: 12 }}>
+                    {new Date(kalDay).toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" })}
+                    {" · "}
+                    <span style={{ color: "#475569", fontWeight: 400 }}>{dayRecs.length} záznamů</span>
+                  </div>
+                  {dayRecs.length === 0 ? (
+                    <div style={{ color: "#475569", fontSize: 13 }}>Žádné záznamy pro tento den.</div>
+                  ) : (
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr>{["Zaměstnanec","Příchod","Odchod","Hodiny","Zakázka","Činnost"].map(h => (
+                          <th key={h} style={{ textAlign: "left", padding: "4px 10px", fontSize: 11, color: "#475569", fontWeight: 600, borderBottom: "1px solid #1e293b" }}>{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody>
+                        {dayRecs.map(r => {
+                          const emp = employees.find(e => e.id === (r.employee_id || r.employeeId));
+                          const h = calcHours(r.checkin, r.checkout);
+                          const contract = contractOpts.find(c => c.id === r.contract_id);
+                          return (
+                            <tr key={r.id}>
+                              <td style={{ padding: "6px 10px", fontSize: 13, color: "#fff", fontWeight: 600 }}>
+                                <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: empColorMap[emp?.id] || "#475569", marginRight: 6 }} />
+                                {emp?.name || "—"}
+                              </td>
+                              <td style={{ padding: "6px 10px", fontSize: 13, color: "#34d399" }}>{r.checkin || "—"}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 13, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#475569" }}>probíhá</span>}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 13, color: "#fff", fontWeight: 700 }}>{h > 0 ? fmtHours(h) : "—"}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "#94a3b8" }}>{contract?.name || "—"}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "#94a3b8", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
+
+      {/* LIST 6: SOUPIS PRÁCE */}
+      {attTab === "soupis" && (() => {
+        const calMonth = viewMonth !== "all" ? viewMonth : fmt(new Date()).slice(0,7);
+        const filtered = attendance.filter(a => {
+          const monthMatch = viewMonth === "all" || (a.date && a.date.startsWith(calMonth));
+          const empMatch = soupisEmpId === "vše" || String(a.employeeId || a.employee_id) === String(soupisEmpId);
+          return monthMatch && empMatch;
+        }).sort((a, b) => b.date?.localeCompare(a.date) || 0);
+        const totalH = filtered.reduce((s, r) => s + calcHours(r.checkin, r.checkout), 0);
+        const monthNames = ["","Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
+        const generateSoupisPDF = () => {
+          const empObj = soupisEmpId !== "vše" ? employees.find(e => String(e.id) === String(soupisEmpId)) : null;
+          const [y, m] = calMonth.split("-").map(Number);
+          const rows = filtered.map(r => {
+            const emp = employees.find(e => e.id === (r.employeeId || r.employee_id));
+            const h = calcHours(r.checkin, r.checkout);
+            const contract = contractOpts.find(c => c.id === r.contract_id);
+            return "<tr><td>" + r.date + "</td><td>" + (emp?.name || "—") + "</td><td>" + (r.checkin||"—") + "</td><td>" + (r.checkout||"—") + "</td><td><strong>" + fmtHours(h) + "</strong></td><td>" + (contract?.name||"—") + "</td><td>" + (r.activity||"—") + "</td></tr>";
+          }).join("");
+          const totalRow = "<tr class='total'><td colspan='4'>Celkem</td><td><strong>" + fmtHours(totalH) + "</strong></td><td colspan='2'>" + filtered.length + " záznamů</td></tr>";
+          const title = empObj ? empObj.name : "Všichni zaměstnanci";
+          const period = viewMonth !== "all" ? monthNames[m] + " " + y : "Celé období";
+          const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Soupis práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e293b;color:#fff;padding:8px 12px;text-align:left;font-size:12px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}tr:nth-child(even) td{background:#f8fafc}tr.total td{font-weight:bold;background:#e0f2fe;border-top:2px solid #0284c7}@media print{body{padding:16px}}</style></head><body><h1>Soupis práce</h1><h2>" + title + " · " + period + "</h2><table><thead><tr><th>Datum</th><th>Zaměstnanec</th><th>Příchod</th><th>Odchod</th><th>Odprac.</th><th>Zakázka</th><th>Činnost</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>";
+          const win = window.open("", "_blank");
+          win.document.write(html);
+          win.document.close();
+        };
+        return (
+          <div>
+            {/* Filters + PDF button */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 16 }}>
+              {isHR && (
+                <select style={{ ...S.select, marginBottom: 0, width: 180 }} value={soupisEmpId} onChange={e => setSoupisEmpId(e.target.value)}>
+                  <option value="vše">Všichni zaměstnanci</option>
+                  {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              )}
+              <div style={{ flex: 1 }} />
+              <div style={{ fontSize: 13, color: "#475569" }}>
+                Celkem: <strong style={{ color: "#fff" }}>{fmtHours(totalH)}</strong> · {filtered.length} záznamů
+              </div>
+              <button style={{ ...S.btn("#6366f1"), padding: "8px 18px", fontWeight: 700 }} onClick={generateSoupisPDF}>
+                📄 Generovat PDF
+              </button>
+            </div>
+            {filtered.length === 0 ? (
+              <div style={{ color: "#475569", fontSize: 13 }}>Žádné záznamy pro zadané filtry.</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>{["Datum","Zaměstnanec","Příchod","Odchod","Hodiny","Zakázka","Činnost"].map(h => (
+                      <th key={h} style={{ textAlign: "left", padding: "7px 12px", fontSize: 11, color: "#475569", fontWeight: 700, borderBottom: "1.5px solid #1e293b", whiteSpace: "nowrap" }}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(r => {
+                      const emp = employees.find(e => e.id === (r.employeeId || r.employee_id));
+                      const h = calcHours(r.checkin, r.checkout);
+                      const contract = contractOpts.find(c => c.id === r.contract_id);
+                      return (
+                        <tr key={r.id} style={{ borderBottom: "1px solid #1e293b" }}>
+                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#94a3b8", whiteSpace: "nowrap" }}>{r.date}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#fff", fontWeight: 600 }}>{emp?.name || "—"}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#34d399" }}>{r.checkin || "—"}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#475569" }}>probíhá</span>}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#fff", fontWeight: 700 }}>{h > 0 ? fmtHours(h) : "—"}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 12, color: "#94a3b8" }}>{contract?.name || "—"}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 12, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ borderTop: "2px solid #1e3a5f" }}>
+                      <td colSpan={4} style={{ padding: "8px 12px", fontSize: 13, color: "#475569", fontWeight: 600 }}>Celkem</td>
+                      <td style={{ padding: "8px 12px", fontSize: 13, color: "#6366f1", fontWeight: 700 }}>{fmtHours(totalH)}</td>
+                      <td colSpan={2} style={{ padding: "8px 12px", fontSize: 12, color: "#475569" }}>{filtered.length} záznamů</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       </div>{/* END TAB CONTENT PANEL */}
 

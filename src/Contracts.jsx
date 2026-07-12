@@ -613,7 +613,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 {view === "prehled" && (<>
                 {/* TABS */}
                 <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #1a2035", marginBottom: 20 }}>
-                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"]].map(([t, label]) => (
+                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
                     <button key={t} onClick={() => setTab(contract.id, t)}
                       style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #6366f1" : "2px solid transparent", color: tab === t ? "#fff" : "#475569", padding: "8px 16px", fontSize: 13, cursor: "pointer", fontWeight: tab === t ? 600 : 400 }}>
                       {label}
@@ -858,9 +858,77 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 )}
 
                 {/* TAB: DOKUMENTY */}
-                {tab === "dokumenty" && (
+{tab === "dokumenty" && (
                   <DokumentyTab contractId={contract.id} currentUser={currentUser} />
                 )}
+                {tab === "soupis" && (() => {
+                  const sorted = [...contAttendance].sort((a, b) => b.date?.localeCompare(a.date));
+                  const calcH = (ci, co) => {
+                    if (!ci || !co) return 0;
+                    const [h1,m1] = ci.split(":").map(Number);
+                    const [h2,m2] = co.split(":").map(Number);
+                    return Math.max(0, (h2*60+m2-(h1*60+m1))/60);
+                  };
+                  const fmtH = h => h <= 0 ? "—" : `${Math.floor(h)}h ${String(Math.round((h-Math.floor(h))*60)).padStart(2,"0")}m`;
+                  const totalH = sorted.reduce((s,r) => s + calcH(r.checkin, r.checkout), 0);
+                  const generatePDF = () => {
+                    const rows = sorted.map(r => {
+                      const emp = employees.find(e => e.id === (r.employee_id || r.employeeId));
+                      const h = calcH(r.checkin, r.checkout);
+                      return "<tr><td>"+r.date+"</td><td>"+(emp?.name||"—")+"</td><td>"+(r.checkin||"—")+"</td><td>"+(r.checkout||"—")+"</td><td><strong>"+fmtH(h)+"</strong></td><td>"+(r.activity||"—")+"</td></tr>";
+                    }).join("");
+                    const totalRow = "<tr class='total'><td colspan='4'>Celkem</td><td><strong>"+fmtH(totalH)+"</strong></td><td>"+sorted.length+" záznamů</td></tr>";
+                    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Soupis práce — "+contract.name+"</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse}th{background:#1e293b;color:#fff;padding:8px 12px;text-align:left;font-size:12px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}tr:nth-child(even) td{background:#f8fafc}tr.total td{font-weight:bold;background:#e0f2fe;border-top:2px solid #0284c7}@media print{body{padding:16px}}</style></head><body><h1>Soupis práce</h1><h2>"+contract.name+(contract.code?" · "+contract.code:"")+"</h2><table><thead><tr><th>Datum</th><th>Zaměstnanec</th><th>Příchod</th><th>Odchod</th><th>Odprac.</th><th>Činnost</th></tr></thead><tbody>"+rows+totalRow+"</tbody></table><script>window.onload=function(){window.print();<\/script><\/body><\/html>";
+                    const win = window.open("", "_blank");
+                    win.document.write(html);
+                    win.document.close();
+                  };
+                  return (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                        <div style={{ fontSize: 13, color: "#475569" }}>
+                          Celkem: <strong style={{ color: "#fff" }}>{fmtH(totalH)}</strong> · {sorted.length} záznamů
+                        </div>
+                        <div style={{ flex: 1 }} />
+                        <button style={{ ...S.btn("#6366f1"), padding: "7px 16px", fontWeight: 700, fontSize: 13 }} onClick={generatePDF}>
+                          📄 Generovat PDF
+                        </button>
+                      </div>
+                      {sorted.length === 0 ? (
+                        <div style={{ color: "#475569", fontSize: 13 }}>Žádné záznamy práce pro tuto zakázku.</div>
+                      ) : (
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                          <thead>
+                            <tr>{["Datum","Zaměstnanec","Příchod","Odchod","Hodiny","Činnost"].map(h => (
+                              <th key={h} style={{ textAlign:"left", padding:"6px 10px", fontSize:11, color:"#475569", fontWeight:700, borderBottom:"1.5px solid #1e293b" }}>{h}</th>
+                            ))}</tr>
+                          </thead>
+                          <tbody>
+                            {sorted.map(r => {
+                              const emp = employees.find(e => e.id === (r.employee_id || r.employeeId));
+                              const h = calcH(r.checkin, r.checkout);
+                              return (
+                                <tr key={r.id} style={{ borderBottom:"1px solid #1e293b" }}>
+                                  <td style={{ padding:"6px 10px", fontSize:13, color:"#94a3b8" }}>{r.date}</td>
+                                  <td style={{ padding:"6px 10px", fontSize:13, color:"#fff", fontWeight:600 }}>{emp?.name||"—"}</td>
+                                  <td style={{ padding:"6px 10px", fontSize:13, color:"#34d399" }}>{r.checkin||"—"}</td>
+                                  <td style={{ padding:"6px 10px", fontSize:13, color:"#f59e0b" }}>{r.checkout||<span style={{color:"#475569"}}>probíhá</span>}</td>
+                                  <td style={{ padding:"6px 10px", fontSize:13, color:"#fff", fontWeight:700 }}>{fmtH(h)}</td>
+                                  <td style={{ padding:"6px 10px", fontSize:12, color:"#94a3b8", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.activity||"—"}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr style={{ borderTop:"2px solid #1e3a5f" }}>
+                              <td colSpan={4} style={{ padding:"8px 10px", fontSize:13, color:"#475569", fontWeight:600 }}>Celkem</td>
+                              <td style={{ padding:"8px 10px", fontSize:13, color:"#6366f1", fontWeight:700 }}>{fmtH(totalH)}</td>
+                              <td style={{ padding:"8px 10px", fontSize:12, color:"#475569" }}>{sorted.length} záznamů</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  );
+                })()}
                 </>)}
               </>
               );
