@@ -677,7 +677,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
           ...ctasks.filter(t => t.contract_id === contract.id),
           ...globalTasks.filter(t => t.contract_id === contract.id),
         ];
-        const contAttendance = attendance.filter(a => a.contractId === contract.id);
+        const contAttendance = attendance.filter(a => (a.contract_id || a.contractId) === contract.id);
         const sc = STATUS_COLORS[contract.status] || STATUS_COLORS["Nová"];
 
         return (
