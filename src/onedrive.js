@@ -2,8 +2,8 @@
 // Osobní Microsoft účet (consumers tenant)
 // Nastav CLIENT_ID po registraci aplikace v Azure portálu
 
-export const OD_CLIENT_ID = ""; // ← SEM VLOŽ CLIENT ID z Azure
-const TENANT = "consumers";
+export const OD_CLIENT_ID = "acc593cf-5c70-408d-bc5d-ccb99a043972";
+const TENANT = "common"; // multitenant — funguje pro firemní i osobní účty
 const REDIRECT_URI = window.location.origin + "/";
 const SCOPES = "User.Read Files.ReadWrite offline_access";
 const AUTH_BASE = `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0`;
