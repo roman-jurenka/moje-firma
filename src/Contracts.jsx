@@ -392,6 +392,40 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     setContracts(contracts.map(c => c.id === contractId ? { ...c, status } : c));
   }
 
+  // ── Smazat zakázku ──
+  async function deleteContract(id) {
+    if (!window.confirm("Smazat zakázku včetně všech nákladů, úkolů a fotek? Tato akce je nevratná.")) return;
+    await supabase.from("contracts").delete().eq("id", id);
+    setContracts(prev => prev.filter(c => c.id !== id));
+    setEntries(prev => prev.filter(e => e.contract_id !== id));
+    setPhotos(prev => prev.filter(p => p.contract_id !== id));
+    setCtasks(prev => prev.filter(t => t.contract_id !== id));
+    setDeliveryNotes(prev => prev.filter(d => d.contract_id !== id));
+    if (expandedId === id) setExpandedId(null);
+  }
+
+  // ── Editovat zakázku (název, kód, zákazník, cena, adresa, poznámky) ──
+  async function saveEditContract(form) {
+    const upd = {
+      name:        form.name,
+      code:        form.code,
+      customer_id: Number(form.customerId) || null,
+      price:       Number(form.price) || 0,
+      address:     form.address || "",
+      notes:       form.notes || "",
+    };
+    await supabase.from("contracts").update(upd).eq("id", form.id);
+    setContracts(prev => prev.map(c => c.id === form.id ? { ...c, ...upd } : c));
+    closeModal();
+  }
+
+  // ── Přeřadit nákladovou položku na jinou zakázku ──
+  async function moveEntry(entryId, targetContractId) {
+    await supabase.from("contract_cost_entries").update({ contract_id: targetContractId }).eq("id", entryId);
+    setEntries(prev => prev.map(e => e.id === entryId ? { ...e, contract_id: targetContractId } : e));
+    closeModal();
+  }
+
   // ── Úkoly zakázky ──
   async function saveTask(form) {
     const { data: row } = await supabase.from("contract_tasks").insert({
@@ -537,6 +571,18 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 </div>
               </div>
               <button
+                onClick={() => setModal({ type: "editContract", contract })}
+                title="Upravit zakázku"
+                style={{ background: "#1a2035", border: "1px solid #252d45", borderRadius: 8, padding: "6px 10px", color: "#94a3b8", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
+                ✏️
+              </button>
+              <button
+                onClick={() => deleteContract(contract.id)}
+                title="Smazat zakázku"
+                style={{ background: "#f8717111", border: "1px solid #f8717133", borderRadius: 8, padding: "6px 10px", color: "#f87171", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
+                🗑
+              </button>
+              <button
                 onClick={() => setExpandedId(isExpanded ? null : contract.id)}
                 style={{ background: "#1a2035", border: "1px solid #252d45", borderRadius: 8, padding: "6px 14px", color: "#94a3b8", cursor: "pointer", fontSize: 12, flexShrink: 0 }}>
                 {isExpanded ? "▲ Sbalit" : "▼ Detail"}
@@ -609,6 +655,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                             onUpdateBudget={(nv) => updateBudget(contract.id, "budget_prace", nv, contract.budget_prace)}
                             onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "práce", isExtra: false })}
                             onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved}
+                            onMoveEntry={(eid) => setModal({ type: "moveEntry", entryId: eid, currentContractId: contract.id })}
                           />
                         </div>
                         <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🔨 Práce — vícepráce</div>
@@ -620,6 +667,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                             onUpdateBudget={(nv) => updateBudget(contract.id, "budget_vice_prace", nv, contract.budget_vice_prace)}
                             onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "práce", isExtra: true })}
                             onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved} isExtra
+                            onMoveEntry={(eid) => setModal({ type: "moveEntry", entryId: eid, currentContractId: contract.id })}
                           />
                         </div>
                       </>}
@@ -635,6 +683,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                             onUpdateBudget={(nv) => updateBudget(contract.id, "budget_material", nv, contract.budget_material)}
                             onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "materiál", isExtra: false })}
                             onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved}
+                            onMoveEntry={(eid) => setModal({ type: "moveEntry", entryId: eid, currentContractId: contract.id })}
                           />
                         </div>
 
@@ -679,6 +728,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                             onUpdateBudget={(nv) => updateBudget(contract.id, "budget_vice_material", nv, contract.budget_vice_material)}
                             onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "materiál", isExtra: true })}
                             onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved} isExtra
+                            onMoveEntry={(eid) => setModal({ type: "moveEntry", entryId: eid, currentContractId: contract.id })}
                           />
                         </div>
                       </>}
@@ -694,6 +744,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                             onUpdateBudget={(nv) => updateBudget(contract.id, "budget_doprava", nv, contract.budget_doprava)}
                             onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "doprava", isExtra: false })}
                             onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved}
+                            onMoveEntry={(eid) => setModal({ type: "moveEntry", entryId: eid, currentContractId: contract.id })}
                           />
                         </div>
                         <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🚛 Doprava — vícepráce</div>
@@ -705,6 +756,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                             onUpdateBudget={(nv) => updateBudget(contract.id, "budget_vice_doprava", nv, contract.budget_vice_doprava)}
                             onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "doprava", isExtra: true })}
                             onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved} isExtra
+                            onMoveEntry={(eid) => setModal({ type: "moveEntry", entryId: eid, currentContractId: contract.id })}
                           />
                         </div>
                       </>}
@@ -850,12 +902,27 @@ export default function Contracts({ customers, employees, currentUser, initialDe
           onSave={saveDNItem} onClose={closeModal}
         />
       )}
+      {modal?.type === "editContract" && (
+        <EditContractModal
+          contract={modal.contract}
+          customers={customers}
+          onSave={saveEditContract} onClose={closeModal}
+        />
+      )}
+      {modal?.type === "moveEntry" && (
+        <MoveEntryModal
+          entryId={modal.entryId}
+          currentContractId={modal.currentContractId}
+          contracts={contracts}
+          onMove={moveEntry} onClose={closeModal}
+        />
+      )}
     </>
   );
 }
 
 // ─── SEKCE NÁKLADŮ ───────────────────────────────────────────────────────────
-function CostSection({ label, actual, budget, entries, employees, onUpdateBudget, onAddEntry, onDeleteEntry, onToggleApproved, isExtra }) {
+function CostSection({ label, actual, budget, entries, employees, onUpdateBudget, onAddEntry, onDeleteEntry, onToggleApproved, onMoveEntry, isExtra }) {
   const [expanded, setExpanded] = useState(false);
   const [editBudget, setEditBudget] = useState(false);
   const [budgetVal, setBudgetVal] = useState(budget);
@@ -939,6 +1006,10 @@ function CostSection({ label, actual, budget, entries, employees, onUpdateBudget
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{fmtKc(e.amount_cost)}</div>
                   {e.unit_price_client > 0 && <div style={{ fontSize: 10, color: "#34d399" }}>↑ {fmtKc(e.amount_client)}</div>}
                 </div>
+                {!isBilled && onMoveEntry && (
+                  <button onClick={() => onMoveEntry(e.id)} title="Přesunout na jinou zakázku"
+                    style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 13, padding: "0 2px" }}>⇄</button>
+                )}
                 {!isBilled && <button onClick={() => onDeleteEntry(e.id)}
                   style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: 15, padding: "0 2px" }}>×</button>}
               </div>
@@ -1943,12 +2014,106 @@ function AddDNItemModal({ deliveryNoteId, onSave, onClose }) {
   );
 }
 
-// ─── TAB: K FAKTURACI ────────────────────────────────────────────────────────
+// ─── MODAL: EDITACE ZAKÁZKY ──────────────────────────────────────────────────
+function EditContractModal({ contract, customers, onSave, onClose }) {
+  const [f, setF] = useState({
+    id:         contract.id,
+    name:       contract.name || "",
+    code:       contract.code || "",
+    customerId: contract.customer_id || "",
+    price:      contract.price || "",
+    address:    contract.address || "",
+    notes:      contract.notes || "",
+  });
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  return (
+    <div style={S.modal}>
+      <div style={S.modalBox}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 17, color: "#fff" }}>Upravit zakázku</div>
+          <button style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18 }} onClick={onClose}>✕</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10 }}>
+          <div>
+            <label style={S.label}>Kód zakázky</label>
+            <input style={S.input} value={f.code} onChange={e => set("code", e.target.value)} placeholder="ZAK-2026-001" />
+          </div>
+          <div>
+            <label style={S.label}>Název zakázky *</label>
+            <input style={S.input} value={f.name} onChange={e => set("name", e.target.value)} />
+          </div>
+        </div>
+
+        <label style={S.label}>Zákazník</label>
+        <select style={S.select} value={f.customerId} onChange={e => set("customerId", e.target.value)}>
+          <option value="">— vyberte —</option>
+          {customers.map(c => <option key={c.id} value={c.id}>{c.name} – {c.company}</option>)}
+        </select>
+
+        <label style={S.label}>Cena zakázky (Kč)</label>
+        <input style={S.input} type="number" value={f.price} onChange={e => set("price", e.target.value)} />
+
+        <label style={S.label}>Adresa místa výkonu</label>
+        <input style={S.input} value={f.address} onChange={e => set("address", e.target.value)} placeholder="Ulice 123, Praha" />
+
+        <label style={S.label}>Poznámky / popis</label>
+        <textarea style={{ ...S.input, height: 80, resize: "vertical" }} value={f.notes} onChange={e => set("notes", e.target.value)} />
+
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button style={S.btn()} onClick={() => { if (f.name.trim()) onSave(f); }}>Ulozit zmeny</button>
+          <button style={S.btnGhost} onClick={onClose}>Zrusit</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// MODAL: PRESUNOUT POLOZKU NA JINOU ZAKAZKU
+function MoveEntryModal({ entryId, currentContractId, contracts, onMove, onClose }) {
+  const [targetId, setTargetId] = useState("");
+  const others = contracts.filter(c => c.id !== currentContractId);
+
+  return (
+    <div style={S.modal}>
+      <div style={{ ...S.modalBox, width: 420 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 17, color: "#fff" }}>Presunout polozku</div>
+          <button style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18 }} onClick={onClose}>x</button>
+        </div>
+
+        <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 16 }}>
+          Vyberte zakazku, na kterou chcete tuto nakladovou polozku presunout.
+        </div>
+
+        <label style={S.label}>Cilova zakazka *</label>
+        <select style={S.select} value={targetId} onChange={e => setTargetId(e.target.value)}>
+          <option value="">vyberte zakazku</option>
+          {others.map(c => (
+            <option key={c.id} value={c.id}>
+              {c.code ? `[${c.code}] ` : ""}{c.name}
+            </option>
+          ))}
+        </select>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+          <button style={S.btn()} onClick={() => { if (targetId) onMove(entryId, Number(targetId)); }}>
+            Presunout
+          </button>
+          <button style={S.btnGhost} onClick={onClose}>Zrusit</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// TAB: K FAKTURACI
 function BillingTab({ contractId, entries, summaries, employees, onMarkBilled, onToggleApproved }) {
   const S_th = S.th;
   const S_td = S.td;
-  const MONTHS_CS = ["", "Leden", "Únor", "Březen", "Duben", "Květen", "Červen",
-    "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"];
+  const MONTHS_CS = ["", "Leden", "Unor", "Brezen", "Duben", "Kveten", "Cerven",
+    "Cervenec", "Srpen", "Zari", "Rijen", "Listopad", "Prosinec"];
 
   const byMonth = {};
   entries.forEach(e => {
@@ -1963,10 +2128,10 @@ function BillingTab({ contractId, entries, summaries, employees, onMarkBilled, o
   return (
     <div>
       <div style={{ fontSize: 12, color: "#475569", marginBottom: 20 }}>
-        Zaškrtněte položky v sekci Náklady jako schválené (✓), poté je zde označte jako vyfakturované.
-        Každý měsíc je zobrazen zvlášť pro přehledné doložení k faktuře.
+        Zaskrtnete polozky v sekci Naklady jako schvalene, pote je zde oznacte jako vyfakturovane.
+        Kazdy mesic je zobrazen zvlast pro prehledne dolozeni k fakture.
       </div>
-      {months.length === 0 && <div style={{ color: "#334155", fontSize: 13 }}>Žádné záznamy k fakturaci.</div>}
+      {months.length === 0 && <div style={{ color: "#334155", fontSize: 13 }}>Zadne zaznamy k fakturaci.</div>}
       {months.map(key => {
         const { year, month, items } = byMonth[key];
         const approved = items.filter(e => e.approved && !e.billed);
@@ -1981,18 +2146,18 @@ function BillingTab({ contractId, entries, summaries, employees, onMarkBilled, o
               <div>
                 <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{MONTHS_CS[month]} {year}</div>
                 <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>
-                  {pending.length > 0 && <span style={{ marginRight: 10, color: "#475569" }}>{pending.length}× čeká</span>}
-                  {approved.length > 0 && <span style={{ marginRight: 10, color: "#34d399" }}>✓ {approved.length}× schváleno ({fmtKc(approvedClient)})</span>}
-                  {billed.length > 0 && <span style={{ color: "#f59e0b" }}>🧾 {billed.length}× fakturováno ({fmtKc(billedClient)})</span>}
+                  {pending.length > 0 && <span style={{ marginRight: 10, color: "#475569" }}>{pending.length}x ceka</span>}
+                  {approved.length > 0 && <span style={{ marginRight: 10, color: "#34d399" }}>✓ {approved.length}x schvaleno ({fmtKc(approvedClient)})</span>}
+                  {billed.length > 0 && <span style={{ color: "#f59e0b" }}>{billed.length}x fakturovano ({fmtKc(billedClient)})</span>}
                 </div>
               </div>
               {approved.length > 0 && (
                 <button style={{ background: "#6366f1", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                  onClick={() => onMarkBilled(contractId, year, month)}>🧾 Označit jako fakturováno</button>
+                  onClick={() => onMarkBilled(contractId, year, month)}>Oznacit jako fakturovano</button>
               )}
               {approved.length === 0 && billed.length > 0 && summary && (
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 11, color: "#475569" }}>Fakturováno celkem</div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>Fakturovano celkem</div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: "#f59e0b" }}>{fmtKc(summary.total_client)}</div>
                 </div>
               )}
@@ -2000,7 +2165,7 @@ function BillingTab({ contractId, entries, summaries, employees, onMarkBilled, o
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <th style={{ ...S_th, width: 28 }}>✓</th>
-                {["Datum", "Popis", "Zaměstnanec", "Množství", "Náklad", "Fakturace", "Stav"].map(h => <th key={h} style={S_th}>{h}</th>)}
+                {["Datum", "Popis", "Zamestnanec", "Mnozstvi", "Naklad", "Fakturace", "Stav"].map(h => <th key={h} style={S_th}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {items.sort((a, b) => (a.date || "").localeCompare(b.date || "")).map(e => {
@@ -2012,13 +2177,27 @@ function BillingTab({ contractId, entries, summaries, employees, onMarkBilled, o
                       <td style={S_td}><input type="checkbox" checked={isApproved} disabled={isBilled} onChange={() => onToggleApproved(e.id, !isApproved)} style={{ accentColor: "#34d399" }} /></td>
                       <td style={S_td}>{e.date}</td>
                       <td style={{ ...S_td, color: "#cbd5e1" }}>{e.description}</td>
-                      <td style={S_td}>{emp?.name || "—"}</td>
+                      <td style={S_td}>{emp?.name || "-"}</td>
                       <td style={S_td}>{e.quantity} {e.unit}</td>
                       <td style={{ ...S_td, color: "#f87171" }}>{fmtKc(Number(e.amount_cost || 0))}</td>
                       <td style={{ ...S_td, color: "#34d399" }}>{fmtKc(Number(e.amount_client || 0))}</td>
                       <td style={S_td}>
-                        {isBilled ? <span style={{ background: "#f59e0b22", color: "#f59e0b", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>🧾 Fakturováno</span>
-                          : isApproved ? <span style={{ background: "#34d39922", color: "#34d399", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>✓ Schváleno</span>
+                        {isBilled ? <span style={{ background: "#f59e0b22", color: "#f59e0b", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>Fakturovano</span>
+                          : isApproved ? <span style={{ background: "#34d39922", color: "#34d399", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>✓ Schvaleno</span>
+                          : <span style={{ background: "#47556922", color: "#475569", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>Ceka</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+ontSize: 11, fontWeight: 700 }}>✓ Schváleno</span>
                           : <span style={{ background: "#47556922", color: "#475569", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>Čeká</span>}
                       </td>
                     </tr>
