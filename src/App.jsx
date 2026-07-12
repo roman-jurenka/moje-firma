@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import Contracts from "./Contracts.jsx";
+import OneDrivePanel from "./OneDrivePanel.jsx";
+import { handleOAuthCallback } from "./onedrive.js";
 
 // ─── MINI KALENDÁŘ ───────────────────────────────────────────────────────────
 
@@ -98,7 +100,7 @@ const USERS = [
 ];
 
 const ROLES = {
-  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
+  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","profile"] },
   manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","profile"] },
   employee: { label: "Zaměstnanec",   color: "#60a5fa", nav: ["dashboard","attendance","calendar","knjiga","profile"] },
@@ -261,6 +263,7 @@ const NAV = [
   { id: "attendance", label: "Docházka", icon: "🕐", group: "Osobní" },
   { id: "calendar", label: "Kalendář", icon: "📅", group: "Osobní" },
   { id: "knjiga", label: "Kniha jízd", icon: "🚗", group: "Osobní" },
+  { id: "onedrive", label: "OneDrive", icon: "☁️", group: "Osobní" },
   { id: "profile", label: "Můj profil", icon: "👤", group: "Osobní" },
 ];
 
@@ -714,6 +717,9 @@ function MainApp({ currentUser, setCurrentUser }) {
           currentUser={currentUser} employees={employees} contracts={contracts}
         />}
 
+        {tab === "onedrive" && (
+          <OneDrivePanel supabase={supabase} />
+        )}
         {tab === "profile" && <Profile
           currentUser={currentUser} attendance={attendance} employees={employees}
         />}
@@ -3933,6 +3939,9 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const todayStr = fmt(new Date());
 
   useEffect(() => {
+    if (window.location.search.includes("code=")) {
+      handleOAuthCallback().then(ok => { if (ok) console.log("OneDrive připojeno"); });
+    }
     supabase.from("projects").select("id, name").order("name").then(({ data }) => { if (data) setProjects(data); });
     supabase.from("vehicles").select("*").order("name").then(({ data }) => setAttVehicles(data || []));
     supabase.from("contracts").select("id, name").order("name").then(({ data }) => setAttLocalContracts(data || []));

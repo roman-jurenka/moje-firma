@@ -1,3 +1,4 @@
+import { isConnected, uploadFileObject } from "./onedrive.js";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 
@@ -588,14 +589,26 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   // ── Upload fotky ──
   const fileRef = useRef();
   async function uploadPhoto(contractId, file, description) {
-    const ext = file.name.split(".").pop();
-    const path = `${contractId}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("zakazky-fotky").upload(path, file);
-    if (error) { alert("Chyba uploadu: " + error.message); return; }
-    const { data: urlData } = supabase.storage.from("zakazky-fotky").getPublicUrl(path);
+    let url, storagePath;
+    const contract = contracts.find(c => c.id === contractId);
+    const folderName = (contract?.name || String(contractId)).replace(/[/\\?%*:|"<>]/g, "_");
+    if (isConnected()) {
+      try {
+        url = await uploadFileObject(`FirmaCRM/Zakázky/${folderName}/Fotky`, file);
+        storagePath = "onedrive:" + file.name;
+      } catch (e) { alert("OneDrive chyba: " + e.message); return; }
+    } else {
+      const ext = file.name.split(".").pop();
+      const path = `${contractId}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("zakazky-fotky").upload(path, file);
+      if (error) { alert("Chyba uploadu: " + error.message); return; }
+      const { data: urlData } = supabase.storage.from("zakazky-fotky").getPublicUrl(path);
+      url = urlData.publicUrl;
+      storagePath = path;
+    }
     const { data: row } = await supabase.from("contract_photos").insert({
       contract_id: contractId, date: today(),
-      storage_path: path, url: urlData.publicUrl,
+      storage_path: storagePath, url,
       description, uploaded_by: currentUser?.employeeId || null,
     }).select().single();
     if (row) setPhotos([...photos, row]);
@@ -1976,14 +1989,27 @@ function DokumentyTab({ contractId, currentUser }) {
     if (!files?.length) return;
     setUploading(true);
     for (const file of files) {
-      const path = `${contractId}/${Date.now()}_${file.name}`;
-      const { error } = await supabase.storage.from("zakazky-dokumenty").upload(path, file);
-      if (error) { alert("Chyba: " + error.message); continue; }
-      const { data: urlData } = supabase.storage.from("zakazky-dokumenty").getPublicUrl(path);
+      let url, storagePath;
+      // Název zakázky pro složku
+      const { data: cData } = await supabase.from("contracts").select("name").eq("id", contractId).single();
+      const folderName = (cData?.name || String(contractId)).replace(/[/\\?%*:|"<>]/g, "_");
+      if (isConnected()) {
+        try {
+          url = await uploadFileObject(`FirmaCRM/Zakázky/${folderName}/Dokumenty`, file);
+          storagePath = "onedrive:" + file.name;
+        } catch (e) { alert("OneDrive chyba: " + e.message); continue; }
+      } else {
+        const path = `${contractId}/${Date.now()}_${file.name}`;
+        const { error } = await supabase.storage.from("zakazky-dokumenty").upload(path, file);
+        if (error) { alert("Chyba: " + error.message); continue; }
+        const { data: urlData } = supabase.storage.from("zakazky-dokumenty").getPublicUrl(path);
+        url = urlData.publicUrl;
+        storagePath = path;
+      }
       const ext = file.name.split(".").pop().toLowerCase();
       const { data: row } = await supabase.from("contract_documents").insert({
         contract_id: contractId, name: file.name, description: desc || "",
-        url: urlData.publicUrl, storage_path: path, file_type: ext,
+        url, storage_path: storagePath, file_type: ext,
         uploaded_by: currentUser?.name || "",
       }).select().single();
       if (row) setDocs(d => [row, ...d]);
