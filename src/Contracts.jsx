@@ -155,12 +155,15 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const [searchQ, setSearchQ] = useState("");
   const [filterStatus, setFilterStatus] = useState("vše");
   const closeModal = () => setModal(null);
+  const [deliveryNotes, setDeliveryNotes] = useState([]);
+  const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
+  const [nakCostFilter, setNakCostFilter] = useState({});
 
   // ── Load ──
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [c, e, p, t, att, bs, msgs, globalTasksData] = await Promise.all([
+      const [c, e, p, t, att, bs, msgs, globalTasksData, dn, dni] = await Promise.all([
         supabase.from("contracts").select("*").order("id"),
         supabase.from("contract_cost_entries").select("*").order("date"),
         supabase.from("contract_photos").select("*").order("date"),
@@ -169,6 +172,8 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         supabase.from("contract_billing_summaries").select("*").order("period_year,period_month"),
         supabase.from("contract_messages").select("*").order("created_at"),
         supabase.from("tasks").select("*").order("id"),
+        supabase.from("delivery_notes").select("*").order("id"),
+        supabase.from("delivery_note_items").select("*").order("id"),
       ]);
       setContracts(c.data || []);
       setEntries(e.data || []);
@@ -178,6 +183,8 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       setBillingSummaries(bs.data || []);
       setContractMessages(msgs.data || []);
       setGlobalTasks(globalTasksData.data || []);
+      setDeliveryNotes(dn.data || []);
+      setDeliveryNoteItems(dni.data || []);
       setLoading(false);
       // Pokud přicházíme z Dealu — rovnou otevřeme modal pro novou zakázku
       if (initialDeal) setModal({ type: "newContract", deal: initialDeal });
@@ -208,16 +215,30 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     };
     const attRecs = attendance.filter(a => (a.contract_id || a.contractId) === cid && a.checkin && a.checkout);
 
+    // Dodací listy — materiálové náklady z delivery_notes
+    const contDN = deliveryNotes.filter(d => d.contract_id === cid);
+    const dnMaterialCost = contDN.reduce((s, d) => {
+      const items = deliveryNoteItems.filter(i => i.delivery_note_id === d.id);
+      return s + items.reduce((sum, i) => sum + Number(i.quantity||1) * Number(i.unit_price||0), 0);
+    }, 0);
+    const dnMaterialClient = contDN.reduce((s, d) => {
+      const items = deliveryNoteItems.filter(i => i.delivery_note_id === d.id);
+      const cost = items.reduce((sum, i) => sum + Number(i.quantity||1) * Number(i.unit_price||0), 0);
+      return s + cost * (1 + Number(d.margin||30) / 100);
+    }, 0);
+
     return {
-      prace:        sum("práce", false),
-      material:     sum("materiál", false),
-      doprava:      sum("doprava", false),
-      vicePrace:    sum("práce", true),
-      viceMaterial: sum("materiál", true),
-      viceDoprava:  sum("doprava", true),
-      praceClient:  sumClient("práce", false),
-      viceClient:   sumClient("práce", true) + sumClient("materiál", true) + sumClient("doprava", true),
-      attHours:     attRecs.reduce((s,a) => s + calcEff(a.checkin, a.checkout), 0),
+      prace:           sum("práce", false),
+      material:        sum("materiál", false) + dnMaterialCost,
+      doprava:         sum("doprava", false),
+      vicePrace:       sum("práce", true),
+      viceMaterial:    sum("materiál", true),
+      viceDoprava:     sum("doprava", true),
+      praceClient:     sumClient("práce", false),
+      viceClient:      sumClient("práce", true) + sumClient("materiál", true) + sumClient("doprava", true),
+      attHours:        attRecs.reduce((s,a) => s + calcEff(a.checkin, a.checkout), 0),
+      dnMaterialCost,
+      dnMaterialClient,
     };
   }
 
@@ -273,6 +294,49 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   async function deleteEntry(id) {
     await supabase.from("contract_cost_entries").delete().eq("id", id);
     setEntries(entries.filter(e => e.id !== id));
+  }
+
+  // ── Dodací listy ──
+  async function saveDeliveryNote(form) {
+    const { data: row } = await supabase.from("delivery_notes").insert({
+      contract_id: form.contractId,
+      supplier:    form.supplier,
+      code:        form.code,
+      margin:      Number(form.margin) || 30,
+      notes:       form.notes || "",
+      created_by:  currentUser?.name || "",
+    }).select().single();
+    if (row) setDeliveryNotes(prev => [...prev, row]);
+    closeModal();
+  }
+
+  async function deleteDeliveryNote(id) {
+    if (!window.confirm("Smazat dodací list i se všemi položkami?")) return;
+    await supabase.from("delivery_notes").delete().eq("id", id);
+    setDeliveryNotes(prev => prev.filter(d => d.id !== id));
+    setDeliveryNoteItems(prev => prev.filter(i => i.delivery_note_id !== id));
+  }
+
+  async function updateDNMargin(id, margin) {
+    await supabase.from("delivery_notes").update({ margin: Number(margin) }).eq("id", id);
+    setDeliveryNotes(prev => prev.map(d => d.id === id ? { ...d, margin: Number(margin) } : d));
+  }
+
+  async function saveDNItem(form) {
+    const { data: row } = await supabase.from("delivery_note_items").insert({
+      delivery_note_id: form.deliveryNoteId,
+      description:      form.description,
+      quantity:         Number(form.quantity) || 1,
+      unit:             form.unit || "ks",
+      unit_price:       Number(form.unitPrice) || 0,
+    }).select().single();
+    if (row) setDeliveryNoteItems(prev => [...prev, row]);
+    closeModal();
+  }
+
+  async function deleteDNItem(id) {
+    await supabase.from("delivery_note_items").delete().eq("id", id);
+    setDeliveryNoteItems(prev => prev.filter(i => i.id !== id));
   }
 
   // ── Schválit / odschválit položku (zaškrtnutí k fakturaci) ──
@@ -374,6 +438,8 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const setTab = (cid, tab) => setActiveTab({ ...activeTab, [cid]: tab });
   const getView = (cid) => detailView[cid] || "prehled";
   const setView = (cid, v) => setDetailView(prev => ({ ...prev, [cid]: v }));
+  const getNakFilter = (cid) => nakCostFilter[cid] || "vše";
+  const setNakFilter = (cid, v) => setNakCostFilter(prev => ({ ...prev, [cid]: v }));
 
   return (
     <>
@@ -510,54 +576,141 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 </div>
 
                 {/* TAB: NÁKLADY */}
-                {tab === "naklady" && (
-                  <div>
-                    {/* Základní náklady */}
-                    <div style={{ fontWeight: 700, color: "#fff", marginBottom: 12, fontSize: 13 }}>Základní náklady</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 20 }}>
-                      {[
-                        { type: "práce", actual: sums.prace, budget: contract.budget_prace, field: "budget_prace" },
-                        { type: "materiál", actual: sums.material, budget: contract.budget_material, field: "budget_material" },
-                        { type: "doprava", actual: sums.doprava, budget: contract.budget_doprava, field: "budget_doprava" },
-                      ].map(sec => (
-                        <CostSection key={sec.type}
-                          label={sec.type} actual={sec.actual} budget={sec.budget}
-                          entries={contEntries.filter(e => e.cost_type === sec.type && !e.is_extra)}
-                          employees={employees}
-                          contractId={contract.id}
-                          budgetField={sec.field}
-                          onUpdateBudget={(nv) => updateBudget(contract.id, sec.field, nv, sec.budget)}
-                          onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: sec.type, isExtra: false })}
-                          onDeleteEntry={deleteEntry}
-                          onToggleApproved={toggleApproved}
-                        />
-                      ))}
-                    </div>
+                {tab === "naklady" && (() => {
+                  const nakFilter = getNakFilter(contract.id);
+                  const contDN = deliveryNotes.filter(d => d.contract_id === contract.id);
+                  const showPrace    = nakFilter === "vše" || nakFilter === "práce";
+                  const showMaterial = nakFilter === "vše" || nakFilter === "materiál";
+                  const showDoprava  = nakFilter === "vše" || nakFilter === "doprava";
+                  return (
+                    <div>
+                      {/* FILTR DROPDOWN */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                        <label style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Zobrazit:</label>
+                        <select
+                          value={nakFilter}
+                          onChange={e => setNakFilter(contract.id, e.target.value)}
+                          style={{ ...S.select, marginBottom: 0, width: 180 }}>
+                          <option value="vše">Vše</option>
+                          <option value="práce">🔨 Práce</option>
+                          <option value="materiál">📦 Materiál + dodací listy</option>
+                          <option value="doprava">🚛 Doprava</option>
+                        </select>
+                      </div>
 
-                    {/* Vícepráce */}
-                    <div style={{ fontWeight: 700, color: "#fff", marginBottom: 12, fontSize: 13 }}>Vícepráce</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
-                      {[
-                        { type: "práce", actual: sums.vicePrace, budget: contract.budget_vice_prace, field: "budget_vice_prace" },
-                        { type: "materiál", actual: sums.viceMaterial, budget: contract.budget_vice_material, field: "budget_vice_material" },
-                        { type: "doprava", actual: sums.viceDoprava, budget: contract.budget_vice_doprava, field: "budget_vice_doprava" },
-                      ].map(sec => (
-                        <CostSection key={"vice_"+sec.type}
-                          label={"Více – " + sec.type} actual={sec.actual} budget={sec.budget}
-                          entries={contEntries.filter(e => e.cost_type === sec.type && e.is_extra)}
-                          employees={employees}
-                          contractId={contract.id}
-                          budgetField={sec.field}
-                          onUpdateBudget={(nv) => updateBudget(contract.id, sec.field, nv, sec.budget)}
-                          onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: sec.type, isExtra: true })}
-                          onDeleteEntry={deleteEntry}
-                          onToggleApproved={toggleApproved}
-                          isExtra
-                        />
-                      ))}
+                      {/* PRÁCE */}
+                      {showPrace && <>
+                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🔨 Práce — základní</div>
+                        <div style={{ marginBottom: 12 }}>
+                          <CostSection
+                            label="práce" actual={sums.prace} budget={contract.budget_prace}
+                            entries={contEntries.filter(e => e.cost_type === "práce" && !e.is_extra)}
+                            employees={employees} contractId={contract.id}
+                            onUpdateBudget={(nv) => updateBudget(contract.id, "budget_prace", nv, contract.budget_prace)}
+                            onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "práce", isExtra: false })}
+                            onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved}
+                          />
+                        </div>
+                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🔨 Práce — vícepráce</div>
+                        <div style={{ marginBottom: 20 }}>
+                          <CostSection
+                            label="Více – práce" actual={sums.vicePrace} budget={contract.budget_vice_prace}
+                            entries={contEntries.filter(e => e.cost_type === "práce" && e.is_extra)}
+                            employees={employees} contractId={contract.id}
+                            onUpdateBudget={(nv) => updateBudget(contract.id, "budget_vice_prace", nv, contract.budget_vice_prace)}
+                            onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "práce", isExtra: true })}
+                            onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved} isExtra
+                          />
+                        </div>
+                      </>}
+
+                      {/* MATERIÁL */}
+                      {showMaterial && <>
+                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>📦 Materiál — základní</div>
+                        <div style={{ marginBottom: 12 }}>
+                          <CostSection
+                            label="materiál" actual={sums.material} budget={contract.budget_material}
+                            entries={contEntries.filter(e => e.cost_type === "materiál" && !e.is_extra)}
+                            employees={employees} contractId={contract.id}
+                            onUpdateBudget={(nv) => updateBudget(contract.id, "budget_material", nv, contract.budget_material)}
+                            onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "materiál", isExtra: false })}
+                            onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved}
+                          />
+                        </div>
+
+                        {/* DODACÍ LISTY */}
+                        <div style={{ background: "#0a0d14", borderRadius: 10, border: "1px solid #1a2035", marginBottom: 12, overflow: "hidden" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: contDN.length > 0 ? "1px solid #1a2035" : "none" }}>
+                            <div>
+                              <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>📋 Dodací listy</div>
+                              {contDN.length > 0 && (
+                                <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>
+                                  Náklad: <span style={{ color: "#f87171", fontWeight: 700 }}>{fmtKc(sums.dnMaterialCost)}</span>
+                                  {" · "}Fakturace: <span style={{ color: "#34d399", fontWeight: 700 }}>{fmtKc(sums.dnMaterialClient)}</span>
+                                </div>
+                              )}
+                            </div>
+                            <button style={{ ...S.btn("#1a2035"), border: "1px solid #252d45", color: "#6366f1", fontSize: 12, padding: "6px 14px" }}
+                              onClick={() => setModal({ type: "addDeliveryNote", contractId: contract.id })}>
+                              + Nový dodací list
+                            </button>
+                          </div>
+                          {contDN.length === 0 && (
+                            <div style={{ padding: "16px", fontSize: 12, color: "#334155" }}>Žádné dodací listy. Klikněte "+ Nový dodací list".</div>
+                          )}
+                          {contDN.map(dn => (
+                            <DeliveryNoteRow
+                              key={dn.id} dn={dn}
+                              items={deliveryNoteItems.filter(i => i.delivery_note_id === dn.id)}
+                              onDelete={() => deleteDeliveryNote(dn.id)}
+                              onUpdateMargin={(m) => updateDNMargin(dn.id, m)}
+                              onAddItem={() => setModal({ type: "addDNItem", deliveryNoteId: dn.id })}
+                              onDeleteItem={deleteDNItem}
+                            />
+                          ))}
+                        </div>
+
+                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>📦 Materiál — vícepráce</div>
+                        <div style={{ marginBottom: 20 }}>
+                          <CostSection
+                            label="Více – materiál" actual={sums.viceMaterial} budget={contract.budget_vice_material}
+                            entries={contEntries.filter(e => e.cost_type === "materiál" && e.is_extra)}
+                            employees={employees} contractId={contract.id}
+                            onUpdateBudget={(nv) => updateBudget(contract.id, "budget_vice_material", nv, contract.budget_vice_material)}
+                            onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "materiál", isExtra: true })}
+                            onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved} isExtra
+                          />
+                        </div>
+                      </>}
+
+                      {/* DOPRAVA */}
+                      {showDoprava && <>
+                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🚛 Doprava — základní</div>
+                        <div style={{ marginBottom: 12 }}>
+                          <CostSection
+                            label="doprava" actual={sums.doprava} budget={contract.budget_doprava}
+                            entries={contEntries.filter(e => e.cost_type === "doprava" && !e.is_extra)}
+                            employees={employees} contractId={contract.id}
+                            onUpdateBudget={(nv) => updateBudget(contract.id, "budget_doprava", nv, contract.budget_doprava)}
+                            onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "doprava", isExtra: false })}
+                            onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved}
+                          />
+                        </div>
+                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🚛 Doprava — vícepráce</div>
+                        <div style={{ marginBottom: 20 }}>
+                          <CostSection
+                            label="Více – doprava" actual={sums.viceDoprava} budget={contract.budget_vice_doprava}
+                            entries={contEntries.filter(e => e.cost_type === "doprava" && e.is_extra)}
+                            employees={employees} contractId={contract.id}
+                            onUpdateBudget={(nv) => updateBudget(contract.id, "budget_vice_doprava", nv, contract.budget_vice_doprava)}
+                            onAddEntry={() => setModal({ type: "addEntry", contractId: contract.id, costType: "doprava", isExtra: true })}
+                            onDeleteEntry={deleteEntry} onToggleApproved={toggleApproved} isExtra
+                          />
+                        </div>
+                      </>}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* TAB: FINANCE */}
                 {tab === "financni" && (
@@ -683,6 +836,18 @@ export default function Contracts({ customers, employees, currentUser, initialDe
           contractId={modal.contractId} employees={employees}
           photos={modal.photos || []} currentUser={currentUser}
           onSave={saveTask} onClose={closeModal}
+        />
+      )}
+      {modal?.type === "addDeliveryNote" && (
+        <AddDeliveryNoteModal
+          contractId={modal.contractId}
+          onSave={saveDeliveryNote} onClose={closeModal}
+        />
+      )}
+      {modal?.type === "addDNItem" && (
+        <AddDNItemModal
+          deliveryNoteId={modal.deliveryNoteId}
+          onSave={saveDNItem} onClose={closeModal}
         />
       )}
     </>
@@ -1585,6 +1750,195 @@ function DokumentyTab({ contractId, currentUser }) {
           <button onClick={() => deleteDoc(doc.id, doc.storage_path)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>✕</button>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── DODACÍ LIST ROW ─────────────────────────────────────────────────────────
+function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDeleteItem }) {
+  const [expanded, setExpanded] = useState(false);
+  const [editMargin, setEditMargin] = useState(false);
+  const [marginVal, setMarginVal] = useState(String(dn.margin ?? 30));
+
+  const totalCost   = items.reduce((s, i) => s + Number(i.quantity||1) * Number(i.unit_price||0), 0);
+  const totalClient = totalCost * (1 + Number(dn.margin||30) / 100);
+
+  return (
+    <div style={{ borderBottom: "1px solid #1a2035" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ background: "#6366f122", color: "#818cf8", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{dn.code}</span>
+            <span style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{dn.supplier}</span>
+          </div>
+          <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: 11, color: "#475569", flexWrap: "wrap", alignItems: "center" }}>
+            <span>Náklad: <strong style={{ color: "#f87171" }}>{fmtKc(totalCost)}</strong></span>
+            <span>Fakturace: <strong style={{ color: "#34d399" }}>{fmtKc(totalClient)}</strong></span>
+            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              Marže:{" "}
+              {editMargin ? (
+                <>
+                  <input
+                    type="number"
+                    value={marginVal}
+                    onChange={e => setMarginVal(e.target.value)}
+                    style={{ width: 50, background: "#0f1320", border: "1px solid #252d45", borderRadius: 4, color: "#e2e8f0", fontSize: 11, padding: "2px 5px" }}
+                  />
+                  %{" "}
+                  <button onClick={() => { onUpdateMargin(marginVal); setEditMargin(false); }}
+                    style={{ background: "none", border: "none", color: "#34d399", cursor: "pointer", fontSize: 13 }}>✓</button>
+                  <button onClick={() => setEditMargin(false)}
+                    style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 13 }}>✕</button>
+                </>
+              ) : (
+                <>
+                  <strong style={{ color: "#f59e0b" }}>{dn.margin ?? 30}%</strong>{" "}
+                  <button onClick={() => { setMarginVal(String(dn.margin ?? 30)); setEditMargin(true); }}
+                    style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: 11, padding: 0 }}>✏️</button>
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+        <button onClick={() => setExpanded(e => !e)}
+          style={{ background: "none", border: "1px solid #252d45", borderRadius: 6, color: "#94a3b8", cursor: "pointer", fontSize: 11, padding: "4px 10px", whiteSpace: "nowrap" }}>
+          {expanded ? `▲ Sbalit (${items.length})` : `▼ Položky (${items.length})`}
+        </button>
+        <button onClick={onAddItem}
+          style={{ background: "#1a2035", border: "1px solid #6366f144", borderRadius: 6, color: "#6366f1", fontSize: 11, padding: "5px 10px", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>
+          + Položka
+        </button>
+        <button onClick={onDelete}
+          style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: 18, padding: "0 4px", lineHeight: 1 }}>×</button>
+      </div>
+
+      {expanded && (
+        <div style={{ background: "#080b12", borderTop: "1px solid #1a2035" }}>
+          {items.length === 0 && (
+            <div style={{ padding: "12px 16px", fontSize: 12, color: "#334155" }}>Žádné položky. Klikněte "+ Položka".</div>
+          )}
+          {items.length > 0 && (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {["Popis", "Množství", "Jedn.", "Cena/j (náklad)", "Cena/j (fakt.)", "Celkem náklad", "Celkem fakt.", ""].map(h => (
+                    <th key={h} style={{ ...S.th, fontSize: 10, padding: "6px 10px" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => {
+                  const itemCost   = Number(item.quantity||1) * Number(item.unit_price||0);
+                  const margin     = Number(dn.margin||30) / 100;
+                  const itemClient = itemCost * (1 + margin);
+                  const clientUnit = Number(item.unit_price||0) * (1 + margin);
+                  return (
+                    <tr key={item.id}>
+                      <td style={{ ...S.td, color: "#e2e8f0" }}>{item.description}</td>
+                      <td style={S.td}>{item.quantity}</td>
+                      <td style={S.td}>{item.unit}</td>
+                      <td style={{ ...S.td, color: "#f87171" }}>{fmtKc(item.unit_price)}</td>
+                      <td style={{ ...S.td, color: "#34d399" }}>{fmtKc(clientUnit)}</td>
+                      <td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{fmtKc(itemCost)}</td>
+                      <td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtKc(itemClient)}</td>
+                      <td style={S.td}>
+                        <button onClick={() => onDeleteItem(item.id)}
+                          style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: 16 }}>×</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MODAL: NOVÝ DODACÍ LIST ──────────────────────────────────────────────────
+function AddDeliveryNoteModal({ contractId, onSave, onClose }) {
+  const [f, setF] = useState({ supplier: "", code: "", margin: "30", notes: "", contractId });
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  return (
+    <div style={S.modal}>
+      <div style={S.modalBox}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 17, color: "#fff" }}>Nový dodací list</div>
+          <button style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18 }} onClick={onClose}>✕</button>
+        </div>
+
+        <label style={S.label}>Dodavatel *</label>
+        <input style={S.input} value={f.supplier} onChange={e => set("supplier", e.target.value)} placeholder="Firma Novák s.r.o." />
+
+        <label style={S.label}>Kód / číslo dodacího listu *</label>
+        <input style={S.input} value={f.code} onChange={e => set("code", e.target.value)} placeholder="DL-2026-001" />
+
+        <label style={S.label}>Marže (%)</label>
+        <input style={S.input} type="number" value={f.margin} onChange={e => set("margin", e.target.value)} placeholder="30" />
+        <div style={{ fontSize: 11, color: "#475569", marginTop: -8, marginBottom: 10 }}>
+          Cena pro zákazníka = nákladová cena × (1 + marže %). Výchozí: 30%.
+        </div>
+
+        <label style={S.label}>Poznámka</label>
+        <textarea style={{ ...S.input, height: 56, resize: "vertical" }} value={f.notes} onChange={e => set("notes", e.target.value)} />
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button style={S.btn()} onClick={() => { if (f.supplier && f.code) onSave(f); }}>Uložit dodací list</button>
+          <button style={S.btnGhost} onClick={onClose}>Zrušit</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL: NOVÁ POLOŽKA DODACÍHO LISTU ──────────────────────────────────────
+function AddDNItemModal({ deliveryNoteId, onSave, onClose }) {
+  const [f, setF] = useState({ description: "", quantity: "1", unit: "ks", unitPrice: "", deliveryNoteId });
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  const total = (Number(f.quantity) || 0) * (Number(f.unitPrice) || 0);
+
+  return (
+    <div style={S.modal}>
+      <div style={S.modalBox}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 17, color: "#fff" }}>Nová položka dodacího listu</div>
+          <button style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18 }} onClick={onClose}>✕</button>
+        </div>
+
+        <label style={S.label}>Popis *</label>
+        <input style={S.input} value={f.description} onChange={e => set("description", e.target.value)} placeholder="Kabel CYKY 3×2,5..." />
+
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
+          <div>
+            <label style={S.label}>Množství</label>
+            <input style={S.input} type="number" step="0.001" value={f.quantity} onChange={e => set("quantity", e.target.value)} />
+          </div>
+          <div>
+            <label style={S.label}>Jednotka</label>
+            <select style={S.select} value={f.unit} onChange={e => set("unit", e.target.value)}>
+              {UNITS.map(u => <option key={u}>{u}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <label style={S.label}>Nákladová cena / jednotku (Kč)</label>
+        <input style={S.input} type="number" value={f.unitPrice} onChange={e => set("unitPrice", e.target.value)} />
+
+        {total > 0 && (
+          <div style={{ background: "#0a0d14", borderRadius: 8, padding: 12, marginBottom: 10, border: "1px solid #252d45" }}>
+            <div style={{ fontSize: 12, color: "#475569" }}>Celkový náklad: <strong style={{ color: "#f87171" }}>{fmtKc(total)}</strong></div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button style={S.btn()} onClick={() => { if (f.description) onSave(f); }}>Uložit položku</button>
+          <button style={S.btnGhost} onClick={onClose}>Zrušit</button>
+        </div>
+      </div>
     </div>
   );
 }
