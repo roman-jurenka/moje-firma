@@ -4362,8 +4362,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               )}
             </div>
 
-            {/* Přidat blok — pouze admin a Šarlota */}
-            {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
+            {/* Přidat blok */}
+            {(
               <div style={{ ...S.card, marginBottom: 20 }}>
                 <div style={{ fontWeight: 700, color: "#fff", fontSize: 13, marginBottom: 12 }}>➕ Přidat blok</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr 2fr auto", gap: 8, alignItems: "end" }}>
@@ -4401,9 +4401,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                     onClick={async () => {
                       if (!tlIn) return;
                       const cid = tlContractId ? Number(tlContractId) : null;
-                      const { data: row } = await supabase.from("harmonogram")
+                      const { data: row, error } = await supabase.from("harmonogram")
                         .insert({ employee_id: effectiveEmpId, date: timelineDate, checkin: tlIn, checkout: tlOut||null, activity: tlActivity||null, contract_id: cid, created_by: currentUser.name })
                         .select().single();
+                      if (error) { alert("Chyba při ukládání: " + error.message); return; }
                       if (row) setHarmonogramRecs([...harmonogramRecs, row]);
                       setTlIn(""); setTlOut(""); setTlActivity(""); setTlContractId("");
                     }}>+ Přidat</button>
