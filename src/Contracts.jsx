@@ -137,6 +137,142 @@ const S = {
 };
 
 // ─── HLAVNÍ KOMPONENTA ────────────────────────────────────────────────────────
+
+function ContractKalendarWidget({ attendance, employees }) {
+  const calcH2 = (ci, co) => {
+    if (!ci || !co) return 0;
+    const [h1, m1] = ci.split(":").map(Number);
+    const [h2, m2] = co.split(":").map(Number);
+    return Math.max(0, (h2 * 60 + m2 - (h1 * 60 + m1)) / 60);
+  };
+  const fmtH2 = h => h <= 0 ? "—" : `${Math.floor(h)}h ${String(Math.round((h - Math.floor(h)) * 60)).padStart(2, "0")}m`;
+  const allDates = attendance.map(a => a.date).filter(Boolean).sort();
+  const defaultMon = allDates.length > 0 ? allDates[allDates.length - 1].slice(0, 7) : new Date().toISOString().slice(0, 7);
+  const [calMon, setCalMon] = useState(defaultMon);
+  const [selDay, setSelDay] = useState(null);
+  const [calYear, calMonNum] = calMon.split("-").map(Number);
+  const daysInMonth = new Date(calYear, calMonNum, 0).getDate();
+  const startDow = (new Date(calYear, calMonNum - 1, 1).getDay() + 6) % 7;
+  const monthAtt = attendance.filter(a => a.date && a.date.startsWith(calMon));
+  const empColors = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6"];
+  const empColorMap = {};
+  employees.forEach((e, i) => { empColorMap[e.id] = empColors[i % empColors.length]; });
+  const availMonths = [...new Set(attendance.map(a => a.date?.slice(0, 7)).filter(Boolean))].sort().reverse();
+
+  return (
+    <div style={{ background: "#0a0d14", borderRadius: 10, border: "1px solid #1a2035", padding: "14px 16px", marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase" }}>📆 Kalendář práce</div>
+        {availMonths.length > 0 && (
+          <select value={calMon} onChange={e => { setCalMon(e.target.value); setSelDay(null); }}
+            style={{ ...S.select, marginBottom: 0, width: 160, fontSize: 12, padding: "4px 8px" }}>
+            {availMonths.map(m => (
+              <option key={m} value={m}>{new Date(m + "-01").toLocaleString("cs-CZ", { month: "long", year: "numeric" })}</option>
+            ))}
+          </select>
+        )}
+      </div>
+      {/* Legend */}
+      {employees.filter(e => monthAtt.some(a => a.employee_id === e.id || a.employeeId === e.id)).length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {employees.filter(e => monthAtt.some(a => a.employee_id === e.id || a.employeeId === e.id)).map(e => (
+            <span key={e.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#94a3b8" }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: empColorMap[e.id], display: "inline-block" }} />
+              {e.name}
+            </span>
+          ))}
+        </div>
+      )}
+      {attendance.length === 0 && (
+        <div style={{ color: "#334155", fontSize: 12 }}>Žádné záznamy práce pro tuto zakázku.</div>
+      )}
+      {/* Day headers */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3, marginBottom: 3 }}>
+        {["Po", "Út", "St", "Čt", "Pá", "So", "Ne"].map(d => (
+          <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: "#334155" }}>{d}</div>
+        ))}
+      </div>
+      {/* Calendar cells */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
+        {Array.from({ length: startDow }).map((_, i) => <div key={"e" + i} />)}
+        {Array.from({ length: daysInMonth }, (_, i) => {
+          const day = i + 1;
+          const dateStr = calMon + "-" + String(day).padStart(2, "0");
+          const dayRecs = monthAtt.filter(a => a.date === dateStr);
+          const isToday = dateStr === new Date().toISOString().slice(0, 10);
+          const isSel = selDay === dateStr;
+          const dow = (new Date(dateStr).getDay() + 6) % 7;
+          return (
+            <div key={day}
+              onClick={() => dayRecs.length > 0 && setSelDay(isSel ? null : dateStr)}
+              style={{
+                background: isSel ? "#1e3a5f" : isToday ? "#0f2d47" : "#0f172a",
+                border: isSel ? "1.5px solid #3b82f6" : isToday ? "1.5px solid #2563eb55" : "1px solid #1e293b",
+                borderRadius: 6, padding: "3px 2px", minHeight: 44,
+                cursor: dayRecs.length > 0 ? "pointer" : "default",
+              }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: dow >= 5 ? "#334155" : "#64748b", textAlign: "right", marginBottom: 2 }}>{day}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}>
+                {dayRecs.map(r => {
+                  const emp = employees.find(e => e.id === (r.employee_id || r.employeeId));
+                  if (!emp) return null;
+                  const h = calcH2(r.checkin, r.checkout);
+                  return (
+                    <span key={r.id} title={`${emp.name} — ${fmtH2(h)}`} style={{
+                      width: 14, height: 14, borderRadius: "50%",
+                      background: empColorMap[emp.id] || "#475569",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 6, fontWeight: 700, color: "#fff",
+                    }}>{emp.name.charAt(0)}</span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {/* Day detail */}
+      {selDay && (() => {
+        const dayRecs = monthAtt.filter(a => a.date === selDay);
+        const dayTotal = dayRecs.reduce((s, r) => s + calcH2(r.checkin, r.checkout), 0);
+        return (
+          <div style={{ marginTop: 10, background: "#0f172a", border: "1px solid #1e3a5f", borderRadius: 8, padding: "10px 14px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#93c5fd", marginBottom: 8 }}>
+              {new Date(selDay).toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" })}
+              {" · "}<span style={{ color: "#475569", fontWeight: 400 }}>{fmtH2(dayTotal)}</span>
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>{["Zaměstnanec", "Příchod", "Odchod", "Hodin", "Činnost"].map(h => (
+                  <th key={h} style={{ textAlign: "left", padding: "3px 8px", fontSize: 10, color: "#334155", borderBottom: "1px solid #1e293b" }}>{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody>
+                {dayRecs.map(r => {
+                  const emp = employees.find(e => e.id === (r.employee_id || r.employeeId));
+                  const h = calcH2(r.checkin, r.checkout);
+                  return (
+                    <tr key={r.id}>
+                      <td style={{ padding: "4px 8px", fontSize: 12, color: "#fff", fontWeight: 600 }}>
+                        <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: empColorMap[emp?.id] || "#475569", marginRight: 5 }} />
+                        {emp?.name || "—"}
+                      </td>
+                      <td style={{ padding: "4px 8px", fontSize: 12, color: "#34d399" }}>{r.checkin || "—"}</td>
+                      <td style={{ padding: "4px 8px", fontSize: 12, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#475569" }}>probíhá</span>}</td>
+                      <td style={{ padding: "4px 8px", fontSize: 12, color: "#fff", fontWeight: 700 }}>{fmtH2(h)}</td>
+                      <td style={{ padding: "4px 8px", fontSize: 11, color: "#64748b", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 export default function Contracts({ customers, employees, currentUser, initialDeal }) {
   const [contracts, setContracts] = useState([]);
   const [entries, setEntries] = useState([]);       // contract_cost_entries
@@ -672,134 +808,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                         </div>
 
                         {/* KALENDÁŘ PRÁCE */}
-                        {(() => {
-                          const calcH2 = (ci, co) => {
-                            if (!ci || !co) return 0;
-                            const [h1,m1] = ci.split(":").map(Number);
-                            const [h2,m2] = co.split(":").map(Number);
-                            return Math.max(0, (h2*60+m2-(h1*60+m1))/60);
-                          };
-                          const fmtH2 = h => h <= 0 ? "—" : `${Math.floor(h)}h ${String(Math.round((h-Math.floor(h))*60)).padStart(2,"0")}m`;
-                          const allDates = contAttendance.map(a => a.date).filter(Boolean).sort();
-                          const defaultMon = allDates.length > 0 ? allDates[allDates.length-1].slice(0,7) : new Date().toISOString().slice(0,7);
-                          const [calMon, setCalMon] = useState(defaultMon);
-                          const [selDay, setSelDay] = useState(null);
-                          const [calYear, calMonNum] = calMon.split("-").map(Number);
-                          const daysInMonth = new Date(calYear, calMonNum, 0).getDate();
-                          const startDow = (new Date(calYear, calMonNum-1, 1).getDay() + 6) % 7;
-                          const monthAtt = contAttendance.filter(a => a.date && a.date.startsWith(calMon));
-                          const empColors = ["#6366f1","#10b981","#f59e0b","#ef4444","#3b82f6","#8b5cf6","#ec4899","#14b8a6"];
-                          const empColorMap = {};
-                          employees.forEach((e,i) => { empColorMap[e.id] = empColors[i % empColors.length]; });
-                          const availMonths = [...new Set(contAttendance.map(a => a.date?.slice(0,7)).filter(Boolean))].sort().reverse();
-                          return (
-                            <div style={{ background:"#0a0d14", borderRadius:10, border:"1px solid #1a2035", padding:"14px 16px", marginBottom:20 }}>
-                              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-                                <div style={{ fontWeight:700, color:"#94a3b8", fontSize:11, letterSpacing:"0.08em", textTransform:"uppercase" }}>📆 Kalendář práce</div>
-                                <select value={calMon} onChange={e => { setCalMon(e.target.value); setSelDay(null); }}
-                                  style={{ ...S.select, marginBottom:0, width:160, fontSize:12, padding:"4px 8px" }}>
-                                  {availMonths.length > 0 ? availMonths.map(m => (
-                                    <option key={m} value={m}>{new Date(m+"-01").toLocaleString("cs-CZ",{month:"long",year:"numeric"})}</option>
-                                  )) : <option value={calMon}>{new Date(calMon+"-01").toLocaleString("cs-CZ",{month:"long",year:"numeric"})}</option>}
-                                </select>
-                              </div>
-                              {/* Legend */}
-                              {employees.filter(e => monthAtt.some(a => a.employee_id === e.id || a.employeeId === e.id)).length > 0 && (
-                                <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:10 }}>
-                                  {employees.filter(e => monthAtt.some(a => a.employee_id === e.id || a.employeeId === e.id)).map(e => (
-                                    <span key={e.id} style={{ display:"flex", alignItems:"center", gap:4, fontSize:11, color:"#94a3b8" }}>
-                                      <span style={{ width:8, height:8, borderRadius:"50%", background:empColorMap[e.id], display:"inline-block" }} />
-                                      {e.name}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              {/* Day headers */}
-                              <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:3 }}>
-                                {["Po","Út","St","Čt","Pá","So","Ne"].map(d => (
-                                  <div key={d} style={{ textAlign:"center", fontSize:9, fontWeight:700, color:"#334155" }}>{d}</div>
-                                ))}
-                              </div>
-                              {/* Calendar cells */}
-                              <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3 }}>
-                                {Array.from({length:startDow}).map((_,i) => <div key={"e"+i} />)}
-                                {Array.from({length:daysInMonth},(_,i) => {
-                                  const day = i+1;
-                                  const dateStr = calMon+"-"+String(day).padStart(2,"0");
-                                  const dayRecs = monthAtt.filter(a => a.date === dateStr);
-                                  const isToday = dateStr === new Date().toISOString().slice(0,10);
-                                  const isSel = selDay === dateStr;
-                                  const dow = (new Date(dateStr).getDay()+6)%7;
-                                  return (
-                                    <div key={day}
-                                      onClick={() => dayRecs.length > 0 && setSelDay(isSel ? null : dateStr)}
-                                      style={{
-                                        background: isSel ? "#1e3a5f" : isToday ? "#0f2d47" : "#0f172a",
-                                        border: isSel ? "1.5px solid #3b82f6" : isToday ? "1.5px solid #2563eb55" : "1px solid #1e293b",
-                                        borderRadius:6, padding:"3px 2px", minHeight:44,
-                                        cursor: dayRecs.length > 0 ? "pointer" : "default",
-                                      }}>
-                                      <div style={{ fontSize:9, fontWeight:700, color: dow>=5?"#334155":"#64748b", textAlign:"right", marginBottom:2 }}>{day}</div>
-                                      <div style={{ display:"flex", flexWrap:"wrap", gap:2, justifyContent:"center" }}>
-                                        {dayRecs.map(r => {
-                                          const emp = employees.find(e => e.id===(r.employee_id||r.employeeId));
-                                          if (!emp) return null;
-                                          const h = calcH2(r.checkin,r.checkout);
-                                          return (
-                                            <span key={r.id} title={`${emp.name} — ${fmtH2(h)}`} style={{
-                                              width:14, height:14, borderRadius:"50%",
-                                              background: empColorMap[emp.id]||"#475569",
-                                              display:"flex", alignItems:"center", justifyContent:"center",
-                                              fontSize:6, fontWeight:700, color:"#fff",
-                                            }}>{emp.name.charAt(0)}</span>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {/* Day detail */}
-                              {selDay && (() => {
-                                const dayRecs = monthAtt.filter(a => a.date === selDay);
-                                const dayTotal = dayRecs.reduce((s,r) => s+calcH2(r.checkin,r.checkout), 0);
-                                return (
-                                  <div style={{ marginTop:10, background:"#0f172a", border:"1px solid #1e3a5f", borderRadius:8, padding:"10px 14px" }}>
-                                    <div style={{ fontSize:12, fontWeight:700, color:"#93c5fd", marginBottom:8 }}>
-                                      {new Date(selDay).toLocaleDateString("cs-CZ",{weekday:"long",day:"numeric",month:"long"})}
-                                      {" · "}<span style={{ color:"#475569", fontWeight:400 }}>{fmtH2(dayTotal)}</span>
-                                    </div>
-                                    <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                                      <thead>
-                                        <tr>{["Zaměstnanec","Příchod","Odchod","Hodin","Činnost"].map(h => (
-                                          <th key={h} style={{ textAlign:"left", padding:"3px 8px", fontSize:10, color:"#334155", borderBottom:"1px solid #1e293b" }}>{h}</th>
-                                        ))}</tr>
-                                      </thead>
-                                      <tbody>
-                                        {dayRecs.map(r => {
-                                          const emp = employees.find(e => e.id===(r.employee_id||r.employeeId));
-                                          const h = calcH2(r.checkin,r.checkout);
-                                          return (
-                                            <tr key={r.id}>
-                                              <td style={{ padding:"4px 8px", fontSize:12, color:"#fff", fontWeight:600 }}>
-                                                <span style={{ display:"inline-block", width:7, height:7, borderRadius:"50%", background:empColorMap[emp?.id]||"#475569", marginRight:5 }} />
-                                                {emp?.name||"—"}
-                                              </td>
-                                              <td style={{ padding:"4px 8px", fontSize:12, color:"#34d399" }}>{r.checkin||"—"}</td>
-                                              <td style={{ padding:"4px 8px", fontSize:12, color:"#f59e0b" }}>{r.checkout||<span style={{color:"#475569"}}>probíhá</span>}</td>
-                                              <td style={{ padding:"4px 8px", fontSize:12, color:"#fff", fontWeight:700 }}>{fmtH2(h)}</td>
-                                              <td style={{ padding:"4px 8px", fontSize:11, color:"#64748b", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.activity||"—"}</td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          );
-                        })()}
+                        <ContractKalendarWidget attendance={contAttendance} employees={employees} />
 
                       </>}
 
