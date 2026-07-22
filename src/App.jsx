@@ -2602,6 +2602,48 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
   const [showTemplates, setShowTemplates] = useState(false);
   const [newTemplate, setNewTemplate] = useState({ name: "", icon: "📋", steps: [""] });
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [projectTab, setProjectTab] = useState({}); // { [projectId]: "kroky" | "material" }
+  const [deliveryItems, setDeliveryItems] = useState({}); // { [projectId]: [...items] }
+  const [newDeliveryItem, setNewDeliveryItem] = useState({}); // { [projectId]: {name, quantity, unit} }
+  const [editingItem, setEditingItem] = useState({}); // { [itemId]: quantity }
+
+  const loadDeliveryItems = async (projectId) => {
+    const { data } = await supabase.from("delivery_items").select("*").eq("project_id", projectId).order("created_at");
+    setDeliveryItems(prev => ({ ...prev, [projectId]: data || [] }));
+  };
+
+  const addDeliveryItem = async (projectId) => {
+    const item = newDeliveryItem[projectId];
+    if (!item?.name?.trim()) return;
+    const { data: row } = await supabase.from("delivery_items").insert({
+      project_id: projectId,
+      name: item.name.trim(),
+      quantity: Number(item.quantity) || 1,
+      unit: item.unit || "ks",
+      note: item.note || "",
+    }).select().single();
+    if (row) {
+      setDeliveryItems(prev => ({ ...prev, [projectId]: [...(prev[projectId] || []), row] }));
+      setNewDeliveryItem(prev => ({ ...prev, [projectId]: { name: "", quantity: 1, unit: "ks", note: "" } }));
+    }
+  };
+
+  const updateDeliveryQty = async (projectId, itemId, quantity) => {
+    await supabase.from("delivery_items").update({ quantity: Number(quantity) }).eq("id", itemId);
+    setDeliveryItems(prev => ({
+      ...prev,
+      [projectId]: (prev[projectId] || []).map(i => i.id === itemId ? { ...i, quantity: Number(quantity) } : i)
+    }));
+    setEditingItem({});
+  };
+
+  const deleteDeliveryItem = async (projectId, itemId) => {
+    await supabase.from("delivery_items").delete().eq("id", itemId);
+    setDeliveryItems(prev => ({
+      ...prev,
+      [projectId]: (prev[projectId] || []).filter(i => i.id !== itemId)
+    }));
+  };
 
   // Recalculate progress from steps
   const calcProgress = (steps) => {
@@ -2785,9 +2827,13 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span style={S.badge(PROJ_COLORS[p.status])}>{p.status}</span>
-                  <button onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                  <button onClick={() => {
+                    const newExpanded = isExpanded ? null : p.id;
+                    setExpandedId(newExpanded);
+                    if (newExpanded && !deliveryItems[newExpanded]) loadDeliveryItems(newExpanded);
+                  }}
                     style={{ background: "#e2e8f0", border: "1px solid #252d45", borderRadius: 8, padding: "5px 12px", color: "#475569", cursor: "pointer", fontSize: 12 }}>
-                    {isExpanded ? "▲ Sbalit" : "▼ Kroky"}
+                    {isExpanded ? "▲ Sbalit" : "▼ Detail"}
                   </button>
                 </div>
               </div>
@@ -2838,6 +2884,19 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
               {/* Expandovaný panel kroků */}
               {isExpanded && (
                 <div style={{ marginTop: 18, borderTop: "1px solid #1a2035", paddingTop: 18 }}>
+                  {/* Záložky */}
+                  <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid #1a2035" }}>
+                    {["kroky", "material"].map(tab => (
+                      <button key={tab} onClick={() => setProjectTab(prev => ({ ...prev, [p.id]: tab }))}
+                        style={{ padding: "7px 18px", background: "none", border: "none", borderBottom: (projectTab[p.id] || "kroky") === tab ? "2px solid #2563eb" : "2px solid transparent", color: (projectTab[p.id] || "kroky") === tab ? "#2563eb" : "#475569", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                        {tab === "kroky" ? "📋 Kroky" : "📦 Materiál / Dodací list"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* ZÁLOŽKA KROKY */}
+                  {(projectTab[p.id] || "kroky") === "kroky" && (
+                    <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                     <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>Kroky projektu</div>
                     {/* Přiřadit šablonu */}
@@ -2934,6 +2993,109 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                     />
                     <button style={{ ...S.btn("#2563eb"), padding: "9px 16px", fontSize: 13 }} onClick={() => addStep(p.id)}>+ Přidat</button>
                   </div>
+                    </div>
+                  )}
+
+                  {/* ZÁLOŽKA MATERIÁL */}
+                  {(projectTab[p.id] || "kroky") === "material" && (
+                    <div>
+                      <div style={{ fontWeight: 700, color: "#fff", fontSize: 13, marginBottom: 14 }}>📦 Dodací list — položky materiálu</div>
+
+                      {/* Tabulka položek */}
+                      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
+                        <thead>
+                          <tr>
+                            {["Název položky", "Množství", "Jednotka", "Poznámka", ""].map(h => (
+                              <th key={h} style={{ textAlign: "left", padding: "7px 10px", fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", borderBottom: "1px solid #1a2035" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(deliveryItems[p.id] || []).map(item => (
+                            <tr key={item.id} style={{ borderBottom: "1px solid #1a2035" }}>
+                              <td style={{ padding: "9px 10px", color: "#e2e8f0", fontSize: 13 }}>{item.name}</td>
+                              <td style={{ padding: "9px 10px" }}>
+                                {editingItem[item.id] !== undefined ? (
+                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                    <input type="number" min={0} step={0.1}
+                                      style={{ ...S.input, marginBottom: 0, width: 70, padding: "5px 8px", fontSize: 13 }}
+                                      value={editingItem[item.id]}
+                                      onChange={e => setEditingItem({ ...editingItem, [item.id]: e.target.value })}
+                                      onKeyDown={e => e.key === "Enter" && updateDeliveryQty(p.id, item.id, editingItem[item.id])}
+                                      autoFocus
+                                    />
+                                    <button onClick={() => updateDeliveryQty(p.id, item.id, editingItem[item.id])}
+                                      style={{ ...S.btn("#2563eb"), padding: "4px 10px", fontSize: 12 }}>✓</button>
+                                    <button onClick={() => setEditingItem({})}
+                                      style={{ ...S.btnGhost, padding: "4px 8px", fontSize: 12 }}>✕</button>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <span style={{ fontWeight: 700, color: "#2563eb", fontSize: 14 }}>{item.quantity}</span>
+                                    <button onClick={() => setEditingItem({ [item.id]: item.quantity })}
+                                      style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 13, padding: "2px 6px" }}
+                                      title="Upravit množství">✏️</button>
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ padding: "9px 10px", color: "#94a3b8", fontSize: 13 }}>{item.unit}</td>
+                              <td style={{ padding: "9px 10px", color: "#475569", fontSize: 12 }}>{item.note || "—"}</td>
+                              <td style={{ padding: "9px 10px" }}>
+                                <button onClick={() => deleteDeliveryItem(p.id, item.id)}
+                                  style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}
+                                  title="Smazat jen tuto položku">×</button>
+                              </td>
+                            </tr>
+                          ))}
+                          {(deliveryItems[p.id] || []).length === 0 && (
+                            <tr><td colSpan={5} style={{ padding: "16px 10px", color: "#334155", fontSize: 13, textAlign: "center" }}>Žádné položky. Přidejte první položku níže.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+
+                      {/* Přidat novou položku */}
+                      <div style={{ background: "#0a0d14", borderRadius: 10, padding: 14 }}>
+                        <div style={{ fontWeight: 600, color: "#94a3b8", fontSize: 12, marginBottom: 10 }}>+ Přidat položku do dodacího listu</div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                          <div style={{ flex: 3, minWidth: 200 }}>
+                            <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>Název</div>
+                            <input style={{ ...S.input, marginBottom: 0 }}
+                              placeholder="např. Solární panely AIKO 500 Wp"
+                              value={newDeliveryItem[p.id]?.name || ""}
+                              onChange={e => setNewDeliveryItem(prev => ({ ...prev, [p.id]: { ...prev[p.id], name: e.target.value } }))}
+                              onKeyDown={e => e.key === "Enter" && addDeliveryItem(p.id)}
+                            />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 80 }}>
+                            <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>Množství</div>
+                            <input type="number" min={0} step={0.1}
+                              style={{ ...S.input, marginBottom: 0 }}
+                              value={newDeliveryItem[p.id]?.quantity ?? 1}
+                              onChange={e => setNewDeliveryItem(prev => ({ ...prev, [p.id]: { ...prev[p.id], quantity: e.target.value } }))}
+                            />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 80 }}>
+                            <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>Jednotka</div>
+                            <select style={{ ...S.select, marginBottom: 0 }}
+                              value={newDeliveryItem[p.id]?.unit || "ks"}
+                              onChange={e => setNewDeliveryItem(prev => ({ ...prev, [p.id]: { ...prev[p.id], unit: e.target.value } }))}>
+                              {["ks", "m", "m²", "m³", "kg", "t", "l", "hod", "soubor"].map(u => <option key={u}>{u}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ flex: 2, minWidth: 140 }}>
+                            <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>Poznámka</div>
+                            <input style={{ ...S.input, marginBottom: 0 }}
+                              placeholder="volitelná poznámka"
+                              value={newDeliveryItem[p.id]?.note || ""}
+                              onChange={e => setNewDeliveryItem(prev => ({ ...prev, [p.id]: { ...prev[p.id], note: e.target.value } }))}
+                            />
+                          </div>
+                          <button style={{ ...S.btn("#2563eb"), padding: "9px 16px", fontSize: 13, flexShrink: 0 }}
+                            onClick={() => addDeliveryItem(p.id)}>+ Přidat</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
