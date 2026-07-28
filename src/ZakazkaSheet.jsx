@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
+import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected } from "./onedrive.js";
 
 const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#2563eb" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
 const SEKCE = [
@@ -124,6 +125,8 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const [data, setData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [sheetId, setSheetId] = useState(null);
+  const [fotoUploading, setFotoUploading] = useState({}); // { [kategorie]: pocetVeFrontě }
+  const [docUploading, setDocUploading] = useState(null);  // klíč dokumentu, který se právě nahrává
 
   // Načti listy ze Supabase
   useEffect(() => {
@@ -168,6 +171,60 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const updArr = (sekce, id, key, val) => setData(d => ({ ...d, [sekce]: d[sekce].map(r => r.id === id ? { ...r, [key]: val } : r) }));
   const delArr = (sekce, id) => setData(d => ({ ...d, [sekce]: d[sekce].filter(r => r.id !== id) }));
   const addArr = (sekce, item) => setData(d => ({ ...d, [sekce]: [...(d[sekce] || []), { id: Date.now(), ...item }] }));
+
+  // ─── Upload fotek na OneDrive (FirmaCRM/Zakázky/[název]/Fotky) ─────────────
+  const handleFotoUpload = async (kategorie, files) => {
+    if (!files || files.length === 0) return;
+    if (!isConnected()) { alert("Nejdřív se připoj k OneDrive v záložce ☁️ OneDrive."); return; }
+    setFotoUploading(u => ({ ...u, [kategorie]: (u[kategorie] || 0) + files.length }));
+    for (const f of files) {
+      try {
+        const webUrl = await uploadFileObject(zakazkaFolderPath(data._nazev, "Fotky"), f);
+        setData(d => ({ ...d, fotky: { ...d.fotky, nahrane: [...(d.fotky.nahrane || []), {
+          id: Date.now() + Math.random(), name: f.name, url: toDirectImageUrl(webUrl), link: webUrl,
+          datum: new Date().toLocaleDateString("cs-CZ"), kategorie,
+        }] } }));
+      } catch (e) {
+        alert(`Nahrání fotky "${f.name}" na OneDrive selhalo: ${e.message}`);
+      } finally {
+        setFotoUploading(u => ({ ...u, [kategorie]: Math.max(0, (u[kategorie] || 1) - 1) }));
+      }
+    }
+  };
+
+  // ─── Upload dokumentu na OneDrive (FirmaCRM/Zakázky/[název]/Dokumenty) ─────
+  const handleDokUpload = async (key, file) => {
+    if (!file) return;
+    if (!isConnected()) { alert("Nejdřív se připoj k OneDrive v záložce ☁️ OneDrive."); return; }
+    setDocUploading(key);
+    try {
+      const webUrl = await uploadFileObject(zakazkaFolderPath(data._nazev, "Dokumenty"), file);
+      setData(d => ({ ...d, dokumenty: { ...d.dokumenty, [key]: {
+        ...d.dokumenty[key], soubor: { name: file.name, link: webUrl },
+        stav: (!d.dokumenty[key]?.stav || d.dokumenty[key]?.stav === "ceka") ? "vyplnen" : d.dokumenty[key].stav,
+      } } }));
+    } catch (e) {
+      alert(`Nahrání dokumentu "${file.name}" na OneDrive selhalo: ${e.message}`);
+    } finally {
+      setDocUploading(null);
+    }
+  };
+
+  const handleExtraDokUpload = async (id, file) => {
+    if (!file) return;
+    if (!isConnected()) { alert("Nejdřív se připoj k OneDrive v záložce ☁️ OneDrive."); return; }
+    setDocUploading("extra-" + id);
+    try {
+      const webUrl = await uploadFileObject(zakazkaFolderPath(data._nazev, "Dokumenty"), file);
+      setData(d => ({ ...d, dokumenty: { ...d.dokumenty, extra: d.dokumenty.extra.map(x =>
+        x.id === id ? { ...x, soubor: { name: file.name, link: webUrl } } : x
+      ) } }));
+    } catch (e) {
+      alert(`Nahrání dokumentu "${file.name}" na OneDrive selhalo: ${e.message}`);
+    } finally {
+      setDocUploading(null);
+    }
+  };
 
   // Seznam listů (výběr zakázky)
   const filteredSheets = sheets.filter(s => !search || (s.data?._nazev || "").toLowerCase().includes(search.toLowerCase()));
@@ -650,25 +707,27 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             </div>
             {["Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"].map(kat=>{
               const fc=(data.fotky.nahrane||[]).filter(f=>f.kategorie===kat);
+              const busy=fotoUploading[kat]>0;
               return(
                 <div key={kat} style={{marginBottom:12}}>
                   <div style={{fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>{kat} ({fc.length})</div>
                   {fc.length>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
                     {fc.map(f=>(
                       <div key={f.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #1a2035",position:"relative"}}>
-                        <img src={f.url} alt={f.name} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
+                        <a href={f.link||f.url} target="_blank" rel="noreferrer">
+                          <img src={f.url} alt={f.name} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
+                        </a>
                         <button onClick={()=>setData(d=>({...d,fotky:{...d.fotky,nahrane:(d.fotky.nahrane||[]).filter(x=>x.id!==f.id)}}))}
                           style={{position:"absolute",top:3,right:3,background:"#ef444488",border:"none",borderRadius:4,color:"#fff",cursor:"pointer",fontSize:10,padding:"1px 5px"}}>×</button>
                       </div>
                     ))}
                   </div>}
-                  <label style={{display:"inline-flex",alignItems:"center",gap:5,background:"#1a2035",color:"#475569",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",border:"1px dashed #252d45"}}>
-                    + Přidat foto
-                    <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{
+                  <label style={{display:"inline-flex",alignItems:"center",gap:5,background:busy?"#0ea5e922":"#1a2035",color:busy?"#0ea5e9":"#475569",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:busy?"default":"pointer",border:"1px dashed #252d45"}}>
+                    {busy?`⏳ Nahrávám na OneDrive (${fotoUploading[kat]})...`:"+ Přidat foto"}
+                    <input type="file" accept="image/*" multiple disabled={busy} style={{display:"none"}} onChange={e=>{
                       const files=Array.from(e.target.files);
-                      const nf=files.map(f=>({id:Date.now()+Math.random(),name:f.name,url:URL.createObjectURL(f),datum:new Date().toLocaleDateString("cs-CZ"),kategorie:kat}));
-                      setData(d=>({...d,fotky:{...d.fotky,nahrane:[...(d.fotky.nahrane||[]),...nf]}}));
                       e.target.value="";
+                      handleFotoUpload(kat, files);
                     }}/>
                   </label>
                 </div>
@@ -712,6 +771,13 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                     {doc.gen&&<button style={{...S.btn(),padding:"5px 10px",fontSize:11,flexShrink:0}}>⬇️ Gen.</button>}
                   </div>
                   {!doc.gen&&<input style={{...S.inp,marginTop:6,padding:"5px 8px",fontSize:11,color:"#475569"}} placeholder="Poznámka..." value={d2.poznamka} onChange={e=>updD("poznamka",e.target.value)}/>}
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid #1a2035"}}>
+                    <label style={{display:"inline-flex",alignItems:"center",gap:5,background:docUploading===doc.key?"#0ea5e922":"#1a2035",color:docUploading===doc.key?"#0ea5e9":"#475569",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:docUploading===doc.key?"default":"pointer",border:"1px dashed #252d45",flexShrink:0}}>
+                      {docUploading===doc.key?"⏳ Nahrávám...":(d2.soubor?"🔁 Nahradit":"📎 Nahrát soubor")}
+                      <input type="file" disabled={docUploading===doc.key} style={{display:"none"}} onChange={e=>{const f=e.target.files[0];e.target.value="";handleDokUpload(doc.key,f);}}/>
+                    </label>
+                    {d2.soubor&&<a href={d2.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#60a5fa",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {d2.soubor.name}</a>}
+                  </div>
                 </div>
               );
             })}
@@ -726,6 +792,13 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                   value={doc.nazev} onChange={e=>setData(d=>({...d,dokumenty:{...d.dokumenty,extra:d.dokumenty.extra.map(x=>x.id===doc.id?{...x,nazev:e.target.value}:x)}}))}/>
                 <input style={{...S.inp,fontSize:11,color:"#475569"}} placeholder="Poznámka..."
                   value={doc.poznamka} onChange={e=>setData(d=>({...d,dokumenty:{...d.dokumenty,extra:d.dokumenty.extra.map(x=>x.id===doc.id?{...x,poznamka:e.target.value}:x)}}))}/>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid #1a2035"}}>
+                  <label style={{display:"inline-flex",alignItems:"center",gap:5,background:docUploading==="extra-"+doc.id?"#0ea5e922":"#1a2035",color:docUploading==="extra-"+doc.id?"#0ea5e9":"#475569",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:docUploading==="extra-"+doc.id?"default":"pointer",border:"1px dashed #252d45",flexShrink:0}}>
+                    {docUploading==="extra-"+doc.id?"⏳ Nahrávám...":(doc.soubor?"🔁 Nahradit":"📎 Nahrát soubor")}
+                    <input type="file" disabled={docUploading==="extra-"+doc.id} style={{display:"none"}} onChange={e=>{const f=e.target.files[0];e.target.value="";handleExtraDokUpload(doc.id,f);}}/>
+                  </label>
+                  {doc.soubor&&<a href={doc.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#60a5fa",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {doc.soubor.name}</a>}
+                </div>
               </div>
             ))}
             <button style={{...S.btn("#334155"),width:"100%",marginTop:4}}

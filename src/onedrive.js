@@ -196,6 +196,19 @@ export async function uploadFileObject(folderPath, file) {
   return uploadFile(folderPath, file.name, buffer, file.type || "application/octet-stream");
 }
 
+// ─── CESTA KE SLOŽCE ZAKÁZKY ──────────────────────────────────────────────────
+// zakazkaFolderPath("Novák Jan", "Fotky") → "FirmaCRM/Zakázky/Novák Jan/Fotky"
+export function zakazkaFolderPath(nazevZakazky, podslozka) {
+  const safe = (nazevZakazky || "Nezařazená zakázka").replace(/[\\/:*?"<>|]/g, "_").trim() || "Nezařazená zakázka";
+  return `${FOLDER_ROOT}/Zakázky/${safe}/${podslozka}`;
+}
+
+// Přímý (stažitelný) odkaz na obrázek — pro <img src> náhledy
+export function toDirectImageUrl(webUrl) {
+  if (!webUrl) return webUrl;
+  return webUrl + (webUrl.includes("?") ? "&" : "?") + "download=1";
+}
+
 // ─── ZÁLOHA DAT ZE SUPABASE ───────────────────────────────────────────────────
 function toCSV(rows) {
   if (!rows || rows.length === 0) return "Žádná data\n";
