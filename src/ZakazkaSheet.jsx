@@ -110,10 +110,10 @@ function SekceHeader({ sekce, stav, onStav }) {
   );
 }
 
-export default function ZakazkaSheet({ customers, currentUser }) {
+export default function ZakazkaSheet({ customers, currentUser, initialContractId, initialContractName, onClearInitial }) {
   const [sheets, setSheets] = useState([]);
   const [search, setSearch] = useState("");
-  const [activeCId, setActiveCId] = useState(null); // active contractId
+  const [activeCId, setActiveCId] = useState(null);
   const [data, setData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [sheetId, setSheetId] = useState(null);
@@ -123,12 +123,13 @@ export default function ZakazkaSheet({ customers, currentUser }) {
     supabase.from("project_sheets").select("*").order("updated_at", { ascending: false }).then(({ data: d }) => setSheets(d || []));
   }, []);
 
-  // Poslouchej event z Contracts.jsx (tlačítko 📋)
+  // Otevři list pokud přišel initialContractId z Contracts.jsx
   useEffect(() => {
-    const handler = (e) => openSheet(e.detail.contractId, e.detail.contractName);
-    window.addEventListener("openSheet", handler);
-    return () => window.removeEventListener("openSheet", handler);
-  }, [sheets]);
+    if (initialContractId && sheets !== null) {
+      openSheet(initialContractId, initialContractName);
+      if (onClearInitial) onClearInitial();
+    }
+  }, [initialContractId, sheets]);
 
   const openSheet = async (contractId, contractName) => {
     const existing = sheets.find(s => s.project_id === contractId);

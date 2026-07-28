@@ -385,6 +385,19 @@ function ModalActions({ onSave, onClose, saveLabel = "Uložit" }) {
 
 function MainApp({ currentUser, setCurrentUser }) {
   const [tab, setTab] = useState("dashboard");
+  const [sheetContractId, setSheetContractId] = useState(null);
+  const [sheetContractName, setSheetContractName] = useState("");
+
+  // Zachyť event z Contracts.jsx — přepni na záložku sheets
+  useEffect(() => {
+    const handler = (e) => {
+      setSheetContractId(e.detail.contractId);
+      setSheetContractName(e.detail.contractName);
+      setTab("sheets");
+    };
+    window.addEventListener("openSheet", handler);
+    return () => window.removeEventListener("openSheet", handler);
+  }, []);
   const [customers, setCustomers] = useState([]);
   const [deals, setDeals] = useState([]);
   const [communication, setCommunication] = useState([]);
@@ -762,6 +775,9 @@ function MainApp({ currentUser, setCurrentUser }) {
         {tab === "sheets" && <ZakazkaSheet
           customers={customers}
           currentUser={currentUser}
+          initialContractId={sheetContractId}
+          initialContractName={sheetContractName}
+          onClearInitial={() => { setSheetContractId(null); setSheetContractName(""); }}
         />}
       </div>
     </div>
