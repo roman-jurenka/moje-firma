@@ -6,7 +6,8 @@ const SEKCE = [
   { id: "zakaznik",  icon: "👤", label: "Zákazník",         barva: "#6366f1" },
   { id: "nabidka",   icon: "📋", label: "Nabídka",          barva: "#2563eb" },
   { id: "smlouva",   icon: "✍️", label: "Smlouva",          barva: "#7c3aed" },
-  { id: "system",    icon: "⚡", label: "FVE Systém",        barva: "#f59e0b" },
+  { id: "system",    icon: "⚡", label: "Systém",             barva: "#f59e0b" },
+  { id: "zaruky",    icon: "🛡️", label: "Záruky",             barva: "#06b6d4" },
   { id: "montaz",    icon: "🔧", label: "Montáž",           barva: "#ef4444" },
   { id: "predani",   icon: "✅", label: "Předání",          barva: "#16a34a" },
   { id: "dotace",    icon: "🏛️", label: "Dotace",           barva: "#0ea5e9" },
@@ -22,7 +23,13 @@ const PRAZDNA_DATA = {
   zakaznik:  { jmeno:"", adresa:"", telefon:"", email:"", datumNarozeni:"", ean:"", distributor:"ČEZ", pocetVlastniku:"1", poznamka:"" },
   nabidka:   { cisloOP:"", sestava:"", cenaSDph:"", dotace:"", cenaPoOdecteni:"", oz:"", datumNabidky:"", platnostDo:"", poznamka:"" },
   smlouva:   { datumPodpisu:"", zaloha:"", datumZalohy:"", terminRealizace:"", poznamka:"" },
-  system:    { panelTyp:"", panelPocet:"", panelKwp:"", stridacTyp:"", stridacSN:"", stridacFirmware:"", baterieTyp:"", bateriePocet:"", baterieKwh:"", baterieSN:"", bms:"", backup:"", regulace:"", elmr:"", rozvadecDC:"", poznamka:"" },
+  system:    { typZakazky:"fve", panelTyp:"", panelPocet:"", panelKwp:"", stridacTyp:"", stridacSN:"", stridacFirmware:"", baterieTyp:"", bateriePocet:"", baterieKwh:"", baterieSN:"", bms:"", backup:"", regulace:"", elmr:"", rozvadecDC:"", bojlerTyp:"", bojlerObjem:"", bojlerKw:"", bojlerSN:"", rozvadecTyp:"", rozvadecOkruhy:"", rozvadecProud:"", hromoJimac:"", hromoSvody:"", hromoUzemneni:"", elektroPolozky:[], hromoPolozky:[], poznamka:"" },
+  zaruky: [
+    { id:1, nazev:"Solární panely",  datumInstalace:"", delkaLet:15, poznamka:"Výkon panelů" },
+    { id:2, nazev:"Střídač",         datumInstalace:"", delkaLet:5,  poznamka:"Standardní záruka" },
+    { id:3, nazev:"Baterie",         datumInstalace:"", delkaLet:10, poznamka:"" },
+    { id:4, nazev:"Montáž/dílo",     datumInstalace:"", delkaLet:2,  poznamka:"Zákonná záruka" },
+  ],
   montaz:    { datumMontaze:"", technici:"", elektroHodiny:"", strechaHodiny:"", instalater:"", doprava:"", prubezhPoznamky:"", poznamka:"" },
   predani:   { datumPredani:"", technik:"", stavElektrarny:"", vadyBraniciUzivani:"", vadyNebraniciUzivani:"", protokolCislo:"", poznamka:"" },
   dotace:    { typ:"", kraj:"Ostatní kraje", datumPodani:"", stav:"", datumSchvaleni:"", datumVyplaceni:"", poznamka:"" },
@@ -41,7 +48,7 @@ const PRAZDNA_DATA = {
     extra: [],
   },
   servis: [],
-  stavy: { zakaznik:"Čeká", nabidka:"Čeká", smlouva:"Čeká", system:"Čeká", montaz:"Čeká", predani:"Čeká", dotace:"Čeká", fakturace:"Čeká", bilance:"Čeká", rozsireni:"Čeká", fotky:"Čeká", dokumenty:"Čeká", servis:"Čeká" },
+  stavy: { zakaznik:"Čeká", nabidka:"Čeká", smlouva:"Čeká", system:"Čeká", zaruky:"Čeká", montaz:"Čeká", predani:"Čeká", dotace:"Čeká", fakturace:"Čeká", bilance:"Čeká", rozsireni:"Čeká", fotky:"Čeká", dokumenty:"Čeká", servis:"Čeká" },
 };
 
 const S = {
@@ -269,38 +276,222 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
           </div>
         </div>
 
-        {/* FVE SYSTÉM */}
+        {/* FVE SYSTÉM — dynamický podle typu zakázky */}
         <div id="s-system" style={{...S.card(false,"#f59e0b"),maxWidth:340,minWidth:340}}>
           <SekceHeader sekce={SEKCE[3]} stav={st.system||"Čeká"} onStav={v=>updStav("system",v)}/>
           <div style={S.body}>
-            <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>☀️ Panely</div>
-            <EF label="Typ panelu"    value={data.system.panelTyp}    onChange={v=>upd("system","panelTyp",v)}/>
-            <div style={{display:"flex",gap:10}}>
-              <div style={{flex:1}}><EF label="Počet ks"   value={data.system.panelPocet} onChange={v=>upd("system","panelPocet",v)}/></div>
-              <div style={{flex:1}}><EF label="Výkon kWp"  value={data.system.panelKwp}   onChange={v=>upd("system","panelKwp",v)}/></div>
+
+            {/* Výběr typu zakázky */}
+            <div style={{marginBottom:14}}>
+              <label style={S.lbl}>Typ zakázky</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {[
+                  {id:"fve",     label:"FVE Systém",       icon:"☀️"},
+                  {id:"ohrev",   label:"FVE Ohřev vody",   icon:"🔥"},
+                  {id:"elektro", label:"Elektroinstalace",  icon:"⚡"},
+                  {id:"hromosvod",label:"Hromosvod",        icon:"⛈️"},
+                ].map(t=>(
+                  <button key={t.id}
+                    onClick={()=>upd("system","typZakazky",t.id)}
+                    style={{background:(data.system.typZakazky||"fve")===t.id?"#f59e0b22":"#0a0d14", border:`1px solid ${(data.system.typZakazky||"fve")===t.id?"#f59e0b":"#252d45"}`, borderRadius:8, padding:"6px 12px", color:(data.system.typZakazky||"fve")===t.id?"#f59e0b":"#475569", fontSize:12, fontWeight:600, cursor:"pointer"}}>
+                    {t.icon} {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
+
             <div style={S.div}/>
-            <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>🔌 Střídač</div>
-            <EF label="Typ střídače"     value={data.system.stridacTyp}      onChange={v=>upd("system","stridacTyp",v)}/>
-            <EF label="Výrobní číslo SN" value={data.system.stridacSN}       onChange={v=>upd("system","stridacSN",v)} mono/>
-            <EF label="Firmware"         value={data.system.stridacFirmware} onChange={v=>upd("system","stridacFirmware",v)} mono/>
+
+            {/* FVE SYSTÉM */}
+            {(data.system.typZakazky||"fve")==="fve" && <>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>☀️ Panely</div>
+              <EF label="Typ panelu"    value={data.system.panelTyp}    onChange={v=>upd("system","panelTyp",v)}/>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{flex:1}}><EF label="Počet ks"  value={data.system.panelPocet} onChange={v=>upd("system","panelPocet",v)}/></div>
+                <div style={{flex:1}}><EF label="Výkon kWp" value={data.system.panelKwp}   onChange={v=>upd("system","panelKwp",v)}/></div>
+              </div>
+              <div style={S.div}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>🔌 Střídač</div>
+              <EF label="Typ střídače"     value={data.system.stridacTyp}      onChange={v=>upd("system","stridacTyp",v)}/>
+              <EF label="Výrobní číslo SN" value={data.system.stridacSN}       onChange={v=>upd("system","stridacSN",v)} mono/>
+              <EF label="Firmware"         value={data.system.stridacFirmware} onChange={v=>upd("system","stridacFirmware",v)} mono/>
+              <div style={S.div}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>🔋 Baterie</div>
+              <EF label="Typ baterie"    value={data.system.baterieTyp}   onChange={v=>upd("system","baterieTyp",v)}/>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{flex:1}}><EF label="Počet ks" value={data.system.bateriePocet} onChange={v=>upd("system","bateriePocet",v)}/></div>
+                <div style={{flex:1}}><EF label="Kapacita" value={data.system.baterieKwh}   onChange={v=>upd("system","baterieKwh",v)}/></div>
+              </div>
+              <EF label="Výrobní čísla SN" value={data.system.baterieSN} onChange={v=>upd("system","baterieSN",v)} mono/>
+              <div style={S.div}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>⚙️ Příslušenství</div>
+              <EF label="BMS"         value={data.system.bms}        onChange={v=>upd("system","bms",v)}/>
+              <EF label="Back-up"     value={data.system.backup}     onChange={v=>upd("system","backup",v)}/>
+              <EF label="Regulace"    value={data.system.regulace}   onChange={v=>upd("system","regulace",v)}/>
+              <EF label="ELMR úprava" value={data.system.elmr}       onChange={v=>upd("system","elmr",v)}/>
+              <EF label="Rozvaděč DC" value={data.system.rozvadecDC} onChange={v=>upd("system","rozvadecDC",v)}/>
+            </>}
+
+            {/* FVE OHŘEV VODY */}
+            {data.system.typZakazky==="ohrev" && <>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>☀️ Panely</div>
+              <EF label="Typ panelu"    value={data.system.panelTyp}   onChange={v=>upd("system","panelTyp",v)}/>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{flex:1}}><EF label="Počet ks"  value={data.system.panelPocet} onChange={v=>upd("system","panelPocet",v)}/></div>
+                <div style={{flex:1}}><EF label="Výkon kWp" value={data.system.panelKwp}   onChange={v=>upd("system","panelKwp",v)}/></div>
+              </div>
+              <div style={S.div}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>🔥 Bojler / ohřev</div>
+              <EF label="Typ bojleru"       value={data.system.bojlerTyp}   onChange={v=>upd("system","bojlerTyp",v)}/>
+              <EF label="Objem (l)"         value={data.system.bojlerObjem} onChange={v=>upd("system","bojlerObjem",v)}/>
+              <EF label="Výkon topného tělesa" value={data.system.bojlerKw} onChange={v=>upd("system","bojlerKw",v)}/>
+              <EF label="Výrobní číslo SN"  value={data.system.bojlerSN}    onChange={v=>upd("system","bojlerSN",v)} mono/>
+              <div style={S.div}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>🔌 Střídač / regulace</div>
+              <EF label="Typ střídače"      value={data.system.stridacTyp}  onChange={v=>upd("system","stridacTyp",v)}/>
+              <EF label="SN střídače"       value={data.system.stridacSN}   onChange={v=>upd("system","stridacSN",v)} mono/>
+              <EF label="Regulace ohřevu"   value={data.system.regulace}    onChange={v=>upd("system","regulace",v)}/>
+              <EF label="ELMR úprava"       value={data.system.elmr}        onChange={v=>upd("system","elmr",v)}/>
+            </>}
+
+            {/* ELEKTROINSTALACE — volný seznam technologií */}
+            {data.system.typZakazky==="elektro" && <>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>⚡ Instalované technologie</div>
+              <div style={{fontSize:12,color:"#475569",marginBottom:12}}>Přidej každou instalovanou technologii jako položku.</div>
+
+              {/* Seznam položek */}
+              {(data.system.elektroPolozky||[]).map((p,i)=>(
+                <div key={p.id} style={{background:"#080b12",borderRadius:8,padding:10,marginBottom:8,border:"1px solid #1a2035"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>#{i+1}</span>
+                    <button onClick={()=>setData(d=>({...d,system:{...d.system,elektroPolozky:(d.system.elektroPolozky||[]).filter(x=>x.id!==p.id)}}))}
+                      style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:13}}>×</button>
+                  </div>
+                  <input style={{...S.inp,marginBottom:6}} placeholder="Název technologie (např. Domofon, Kamera, Závora...)"
+                    value={p.nazev}
+                    onChange={e=>setData(d=>({...d,system:{...d.system,elektroPolozky:(d.system.elektroPolozky||[]).map(x=>x.id===p.id?{...x,nazev:e.target.value}:x)}}))}/>
+                  <textarea rows={2} style={{...S.inp,resize:"none"}} placeholder="Specifikace, výrobce, SN, poznámka..."
+                    value={p.popis}
+                    onChange={e=>setData(d=>({...d,system:{...d.system,elektroPolozky:(d.system.elektroPolozky||[]).map(x=>x.id===p.id?{...x,popis:e.target.value}:x)}}))}/>
+                </div>
+              ))}
+
+              <button style={{...S.btn("#f59e0b"),width:"100%",marginBottom:12}}
+                onClick={()=>setData(d=>({...d,system:{...d.system,elektroPolozky:[...(d.system.elektroPolozky||[]),{id:Date.now(),nazev:"",popis:""}]}}))}>
+                + Přidat technologii
+              </button>
+
+              <div style={S.div}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>🔌 Rozvaděč</div>
+              <EF label="Typ rozvaděče"    value={data.system.rozvadecTyp}   onChange={v=>upd("system","rozvadecTyp",v)}/>
+              <EF label="Počet okruhů"     value={data.system.rozvadecOkruhy} onChange={v=>upd("system","rozvadecOkruhy",v)}/>
+              <EF label="Jmenovitý proud"  value={data.system.rozvadecProud}  onChange={v=>upd("system","rozvadecProud",v)}/>
+            </>}
+
+            {/* HROMOSVOD — volný seznam */}
+            {data.system.typZakazky==="hromosvod" && <>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>⛈️ Instalované komponenty</div>
+              <div style={{fontSize:12,color:"#475569",marginBottom:12}}>Přidej každý instalovaný komponent hromosvodu.</div>
+
+              {(data.system.hromoPolozky||[]).map((p,i)=>(
+                <div key={p.id} style={{background:"#080b12",borderRadius:8,padding:10,marginBottom:8,border:"1px solid #1a2035"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>#{i+1}</span>
+                    <button onClick={()=>setData(d=>({...d,system:{...d.system,hromoPolozky:(d.system.hromoPolozky||[]).filter(x=>x.id!==p.id)}}))}
+                      style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:13}}>×</button>
+                  </div>
+                  <input style={{...S.inp,marginBottom:6}} placeholder="Název komponentu (např. Jímací tyč, Svod, Uzemnění...)"
+                    value={p.nazev}
+                    onChange={e=>setData(d=>({...d,system:{...d.system,hromoPolozky:(d.system.hromoPolozky||[]).map(x=>x.id===p.id?{...x,nazev:e.target.value}:x)}}))}/>
+                  <textarea rows={2} style={{...S.inp,resize:"none"}} placeholder="Specifikace, materiál, délka, SN, poznámka..."
+                    value={p.popis}
+                    onChange={e=>setData(d=>({...d,system:{...d.system,hromoPolozky:(d.system.hromoPolozky||[]).map(x=>x.id===p.id?{...x,popis:e.target.value}:x)}}))}/>
+                </div>
+              ))}
+
+              <button style={{...S.btn("#f59e0b"),width:"100%",marginBottom:12}}
+                onClick={()=>setData(d=>({...d,system:{...d.system,hromoPolozky:[...(d.system.hromoPolozky||[]),{id:Date.now(),nazev:"",popis:""}]}}))}>
+                + Přidat komponent
+              </button>
+
+              <div style={S.div}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>📋 Obecné info</div>
+              <EF label="Typ jímací soustavy" value={data.system.hromoJimac}   onChange={v=>upd("system","hromoJimac",v)}/>
+              <EF label="Počet svodů"          value={data.system.hromoSvody}   onChange={v=>upd("system","hromoSvody",v)}/>
+              <EF label="Typ uzemnění"         value={data.system.hromoUzemneni} onChange={v=>upd("system","hromoUzemneni",v)}/>
+            </>}
+
             <div style={S.div}/>
-            <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>🔋 Baterie</div>
-            <EF label="Typ baterie"    value={data.system.baterieTyp}   onChange={v=>upd("system","baterieTyp",v)}/>
-            <div style={{display:"flex",gap:10}}>
-              <div style={{flex:1}}><EF label="Počet ks"  value={data.system.bateriePocet} onChange={v=>upd("system","bateriePocet",v)}/></div>
-              <div style={{flex:1}}><EF label="Kapacita"  value={data.system.baterieKwh}   onChange={v=>upd("system","baterieKwh",v)}/></div>
-            </div>
-            <EF label="Výrobní čísla SN" value={data.system.baterieSN} onChange={v=>upd("system","baterieSN",v)} mono/>
-            <div style={S.div}/>
-            <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>⚙️ Příslušenství</div>
-            <EF label="BMS"         value={data.system.bms}       onChange={v=>upd("system","bms",v)}/>
-            <EF label="Back-up"     value={data.system.backup}    onChange={v=>upd("system","backup",v)}/>
-            <EF label="Regulace"    value={data.system.regulace}  onChange={v=>upd("system","regulace",v)}/>
-            <EF label="ELMR úprava" value={data.system.elmr}      onChange={v=>upd("system","elmr",v)}/>
-            <EF label="Rozvaděč DC" value={data.system.rozvadecDC} onChange={v=>upd("system","rozvadecDC",v)}/>
-            <div style={S.div}/>
-            <EF label="Poznámka"    value={data.system.poznamka}  onChange={v=>upd("system","poznamka",v)} multi/>
+            <EF label="Poznámka" value={data.system.poznamka} onChange={v=>upd("system","poznamka",v)} multi/>
+          </div>
+        </div>
+
+        {/* ZÁRUKY */}
+        <div id="s-zaruky" style={{...S.card(false,"#06b6d4"),maxWidth:340,minWidth:340}}>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="zaruky")} stav={st.zaruky||"Čeká"} onStav={v=>updStav("zaruky",v)}/>
+          <div style={S.body}>
+
+            {(data.zaruky||[]).map((z,i)=>{
+              // Výpočet stavu záruky
+              const dnes = new Date();
+              const instalace = z.datumInstalace ? new Date(z.datumInstalace.split(".").reverse().join("-")) : null;
+              const vyprseni = instalace ? new Date(instalace.getFullYear()+Number(z.delkaLet||0), instalace.getMonth(), instalace.getDate()) : null;
+              const dniDo = vyprseni ? Math.round((vyprseni-dnes)/(1000*60*60*24)) : null;
+
+              let stav = null;
+              if (dniDo !== null) {
+                if (dniDo > 5)        stav = { label:`V záruce — zbývá ${dniDo} dní`, color:"#16a34a", bg:"#16a34a15", icon:"🟢" };
+                else if (dniDo >= 0)  stav = { label:`⚠️ Vyprší za ${dniDo} dní!`, color:"#f59e0b", bg:"#f59e0b15", icon:"🟡" };
+                else                  stav = { label:`Vypršela před ${Math.abs(dniDo)} dny`, color:"#ef4444", bg:"#ef444415", icon:"🔴" };
+              }
+
+              return (
+                <div key={z.id} style={{background:"#080b12",borderRadius:10,padding:12,marginBottom:10,border:`1px solid ${stav?.color||"#1a2035"}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{z.nazev||`Záruka #${i+1}`}</span>
+                    <button onClick={()=>setData(d=>({...d,zaruky:(d.zaruky||[]).filter(x=>x.id!==z.id)}))}
+                      style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:13}}>×</button>
+                  </div>
+
+                  {/* Stav záruky */}
+                  {stav && (
+                    <div style={{background:stav.bg,border:`1px solid ${stav.color}33`,borderRadius:7,padding:"6px 10px",marginBottom:10,fontSize:12,fontWeight:700,color:stav.color}}>
+                      {stav.icon} {stav.label}
+                      {vyprseni && <div style={{fontSize:10,fontWeight:400,marginTop:2}}>Datum vypršení: {vyprseni.toLocaleDateString("cs-CZ")}</div>}
+                    </div>
+                  )}
+
+                  {/* Pole */}
+                  <div style={{marginBottom:6}}>
+                    <label style={S.lbl}>Název záruky</label>
+                    <input style={S.inp} value={z.nazev} placeholder="např. Střídač, Panely..."
+                      onChange={e=>setData(d=>({...d,zaruky:(d.zaruky||[]).map(x=>x.id===z.id?{...x,nazev:e.target.value}:x)}))}/>
+                  </div>
+                  <div style={{display:"flex",gap:8,marginBottom:6}}>
+                    <div style={{flex:1}}>
+                      <label style={S.lbl}>Datum instalace</label>
+                      <input style={S.inp} placeholder="dd.mm.rrrr" value={z.datumInstalace}
+                        onChange={e=>setData(d=>({...d,zaruky:(d.zaruky||[]).map(x=>x.id===z.id?{...x,datumInstalace:e.target.value}:x)}))}/>
+                    </div>
+                    <div style={{flex:1}}>
+                      <label style={S.lbl}>Délka záruky (let)</label>
+                      <input style={S.inp} type="number" min={1} max={30} value={z.delkaLet}
+                        onChange={e=>setData(d=>({...d,zaruky:(d.zaruky||[]).map(x=>x.id===z.id?{...x,delkaLet:Number(e.target.value)}:x)}))}/>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={S.lbl}>Poznámka</label>
+                    <input style={S.inp} placeholder="Typ záruky, podmínky..." value={z.poznamka}
+                      onChange={e=>setData(d=>({...d,zaruky:(d.zaruky||[]).map(x=>x.id===z.id?{...x,poznamka:e.target.value}:x)}))}/>
+                  </div>
+                </div>
+              );
+            })}
+
+            <button style={{...S.btn("#06b6d4"),width:"100%",marginTop:4}}
+              onClick={()=>setData(d=>({...d,zaruky:[...(d.zaruky||[]),{id:Date.now(),nazev:"",datumInstalace:"",delkaLet:5,poznamka:""}]}))}>
+              + Přidat záruku
+            </button>
           </div>
         </div>
 
