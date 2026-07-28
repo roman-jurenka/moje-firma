@@ -733,6 +733,12 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 ✏️
               </button>
               <button
+                onClick={() => window.dispatchEvent(new CustomEvent("openSheet", { detail: { contractId: contract.id, contractName: contract.name } }))}
+                title="Zakázkový list"
+                style={{ background: "#2563eb22", border: "1px solid #2563eb44", borderRadius: 8, padding: "6px 10px", color: "#2563eb", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
+                📋
+              </button>
+              <button
                 onClick={() => deleteContract(contract.id)}
                 title="Smazat zakázku"
                 style={{ background: "#f8717111", border: "1px solid #f8717133", borderRadius: 8, padding: "6px 10px", color: "#f87171", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>

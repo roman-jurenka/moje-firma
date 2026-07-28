@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import Contracts from "./Contracts.jsx";
+import ZakazkaSheet from "./ZakazkaSheet.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import { handleOAuthCallback } from "./onedrive.js";
 
@@ -252,6 +253,7 @@ const NAV = [
   { id: "deals", label: "Obchodní příp.", icon: "💼", group: "CRM" },
   // { id: "communication", label: "Komunikace", icon: "💬", group: "CRM" }, // odebráno — data zachována pro detail zákazníka
   { id: "contracts", label: "Zakázky", icon: "🔧", group: "CRM" },
+  { id: "sheets", label: "Listy zakázek", icon: "📋", group: "CRM" },
   { id: "tasks", label: "Úkoly", icon: "✅", group: "CRM" },
   { id: "invoices", label: "Fakturace", icon: "🧾", group: "ERP" },
   { id: "warehouse", label: "Sklad", icon: "📦", group: "ERP" },
@@ -756,6 +758,10 @@ function MainApp({ currentUser, setCurrentUser }) {
           customers={customers} employees={employees}
           currentUser={currentUser}
           initialDeal={contractInitialDeal}
+        />}
+        {tab === "sheets" && <ZakazkaSheet
+          customers={customers}
+          currentUser={currentUser}
         />}
       </div>
     </div>
