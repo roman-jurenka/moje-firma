@@ -286,7 +286,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* ZÁKAZNÍK */}
         <div id="s-zakaznik" style={S.card(true,"#6366f1")}>
-          <SekceHeader sekce={SEKCE[0]} stav={st.zakaznik||"Čeká"} onStav={v=>updStav("zakaznik",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="zakaznik")} stav={st.zakaznik||"Čeká"} onStav={v=>updStav("zakaznik",v)}/>
           <div style={S.body}>
             <EF label="Jméno a příjmení"  value={data.zakaznik.jmeno}          onChange={v=>upd("zakaznik","jmeno",v)}/>
             <EF label="Adresa"             value={data.zakaznik.adresa}         onChange={v=>upd("zakaznik","adresa",v)}/>
@@ -304,7 +304,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* NABÍDKA */}
         <div id="s-nabidka" style={S.card(false,"#2563eb")}>
-          <SekceHeader sekce={SEKCE[1]} stav={st.nabidka||"Čeká"} onStav={v=>updStav("nabidka",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="nabidka")} stav={st.nabidka||"Čeká"} onStav={v=>updStav("nabidka",v)}/>
           <div style={S.body}>
             <EF label="Číslo OP"            value={data.nabidka.cisloOP}         onChange={v=>upd("nabidka","cisloOP",v)} mono/>
             <EF label="Sestava"             value={data.nabidka.sestava}         onChange={v=>upd("nabidka","sestava",v)}/>
@@ -322,7 +322,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* SMLOUVA */}
         <div id="s-smlouva" style={S.card(false,"#7c3aed")}>
-          <SekceHeader sekce={SEKCE[2]} stav={st.smlouva||"Čeká"} onStav={v=>updStav("smlouva",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="smlouva")} stav={st.smlouva||"Čeká"} onStav={v=>updStav("smlouva",v)}/>
           <div style={S.body}>
             <EF label="Datum podpisu"       value={data.smlouva.datumPodpisu}    onChange={v=>upd("smlouva","datumPodpisu",v)}/>
             <EF label="Záloha (Kč)"         value={data.smlouva.zaloha}          onChange={v=>upd("smlouva","zaloha",v)}/>
@@ -335,7 +335,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* FVE SYSTÉM — dynamický podle typu zakázky */}
         <div id="s-system" style={{...S.card(false,"#f59e0b"),maxWidth:340,minWidth:340}}>
-          <SekceHeader sekce={SEKCE[3]} stav={st.system||"Čeká"} onStav={v=>updStav("system",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="system")} stav={st.system||"Čeká"} onStav={v=>updStav("system",v)}/>
           <div style={S.body}>
 
             {/* Výběr typu zakázky */}
@@ -554,7 +554,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* MONTÁŽ */}
         <div id="s-montaz" style={S.card(false,"#ef4444")}>
-          <SekceHeader sekce={SEKCE[4]} stav={st.montaz||"Čeká"} onStav={v=>updStav("montaz",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="montaz")} stav={st.montaz||"Čeká"} onStav={v=>updStav("montaz",v)}/>
           <div style={S.body}>
             <EF label="Datum montáže" value={data.montaz.datumMontaze}    onChange={v=>upd("montaz","datumMontaze",v)}/>
             <EF label="Technici"      value={data.montaz.technici}         onChange={v=>upd("montaz","technici",v)}/>
@@ -575,7 +575,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* PŘEDÁNÍ */}
         <div id="s-predani" style={S.card(false,"#16a34a")}>
-          <SekceHeader sekce={SEKCE[5]} stav={st.predani||"Čeká"} onStav={v=>updStav("predani",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="predani")} stav={st.predani||"Čeká"} onStav={v=>updStav("predani",v)}/>
           <div style={S.body}>
             <EF label="Datum předání"    value={data.predani.datumPredani}          onChange={v=>upd("predani","datumPredani",v)}/>
             <EF label="Technik"          value={data.predani.technik}               onChange={v=>upd("predani","technik",v)}/>
@@ -591,7 +591,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* DOTACE */}
         <div id="s-dotace" style={S.card(false,"#0ea5e9")}>
-          <SekceHeader sekce={SEKCE[6]} stav={st.dotace||"Čeká"} onStav={v=>updStav("dotace",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="dotace")} stav={st.dotace||"Čeká"} onStav={v=>updStav("dotace",v)}/>
           <div style={S.body}>
             <EF label="Typ dotace"         value={data.dotace.typ}            onChange={v=>upd("dotace","typ",v)}/>
             <EF label="Kraj"               value={data.dotace.kraj}           onChange={v=>upd("dotace","kraj",v)}/>
@@ -606,7 +606,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* FAKTURACE */}
         <div id="s-fakturace" style={S.card(false,"#f97316")}>
-          <SekceHeader sekce={SEKCE[7]} stav={st.fakturace||"Čeká"} onStav={v=>updStav("fakturace",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="fakturace")} stav={st.fakturace||"Čeká"} onStav={v=>updStav("fakturace",v)}/>
           <div style={S.body}>
             <div style={{fontSize:11,fontWeight:700,color:"#f97316",textTransform:"uppercase",marginBottom:8}}>Záloha</div>
             <EF label="Číslo faktury"  value={data.fakturace.zalohaFaktura}  onChange={v=>upd("fakturace","zalohaFaktura",v)} mono/>
@@ -626,7 +626,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* EKONOMICKÁ BILANCE */}
         <div id="s-bilance" style={{...S.card(false,"#10b981"),maxWidth:340,minWidth:340}}>
-          <SekceHeader sekce={SEKCE[8]} stav={st.bilance||"Čeká"} onStav={v=>updStav("bilance",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="bilance")} stav={st.bilance||"Čeká"} onStav={v=>updStav("bilance",v)}/>
           <div style={S.body}>
             <table style={{width:"100%",borderCollapse:"collapse",marginBottom:14}}>
               <thead><tr>
@@ -671,7 +671,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* ROZŠÍŘENÍ */}
         <div id="s-rozsireni" style={{...S.card(false,"#8b5cf6"),maxWidth:340,minWidth:340}}>
-          <SekceHeader sekce={SEKCE[9]} stav={st.rozsireni||"Čeká"} onStav={v=>updStav("rozsireni",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="rozsireni")} stav={st.rozsireni||"Čeká"} onStav={v=>updStav("rozsireni",v)}/>
           <div style={S.body}>
             {(data.rozsireni||[]).length===0&&<div style={{color:"#334155",fontSize:13,textAlign:"center",padding:"16px 0"}}>Žádná rozšíření</div>}
             {(data.rozsireni||[]).map((r,i)=>(
@@ -693,7 +693,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* FOTODOKUMENTACE */}
         <div id="s-fotky" style={{...S.card(false,"#06b6d4"),maxWidth:340,minWidth:340}}>
-          <SekceHeader sekce={SEKCE[10]} stav={st.fotky||"Čeká"} onStav={v=>updStav("fotky",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="fotky")} stav={st.fotky||"Čeká"} onStav={v=>updStav("fotky",v)}/>
           <div style={S.body}>
             <div style={{background:"#080b12",borderRadius:10,padding:12,marginBottom:14,border:"1px solid #1a2035"}}>
               <div style={{fontWeight:700,color:"#fff",fontSize:13,marginBottom:8}}>☁️ OneDrive složka</div>
@@ -740,7 +740,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* DOKUMENTY */}
         <div id="s-dokumenty" style={{...S.card(false,"#64748b"),maxWidth:340,minWidth:340}}>
-          <SekceHeader sekce={SEKCE[11]} stav={st.dokumenty||"Čeká"} onStav={v=>updStav("dokumenty",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="dokumenty")} stav={st.dokumenty||"Čeká"} onStav={v=>updStav("dokumenty",v)}/>
           <div style={S.body}>
             {[
               {key:"smlouva",       label:"Smlouva o dodání FVE",       icon:"✍️", gen:true},
@@ -810,7 +810,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
 
         {/* SERVIS */}
         <div id="s-servis" style={{...S.card(false,"#ec4899"),maxWidth:340,minWidth:340}}>
-          <SekceHeader sekce={SEKCE[12]} stav={st.servis||"Čeká"} onStav={v=>updStav("servis",v)}/>
+          <SekceHeader sekce={SEKCE.find(s=>s.id==="servis")} stav={st.servis||"Čeká"} onStav={v=>updStav("servis",v)}/>
           <div style={S.body}>
             {(data.servis||[]).length===0&&<div style={{color:"#334155",fontSize:13,textAlign:"center",padding:"16px 0"}}>Žádné servisní zásahy</div>}
             {(data.servis||[]).map((z,i)=>(
