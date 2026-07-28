@@ -423,6 +423,16 @@ function MainApp({ currentUser, setCurrentUser }) {
 
   // ── Load all data from Supabase ──
   useEffect(() => {
+    // Zpracuj OneDrive OAuth callback hned při načtení appky
+    if (window.location.search.includes("code=")) {
+      handleOAuthCallback().then(ok => {
+        if (ok) {
+          console.log("✅ OneDrive připojeno");
+          setTab("onedrive"); // přepni na OneDrive záložku po přihlášení
+        }
+      });
+    }
+
     const load = async () => {
       setLoading(true);
       const [c, d, cm, t, inv, p, e, pr, co, att, ct, ce, notif, cal] = await Promise.all([
