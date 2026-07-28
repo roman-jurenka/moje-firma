@@ -634,6 +634,8 @@ function MainApp({ currentUser, setCurrentUser }) {
               overdueRevenue={overdueRevenue} lowStock={lowStock}
               totalPayroll={totalPayroll} activeProjects={activeProjects}
               costs={costs} toggleTask={toggleTaskGlobal} setTab={setTab}
+              contracts={contracts}
+              onOpenSheet={(id, name) => { setSheetContractId(id); setSheetContractName(name); setTab("sheets"); }}
             />
         )}
 
@@ -973,7 +975,8 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
 }
 
 function Dashboard({ customers, deals, tasks, invoices, products, employees, projects,
-  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab }) {
+  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab, contracts, onOpenSheet }) {
+  const [sheetSearch, setSheetSearch] = useState("");
   const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
   const thisMonthCosts = costs.filter(c => c.date.startsWith("2026-04")).reduce((s, c) => s + c.amount, 0);
   const stats = [
@@ -1003,6 +1006,67 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
       </div>
 
       <div style={S.grid2}>
+        {/* ZAKÁZKOVÝ LIST — rychlé vyhledání */}
+        <div style={{ ...S.card, gridColumn: "1 / -1", marginBottom: 0 }}>
+          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>📋</span> Zakázkový list — rychlé vyhledání
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input
+              style={{ ...S.input, flex: 1, marginBottom: 0 }}
+              placeholder="Hledat zakázku podle jména zákazníka nebo čísla OP..."
+              value={sheetSearch}
+              onChange={e => setSheetSearch(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && sheetSearch.trim()) {
+                  const q = sheetSearch.toLowerCase();
+                  const found = (contracts || []).find(c =>
+                    c.name?.toLowerCase().includes(q) ||
+                    c.code?.toLowerCase().includes(q) ||
+                    c.address?.toLowerCase().includes(q)
+                  );
+                  if (found) { onOpenSheet(found.id, found.name); setSheetSearch(""); }
+                }
+              }}
+            />
+            <button style={{ ...S.btn("#2563eb"), padding: "9px 18px", flexShrink: 0 }}
+              onClick={() => {
+                const q = sheetSearch.toLowerCase();
+                const found = (contracts || []).find(c =>
+                  c.name?.toLowerCase().includes(q) ||
+                  c.code?.toLowerCase().includes(q) ||
+                  c.address?.toLowerCase().includes(q)
+                );
+                if (found) { onOpenSheet(found.id, found.name); setSheetSearch(""); }
+              }}>
+              Otevřít →
+            </button>
+          </div>
+          {/* Výsledky při psaní */}
+          {sheetSearch.trim() && (
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+              {(contracts || [])
+                .filter(c => c.name?.toLowerCase().includes(sheetSearch.toLowerCase()) || c.code?.toLowerCase().includes(sheetSearch.toLowerCase()) || c.address?.toLowerCase().includes(sheetSearch.toLowerCase()))
+                .slice(0, 5)
+                .map(c => (
+                  <div key={c.id} onClick={() => { onOpenSheet(c.id, c.name); setSheetSearch(""); }}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#0a0d14", borderRadius: 8, cursor: "pointer", border: "1px solid #1a2035" }}>
+                    <span style={{ fontSize: 16 }}>📋</span>
+                    <div>
+                      <div style={{ fontWeight: 600, color: "#fff", fontSize: 13 }}>{c.name}</div>
+                      {c.code && <div style={{ fontSize: 11, color: "#475569" }}>{c.code}</div>}
+                    </div>
+                    <span style={{ marginLeft: "auto", color: "#2563eb", fontSize: 12 }}>Otevřít →</span>
+                  </div>
+                ))
+              }
+              {(contracts || []).filter(c => c.name?.toLowerCase().includes(sheetSearch.toLowerCase()) || c.code?.toLowerCase().includes(sheetSearch.toLowerCase())).length === 0 && (
+                <div style={{ color: "#475569", fontSize: 12, padding: "8px 12px" }}>Žádná zakázka nenalezena</div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Nejbližší úkoly */}
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
