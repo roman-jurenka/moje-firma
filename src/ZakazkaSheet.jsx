@@ -36,7 +36,7 @@ export const PRAZDNA_DATA = {
   predani:   { datumPredani:"", technik:"", stavElektrarny:"", vadyBraniciUzivani:"", vadyNebraniciUzivani:"", protokolCislo:"", poznamka:"" },
   dotace:    { typ:"", kraj:"Ostatní kraje", datumPodani:"", stav:"", datumSchvaleni:"", datumVyplaceni:"", poznamka:"" },
   fakturace: { zalohaFaktura:"", zalohaKc:"", zalohaDatum:"", zalohaUhrazena:"ne", doplatekFaktura:"", doplatekKc:"", doplatekDatum:"", doplatekUhrazen:"ne", poznamka:"" },
-  bilance:   { planMaterialNaklad:"", planPraceNaklad:"", planSluzbyNaklad:"", planCelkemNaklad:"", planProdejBezDph:"", planMarzeKc:"", planMarzePct:"", skutMaterialNaklad:"", skutPraceNaklad:"", skutSluzbyNaklad:"", skutCelkemNaklad:"", skutProdejBezDph:"", skutMarzeKc:"", skutMarzePct:"", odchylkaPoznamka:"", poznamka:"" },
+  bilance:   { planMaterialNaklad:"", planPraceNaklad:"", planDopravaNaklad:"", planSluzbyNaklad:"", planCelkemNaklad:"", planProdejBezDph:"", planMarzeKc:"", planMarzePct:"", skutMaterialNaklad:"", skutPraceNaklad:"", skutDopravaNaklad:"", skutSluzbyNaklad:"", skutCelkemNaklad:"", skutProdejBezDph:"", skutMarzeKc:"", skutMarzePct:"", odchylkaPoznamka:"", poznamka:"" },
   rozsireni: [],
   fotky:     { onedrive:"", poznamka:"", nahrane:[] },
   dokumenty: {
@@ -128,6 +128,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const [sheetId, setSheetId] = useState(null);
   const [fotoUploading, setFotoUploading] = useState({}); // { [kategorie]: pocetVeFrontě }
   const [docUploading, setDocUploading] = useState(null);  // klíč dokumentu, který se právě nahrává
+  const [nakladySyncing, setNakladySyncing] = useState(false);
 
   // Načti listy ze Supabase
   useEffect(() => {
@@ -224,6 +225,39 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
       alert(`Nahrání dokumentu "${file.name}" na OneDrive selhalo: ${e.message}`);
     } finally {
       setDocUploading(null);
+    }
+  };
+
+  // ─── Propsat skutečné náklady z modulu Náklady (contract_cost_entries) ─────
+  const nacistSkutecneNaklady = async () => {
+    if (!activeCId) return;
+    const b = data.bilance || {};
+    const maZaplneno = [b.skutMaterialNaklad, b.skutPraceNaklad, b.skutDopravaNaklad, b.skutCelkemNaklad].some(v => v);
+    if (maZaplneno && !confirm("Přepsat ručně zadané skutečné náklady daty z modulu Náklady?")) return;
+
+    setNakladySyncing(true);
+    try {
+      const { data: entries, error } = await supabase.from("contract_cost_entries").select("cost_type, amount_cost").eq("contract_id", activeCId);
+      if (error) throw error;
+      const sum = (typ) => (entries || []).filter(e => e.cost_type === typ).reduce((s, e) => s + Number(e.amount_cost || 0), 0);
+      const material = sum("materiál"), prace = sum("práce"), doprava = sum("doprava");
+      const celkem = material + prace + doprava;
+      const prodej = Number(data.bilance.skutProdejBezDph) || 0;
+      const marzeKc = prodej ? prodej - celkem : null;
+      const marzePct = prodej ? Math.round((marzeKc / prodej) * 1000) / 10 : null;
+
+      setData(d => ({ ...d, bilance: {
+        ...d.bilance,
+        skutMaterialNaklad: String(material),
+        skutPraceNaklad: String(prace),
+        skutDopravaNaklad: String(doprava),
+        skutCelkemNaklad: String(celkem),
+        ...(marzeKc !== null ? { skutMarzeKc: String(marzeKc), skutMarzePct: String(marzePct) } : {}),
+      } }));
+    } catch (e) {
+      alert("Načtení skutečných nákladů selhalo: " + e.message);
+    } finally {
+      setNakladySyncing(false);
     }
   };
 
@@ -636,7 +670,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                 <th style={{textAlign:"right",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#10b981",textTransform:"uppercase",borderBottom:"1px solid #1a2035"}}>Skutečnost</th>
               </tr></thead>
               <tbody>
-                {[["Materiál","planMaterialNaklad","skutMaterialNaklad"],["Práce","planPraceNaklad","skutPraceNaklad"],["Celkem náklad","planCelkemNaklad","skutCelkemNaklad"],["Prodejní cena","planProdejBezDph","skutProdejBezDph"]].map(([l,pk,sk])=>(
+                {[["Materiál","planMaterialNaklad","skutMaterialNaklad"],["Práce","planPraceNaklad","skutPraceNaklad"],["Doprava","planDopravaNaklad","skutDopravaNaklad"],["Celkem náklad","planCelkemNaklad","skutCelkemNaklad"],["Prodejní cena","planProdejBezDph","skutProdejBezDph"]].map(([l,pk,sk])=>(
                   <tr key={l} style={{borderBottom:"1px solid #1a2035"}}>
                     <td style={{padding:"6px 8px",fontSize:12,color:"#94a3b8"}}>{l}</td>
                     <td style={{padding:"6px 8px",fontSize:12,color:"#2563eb",textAlign:"right"}}>{data.bilance[pk]||"—"}</td>
@@ -659,9 +693,13 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
               </div>
             </div>
             <div style={S.div}/>
+            <button style={{...S.btn("#10b981"),width:"100%",marginBottom:12}} onClick={nacistSkutecneNaklady} disabled={nakladySyncing}>
+              {nakladySyncing?"⏳ Načítám...":"🔄 Načíst ze skutečných nákladů"}
+            </button>
             <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8}}>Zadat skutečné náklady</div>
             <EF label="Materiál skutečný (Kč)"  value={data.bilance.skutMaterialNaklad} onChange={v=>upd("bilance","skutMaterialNaklad",v)}/>
             <EF label="Práce skutečná (Kč)"     value={data.bilance.skutPraceNaklad}    onChange={v=>upd("bilance","skutPraceNaklad",v)}/>
+            <EF label="Doprava skutečná (Kč)"   value={data.bilance.skutDopravaNaklad}  onChange={v=>upd("bilance","skutDopravaNaklad",v)}/>
             <EF label="Celkem náklad (Kč)"      value={data.bilance.skutCelkemNaklad}   onChange={v=>upd("bilance","skutCelkemNaklad",v)}/>
             <EF label="Marže skutečná (%)"      value={data.bilance.skutMarzePct}       onChange={v=>upd("bilance","skutMarzePct",v)}/>
             <EF label="Marže skutečná (Kč)"     value={data.bilance.skutMarzeKc}        onChange={v=>upd("bilance","skutMarzeKc",v)}/>
