@@ -179,7 +179,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     setFotoUploading(u => ({ ...u, [kategorie]: (u[kategorie] || 0) + files.length }));
     for (const f of files) {
       try {
-        const webUrl = await uploadFileObject(zakazkaFolderPath(data._nazev, "Fotky"), f);
+        const webUrl = await uploadFileObject(zakazkaFolderPath(data._nazev, `Fotky/${kategorie}`), f);
         setData(d => ({ ...d, fotky: { ...d.fotky, nahrane: [...(d.fotky.nahrane || []), {
           id: Date.now() + Math.random(), name: f.name, url: toDirectImageUrl(webUrl), link: webUrl,
           datum: new Date().toLocaleDateString("cs-CZ"), kategorie,
