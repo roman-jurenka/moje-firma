@@ -228,23 +228,39 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     }
   };
 
-  // ─── Propsat skutečné náklady z modulu Náklady (contract_cost_entries) ─────
+  // ─── Propsat plán i skutečnost (contracts = plán, contract_cost_entries = skutečnost) ─
   const nacistSkutecneNaklady = async () => {
     if (!activeCId) return;
     const b = data.bilance || {};
-    const maZaplneno = [b.skutMaterialNaklad, b.skutPraceNaklad, b.skutDopravaNaklad, b.skutCelkemNaklad].some(v => v);
-    if (maZaplneno && !confirm("Přepsat ručně zadané skutečné náklady daty z modulu Náklady?")) return;
+    const maZaplneno = [
+      b.skutMaterialNaklad, b.skutPraceNaklad, b.skutDopravaNaklad, b.skutCelkemNaklad,
+      b.planMaterialNaklad, b.planPraceNaklad, b.planDopravaNaklad, b.planCelkemNaklad,
+    ].some(v => v);
+    if (maZaplneno && !confirm("Přepsat ručně zadané náklady daty z modulu Zakázky a Náklady?")) return;
 
     setNakladySyncing(true);
     try {
-      const { data: entries, error } = await supabase.from("contract_cost_entries").select("cost_type, amount_cost").eq("contract_id", activeCId);
-      if (error) throw error;
+      const [{ data: entries, error: entriesErr }, { data: contract, error: contractErr }] = await Promise.all([
+        supabase.from("contract_cost_entries").select("cost_type, amount_cost").eq("contract_id", activeCId),
+        supabase.from("contracts").select("price, budget_prace, budget_material, budget_doprava").eq("id", activeCId).single(),
+      ]);
+      if (entriesErr) throw entriesErr;
+      if (contractErr) throw contractErr;
+
       const sum = (typ) => (entries || []).filter(e => e.cost_type === typ).reduce((s, e) => s + Number(e.amount_cost || 0), 0);
       const material = sum("materiál"), prace = sum("práce"), doprava = sum("doprava");
       const celkem = material + prace + doprava;
       const prodej = Number(data.bilance.skutProdejBezDph) || 0;
       const marzeKc = prodej ? prodej - celkem : null;
       const marzePct = prodej ? Math.round((marzeKc / prodej) * 1000) / 10 : null;
+
+      const planMaterial = Number(contract?.budget_material) || 0;
+      const planPrace = Number(contract?.budget_prace) || 0;
+      const planDoprava = Number(contract?.budget_doprava) || 0;
+      const planCelkem = planMaterial + planPrace + planDoprava;
+      const planProdej = Number(contract?.price) || 0;
+      const planMarzeKc = planProdej ? planProdej - planCelkem : null;
+      const planMarzePct = planProdej ? Math.round((planMarzeKc / planProdej) * 1000) / 10 : null;
 
       setData(d => ({ ...d, bilance: {
         ...d.bilance,
@@ -253,9 +269,15 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         skutDopravaNaklad: String(doprava),
         skutCelkemNaklad: String(celkem),
         ...(marzeKc !== null ? { skutMarzeKc: String(marzeKc), skutMarzePct: String(marzePct) } : {}),
+        planMaterialNaklad: String(planMaterial),
+        planPraceNaklad: String(planPrace),
+        planDopravaNaklad: String(planDoprava),
+        planCelkemNaklad: String(planCelkem),
+        ...(planProdej ? { planProdejBezDph: String(planProdej) } : {}),
+        ...(planMarzeKc !== null ? { planMarzeKc: String(planMarzeKc), planMarzePct: String(planMarzePct) } : {}),
       } }));
     } catch (e) {
-      alert("Načtení skutečných nákladů selhalo: " + e.message);
+      alert("Načtení nákladů selhalo: " + e.message);
     } finally {
       setNakladySyncing(false);
     }
@@ -694,7 +716,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             </div>
             <div style={S.div}/>
             <button style={{...S.btn("#10b981"),width:"100%",marginBottom:12}} onClick={nacistSkutecneNaklady} disabled={nakladySyncing}>
-              {nakladySyncing?"⏳ Načítám...":"🔄 Načíst ze skutečných nákladů"}
+              {nakladySyncing?"⏳ Načítám...":"🔄 Načíst plán ze Zakázky a skutečnost z Nákladů"}
             </button>
             <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8}}>Zadat skutečné náklady</div>
             <EF label="Materiál skutečný (Kč)"  value={data.bilance.skutMaterialNaklad} onChange={v=>upd("bilance","skutMaterialNaklad",v)}/>
