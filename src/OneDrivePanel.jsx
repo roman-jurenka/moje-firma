@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { login, logout, isConnected, getUser, backupToOneDrive } from "./onedrive.js";
+import { useState, useEffect } from "react";
+import { login, logout, isConnected, getUser, backupToOneDrive, connectSharedAccount } from "./onedrive.js";
 
 const S = {
   card: { background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: "20px 24px", marginBottom: 16 },
@@ -13,6 +13,16 @@ export default function OneDrivePanel({ supabase }) {
   const [progress, setProgress] = useState(null);    // { msg, pct }
   const [lastBackup, setLastBackup] = useState(localStorage.getItem("od_last_backup"));
   const [error, setError] = useState(null);
+  const [checking, setChecking] = useState(!isConnected());
+
+  // Pokud tenhle prohlížeč ještě nemá vlastní přihlášení, zkus načíst firemní sdílený účet
+  useEffect(() => {
+    if (isConnected()) { setChecking(false); return; }
+    connectSharedAccount().then(ok => {
+      if (ok) { setConnected(true); setUser(getUser()); }
+      setChecking(false);
+    });
+  }, []);
 
   const handleLogin = () => {
     setError(null);
@@ -50,10 +60,10 @@ export default function OneDrivePanel({ supabase }) {
       {/* STATUS */}
       <div style={S.card}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: connected ? 16 : 0 }}>
-          <div style={{ fontSize: 32 }}>{connected ? "🟢" : "⚪"}</div>
+          <div style={{ fontSize: 32 }}>{checking ? "⏳" : connected ? "🟢" : "⚪"}</div>
           <div>
             <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>
-              {connected ? "Připojeno k OneDrive" : "Nepřipojeno"}
+              {checking ? "Připojuji se..." : connected ? "Připojeno k firemnímu OneDrive" : "Nepřipojeno"}
             </div>
             {connected && user?.name && (
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
@@ -62,16 +72,16 @@ export default function OneDrivePanel({ supabase }) {
             )}
           </div>
           <div style={{ flex: 1 }} />
-          {connected
-            ? <button style={S.btn("#334155")} onClick={handleLogout}>Odpojit</button>
+          {!checking && (connected
+            ? <button style={S.btn("#334155")} onClick={handleLogout}>Odpojit (jen v tomto prohlížeči)</button>
             : <button style={S.btn("#0078d4")} onClick={handleLogin}>🔗 Připojit OneDrive</button>
-          }
+          )}
         </div>
 
         {connected && (
           <div style={{ borderTop: "1px solid #1e293b", paddingTop: 16 }}>
             <div style={{ fontSize: 13, color: "#475569", marginBottom: 14 }}>
-              Data se ukládají do složky <strong style={{ color: "#93c5fd" }}>FirmaCRM/</strong> na tvém OneDrive.
+              Data se ukládají do složky <strong style={{ color: "#93c5fd" }}>FirmaCRM/</strong> na tomto OneDrive. Tenhle účet je nastavený jako sdílený pro celou firmu — všichni zaměstnanci k němu nahrávají fotky a dokumenty automaticky, bez vlastního přihlašování.
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <button style={S.btn("#10b981")} onClick={handleBackup} disabled={!!progress}>
@@ -147,6 +157,9 @@ export default function OneDrivePanel({ supabase }) {
             <li>Vlož CLIENT_ID do souboru <code style={{ color: "#34d399" }}>src/onedrive.js</code> na řádek 7</li>
             <li>Udělej git commit + push, pak klikni <strong style={{ color: "#0078d4" }}>Připojit OneDrive</strong></li>
           </ol>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 10, paddingTop: 10, borderTop: "1px solid #1e293b" }}>
+            Připojuje se tu jen jednou — tvůj účet se automaticky nastaví jako sdílený pro celou firmu a zaměstnanci se k němu připojí sami, bez vlastního přihlašování.
+          </div>
         </div>
       )}
     </div>

@@ -2,6 +2,8 @@
 // Osobní Microsoft účet (consumers tenant)
 // Nastav CLIENT_ID po registraci aplikace v Azure portálu
 
+import { supabase } from "./supabase.js";
+
 export const OD_CLIENT_ID = "acc593cf-5c70-408d-bc5d-ccb99a043972";
 const TENANT = "common"; // multitenant — funguje pro firemní i osobní účty
 const REDIRECT_URI = window.location.origin + "/";
@@ -9,6 +11,11 @@ const SCOPES = "User.Read Files.ReadWrite offline_access";
 const AUTH_BASE = `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0`;
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const FOLDER_ROOT = "FirmaCRM";
+
+// Sdílený firemní účet — všichni zaměstnanci používají stejné připojení
+// (uložené v Supabase), místo aby se každý přihlašoval zvlášť.
+const SETTINGS_TABLE = "app_settings";
+const SHARED_KEY = "onedrive_shared";
 
 // ─── PKCE helpers ─────────────────────────────────────────────────────────────
 function base64url(buffer) {
@@ -95,6 +102,11 @@ export async function handleOAuthCallback() {
   LS.del("pkce_verifier");
   LS.del("pkce_state");
 
+  // Toto přihlášení se automaticky stává firemním sdíleným účtem —
+  // ostatní zaměstnanci se k němu připojí bez vlastního přihlašování.
+  LS.set("shared_mode", true);
+  await pushSharedToken();
+
   // Vyčistit URL od OAuth parametrů
   window.history.replaceState({}, "", window.location.pathname);
   return true;
@@ -102,7 +114,51 @@ export async function handleOAuthCallback() {
 
 // ─── LOGOUT ───────────────────────────────────────────────────────────────────
 export function logout() {
-  ["access_token", "refresh_token", "token_expires", "user_name", "user_email"].forEach(k => LS.del(k));
+  ["access_token", "refresh_token", "token_expires", "user_name", "user_email", "shared_mode"].forEach(k => LS.del(k));
+}
+
+// ─── SDÍLENÝ FIREMNÍ ÚČET (Supabase) ──────────────────────────────────────────
+// Uloží aktuální refresh token jako firemní sdílený účet
+async function pushSharedToken() {
+  try {
+    await supabase.from(SETTINGS_TABLE).upsert({
+      key: SHARED_KEY,
+      value: {
+        refresh_token: LS.get("refresh_token"),
+        user_name: LS.get("user_name"),
+        user_email: LS.get("user_email"),
+      },
+      updated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn("Nepodařilo se uložit sdílený OneDrive účet:", e.message);
+  }
+}
+
+// Info o firemním účtu (i bez připojení v tomto prohlížeči)
+export async function getSharedAccountInfo() {
+  const { data } = await supabase.from(SETTINGS_TABLE).select("value").eq("key", SHARED_KEY).maybeSingle();
+  return data?.value || null;
+}
+
+// Načte firemní sdílený účet do tohoto prohlížeče (pokud tu ještě není žádné
+// vlastní připojení). Volá se automaticky při otevření OneDrive/fotek.
+export async function connectSharedAccount() {
+  if (isConnected()) return true;
+  const shared = await getSharedAccountInfo();
+  if (!shared?.refresh_token) return false;
+  LS.set("refresh_token", shared.refresh_token);
+  LS.set("user_name", shared.user_name);
+  LS.set("user_email", shared.user_email);
+  LS.set("token_expires", 0);
+  LS.set("shared_mode", true);
+  try {
+    await getValidToken();
+    return true;
+  } catch (e) {
+    console.warn("Sdílený OneDrive účet už není platný:", e.message);
+    return false;
+  }
 }
 
 // ─── TOKEN REFRESH ────────────────────────────────────────────────────────────
@@ -126,6 +182,11 @@ async function getValidToken() {
   LS.set("access_token", data.access_token);
   if (data.refresh_token) LS.set("refresh_token", data.refresh_token);
   LS.set("token_expires", Date.now() + data.expires_in * 1000);
+
+  // Microsoft refresh token po použití rotuje — pokud tenhle prohlížeč běží
+  // jako firemní sdílený účet, ulož nový token zpět, ať zůstane platný i pro ostatní.
+  if (LS.get("shared_mode")) await pushSharedToken();
+
   return data.access_token;
 }
 

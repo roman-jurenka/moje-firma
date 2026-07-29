@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected } from "./onedrive.js";
+import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected, connectSharedAccount } from "./onedrive.js";
 import { PRAZDNA_DATA, FOTO_KATEGORIE } from "./ZakazkaSheet.jsx";
 
 const S = {
@@ -18,9 +18,17 @@ export default function FotoUpload({ currentUser, setTab }) {
   const [fotky, setFotky] = useState([]);
   const [uploading, setUploading] = useState({});
   const [loading, setLoading] = useState(false);
+  const [odConnected, setOdConnected] = useState(isConnected());
+  const [odChecking, setOdChecking] = useState(!isConnected());
 
   useEffect(() => {
     supabase.from("contracts").select("id, name, code, status").order("name").then(({ data }) => setContracts(data || []));
+  }, []);
+
+  // Připoj se automaticky k firemnímu sdílenému OneDrive účtu (bez nutnosti přihlášení)
+  useEffect(() => {
+    if (isConnected()) { setOdConnected(true); setOdChecking(false); return; }
+    connectSharedAccount().then(ok => { setOdConnected(ok); setOdChecking(false); });
   }, []);
 
   const openContract = async (c) => {
@@ -82,10 +90,12 @@ export default function FotoUpload({ currentUser, setTab }) {
       <div style={S.app}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", marginBottom: 4 }}>📷 Nahrát fotky</h1>
         <p style={{ color: "#475569", fontSize: 13, marginBottom: 18 }}>Vyber zakázku, ke které chceš přidat fotky. Fotky se ukládají rovnou na OneDrive.</p>
-        {!isConnected() && (
-          <div style={{ ...S.card, border: "1px solid #f59e0b44", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ Nejsi připojený k OneDrive — fotky se nenahrají, dokud se nepřipojíš.</div>
-            {setTab && <button style={S.btn("#0078d4")} onClick={() => setTab("onedrive")}>Připojit OneDrive</button>}
+        {odChecking && (
+          <div style={{ ...S.card, fontSize: 13, color: "#475569" }}>⏳ Připojuji se k firemnímu OneDrive...</div>
+        )}
+        {!odChecking && !odConnected && (
+          <div style={{ ...S.card, border: "1px solid #f59e0b44" }}>
+            <div style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ Firemní OneDrive není momentálně dostupný — fotky se nenahrají. Ozvi se administrátorovi.</div>
           </div>
         )}
         <input style={{ ...S.inp, marginBottom: 14, fontSize: 14 }} placeholder="Hledat zakázku podle jména nebo čísla..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -113,10 +123,12 @@ export default function FotoUpload({ currentUser, setTab }) {
       <h1 style={{ fontSize: 20, fontWeight: 800, color: "#fff", marginBottom: 2 }}>📷 {activeContract.name}</h1>
       <p style={{ color: "#475569", fontSize: 12, marginBottom: 18 }}>Fotky se ukládají do FirmaCRM/Zakázky/{activeContract.name}/Fotky na OneDrive.</p>
 
-      {!isConnected() && (
-        <div style={{ ...S.card, border: "1px solid #f59e0b44", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ Nejsi připojený k OneDrive.</div>
-          {setTab && <button style={S.btn("#0078d4")} onClick={() => setTab("onedrive")}>Připojit OneDrive</button>}
+      {odChecking && (
+        <div style={{ ...S.card, fontSize: 13, color: "#475569" }}>⏳ Připojuji se k firemnímu OneDrive...</div>
+      )}
+      {!odChecking && !odConnected && (
+        <div style={{ ...S.card, border: "1px solid #f59e0b44" }}>
+          <div style={{ fontSize: 13, color: "#f59e0b" }}>⚠️ Firemní OneDrive není momentálně dostupný. Ozvi se administrátorovi.</div>
         </div>
       )}
 
