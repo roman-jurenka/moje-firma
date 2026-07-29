@@ -5551,25 +5551,22 @@ export default function App() {
   const handleLogin = async () => {
     setLoginErr("");
     const name = loginName.trim();
-    // 1) Zkus Supabase employees
-    const { data } = await supabase.from("employees").select("*").eq("name", name).single();
-    if (data) {
-      if (data.password && data.password !== loginPass) { setLoginErr("Nesprávné heslo."); return; }
-      const user = {
-        id: data.id, name: data.name, role: data.role || "employee",
-        employeeId: data.id,
-        vacationDays: data.vacation_days || 20,
-        vacationUsed: data.vacation_used || 0,
-      };
-      setCurrentUser(user);
-      localStorage.setItem("crm_user", JSON.stringify(user));
-      return;
-    }
-    // 2) Fallback na USERS (pokud employees tabulka je prázdná)
+    if (!name) { setLoginErr("Zadejte jméno."); return; }
+
+    // Heslo se vždy ověřuje proti USERS (jediný zdroj přihlašovacích údajů) —
+    // tabulka employees v Supabase žádné heslo neukládá, takže se podle ní nikdy nesmí přihlašovat.
     const local = USERS.find(u => u.name.toLowerCase() === name.toLowerCase() || u.username.toLowerCase() === name.toLowerCase());
     if (!local) { setLoginErr("Zaměstnanec nenalezen."); return; }
-    if (local.password && loginPass && local.password !== loginPass) { setLoginErr("Nesprávné heslo."); return; }
-    const user = { id: local.id, name: local.name, role: local.role, employeeId: local.employeeId, vacationDays: local.vacationDays, vacationUsed: local.vacationUsed };
+    if (local.password) {
+      if (!loginPass || loginPass !== local.password) { setLoginErr("Nesprávné heslo."); return; }
+    }
+
+    // Po ověření hesla dotáhni aktuální dovolenou apod. ze Supabase (role bereme jen z USERS)
+    const { data } = await supabase.from("employees").select("*").eq("name", local.name).single();
+    const user = data
+      ? { id: data.id, name: data.name, role: local.role, employeeId: data.id, vacationDays: data.vacation_days ?? local.vacationDays, vacationUsed: data.vacation_used ?? local.vacationUsed }
+      : { id: local.id, name: local.name, role: local.role, employeeId: local.employeeId, vacationDays: local.vacationDays, vacationUsed: local.vacationUsed };
+
     setCurrentUser(user);
     localStorage.setItem("crm_user", JSON.stringify(user));
   };
@@ -5591,7 +5588,7 @@ export default function App() {
           <label style={S.label}>Jméno</label>
           <input style={S.input} value={loginName} onChange={e => setLoginName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Vaše jméno" />
           <label style={S.label}>Heslo</label>
-          <input type="password" style={S.input} value={loginPass} onChange={e => setLoginPass(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Heslo (volitelné)" />
+          <input type="password" style={S.input} value={loginPass} onChange={e => setLoginPass(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Heslo" />
           <button style={{ ...S.btn(), width: "100%", padding: 12, fontSize: 15, marginTop: 6 }} onClick={handleLogin}>Přihlásit se</button>
           <div style={{ marginTop: 16, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
             <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8, textAlign: "center" }}>Rychlé přihlášení</div>
