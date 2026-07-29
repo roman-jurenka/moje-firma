@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import Contracts from "./Contracts.jsx";
 import ZakazkaSheet from "./ZakazkaSheet.jsx";
+import FotoUpload from "./FotoUpload.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import { handleOAuthCallback } from "./onedrive.js";
 
@@ -104,7 +105,7 @@ const ROLES = {
   admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","profile"] },
   manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","profile"] },
-  employee: { label: "Zaměstnanec",   color: "#60a5fa", nav: ["dashboard","attendance","calendar","knjiga","profile"] },
+  employee: { label: "Zaměstnanec",   color: "#60a5fa", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","profile"] },
 };
 
 // Simulovaná docházka — záznamy příchod/odchod
@@ -254,6 +255,7 @@ const NAV = [
   // { id: "communication", label: "Komunikace", icon: "💬", group: "CRM" }, // odebráno — data zachována pro detail zákazníka
   { id: "contracts", label: "Zakázky", icon: "🔧", group: "CRM" },
   { id: "sheets", label: "Listy zakázek", icon: "📋", group: "CRM" },
+  { id: "fotoupload", label: "Nahrát fotky", icon: "📷", group: "Osobní" },
   { id: "tasks", label: "Úkoly", icon: "✅", group: "CRM" },
   { id: "invoices", label: "Fakturace", icon: "🧾", group: "ERP" },
   { id: "warehouse", label: "Sklad", icon: "📦", group: "ERP" },
@@ -746,6 +748,9 @@ function MainApp({ currentUser, setCurrentUser }) {
 
         {tab === "onedrive" && (
           <OneDrivePanel supabase={supabase} />
+        )}
+        {tab === "fotoupload" && (
+          <FotoUpload currentUser={currentUser} setTab={setTab} />
         )}
         {tab === "profile" && <Profile
           currentUser={currentUser} attendance={attendance} employees={employees}

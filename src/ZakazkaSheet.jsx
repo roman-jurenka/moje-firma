@@ -3,6 +3,7 @@ import { supabase } from "./supabase.js";
 import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected } from "./onedrive.js";
 
 const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#2563eb" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
+export const FOTO_KATEGORIE = ["Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"];
 const SEKCE = [
   { id: "zakaznik",  icon: "👤", label: "Zákazník",         barva: "#6366f1" },
   { id: "nabidka",   icon: "📋", label: "Nabídka",          barva: "#2563eb" },
@@ -20,7 +21,7 @@ const SEKCE = [
   { id: "servis",    icon: "🔨", label: "Servis",           barva: "#ec4899" },
 ];
 
-const PRAZDNA_DATA = {
+export const PRAZDNA_DATA = {
   zakaznik:  { jmeno:"", adresa:"", telefon:"", email:"", datumNarozeni:"", ean:"", distributor:"ČEZ", pocetVlastniku:"1", poznamka:"" },
   nabidka:   { cisloOP:"", sestava:"", cenaSDph:"", dotace:"", cenaPoOdecteni:"", oz:"", datumNabidky:"", platnostDo:"", poznamka:"" },
   smlouva:   { datumPodpisu:"", zaloha:"", datumZalohy:"", terminRealizace:"", poznamka:"" },
@@ -705,7 +706,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                 </a>
               )}
             </div>
-            {["Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"].map(kat=>{
+            {FOTO_KATEGORIE.map(kat=>{
               const fc=(data.fotky.nahrane||[]).filter(f=>f.kategorie===kat);
               const busy=fotoUploading[kat]>0;
               return(
