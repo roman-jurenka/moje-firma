@@ -105,7 +105,7 @@ const ROLES = {
   admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","profile"] },
   manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","profile"] },
-  employee: { label: "Zaměstnanec",   color: "#60a5fa", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","profile"] },
+  employee: { label: "Zaměstnanec",   color: "#60a5fa", nav: ["dashboard","fotoupload","onedrive","attendance","calendar","knjiga","profile"] },
 };
 
 // Simulovaná docházka — záznamy příchod/odchod
