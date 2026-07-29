@@ -6,6 +6,18 @@ import FotoUpload from "./FotoUpload.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import { handleOAuthCallback } from "./onedrive.js";
 
+// ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
+function ProudOSMark({ size = 28, outline = true }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" style={{ flexShrink: 0 }} aria-hidden="true">
+      <circle cx="50" cy="50" r="46" fill="#1d4ed8" />
+      <circle cx="50" cy="50" r="40" fill="#2563eb" />
+      <path d="M62,14 L32,54 L46,54 L36,88 L70,44 L52,44 Z" fill="#f97316"
+        stroke={outline ? "#ffffff" : "none"} strokeWidth={outline ? 3 : 0} strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // ─── MINI KALENDÁŘ ───────────────────────────────────────────────────────────
 
 const CZ_MONTHS = ["Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
@@ -579,7 +591,10 @@ function MainApp({ currentUser, setCurrentUser }) {
       {/* SIDEBAR */}
       <div className={`sidebar-nav${sidebarOpen ? " open" : ""}`} style={S.sidebar()}>
         <div style={{ ...S.logo, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span>Firma<span style={S.logoA}>CRM</span><span style={S.logoB}>+ERP</span></span>
+          <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <ProudOSMark size={26} />
+            <span><span style={S.logoA}>Proud</span><span style={S.logoB}>OS</span></span>
+          </span>
           <button className="sidebar-close" onClick={() => setSidebarOpen(false)} style={{ display: "none", background: "none", border: "none", color: "#94a3b8", fontSize: 22, cursor: "pointer", padding: 0 }}>✕</button>
         </div>
 
@@ -5580,8 +5595,11 @@ export default function App() {
     return (
       <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
         <div style={{ background: "#fff", borderRadius: 16, padding: 40, width: 360, boxShadow: "0 8px 40px #0000001a", border: "1px solid #e2e8f0" }}>
-          <div style={{ fontWeight: 800, fontSize: 22, color: "#1e293b", marginBottom: 6, textAlign: "center" }}>
-            <span style={{ color: "#2563eb" }}>Firma</span><span style={{ color: "#f97316" }}>CRM</span>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <ProudOSMark size={48} />
+            <div style={{ fontWeight: 800, fontSize: 22, textAlign: "center" }}>
+              <span style={{ color: "#2563eb" }}>Proud</span><span style={{ color: "#f97316" }}>OS</span>
+            </div>
           </div>
           <div style={{ color: "#64748b", fontSize: 13, textAlign: "center", marginBottom: 28 }}>Přihlaste se do systému</div>
           {loginErr && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 12 }}>{loginErr}</div>}
@@ -5600,7 +5618,7 @@ export default function App() {
               </button>
             ))}
           </div>
-          <div style={{ textAlign: "center", marginTop: 12, e: 12, color: "#94a3b8" }}>© 2026 FirmaCRM+ERP</div>
+          <div style={{ textAlign: "center", marginTop: 12, e: 12, color: "#94a3b8" }}>© 2026 ProudOS</div>
         </div>
       </div>
     );
