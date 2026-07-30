@@ -104,13 +104,15 @@ function DatePicker({ value, onChange, placeholder = "Vyberte datum", style = {}
 
 
 // ─── AUTH & USERS ────────────────────────────────────────────────────────────
-
-const USERS = [
-  { id: 1, employeeId: 1, username: "roman",   password: "medvedelektro", role: "admin",    name: "Roman Jurenka",    vacationDays: 25, vacationUsed: 0 },
-  { id: 5, employeeId: 5, username: "sarlota", password: "rozarka",       role: "employee", name: "Šarlota Jurenková", vacationDays: 20, vacationUsed: 0 },
-  { id: 2, employeeId: 2, username: "vaclav",  password: "jajsemkral",    role: "employee", name: "Václav Jahn",      vacationDays: 20, vacationUsed: 0 },
-  { id: 3, employeeId: 3, username: "david",   password: "autojecesta",   role: "employee", name: "David Winige",     vacationDays: 20, vacationUsed: 0 },
-  { id: 4, employeeId: 4, username: "honza",   password: "mujusmev",      role: "employee", name: "Honza Vlček",      vacationDays: 20, vacationUsed: 0 },
+// Žádná hesla tady! Ta žijí jen v Supabase Auth (login.md v README má postup
+// založení účtů). Tohle je jen mapování jméno/username -> e-mail pro Auth,
+// a kosmetická role pro tlačítko "Rychlé přihlášení" před přihlášením.
+const AUTH_USERS = [
+  { username: "roman",   email: "roman@proudos.app",   role: "admin",    name: "Roman Jurenka" },
+  { username: "sarlota", email: "sarlota@proudos.app", role: "employee", name: "Šarlota Jurenková" },
+  { username: "vaclav",  email: "vaclav@proudos.app",  role: "employee", name: "Václav Jahn" },
+  { username: "david",   email: "david@proudos.app",   role: "employee", name: "David Winige" },
+  { username: "honza",   email: "honza@proudos.app",   role: "employee", name: "Honza Vlček" },
 ];
 
 const ROLES = {
@@ -397,7 +399,7 @@ function ModalActions({ onSave, onClose, saveLabel = "Uložit" }) {
 
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 
-function MainApp({ currentUser, setCurrentUser }) {
+function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [tab, setTab] = useState("dashboard");
   const [sheetContractId, setSheetContractId] = useState(null);
   const [sheetContractName, setSheetContractName] = useState("");
@@ -638,7 +640,7 @@ function MainApp({ currentUser, setCurrentUser }) {
               </span>
             )}
           </button>
-          <button onClick={() => setCurrentUser(null)} style={{ ...S.btnGhost, width: "100%", fontSize: 12, color: "#f87171", borderColor: "#f8717133" }}>
+          <button onClick={onLogout} style={{ ...S.btnGhost, width: "100%", fontSize: 12, color: "#f87171", borderColor: "#f8717133" }}>
             ← Odhlásit se
           </button>
         </div>
@@ -5554,42 +5556,69 @@ export default function App() {
   const [loginPass, setLoginPass] = useState("");
   const [loginErr, setLoginErr] = useState("");
   const [employees, setEmployees] = useState([]);
+  const [authChecking, setAuthChecking] = useState(true);
+
+  // Sestaví currentUser z profilu podle přihlášeného Supabase Auth uživatele
+  const loadProfileUser = async (authUser) => {
+    const { data: profile } = await supabase.from("profiles").select("*").eq("id", authUser.id).single();
+    const fallback = AUTH_USERS.find(u => u.email.toLowerCase() === (authUser.email || "").toLowerCase());
+    const user = {
+      id: profile?.employee_id ?? authUser.id,
+      name: profile?.name || fallback?.name || authUser.email,
+      role: profile?.role || fallback?.role || "employee",
+      employeeId: profile?.employee_id ?? null,
+      vacationDays: profile?.vacation_days ?? 20,
+      vacationUsed: profile?.vacation_used ?? 0,
+    };
+    setCurrentUser(user);
+    return user;
+  };
 
   useEffect(() => {
-    supabase.from("employees").select("*").then(({ data }) => { if (data) setEmployees(data); });
-    const saved = localStorage.getItem("crm_user");
-    if (saved) {
-      try { setCurrentUser(JSON.parse(saved)); } catch {}
-    }
+    // Obnov session, pokud je uživatel pořád přihlášený (Supabase si token drží sám)
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) await loadProfileUser(session.user);
+      setAuthChecking(false);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) setCurrentUser(null);
+    });
+    return () => sub?.subscription?.unsubscribe();
   }, []);
+
+  // employees se smí číst jen po přihlášení (RLS) — natáhni je až jakmile je currentUser hotový
+  useEffect(() => {
+    if (!currentUser) return;
+    supabase.from("employees").select("*").then(({ data }) => { if (data) setEmployees(data); });
+  }, [currentUser]);
 
   const handleLogin = async () => {
     setLoginErr("");
     const name = loginName.trim();
-    if (!name) { setLoginErr("Zadejte jméno."); return; }
+    if (!name || !loginPass) { setLoginErr("Zadejte jméno i heslo."); return; }
 
-    // Heslo se vždy ověřuje proti USERS (jediný zdroj přihlašovacích údajů) —
-    // tabulka employees v Supabase žádné heslo neukládá, takže se podle ní nikdy nesmí přihlašovat.
-    const local = USERS.find(u => u.name.toLowerCase() === name.toLowerCase() || u.username.toLowerCase() === name.toLowerCase());
-    if (!local) { setLoginErr("Zaměstnanec nenalezen."); return; }
-    if (local.password) {
-      if (!loginPass || loginPass !== local.password) { setLoginErr("Nesprávné heslo."); return; }
-    }
+    const match = AUTH_USERS.find(u => u.name.toLowerCase() === name.toLowerCase() || u.username.toLowerCase() === name.toLowerCase());
+    if (!match) { setLoginErr("Zaměstnanec nenalezen."); return; }
 
-    // Po ověření hesla dotáhni aktuální dovolenou apod. ze Supabase (role bereme jen z USERS)
-    const { data } = await supabase.from("employees").select("*").eq("name", local.name).single();
-    const user = data
-      ? { id: data.id, name: data.name, role: local.role, employeeId: data.id, vacationDays: data.vacation_days ?? local.vacationDays, vacationUsed: data.vacation_used ?? local.vacationUsed }
-      : { id: local.id, name: local.name, role: local.role, employeeId: local.employeeId, vacationDays: local.vacationDays, vacationUsed: local.vacationUsed };
+    const { data, error } = await supabase.auth.signInWithPassword({ email: match.email, password: loginPass });
+    if (error || !data?.user) { setLoginErr("Nesprávné heslo."); return; }
 
-    setCurrentUser(user);
-    localStorage.setItem("crm_user", JSON.stringify(user));
+    await loadProfileUser(data.user);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
-    localStorage.removeItem("crm_user");
   };
+
+  if (authChecking) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+        <ProudOSMark size={40} />
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return (
@@ -5610,8 +5639,8 @@ export default function App() {
           <button style={{ ...S.btn(), width: "100%", padding: 12, fontSize: 15, marginTop: 6 }} onClick={handleLogin}>Přihlásit se</button>
           <div style={{ marginTop: 16, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
             <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8, textAlign: "center" }}>Rychlé přihlášení</div>
-            {USERS.map(u => (
-              <button key={u.id} onClick={() => { setLoginName(u.name); setLoginPass(""); }}
+            {AUTH_USERS.map(u => (
+              <button key={u.username} onClick={() => { setLoginName(u.name); setLoginPass(""); }}
                 style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 12px", width: "100%", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
                 <span style={{ fontSize: 12, color: "#1e293b", fontWeight: 500 }}>{u.name}</span>
                 <span style={{ ...S.tag(ROLES[u.role]?.color || "#2563eb"), fontSize: 10 }}>{ROLES[u.role]?.label}</span>
@@ -5624,5 +5653,5 @@ export default function App() {
     );
   }
 
-  return <MainApp currentUser={currentUser} setCurrentUser={setCurrentUser} />;
+  return <MainApp currentUser={currentUser} setCurrentUser={setCurrentUser} onLogout={handleLogout} />;
 }
