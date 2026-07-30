@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected } from "./onedrive.js";
+import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected, getDirectDownloadUrl } from "./onedrive.js";
 
 const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#2563eb" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
 export const FOTO_KATEGORIE = ["Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"];
@@ -107,6 +107,22 @@ function StavSekce({ val, onChange }) {
   );
 }
 
+// Náhled fotky z OneDrive — natáhne si čerstvý přímý odkaz na obsah souboru
+// (spolehlivé i tam, kde firemní tenant zakazuje anonymní sdílené odkazy).
+// Když se to nepovede (starší fotka bez itemId, výpadek), spadne zpět na
+// uložený sdílený odkaz.
+function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
+  const [src, setSrc] = useState(fallbackUrl);
+  useEffect(() => {
+    let zrusen = false;
+    if (itemId) {
+      getDirectDownloadUrl(itemId).then(url => { if (!zrusen && url) setSrc(url); });
+    }
+    return () => { zrusen = true; };
+  }, [itemId]);
+  return <img src={src} alt={alt} style={style} onError={() => { if (src !== fallbackUrl) setSrc(fallbackUrl); }} />;
+}
+
 function SekceHeader({ sekce, stav, onStav }) {
   return (
     <div style={S.cH(sekce.barva)}>
@@ -181,9 +197,9 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     setFotoUploading(u => ({ ...u, [kategorie]: (u[kategorie] || 0) + files.length }));
     for (const f of files) {
       try {
-        const webUrl = await uploadFileObject(zakazkaFolderPath(data._nazev, `Fotky/${kategorie}`), f);
+        const { webUrl, itemId } = await uploadFileObject(zakazkaFolderPath(data._nazev, `Fotky/${kategorie}`), f);
         setData(d => ({ ...d, fotky: { ...d.fotky, nahrane: [...(d.fotky.nahrane || []), {
-          id: Date.now() + Math.random(), name: f.name, url: toDirectImageUrl(webUrl), link: webUrl,
+          id: Date.now() + Math.random(), name: f.name, url: toDirectImageUrl(webUrl), link: webUrl, itemId,
           datum: new Date().toLocaleDateString("cs-CZ"), kategorie,
         }] } }));
       } catch (e) {
@@ -200,9 +216,9 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     if (!isConnected()) { alert("Nejdřív se připoj k OneDrive v záložce ☁️ OneDrive."); return; }
     setDocUploading(key);
     try {
-      const webUrl = await uploadFileObject(zakazkaFolderPath(data._nazev, "Dokumenty"), file);
+      const { webUrl, itemId } = await uploadFileObject(zakazkaFolderPath(data._nazev, "Dokumenty"), file);
       setData(d => ({ ...d, dokumenty: { ...d.dokumenty, [key]: {
-        ...d.dokumenty[key], soubor: { name: file.name, link: webUrl },
+        ...d.dokumenty[key], soubor: { name: file.name, link: webUrl, itemId },
         stav: (!d.dokumenty[key]?.stav || d.dokumenty[key]?.stav === "ceka") ? "vyplnen" : d.dokumenty[key].stav,
       } } }));
     } catch (e) {
@@ -217,9 +233,9 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     if (!isConnected()) { alert("Nejdřív se připoj k OneDrive v záložce ☁️ OneDrive."); return; }
     setDocUploading("extra-" + id);
     try {
-      const webUrl = await uploadFileObject(zakazkaFolderPath(data._nazev, "Dokumenty"), file);
+      const { webUrl, itemId } = await uploadFileObject(zakazkaFolderPath(data._nazev, "Dokumenty"), file);
       setData(d => ({ ...d, dokumenty: { ...d.dokumenty, extra: d.dokumenty.extra.map(x =>
-        x.id === id ? { ...x, soubor: { name: file.name, link: webUrl } } : x
+        x.id === id ? { ...x, soubor: { name: file.name, link: webUrl, itemId } } : x
       ) } }));
     } catch (e) {
       alert(`Nahrání dokumentu "${file.name}" na OneDrive selhalo: ${e.message}`);
@@ -776,7 +792,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                     {fc.map(f=>(
                       <div key={f.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #1a2035",position:"relative"}}>
                         <a href={f.link||f.url} target="_blank" rel="noreferrer">
-                          <img src={f.url} alt={f.name} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
+                          <OneDriveThumb itemId={f.itemId} fallbackUrl={f.url} alt={f.name} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
                         </a>
                         <button onClick={()=>setData(d=>({...d,fotky:{...d.fotky,nahrane:(d.fotky.nahrane||[]).filter(x=>x.id!==f.id)}}))}
                           style={{position:"absolute",top:3,right:3,background:"#ef444488",border:"none",borderRadius:4,color:"#fff",cursor:"pointer",fontSize:10,padding:"1px 5px"}}>×</button>

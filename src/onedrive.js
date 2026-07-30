@@ -235,26 +235,44 @@ async function ensureFolder(path) {
 }
 
 // ─── NAHRÁT SOUBOR NA ONEDRIVE ────────────────────────────────────────────────
-// Vrátí webUrl (sharing link)
+// Vrátí { webUrl, itemId } — webUrl je odkaz na otevření v OneDrive (nemusí
+// jít vždy použít přímo jako <img src>, viz getDirectDownloadUrl), itemId
+// slouží k pozdějšímu načtení čerstvého přímého odkazu na obsah souboru.
 export async function uploadFile(folderPath, fileName, content, contentType = "application/octet-stream") {
   await ensureFolder(folderPath);
   const safeName = fileName.replace(/[/\\?%*:|"<>]/g, "_");
   const fullPath = `${folderPath}/${safeName}`;
   const result = await graphPut(`/me/drive/root:/${fullPath}:/content`, content, contentType);
 
-  // Vytvoř sharing link
+  // Vytvoř sharing link (na organizačních/firemních tenantech bývá anonymní
+  // sdílení zakázané politikou — pak se použije autentizovaný webUrl, který
+  // ale nejde přímo vykreslit jako <img src>; proto si necháváme i itemId).
+  let webUrl = result.webUrl;
   try {
     const share = await graphPost(`/me/drive/items/${result.id}/createLink`, { type: "view", scope: "anonymous" });
-    return share.link?.webUrl || result.webUrl;
-  } catch {
-    return result.webUrl;
-  }
+    webUrl = share.link?.webUrl || result.webUrl;
+  } catch { /* anonymní odkaz se nepovedlo vytvořit, použije se webUrl ze souboru */ }
+
+  return { webUrl, itemId: result.id };
 }
 
 // Verze pro File objekt z input[type=file]
 export async function uploadFileObject(folderPath, file) {
   const buffer = await file.arrayBuffer();
   return uploadFile(folderPath, file.name, buffer, file.type || "application/octet-stream");
+}
+
+// ─── ČERSTVÝ PŘÍMÝ ODKAZ NA OBSAH SOUBORU ─────────────────────────────────────
+// Na rozdíl od sdíleného webUrl funguje spolehlivě vždy (jde přes náš vlastní
+// přihlášený přístup), ale platí jen dočasně — volej těsně před zobrazením.
+export async function getDirectDownloadUrl(itemId) {
+  if (!itemId) return null;
+  try {
+    const item = await graphGet(`/me/drive/items/${itemId}`);
+    return item["@microsoft.graph.downloadUrl"] || null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── CESTA KE SLOŽCE ZAKÁZKY ──────────────────────────────────────────────────

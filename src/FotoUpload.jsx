@@ -1,7 +1,19 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected, connectSharedAccount } from "./onedrive.js";
+import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected, connectSharedAccount, getDirectDownloadUrl } from "./onedrive.js";
 import { PRAZDNA_DATA, FOTO_KATEGORIE } from "./ZakazkaSheet.jsx";
+
+// Náhled fotky z OneDrive — natáhne čerstvý přímý odkaz přes itemId, se
+// spolehlivým fallbackem na uložený sdílený odkaz (starší fotky bez itemId).
+function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
+  const [src, setSrc] = useState(fallbackUrl);
+  useEffect(() => {
+    let zrusen = false;
+    if (itemId) getDirectDownloadUrl(itemId).then(url => { if (!zrusen && url) setSrc(url); });
+    return () => { zrusen = true; };
+  }, [itemId]);
+  return <img src={src} alt={alt} style={style} onError={() => { if (src !== fallbackUrl) setSrc(fallbackUrl); }} />;
+}
 
 const S = {
   app: { fontFamily: "'DM Sans',sans-serif", background: "#0a0d14", minHeight: "100vh", color: "#e2e8f0", padding: "20px" },
@@ -61,9 +73,9 @@ export default function FotoUpload({ currentUser, setTab }) {
     let updated = fotky;
     for (const f of files) {
       try {
-        const webUrl = await uploadFileObject(zakazkaFolderPath(activeContract.name, `Fotky/${kategorie}`), f);
+        const { webUrl, itemId } = await uploadFileObject(zakazkaFolderPath(activeContract.name, `Fotky/${kategorie}`), f);
         updated = [...updated, {
-          id: Date.now() + Math.random(), name: f.name, url: toDirectImageUrl(webUrl), link: webUrl,
+          id: Date.now() + Math.random(), name: f.name, url: toDirectImageUrl(webUrl), link: webUrl, itemId,
           datum: new Date().toLocaleDateString("cs-CZ"), kategorie, autor: currentUser?.name || "",
         }];
         setFotky(updated);
@@ -145,7 +157,7 @@ export default function FotoUpload({ currentUser, setTab }) {
                 {fc.map(f => (
                   <div key={f.id} style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #1a2035", position: "relative" }}>
                     <a href={f.link || f.url} target="_blank" rel="noreferrer">
-                      <img src={f.url} alt={f.name} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
+                      <OneDriveThumb itemId={f.itemId} fallbackUrl={f.url} alt={f.name} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
                     </a>
                     <button onClick={() => removeFoto(f.id)}
                       style={{ position: "absolute", top: 4, right: 4, background: "#ef444488", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", fontSize: 11, padding: "2px 6px" }}>×</button>

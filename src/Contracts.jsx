@@ -1,6 +1,18 @@
-import { isConnected, uploadFileObject } from "./onedrive.js";
+import { isConnected, uploadFileObject, getDirectDownloadUrl } from "./onedrive.js";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
+
+// Náhled fotky z OneDrive — natáhne čerstvý přímý odkaz přes item_id, se
+// spolehlivým fallbackem na uložený sdílený odkaz (starší fotky bez item_id).
+function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
+  const [src, setSrc] = useState(fallbackUrl);
+  useEffect(() => {
+    let zrusen = false;
+    if (itemId) getDirectDownloadUrl(itemId).then(url => { if (!zrusen && url) setSrc(url); });
+    return () => { zrusen = true; };
+  }, [itemId]);
+  return <img src={src} alt={alt} style={style} onError={() => { if (src !== fallbackUrl) setSrc(fallbackUrl); }} />;
+}
 
 // ─── MINI KALENDÁŘ ───────────────────────────────────────────────────────────
 
@@ -596,12 +608,14 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   // ── Upload fotky ──
   const fileRef = useRef();
   async function uploadPhoto(contractId, file, description) {
-    let url, storagePath;
+    let url, storagePath, itemId = null;
     const contract = contracts.find(c => c.id === contractId);
     const folderName = (contract?.name || String(contractId)).replace(/[/\\?%*:|"<>]/g, "_");
     if (isConnected()) {
       try {
-        url = await uploadFileObject(`FirmaCRM/Zakázky/${folderName}/Fotky`, file);
+        const res = await uploadFileObject(`FirmaCRM/Zakázky/${folderName}/Fotky`, file);
+        url = res.webUrl;
+        itemId = res.itemId;
         storagePath = "onedrive:" + file.name;
       } catch (e) { alert("OneDrive chyba: " + e.message); return; }
     } else {
@@ -615,7 +629,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     }
     const { data: row } = await supabase.from("contract_photos").insert({
       contract_id: contractId, date: today(),
-      storage_path: storagePath, url,
+      storage_path: storagePath, url, item_id: itemId,
       description, uploaded_by: currentUser?.employeeId || null,
     }).select().single();
     if (row) setPhotos([...photos, row]);
@@ -1538,7 +1552,7 @@ function PhotosTab({ photos, contractId, currentUser, onUpload }) {
             {byDate[date].map(p => (
               <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer"
                 style={{ display: "block", width: 120, height: 90, borderRadius: 8, overflow: "hidden", border: "1px solid #1a2035", flexShrink: 0 }}>
-                <img src={p.url} alt={p.description} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt={p.description} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </a>
             ))}
           </div>
@@ -2009,7 +2023,8 @@ function DokumentyTab({ contractId, currentUser }) {
       const folderName = (cData?.name || String(contractId)).replace(/[/\\?%*:|"<>]/g, "_");
       if (isConnected()) {
         try {
-          url = await uploadFileObject(`FirmaCRM/Zakázky/${folderName}/Dokumenty`, file);
+          const res = await uploadFileObject(`FirmaCRM/Zakázky/${folderName}/Dokumenty`, file);
+          url = res.webUrl;
           storagePath = "onedrive:" + file.name;
         } catch (e) { alert("OneDrive chyba: " + e.message); continue; }
       } else {
