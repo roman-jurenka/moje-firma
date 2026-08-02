@@ -19,7 +19,7 @@ const S = {
   app: { fontFamily: "'DM Sans',sans-serif", background: "#0a0d14", minHeight: "100vh", color: "#e2e8f0", padding: "20px" },
   card: { background: "#0f1117", borderRadius: 12, border: "1px solid #1a2035", padding: "16px 18px", marginBottom: 12 },
   inp: { background: "#080b12", border: "1px solid #252d45", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" },
-  btn: (c = "#2563eb") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
+  btn: (c = "#2E9BE0") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
 };
 
 export default function FotoUpload({ currentUser, setTab }) {

@@ -2,18 +2,18 @@ import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected, getDirectDownloadUrl } from "./onedrive.js";
 
-const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#2563eb" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
+const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#2E9BE0" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
 export const FOTO_KATEGORIE = ["Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"];
 const SEKCE = [
   { id: "zakaznik",  icon: "👤", label: "Zákazník",         barva: "#6366f1" },
-  { id: "nabidka",   icon: "📋", label: "Nabídka",          barva: "#2563eb" },
+  { id: "nabidka",   icon: "📋", label: "Nabídka",          barva: "#2E9BE0" },
   { id: "smlouva",   icon: "✍️", label: "Smlouva",          barva: "#7c3aed" },
   { id: "system",    icon: "⚡", label: "Systém",             barva: "#f59e0b" },
   { id: "zaruky",    icon: "🛡️", label: "Záruky",             barva: "#06b6d4" },
   { id: "montaz",    icon: "🔧", label: "Montáž",           barva: "#ef4444" },
   { id: "predani",   icon: "✅", label: "Předání",          barva: "#16a34a" },
   { id: "dotace",    icon: "🏛️", label: "Dotace",           barva: "#0ea5e9" },
-  { id: "fakturace", icon: "💰", label: "Fakturace",        barva: "#f97316" },
+  { id: "fakturace", icon: "💰", label: "Fakturace",        barva: "#F5821F" },
   { id: "bilance",   icon: "📊", label: "Ekonomika",        barva: "#10b981" },
   { id: "rozsireni", icon: "🔩", label: "Rozšíření",        barva: "#8b5cf6" },
   { id: "fotky",     icon: "📷", label: "Fotodokumentace",  barva: "#06b6d4" },
@@ -63,9 +63,9 @@ const S = {
   lbl: { fontSize:10, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:3 },
   val: { fontSize:13, color:"#e2e8f0", lineHeight:1.5 },
   inp: { background:"#080b12", border:"1px solid #252d45", borderRadius:7, padding:"6px 10px", color:"#e2e8f0", fontSize:13, width:"100%", outline:"none", boxSizing:"border-box", resize:"none", fontFamily:"inherit" },
-  btn: (c="#2563eb") => ({ background:c, color:"#fff", border:"none", borderRadius:7, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }),
+  btn: (c="#2E9BE0") => ({ background:c, color:"#fff", border:"none", borderRadius:7, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }),
   div: { borderBottom:"1px solid #1a2035", margin:"10px 0" },
-  mono: { fontFamily:"monospace", fontSize:12, color:"#60a5fa", background:"#1e3a5f22", borderRadius:4, padding:"2px 6px" },
+  mono: { fontFamily:"monospace", fontSize:12, color:"#2E9BE0", background:"#1e3a5f22", borderRadius:4, padding:"2px 6px" },
   sCard: { background:"#080b12", borderRadius:8, padding:12, marginBottom:10, border:"1px solid #1a2035" },
 };
 
@@ -376,7 +376,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         </div>
 
         {/* NABÍDKA */}
-        <div id="s-nabidka" style={S.card(false,"#2563eb")}>
+        <div id="s-nabidka" style={S.card(false,"#2E9BE0")}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="nabidka")} stav={st.nabidka||"Čeká"} onStav={v=>updStav("nabidka",v)}/>
           <div style={S.body}>
             <EF label="Číslo OP"            value={data.nabidka.cisloOP}         onChange={v=>upd("nabidka","cisloOP",v)} mono/>
@@ -678,16 +678,16 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         </div>
 
         {/* FAKTURACE */}
-        <div id="s-fakturace" style={S.card(false,"#f97316")}>
+        <div id="s-fakturace" style={S.card(false,"#F5821F")}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="fakturace")} stav={st.fakturace||"Čeká"} onStav={v=>updStav("fakturace",v)}/>
           <div style={S.body}>
-            <div style={{fontSize:11,fontWeight:700,color:"#f97316",textTransform:"uppercase",marginBottom:8}}>Záloha</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#F5821F",textTransform:"uppercase",marginBottom:8}}>Záloha</div>
             <EF label="Číslo faktury"  value={data.fakturace.zalohaFaktura}  onChange={v=>upd("fakturace","zalohaFaktura",v)} mono/>
             <EF label="Částka (Kč)"   value={data.fakturace.zalohaKc}       onChange={v=>upd("fakturace","zalohaKc",v)}/>
             <EF label="Datum splat."  value={data.fakturace.zalohaDatum}    onChange={v=>upd("fakturace","zalohaDatum",v)}/>
             <EF label="Uhrazena"      value={data.fakturace.zalohaUhrazena} onChange={v=>upd("fakturace","zalohaUhrazena",v)}/>
             <div style={S.div}/>
-            <div style={{fontSize:11,fontWeight:700,color:"#f97316",textTransform:"uppercase",marginBottom:8}}>Doplatek</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#F5821F",textTransform:"uppercase",marginBottom:8}}>Doplatek</div>
             <EF label="Číslo faktury"  value={data.fakturace.doplatekFaktura}  onChange={v=>upd("fakturace","doplatekFaktura",v)} mono/>
             <EF label="Částka (Kč)"   value={data.fakturace.doplatekKc}       onChange={v=>upd("fakturace","doplatekKc",v)}/>
             <EF label="Datum splat."  value={data.fakturace.doplatekDatum}    onChange={v=>upd("fakturace","doplatekDatum",v)}/>
@@ -704,14 +704,14 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             <table style={{width:"100%",borderCollapse:"collapse",marginBottom:14}}>
               <thead><tr>
                 <th style={{textAlign:"left",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",borderBottom:"1px solid #1a2035"}}>Položka</th>
-                <th style={{textAlign:"right",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#2563eb",textTransform:"uppercase",borderBottom:"1px solid #1a2035"}}>Plán</th>
+                <th style={{textAlign:"right",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#2E9BE0",textTransform:"uppercase",borderBottom:"1px solid #1a2035"}}>Plán</th>
                 <th style={{textAlign:"right",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#10b981",textTransform:"uppercase",borderBottom:"1px solid #1a2035"}}>Skutečnost</th>
               </tr></thead>
               <tbody>
                 {[["Materiál","planMaterialNaklad","skutMaterialNaklad"],["Práce","planPraceNaklad","skutPraceNaklad"],["Doprava","planDopravaNaklad","skutDopravaNaklad"],["Celkem náklad","planCelkemNaklad","skutCelkemNaklad"],["Prodejní cena","planProdejBezDph","skutProdejBezDph"]].map(([l,pk,sk])=>(
                   <tr key={l} style={{borderBottom:"1px solid #1a2035"}}>
                     <td style={{padding:"6px 8px",fontSize:12,color:"#94a3b8"}}>{l}</td>
-                    <td style={{padding:"6px 8px",fontSize:12,color:"#2563eb",textAlign:"right"}}>{data.bilance[pk]||"—"}</td>
+                    <td style={{padding:"6px 8px",fontSize:12,color:"#2E9BE0",textAlign:"right"}}>{data.bilance[pk]||"—"}</td>
                     <td style={{padding:"6px 8px",fontSize:12,color:"#10b981",textAlign:"right"}}>{data.bilance[sk]||"—"}</td>
                   </tr>
                 ))}
@@ -720,7 +720,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             <div style={{background:"#080b12",borderRadius:8,padding:12,marginBottom:12,display:"flex",gap:12}}>
               <div style={{flex:1,textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#475569",marginBottom:3}}>PLÁN</div>
-                <div style={{fontSize:18,fontWeight:800,color:"#2563eb"}}>{data.bilance.planMarzePct||"—"} %</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#2E9BE0"}}>{data.bilance.planMarzePct||"—"} %</div>
                 <div style={{fontSize:11,color:"#475569"}}>{data.bilance.planMarzeKc||"—"} Kč</div>
               </div>
               <div style={{width:1,background:"#1a2035"}}/>
@@ -853,7 +853,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                       {docUploading===doc.key?"⏳ Nahrávám...":(d2.soubor?"🔁 Nahradit":"📎 Nahrát soubor")}
                       <input type="file" disabled={docUploading===doc.key} style={{display:"none"}} onChange={e=>{const f=e.target.files[0];e.target.value="";handleDokUpload(doc.key,f);}}/>
                     </label>
-                    {d2.soubor&&<a href={d2.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#60a5fa",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {d2.soubor.name}</a>}
+                    {d2.soubor&&<a href={d2.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#2E9BE0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {d2.soubor.name}</a>}
                   </div>
                 </div>
               );
@@ -874,7 +874,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                     {docUploading==="extra-"+doc.id?"⏳ Nahrávám...":(doc.soubor?"🔁 Nahradit":"📎 Nahrát soubor")}
                     <input type="file" disabled={docUploading==="extra-"+doc.id} style={{display:"none"}} onChange={e=>{const f=e.target.files[0];e.target.value="";handleExtraDokUpload(doc.id,f);}}/>
                   </label>
-                  {doc.soubor&&<a href={doc.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#60a5fa",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {doc.soubor.name}</a>}
+                  {doc.soubor&&<a href={doc.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#2E9BE0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {doc.soubor.name}</a>}
                 </div>
               </div>
             ))}

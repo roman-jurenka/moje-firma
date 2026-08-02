@@ -11,8 +11,8 @@ function ProudOSMark({ size = 28, outline = true }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" style={{ flexShrink: 0 }} aria-hidden="true">
       <circle cx="50" cy="50" r="46" fill="#1d4ed8" />
-      <circle cx="50" cy="50" r="40" fill="#2563eb" />
-      <path d="M62,14 L32,54 L46,54 L36,88 L70,44 L52,44 Z" fill="#f97316"
+      <circle cx="50" cy="50" r="40" fill="#2E9BE0" />
+      <path d="M62,14 L32,54 L46,54 L36,88 L70,44 L52,44 Z" fill="#F5821F"
         stroke={outline ? "#ffffff" : "none"} strokeWidth={outline ? 3 : 0} strokeLinejoin="round" />
     </svg>
   );
@@ -49,7 +49,7 @@ function MiniCalendar({ value, onChange, onClose }) {
     <div style={{ background: "#f8fafc", border: "1px solid #252d45", borderRadius: 10, padding: 12, width: 232, userSelect: "none", boxShadow: "0 8px 32px #00000088" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <button onClick={prev} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>‹</button>
-        <span style={{ color: "#1e293b", fontWeight: 700, fontSize: 13 }}>{CZ_MONTHS[view.month]} {view.year}</span>
+        <span style={{ color: "#1A1A1A", fontWeight: 700, fontSize: 13 }}>{CZ_MONTHS[view.month]} {view.year}</span>
         <button onClick={next} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>›</button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
@@ -63,7 +63,7 @@ function MiniCalendar({ value, onChange, onClose }) {
           return (
             <div key={i} onClick={() => pick(day)}
               style={{ textAlign: "center", fontSize: 12, padding: "5px 2px", borderRadius: 6, cursor: "pointer",
-                background: isSel ? "#2563eb" : isToday ? "#2563eb22" : "transparent",
+                background: isSel ? "#2E9BE0" : isToday ? "#2E9BE022" : "transparent",
                 color: isSel ? "#fff" : isToday ? "#3b82f6" : "#cbd5e1",
                 fontWeight: isSel || isToday ? 700 : 400 }}>
               {day}
@@ -119,7 +119,7 @@ const ROLES = {
   admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","permissions","profile"] },
   manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","profile"] },
-  employee: { label: "Zaměstnanec",   color: "#60a5fa", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","profile"] },
+  employee: { label: "Zaměstnanec",   color: "#2E9BE0", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","profile"] },
 };
 
 // Simulovaná docházka — záznamy příchod/odchod
@@ -232,7 +232,7 @@ const initialTemplates = [
 ];
 
 const COST_CATEGORIES = ["Mzdy", "Nájem", "Marketing", "IT & Software", "Logistika", "Ostatní"];
-const CAT_COLORS = { "Mzdy": "#2563eb", "Nájem": "#f59e0b", "Marketing": "#f87171", "IT & Software": "#60a5fa", "Logistika": "#34d399", "Ostatní": "#a78bfa" };
+const CAT_COLORS = { "Mzdy": "#2E9BE0", "Nájem": "#f59e0b", "Marketing": "#f87171", "IT & Software": "#2E9BE0", "Logistika": "#34d399", "Ostatní": "#a78bfa" };
 const MONTHS = ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"];
 
 const initialCosts = [
@@ -255,52 +255,52 @@ const initialCosts = [
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
 const STAGES = ["Nový", "Jednání", "Nabídka", "Vyhráno", "Prohráno"];
-const STAGE_COLORS = { Nový: "#60a5fa", Jednání: "#f59e0b", Nabídka: "#a78bfa", Vyhráno: "#34d399", Prohráno: "#f87171" };
-const TAG_COLORS = { VIP: "#f59e0b", Aktivní: "#34d399", Nový: "#60a5fa" };
+const STAGE_COLORS = { Nový: "#2E9BE0", Jednání: "#f59e0b", Nabídka: "#a78bfa", Vyhráno: "#34d399", Prohráno: "#f87171" };
+const TAG_COLORS = { VIP: "#f59e0b", Aktivní: "#34d399", Nový: "#2E9BE0" };
 const PRIO_COLORS = { Vysoká: "#f87171", Střední: "#f59e0b", Nízká: "#34d399" };
 const INV_COLORS = { Zaplacena: "#34d399", Čeká: "#f59e0b", "Po splatnosti": "#f87171", Storno: "#64748b" };
-const PROJ_COLORS = { Probíhá: "#2563eb", Plánováno: "#60a5fa", Dokončeno: "#34d399", Pozastaveno: "#f87171" };
-const avatarColors = ["#2563eb", "#f59e0b", "#34d399", "#f87171", "#a78bfa", "#60a5fa"];
+const PROJ_COLORS = { Probíhá: "#2E9BE0", Plánováno: "#2E9BE0", Dokončeno: "#34d399", Pozastaveno: "#f87171" };
+const avatarColors = ["#2E9BE0", "#f59e0b", "#34d399", "#f87171", "#a78bfa", "#2E9BE0"];
 
 const NAV = [
-  { id: "dashboard", label: "Dashboard", icon: "📊", group: "CRM" },
-  { id: "customers", label: "Zákazníci", icon: "👥", group: "CRM" },
-  { id: "deals", label: "Obchodní příp.", icon: "💼", group: "CRM" },
-  // { id: "communication", label: "Komunikace", icon: "💬", group: "CRM" }, // odebráno — data zachována pro detail zákazníka
-  { id: "contracts", label: "Zakázky", icon: "🔧", group: "CRM" },
-  { id: "sheets", label: "Listy zakázek", icon: "📋", group: "CRM" },
-  { id: "fotoupload", label: "Nahrát fotky", icon: "📷", group: "Osobní" },
-  { id: "tasks", label: "Úkoly", icon: "✅", group: "CRM" },
-  { id: "invoices", label: "Fakturace", icon: "🧾", group: "ERP" },
-  { id: "warehouse", label: "Sklad", icon: "📦", group: "ERP" },
-  { id: "hr", label: "Zaměstnanci", icon: "👤", group: "ERP" },
-  { id: "projects", label: "Projekty", icon: "🏗️", group: "ERP" },
-  { id: "costs", label: "Náklady", icon: "📉", group: "ERP" },
-  { id: "reports", label: "Reporty", icon: "📈", group: "Analytika" },
-  { id: "ai", label: "AI Asistent", icon: "🤖", group: "Analytika" },
-  { id: "attendance", label: "Docházka", icon: "🕐", group: "Osobní" },
-  { id: "calendar", label: "Kalendář", icon: "📅", group: "Osobní" },
-  { id: "knjiga", label: "Kniha jízd", icon: "🚗", group: "Osobní" },
-  { id: "onedrive", label: "OneDrive", icon: "☁️", group: "Osobní" },
-  { id: "profile", label: "Můj profil", icon: "👤", group: "Osobní" },
-  { id: "permissions", label: "Oprávnění", icon: "🔐", group: "ERP" },
+  { id: "dashboard", label: "Dashboard", icon: "ti-layout-dashboard", group: "CRM" },
+  { id: "customers", label: "Zákazníci", icon: "ti-users", group: "CRM" },
+  { id: "deals", label: "Obchodní příp.", icon: "ti-briefcase", group: "CRM" },
+  // { id: "communication", label: "Komunikace", icon: "ti-message-circle", group: "CRM" }, // odebráno — data zachována pro detail zákazníka
+  { id: "contracts", label: "Zakázky", icon: "ti-file-invoice", group: "CRM" },
+  { id: "sheets", label: "Listy zakázek", icon: "ti-clipboard-list", group: "CRM" },
+  { id: "fotoupload", label: "Nahrát fotky", icon: "ti-camera", group: "Osobní" },
+  { id: "tasks", label: "Úkoly", icon: "ti-checkbox", group: "CRM" },
+  { id: "invoices", label: "Fakturace", icon: "ti-receipt", group: "ERP" },
+  { id: "warehouse", label: "Sklad", icon: "ti-package", group: "ERP" },
+  { id: "hr", label: "Zaměstnanci", icon: "ti-user", group: "ERP" },
+  { id: "projects", label: "Projekty", icon: "ti-building", group: "ERP" },
+  { id: "costs", label: "Náklady", icon: "ti-trending-down", group: "ERP" },
+  { id: "reports", label: "Reporty", icon: "ti-chart-line", group: "Analytika" },
+  { id: "ai", label: "AI Asistent", icon: "ti-robot", group: "Analytika" },
+  { id: "attendance", label: "Docházka", icon: "ti-clock", group: "Osobní" },
+  { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Osobní" },
+  { id: "knjiga", label: "Kniha jízd", icon: "ti-car", group: "Osobní" },
+  { id: "onedrive", label: "OneDrive", icon: "ti-cloud", group: "Osobní" },
+  { id: "profile", label: "Můj profil", icon: "ti-user-circle", group: "Osobní" },
+  { id: "permissions", label: "Oprávnění", icon: "ti-lock", group: "ERP" },
 ];
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 
 const S = {
-  app: { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1e293b", display: "flex" },
-  sidebar: (open) => ({ width: 220, background: "#1e293b", padding: "0", display: "flex", flexDirection: "column", position: "fixed", top: 0, bottom: 0, left: 0, overflowY: "auto", boxShadow: "2px 0 8px #0000001a", zIndex: 200, transition: "transform 0.25s ease" }),
-  logo: { padding: "22px 20px 16px", fontSize: 19, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px", borderBottom: "1px solid #334155" },
-  logoA: { color: "#60a5fa" },
-  logoB: { color: "#f97316" },
-  groupLabel: { padding: "16px 20px 4px", fontSize: 10, color: "#64748b", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 },
-  navItem: (a) => ({ padding: "9px 20px", cursor: "pointer", display: "flex", alignItems: "center", gap: 9, fontSize: 13, fontWeight: 500, color: a ? "#fff" : "#94a3b8", background: a ? "#2563eb" : "transparent", borderLeft: a ? "3px solid #f97316" : "3px solid transparent", transition: "all 0.12s" }),
+  app: { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", display: "flex" },
+  sidebar: (open) => ({ width: 220, background: "#0E3B5E", padding: "0", display: "flex", flexDirection: "column", position: "fixed", top: 0, bottom: 0, left: 0, overflowY: "auto", boxShadow: "2px 0 8px #0000001a", zIndex: 200, transition: "transform 0.25s ease" }),
+  logo: { padding: "22px 20px 16px", fontSize: 19, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px", borderBottom: "1px solid rgba(255,255,255,0.12)" },
+  logoA: { color: "#fff" },
+  logoB: { color: "#F5821F" },
+  groupLabel: { padding: "16px 20px 4px", fontSize: 10, color: "#7C97AC", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 },
+  navItem: (a) => ({ padding: "9px 16px", margin: "2px 10px", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 500, color: a ? "#fff" : "#B9CBDA", background: a ? "rgba(255,255,255,0.14)" : "transparent", transition: "all 0.12s" }),
   main: { marginLeft: 220, padding: "28px 32px", flex: 1, minHeight: "100vh" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 },
-  h1: { fontSize: 24, fontWeight: 700, color: "#1e293b", margin: 0 },
-  btn: (c = "#2563eb") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
-  btnGhost: { background: "transparent", color: "#2563eb", border: "1px solid #2563eb", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  h1: { fontSize: 24, fontWeight: 700, color: "#1A1A1A", margin: 0 },
+  btn: (c = "#F5C518") => ({ background: c, color: c === "#F5C518" ? "#1A1A1A" : "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
+  btnGhost: { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   card: { background: "#ffffff", borderRadius: 12, padding: 22, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px #0000000a" },
   grid4: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 },
   grid3: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 24 },
@@ -312,11 +312,11 @@ const S = {
   th: { textAlign: "left", padding: "9px 12px", fontSize: 11, color: "#64748b", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" },
   td: { padding: "11px 12px", fontSize: 13, borderBottom: "1px solid #f1f5f9", color: "#475569" },
   tag: (c) => ({ background: c + "22", color: c, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700, display: "inline-block" }),
-  search: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 13px", color: "#1e293b", fontSize: 13, outline: "none", width: 240 },
+  search: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 13px", color: "#1A1A1A", fontSize: 13, outline: "none", width: 240 },
   modal: { position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 },
   modalBox: { background: "#ffffff", borderRadius: 16, padding: 28, width: 440, border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
-  input: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1e293b", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
-  select: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1e293b", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
+  input: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
+  select: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
   label: { fontSize: 11, color: "#64748b", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
   avatar: (c) => ({ width: 34, height: 34, borderRadius: "50%", background: c, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0 }),
   progress: (pct, c) => ({ height: 6, borderRadius: 3, background: "#e2e8f0", overflow: "hidden", position: "relative" }),
@@ -324,7 +324,7 @@ const S = {
   kanbanCol: { background: "#f8fafc", borderRadius: 12, padding: 14, minWidth: 170, flex: 1, border: "1px solid #e2e8f0" },
   kanbanCard: { background: "#ffffff", borderRadius: 8, padding: 12, marginBottom: 8, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px #0000000a" },
   commItem: { display: "flex", gap: 12, padding: "12px 0", borderBottom: "1px solid #f1f5f9" },
-  commDot: (t) => ({ width: 9, height: 9, borderRadius: "50%", background: t === "Email" ? "#2563eb" : t === "Hovor" ? "#16a34a" : "#f97316", marginTop: 4, flexShrink: 0 }),
+  commDot: (t) => ({ width: 9, height: 9, borderRadius: "50%", background: t === "Email" ? "#2E9BE0" : t === "Hovor" ? "#16a34a" : "#F5821F", marginTop: 4, flexShrink: 0 }),
   divider: { height: 1, background: "#e2e8f0", margin: "12px 0" },
   badge: (c) => ({ background: c + "22", color: c, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }),
 };
@@ -364,7 +364,7 @@ function ContractPhotoPicker({ onSelect, onClose }) {
           <div style={{ overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
             {filtered.map(p => (
               <div key={p.id} onClick={() => onSelect(p.url)} style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "2px solid #e2e8f0", transition: "border 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = "#2563eb"}
+                onMouseEnter={e => e.currentTarget.style.borderColor = "#2E9BE0"}
                 onMouseLeave={e => e.currentTarget.style.borderColor = "#e2e8f0"}>
                 <img src={p.url} alt="" style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
                 <div style={{ padding: "4px 6px", fontSize: 11, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -383,7 +383,7 @@ function ContractPhotoPicker({ onSelect, onClose }) {
 function ModalHeader({ title, onClose }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-      <div style={{ fontWeight: 700, fontSize: 17, color: "#1e293b" }}>{title}</div>
+      <div style={{ fontWeight: 700, fontSize: 17, color: "#1A1A1A" }}>{title}</div>
       <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#94a3b8", lineHeight: 1 }}>✕</button>
     </div>
   );
@@ -506,10 +506,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "DM Sans, sans-serif" }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", marginBottom: 16 }}>Firma<span style={{ color: "#2563eb" }}>CRM</span><span style={{ color: "#f97316" }}>+ERP</span></div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", marginBottom: 16 }}>Firma<span style={{ color: "#2E9BE0" }}>CRM</span><span style={{ color: "#F5821F" }}>+ERP</span></div>
         <div style={{ color: "#475569", fontSize: 14 }}>Načítám data z databáze...</div>
         <div style={{ marginTop: 20, display: "flex", gap: 6, justifyContent: "center" }}>
-          {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: "#2563eb", animation: `pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
+          {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: "#2E9BE0", animation: `pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
         </div>
         <style>{`@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1)}}`}</style>
       </div>
@@ -588,7 +588,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           .sidebar-nav { transform: translateX(0) !important; }
         }
       `}</style>
-      <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} style={{ display: "none", position: "fixed", top: 10, left: 10, zIndex: 300, background: "#1e293b", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 22, color: "#fff", alignItems: "center", justifyContent: "center" }}>☰</button>
+      <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} style={{ display: "none", position: "fixed", top: 10, left: 10, zIndex: 300, background: "#0E3B5E", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 22, color: "#fff", alignItems: "center", justifyContent: "center" }}><i className="ti ti-menu-2" aria-hidden="true"></i></button>
       {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "#0007", zIndex: 150 }} />}
 
       {/* SIDEBAR */}
@@ -598,23 +598,23 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             <ProudOSMark size={26} />
             <span><span style={S.logoA}>Proud</span><span style={S.logoB}>OS</span></span>
           </span>
-          <button className="sidebar-close" onClick={() => setSidebarOpen(false)} style={{ display: "none", background: "none", border: "none", color: "#94a3b8", fontSize: 22, cursor: "pointer", padding: 0 }}>✕</button>
+          <button className="sidebar-close" onClick={() => setSidebarOpen(false)} style={{ display: "none", background: "none", border: "none", color: "#94a3b8", fontSize: 22, cursor: "pointer", padding: 0 }}><i className="ti ti-x" aria-hidden="true"></i></button>
         </div>
 
         {/* User info + role */}
         <div style={{ padding: "12px 16px", margin: "0 12px 8px", background: "#f8fafc", borderRadius: 10, border: "1px solid #1a2035" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#2E9BE0", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0 }}>
               {getInitial(currentUser.name)}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.name}</div>
-              <span style={{ ...S.tag(ROLES[currentUser.role]?.color || "#2563eb"), fontSize: 10 }}>{ROLES[currentUser.role]?.label}</span>
+              <span style={{ ...S.tag(ROLES[currentUser.role]?.color || "#2E9BE0"), fontSize: 10 }}>{ROLES[currentUser.role]?.label}</span>
             </div>
           </div>
           {/* Quick checkin */}
           {myEmpId && (
-            <button onClick={checkin} style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#34d399" : "#2563eb"), width: "100%", marginTop: 10, fontSize: 11, padding: "7px" }}>
+            <button onClick={checkin} style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#34d399" : "#2E9BE0"), width: "100%", marginTop: 10, fontSize: 11, padding: "7px" }}>
               {todayRecord?.checkout ? `✓ Odchod ${todayRecord.checkout}` : todayRecord?.checkin ? `⏱ Zapsat odchod (${todayRecord.checkin})` : "▶ Zapsat příchod"}
             </button>
           )}
@@ -625,7 +625,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             <div style={S.groupLabel}>{g}</div>
             {visibleNav.filter(n => n.group === g).map(n => (
               <div key={n.id} style={S.navItem(tab === n.id)} onClick={() => { setTab(n.id); setSearch(""); setSidebarOpen(false); }}>
-                <span style={{ fontSize: 15 }}>{n.icon}</span> {n.label}
+                <i className={`ti ${n.icon}`} style={{ fontSize: 16, width: 18, textAlign: "center" }} aria-hidden="true"></i> {n.label}
               </div>
             ))}
           </div>
@@ -634,7 +634,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* Notifikace + Logout */}
         <div style={{ marginTop: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
           <button onClick={() => setTab("notifications")} style={{ ...S.btnGhost, width: "100%", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span>🔔 Oznámení</span>
+            <span><i className="ti ti-bell" aria-hidden="true" style={{ marginRight: 6 }}></i>Oznámení</span>
             {notifications.filter(n => !n.read && n.user_name === currentUser?.name).length > 0 && (
               <span style={{ background: "#f87171", borderRadius: 10, padding: "1px 7px", color: "#fff", fontSize: 10, fontWeight: 700 }}>
                 {notifications.filter(n => !n.read && n.user_name === currentUser?.name).length}
@@ -642,7 +642,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             )}
           </button>
           <button onClick={onLogout} style={{ ...S.btnGhost, width: "100%", fontSize: 12, color: "#f87171", borderColor: "#f8717133" }}>
-            ← Odhlásit se
+            <i className="ti ti-logout" aria-hidden="true" style={{ marginRight: 6 }}></i>Odhlásit se
           </button>
         </div>
       </div>
@@ -787,7 +787,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {notifications.filter(n => !n.user_name || n.user_name === currentUser?.name).map(n => (
-                <div key={n.id} style={{ ...S.card, borderLeft: `3px solid ${n.read ? "#1e293b" : "#2563eb"}`, padding: "14px 18px" }}>
+                <div key={n.id} style={{ ...S.card, borderLeft: `3px solid ${n.read ? "#cbd5e1" : "#2E9BE0"}`, padding: "14px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
                       <div style={{ fontWeight: 700, color: n.read ? "#64748b" : "#fff", marginBottom: 4 }}>{n.title}</div>
@@ -911,9 +911,9 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
         </div>
 
         {/* Hodiny tento měsíc */}
-        <div style={S.statCard("#2563eb")}>
+        <div style={S.statCard("#2E9BE0")}>
           <div style={S.statLabel}>📅 Odpracováno tento měsíc</div>
-          <div style={{ fontSize: 38, fontWeight: 900, color: "#2563eb", lineHeight: 1.1 }}>{Math.floor(hoursThisMonth)}</div>
+          <div style={{ fontSize: 38, fontWeight: 900, color: "#2E9BE0", lineHeight: 1.1 }}>{Math.floor(hoursThisMonth)}</div>
           <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>hodin ({fmtH(hoursThisMonth)})</div>
           <div style={{ fontSize: 11, color: "#334155", marginTop: 8 }}>{myAtt.length} směn tento měsíc</div>
         </div>
@@ -938,7 +938,7 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
               <button style={{ ...S.btn(), padding: "5px 12px", fontSize: 12 }} onClick={() => setAddingTask(!addingTask)}>
                 {addingTask ? "✕" : "+ Přidat"}
               </button>
-              <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
+              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
             </div>
           </div>
 
@@ -967,9 +967,9 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
             ? <div style={{ color: "#334155", fontSize: 13 }}>Žádné otevřené úkoly ✓</div>
             : myTasks.map(t => (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <input type="checkbox" checked={false} onChange={() => toggleTask(t.id)} style={{ accentColor: "#2563eb", flexShrink: 0 }} />
+                <input type="checkbox" checked={false} onChange={() => toggleTask(t.id)} style={{ accentColor: "#2E9BE0", flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, color: "#1e293b" }}>{t.title}</div>
+                  <div style={{ fontSize: 13, color: "#1A1A1A" }}>{t.title}</div>
                   {t.due && <div style={{ fontSize: 11, color: "#475569" }}>📅 {t.due}</div>}
                 </div>
                 {t.priority && <span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span>}
@@ -982,7 +982,7 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
             🕐 Poslední docházka
-            <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>
+            <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>
           </div>
           {recentAtt.length === 0
             ? <div style={{ color: "#334155", fontSize: 13 }}>Žádné záznamy</div>
@@ -991,13 +991,13 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
               return (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 10, borderBottom: i < recentAtt.length - 1 ? "1px solid #1a2035" : "none" }}>
                   <div>
-                    <div style={{ fontSize: 13, color: "#1e293b" }}>{new Date(a.checkin).toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}</div>
+                    <div style={{ fontSize: 13, color: "#1A1A1A" }}>{new Date(a.checkin).toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}</div>
                     <div style={{ fontSize: 11, color: "#475569" }}>
                       {a.checkin?.slice(11, 16)} – {a.checkout?.slice(11, 16)}
-                      {a.contract_name && <span style={{ color: "#2563eb", marginLeft: 6 }}>· {a.contract_name}</span>}
+                      {a.contract_name && <span style={{ color: "#2E9BE0", marginLeft: 6 }}>· {a.contract_name}</span>}
                     </div>
                   </div>
-                  <span style={S.badge("#2563eb")}>{fmtH(h)}</span>
+                  <span style={S.badge("#2E9BE0")}>{fmtH(h)}</span>
                 </div>
               );
             })
@@ -1009,17 +1009,17 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
 }
 
 const DASH_WIDGETS = [
-  { id: "zakazky", label: "Zakázky a fakturace", icon: "📄" },
-  { id: "dochazka", label: "Docházka / HR", icon: "🕐" },
-  { id: "sklad", label: "Sklad / materiál", icon: "📦" },
-  { id: "projekty", label: "Projekty", icon: "📁" },
+  { id: "zakazky", label: "Zakázky a fakturace", icon: "ti-file-invoice" },
+  { id: "dochazka", label: "Docházka / HR", icon: "ti-users" },
+  { id: "sklad", label: "Sklad / materiál", icon: "ti-package" },
+  { id: "projekty", label: "Projekty", icon: "ti-building" },
 ];
 
 function widgetCardHeader(icon, label, color, action) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-      <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 7 }}>
-        <span style={{ color, fontSize: 15 }}>{icon}</span> {label}
+      <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A", display: "flex", alignItems: "center", gap: 7 }}>
+        <i className={`ti ${icon}`} style={{ color, fontSize: 15 }} aria-hidden="true"></i> {label}
       </span>
       {action}
     </div>
@@ -1062,16 +1062,16 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   const maxRevenue = Math.max(1, ...revenueByMonth);
 
   const stats = [
-    { label: "Zákazníci", value: customers.length, color: "#2563eb" },
+    { label: "Zákazníci", value: customers.length, color: "#2E9BE0" },
     { label: "Zaplaceno (příjmy)", value: fmtKc(totalRevenue), color: "#34d399" },
     { label: "Náklady celkem", value: fmtKc(totalCosts), color: "#f87171" },
     { label: "Zisk", value: fmtKc(profit), color: profit >= 0 ? "#34d399" : "#f87171" },
     { label: "Náklady tento měsíc", value: fmtKc(thisMonthCosts), color: "#f59e0b" },
-    { label: "Produkty skladu", value: products.length, color: "#60a5fa" },
+    { label: "Produkty skladu", value: products.length, color: "#2E9BE0" },
     { label: "Zaměstnanci", value: employees.length, color: "#a78bfa" },
     { label: "Aktivní projekty", value: activeProjects, color: "#34d399" },
     { label: "Mzdové náklady", value: fmtKc(totalPayroll), color: "#f59e0b" },
-    { label: "Na pracovišti dnes", value: `${presentToday.length} / ${activeEmployees.length}`, color: "#60a5fa" },
+    { label: "Na pracovišti dnes", value: `${presentToday.length} / ${activeEmployees.length}`, color: "#2E9BE0" },
   ];
 
   return (
@@ -1079,7 +1079,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
       <div style={S.header}>
         <h1 style={S.h1}>Dashboard</h1>
         <button style={{ ...S.btnGhost, fontSize: 12, padding: "7px 14px" }} onClick={() => setEditMode(!editMode)}>
-          {editMode ? "✓ Hotovo" : "⚙ Přizpůsobit rozvržení"}
+          {editMode ? <><i className="ti ti-check" aria-hidden="true" style={{ marginRight: 6 }}></i>Hotovo</> : <><i className="ti ti-layout-grid-add" aria-hidden="true" style={{ marginRight: 6 }}></i>Přizpůsobit rozvržení</>}
         </button>
       </div>
 
@@ -1097,9 +1097,9 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         <div style={{ ...S.card, marginBottom: 16, display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
           <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>Zobrazit widgety:</span>
           {DASH_WIDGETS.map(w => (
-            <label key={w.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#1e293b", cursor: "pointer" }}>
+            <label key={w.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#1A1A1A", cursor: "pointer" }}>
               <input type="checkbox" checked={!hiddenWidgets.includes(w.id)} onChange={() => toggleWidget(w.id)} />
-              {w.icon} {w.label}
+              <i className={`ti ${w.icon}`} aria-hidden="true"></i> {w.label}
             </label>
           ))}
         </div>
@@ -1109,21 +1109,21 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Zakázky a fakturace */}
         {!hiddenWidgets.includes("zakazky") && (
           <div style={S.card}>
-            {widgetCardHeader("📄", "Zakázky a fakturace", "#2563eb",
-              <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>)}
+            {widgetCardHeader("ti-file-invoice", "Zakázky a fakturace", "#2E9BE0",
+              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>)}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
               <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
                 <div style={{ fontSize: 11, color: "#64748b" }}>Tržby tento měsíc</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#1e293b" }}>{fmtKc(revenueByMonth[5])}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#1A1A1A" }}>{fmtKc(revenueByMonth[5])}</div>
               </div>
               <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
                 <div style={{ fontSize: 11, color: "#64748b" }}>Otevřené faktury</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#f97316" }}>{openInvoices.length}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#F5821F" }}>{openInvoices.length}</div>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 44 }}>
               {revenueByMonth.map((v, i) => (
-                <div key={i} title={fmtKc(v)} style={{ flex: 1, background: i === 5 ? "#2563eb" : "#bfdbfe", borderRadius: "3px 3px 0 0", height: `${Math.max(4, (v / maxRevenue) * 100)}%` }} />
+                <div key={i} title={fmtKc(v)} style={{ flex: 1, background: i === 5 ? "#2E9BE0" : "#bfdbfe", borderRadius: "3px 3px 0 0", height: `${Math.max(4, (v / maxRevenue) * 100)}%` }} />
               ))}
             </div>
           </div>
@@ -1132,14 +1132,14 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Docházka / HR */}
         {!hiddenWidgets.includes("dochazka") && (
           <div style={S.card}>
-            {widgetCardHeader("🕐", "Docházka / HR", "#2563eb",
-              <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>)}
+            {widgetCardHeader("ti-users", "Docházka / HR", "#2E9BE0",
+              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>)}
             {activeEmployees.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádní aktivní zaměstnanci</div> :
               activeEmployees.map(e => {
                 const rec = presentToday.find(a => a.employeeId === e.id);
                 return (
                   <div key={e.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, marginBottom: 9, opacity: rec ? 1 : 0.55 }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#1e293b" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#1A1A1A" }}>
                       <span style={{ width: 7, height: 7, borderRadius: "50%", background: rec ? (rec.checkout ? "#94a3b8" : "#34d399") : "#cbd5e1" }} />
                       {e.name}
                     </span>
@@ -1156,14 +1156,14 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Sklad / materiál */}
         {!hiddenWidgets.includes("sklad") && (
           <div style={S.card}>
-            {widgetCardHeader("📦", "Sklad / materiál", "#2563eb",
-              <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("warehouse")}>Sklad →</span>)}
+            {widgetCardHeader("ti-package", "Sklad / materiál", "#2E9BE0",
+              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("warehouse")}>Sklad →</span>)}
             {lowStock.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Vše skladem v pořádku ✓</div> :
               lowStock.slice(0, 4).map(p => {
                 const critical = p.stock <= p.minStock * 0.5;
                 return (
                   <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, marginBottom: 9 }}>
-                    <span style={{ color: "#1e293b" }}>{p.name}</span>
+                    <span style={{ color: "#1A1A1A" }}>{p.name}</span>
                     <span style={S.tag(critical ? "#f87171" : "#f59e0b")}>zbývá {p.stock} {p.unit}</span>
                   </div>
                 );
@@ -1175,13 +1175,13 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Projekty */}
         {!hiddenWidgets.includes("projekty") && (
           <div style={S.card}>
-            {widgetCardHeader("📁", "Projekty", "#2563eb",
-              <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("projects")}>Vše →</span>)}
+            {widgetCardHeader("ti-building", "Projekty", "#2E9BE0",
+              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("projects")}>Vše →</span>)}
             {projects.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné projekty</div> :
               projects.slice(0, 3).map(p => (
                 <div key={p.id} style={{ marginBottom: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, color: "#1e293b" }}>{p.name}</span>
+                    <span style={{ fontSize: 13, color: "#1A1A1A" }}>{p.name}</span>
                     <span style={S.badge(PROJ_COLORS[p.status])}>{p.status}</span>
                   </div>
                   <div style={S.progress(p.progress)}>
@@ -1198,7 +1198,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
       <div style={S.grid2}>
         {/* ZAKÁZKOVÝ LIST — rychlé vyhledání */}
         <div style={{ ...S.card, gridColumn: "1 / -1", marginBottom: 0 }}>
-          <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
             <span>📋</span> Zakázkový list — rychlé vyhledání
           </div>
           <div style={{ display: "flex", gap: 10 }}>
@@ -1219,7 +1219,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
                 }
               }}
             />
-            <button style={{ ...S.btn("#2563eb"), padding: "9px 18px", flexShrink: 0 }}
+            <button style={{ ...S.btn("#2E9BE0"), padding: "9px 18px", flexShrink: 0 }}
               onClick={() => {
                 const q = sheetSearch.toLowerCase();
                 const found = (contracts || []).find(c =>
@@ -1243,10 +1243,10 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
                     style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#f8fafc", borderRadius: 8, cursor: "pointer", border: "1px solid #e2e8f0" }}>
                     <span style={{ fontSize: 16 }}>📋</span>
                     <div>
-                      <div style={{ fontWeight: 600, color: "#1e293b", fontSize: 13 }}>{c.name}</div>
+                      <div style={{ fontWeight: 600, color: "#1A1A1A", fontSize: 13 }}>{c.name}</div>
                       {c.code && <div style={{ fontSize: 11, color: "#64748b" }}>{c.code}</div>}
                     </div>
-                    <span style={{ marginLeft: "auto", color: "#2563eb", fontSize: 12 }}>Otevřít →</span>
+                    <span style={{ marginLeft: "auto", color: "#2E9BE0", fontSize: 12 }}>Otevřít →</span>
                   </div>
                 ))
               }
@@ -1259,14 +1259,14 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
 
         {/* Nejbližší úkoly */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
-            Nejbližší úkoly <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
+            Nejbližší úkoly <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
           </div>
           {tasks.filter(t => !t.done).slice(0, 4).map(t => (
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} style={{ accentColor: "#2563eb" }} />
+              <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} style={{ accentColor: "#2E9BE0" }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: "#1e293b" }}>{t.title}</div>
+                <div style={{ fontSize: 13, color: "#1A1A1A" }}>{t.title}</div>
                 <div style={{ fontSize: 11, color: "#64748b" }}>{t.due}</div>
               </div>
               <span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span>
@@ -1276,19 +1276,19 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
 
         {/* Poslední faktury */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
-            Poslední faktury <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
+            Poslední faktury <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>
           </div>
           {invoices.slice(-3).reverse().map(inv => {
             const cust = customers.find(c => c.id === inv.customerId);
             return (
               <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
                 <div>
-                  <div style={{ fontSize: 13, color: "#1e293b" }}>{inv.number}</div>
+                  <div style={{ fontSize: 13, color: "#1A1A1A" }}>{inv.number}</div>
                   <div style={{ fontSize: 11, color: "#64748b" }}>{cust?.name}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{fmtKc(inv.amount)}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>{fmtKc(inv.amount)}</div>
                   <span style={S.tag(INV_COLORS[inv.status])}>{inv.status}</span>
                 </div>
               </div>
@@ -1347,8 +1347,8 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
                   <td style={S.td}>{c.email}</td>
                   <td style={S.td}>{c.phone || "—"}</td>
                   <td style={S.td}>{custInvoices.length} faktur</td>
-                  <td style={S.td}><span style={S.tag(TAG_COLORS[c.tag] || "#2563eb")}>{c.tag}</span></td>
-                  <td style={S.td}><span style={{ color: "#2563eb", fontSize: 12 }}>Detail →</span></td>
+                  <td style={S.td}><span style={S.tag(TAG_COLORS[c.tag] || "#2E9BE0")}>{c.tag}</span></td>
+                  <td style={S.td}><span style={{ color: "#2E9BE0", fontSize: 12 }}>Detail →</span></td>
                 </tr>
               );
             })}
@@ -1377,14 +1377,14 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
         const custInv = invoices.filter(i => i.customerId === c.id);
         const custDeals = deals.filter(d => d.customerId === c.id);
         const custContracts = (contracts || []).filter(z => z.customer_id === c.id);
-        const CONTRACT_STATUS_COLOR = { "Příprava": "#f59e0b", "Probíhá": "#2563eb", "Dokončeno": "#34d399", "Pozastaveno": "#ef4444" };
+        const CONTRACT_STATUS_COLOR = { "Příprava": "#f59e0b", "Probíhá": "#2E9BE0", "Dokončeno": "#34d399", "Pozastaveno": "#ef4444" };
         return (
           <div style={S.modal} onClick={closeModal}>
             <div style={{ ...S.modalBox, width: 600 }} onClick={e => e.stopPropagation()}>
               <ModalHeader title={c.name} onClose={closeModal} />
               <div style={{ color: "#475569", fontSize: 13, marginBottom: 16 }}>
                 {c.company && <span style={{ fontWeight: 600, color: "#94a3b8" }}>{c.company} · </span>}
-                {c.email && <a href={`mailto:${c.email}`} style={{ color: "#2563eb" }}>{c.email}</a>}
+                {c.email && <a href={`mailto:${c.email}`} style={{ color: "#2E9BE0" }}>{c.email}</a>}
                 {c.phone && <span> · <a href={`tel:${c.phone}`} style={{ color: "#16a34a" }}>📞 {c.phone}</a></span>}
                 {c.email_contact && c.email_contact !== c.email && <span> · <a href={`mailto:${c.email_contact}`} style={{ color: "#a78bfa" }}>✉️ {c.email_contact}</a></span>}
               </div>
@@ -1484,12 +1484,12 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
               const cust = customers.find(c => c.id === d.customerId || c.id === d.customer_id);
               return (
                 <div key={d.id}
-                  style={{ ...S.kanbanCard, opacity: dragId === d.id ? 0.4 : 1, cursor: "grab", outline: selectedDeal?.id === d.id ? "2px solid #2563eb" : "none" }}
+                  style={{ ...S.kanbanCard, opacity: dragId === d.id ? 0.4 : 1, cursor: "grab", outline: selectedDeal?.id === d.id ? "2px solid #2E9BE0" : "none" }}
                   draggable onDragStart={e => onDragStart(e, d.id)}
                   onClick={() => setSelectedDeal(selectedDeal?.id === d.id ? null : d)}>
                   <div style={{ fontWeight: 600, color: "#fff", fontSize: 13, marginBottom: 3 }}>{d.name}</div>
                   {cust && <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3 }}>🏢 {cust.name}</div>}
-                  {d.assigned_to && <div style={{ fontSize: 11, color: "#2563eb", marginBottom: 4 }}>👤 {d.assigned_to}</div>}
+                  {d.assigned_to && <div style={{ fontSize: 11, color: "#2E9BE0", marginBottom: 4 }}>👤 {d.assigned_to}</div>}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ color: STAGE_COLORS[stage], fontWeight: 800, fontSize: 14 }}>{d.value ? fmtKc(d.value) : "—"}</div>
                     {stage === "Vyhráno" && onConvertToContract && (
@@ -1511,7 +1511,7 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
         const cust = customers.find(c => c.id === selectedDeal.customerId || c.id === selectedDeal.customer_id);
         const dealTasks = (tasks || []).filter(t => t.deal_id === selectedDeal.id);
         return (
-          <div style={{ ...S.card, marginTop: 8, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#2563eb") }}>
+          <div style={{ ...S.card, marginTop: 8, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#2E9BE0") }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
               <div>
                 <div style={{ fontWeight: 700, color: "#fff", fontSize: 16 }}>{selectedDeal.name}</div>
@@ -1541,7 +1541,7 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {STAGES.map(s => (
                   <button key={s} onClick={() => moveStage(selectedDeal, s)}
-                    style={{ ...S.btn(selectedDeal.stage === s ? STAGE_COLORS[s] : "#1e293b"), padding: "5px 12px", fontSize: 11, opacity: selectedDeal.stage === s ? 1 : 0.65 }}>
+                    style={{ ...S.btn(selectedDeal.stage === s ? STAGE_COLORS[s] : "#0E3B5E"), padding: "5px 12px", fontSize: 11, opacity: selectedDeal.stage === s ? 1 : 0.65 }}>
                     {s}
                   </button>
                 ))}
@@ -1552,7 +1552,7 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
               <div>
                 <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Úkoly ({dealTasks.length})</div>
                 {dealTasks.map(t => (
-                  <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid #1e293b" }}>
+                  <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid #e2e8f0" }}>
                     <span>{t.done ? "✅" : "⏳"}</span>
                     <span style={{ color: "#e2e8f0", fontSize: 13, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</span>
                   </div>
@@ -1656,7 +1656,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
       <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); setThreadDeal(null); setThreadContract(null); }}
-            style={{ ...S.btn(tab === t.id ? "#2563eb" : "#1e293b"), padding: "7px 16px", fontSize: 12 }}>
+            style={{ ...S.btn(tab === t.id ? "#2E9BE0" : "#0E3B5E"), padding: "7px 16px", fontSize: 12 }}>
             {t.label}
           </button>
         ))}
@@ -1672,7 +1672,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
             return (
               <div key={deal.id} style={{ ...S.card, cursor: "pointer" }} onClick={() => { setThreadDeal(deal); setNewMsg(""); }}>
                 <div style={{ fontWeight: 700, color: "#fff", fontSize: 13, marginBottom: 4 }}>💼 {deal.name}</div>
-                <div style={{ fontSize: 11, color: "#2563eb", marginBottom: 4 }}>{msgs.length} zpráv</div>
+                <div style={{ fontSize: 11, color: "#2E9BE0", marginBottom: 4 }}>{msgs.length} zpráv</div>
                 <div style={{ fontSize: 12, color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{last.user_name}: {last.message}</div>
                 <div style={{ fontSize: 10, color: "#475569", marginTop: 4 }}>{new Date(last.created_at).toLocaleString("cs")}</div>
               </div>
@@ -1688,9 +1688,9 @@ function Communication({ communication, setCommunication, customers, deals, cont
             <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14 }}>💼 {threadDeal.name}</div>
             <div style={{ maxHeight: 380, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
               {dealMsgs.filter(m => m.deal_id === threadDeal.id).slice().reverse().map(m => (
-                <div key={m.id} style={{ background: "#1e293b", borderRadius: 10, padding: "9px 13px" }}>
-                  <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 600, marginBottom: 3 }}>{m.user_name} · {new Date(m.created_at).toLocaleString("cs")}</div>
-                  <div style={{ color: "#1e293b", fontSize: 13 }}>{m.message}</div>
+                <div key={m.id} style={{ background: "#0E3B5E", borderRadius: 10, padding: "9px 13px" }}>
+                  <div style={{ fontSize: 11, color: "#2E9BE0", fontWeight: 600, marginBottom: 3 }}>{m.user_name} · {new Date(m.created_at).toLocaleString("cs")}</div>
+                  <div style={{ color: "#1A1A1A", fontSize: 13 }}>{m.message}</div>
                 </div>
               ))}
             </div>
@@ -1729,9 +1729,9 @@ function Communication({ communication, setCommunication, customers, deals, cont
             <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14 }}>🔧 {threadContract.name}</div>
             <div style={{ maxHeight: 380, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
               {contractMsgs.filter(m => m.contract_id === threadContract.id).slice().reverse().map(m => (
-                <div key={m.id} style={{ background: "#1e293b", borderRadius: 10, padding: "9px 13px" }}>
+                <div key={m.id} style={{ background: "#0E3B5E", borderRadius: 10, padding: "9px 13px" }}>
                   <div style={{ fontSize: 11, color: "#34d399", fontWeight: 600, marginBottom: 3 }}>{m.user_name} · {new Date(m.created_at).toLocaleString("cs")}</div>
-                  <div style={{ color: "#1e293b", fontSize: 13 }}>{m.message}</div>
+                  <div style={{ color: "#1A1A1A", fontSize: 13 }}>{m.message}</div>
                 </div>
               ))}
             </div>
@@ -1755,7 +1755,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
                     <span style={{ fontWeight: 600, color: "#fff", fontSize: 13 }}>{cust?.name || "—"}</span>
-                    <span style={S.tag(c.type === "Email" ? "#2563eb" : c.type === "Hovor" ? "#34d399" : "#f59e0b")}>{c.type}</span>
+                    <span style={S.tag(c.type === "Email" ? "#2E9BE0" : c.type === "Hovor" ? "#34d399" : "#f59e0b")}>{c.type}</span>
                     <span style={{ color: "#475569", fontSize: 11, marginLeft: "auto" }}>{c.date}</span>
                   </div>
                   <div style={{ color: "#475569", fontSize: 13 }}>{c.note}</div>
@@ -1889,7 +1889,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
         {[["all", "Vše"], ["open", "Otevřené"], ["mine", "Moje"], ["done", "Hotové"]].map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)}
-            style={{ ...S.btn(filter === k ? "#2563eb" : "#1e293b"), padding: "6px 14px", fontSize: 12 }}>{l}</button>
+            style={{ ...S.btn(filter === k ? "#2E9BE0" : "#0E3B5E"), padding: "6px 14px", fontSize: 12 }}>{l}</button>
         ))}
       </div>
 
@@ -1903,10 +1903,10 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               const deal  = (deals || []).find(d => d.id === t.deal_id);
               return (
                 <tr key={t.id} style={{ opacity: t.done ? 0.4 : 1, cursor: "pointer" }} onClick={() => setDetailTask(t)}>
-                  <td style={S.td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} style={{ accentColor: "#2563eb" }} /></td>
+                  <td style={S.td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} style={{ accentColor: "#2E9BE0" }} /></td>
                   <td style={{ ...S.td, textDecoration: t.done ? "line-through" : "none", color: "#fff", fontWeight: 500 }}>
                     {t.title}
-                    {t.visible_to?.length > 0 && <span style={{ fontSize: 10, color: "#2563eb", marginLeft: 6 }}>👁 {t.visible_to.join(", ")}</span>}
+                    {t.visible_to?.length > 0 && <span style={{ fontSize: 10, color: "#2E9BE0", marginLeft: 6 }}>👁 {t.visible_to.join(", ")}</span>}
                   </td>
                   <td style={S.td}>{cust?.name || "—"}</td>
                   <td style={S.td}>
@@ -1915,7 +1915,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                     {!contr && !deal && "—"}
                   </td>
                   <td style={S.td}>{t.due}</td>
-                  <td style={{ ...S.td, color: "#2563eb", fontSize: 11 }}>{t.created_by || "—"}</td>
+                  <td style={{ ...S.td, color: "#2E9BE0", fontSize: 11 }}>{t.created_by || "—"}</td>
                   <td style={S.td}><span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span></td>
                 </tr>
               );
@@ -1947,7 +1947,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               <div><div style={S.statLabel}>Přiřazeno</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.assigned_to || "—"}</div></div>
             </div>
             {detailTask.description && (
-              <div style={{ background: "#1e293b", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#cbd5e1", fontSize: 14, lineHeight: 1.6 }}>
+              <div style={{ background: "#0E3B5E", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#cbd5e1", fontSize: 14, lineHeight: 1.6 }}>
                 {detailTask.description}
               </div>
             )}
@@ -1961,7 +1961,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                     {photos.map((ph, i) => (
                       <div key={i} onClick={() => setLightboxUrl(ph.url)} style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "2px solid #334155" }}>
                         <img src={ph.url} alt={ph.name} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
-                        {ph.name && <div style={{ padding: "3px 6px", fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "#1e293b" }}>{ph.name}</div>}
+                        {ph.name && <div style={{ padding: "3px 6px", fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "#0E3B5E" }}>{ph.name}</div>}
                       </div>
                     ))}
                   </div>
@@ -2010,7 +2010,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               <input type="checkbox"
                 checked={newT.visibleTo.length === 0}
                 onChange={() => setNewT({ ...newT, visibleTo: [] })}
-                style={{ accentColor: "#2563eb" }} />
+                style={{ accentColor: "#2E9BE0" }} />
               <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Všichni zaměstnanci</span>
             </div>
             <div style={{ borderTop: "1px solid #1a2035", paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -2024,7 +2024,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                 };
                 return (
                   <label key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <input type="checkbox" checked={checked} onChange={toggle} style={{ accentColor: "#2563eb" }} />
+                    <input type="checkbox" checked={checked} onChange={toggle} style={{ accentColor: "#2E9BE0" }} />
                     <span style={{ fontSize: 13, color: checked ? "#e2e8f0" : "#64748b" }}>{e.name}</span>
                   </label>
                 );
@@ -2033,7 +2033,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
           </div>
           {/* Fotky */}
           <label style={S.label}>Fotky k úkolu</label>
-          <button style={{ ...S.btn("#1e293b"), padding: "6px 14px", fontSize: 12, marginBottom: 8 }}
+          <button style={{ ...S.btn("#0E3B5E"), padding: "6px 14px", fontSize: 12, marginBottom: 8 }}
             onClick={() => setTaskPhotoPanel(!taskPhotoPanel)}>
             {taskPhotoPanel ? "▲ Skrýt" : `📷 Přidat fotky${taskPhotos.length > 0 ? ` (${taskPhotos.length})` : ""}`}
           </button>
@@ -2104,7 +2104,7 @@ function Invoices({ invoices, setInvoices, customers, modal, setModal, closeModa
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             {["vydané", "přijaté"].map(t => (
               <button key={t} onClick={() => setInvTab(t)}
-                style={{ ...S.btn(invTab === t ? "#2563eb" : "#e2e8f0"), color: invTab === t ? "#fff" : "#475569", padding: "6px 18px", fontSize: 12, textTransform: "capitalize" }}>
+                style={{ ...S.btn(invTab === t ? "#2E9BE0" : "#e2e8f0"), color: invTab === t ? "#fff" : "#475569", padding: "6px 18px", fontSize: 12, textTransform: "capitalize" }}>
                 {t === "vydané" ? "📤 Vydané" : "📥 Přijaté"}
               </button>
             ))}
@@ -2277,15 +2277,15 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
     setNewMov({ product_name: "", quantity: "", unit: "ks", movement_type: "in", contract_id: "", vehicle: "", from_location: "Sklad", to_location: "", note: "" });
   };
 
-  const MOV_COLORS = { in: "#34d399", out: "#f87171", out_contract: "#f87171", out_vehicle: "#f59e0b", transfer: "#2563eb", transfer_vh: "#a78bfa" };
+  const MOV_COLORS = { in: "#34d399", out: "#f87171", out_contract: "#f87171", out_vehicle: "#f59e0b", transfer: "#2E9BE0", transfer_vh: "#a78bfa" };
   const MOV_LABELS = Object.fromEntries(MOVE_TYPES.map(t => [t.value, t.label]));
 
   return (
     <>
       <div style={S.header}><h1 style={S.h1}>Sklad & zboží</h1>
         <div style={{ display: "flex", gap: 8 }}>
-          <button style={{ ...S.btn(whTab === "stock" ? "#2563eb" : "#94a3b8"), padding: "7px 16px" }} onClick={() => setWhTab("stock")}>📦 Skladové zásoby</button>
-          <button style={{ ...S.btn(whTab === "movements" ? "#2563eb" : "#94a3b8"), padding: "7px 16px" }} onClick={() => setWhTab("movements")}>🔄 Pohyby</button>
+          <button style={{ ...S.btn(whTab === "stock" ? "#2E9BE0" : "#94a3b8"), padding: "7px 16px" }} onClick={() => setWhTab("stock")}>📦 Skladové zásoby</button>
+          <button style={{ ...S.btn(whTab === "movements" ? "#2E9BE0" : "#94a3b8"), padding: "7px 16px" }} onClick={() => setWhTab("movements")}>🔄 Pohyby</button>
           <button style={S.btn()} onClick={() => setShowAddProduct(true)}>+ Přidat produkt</button>
         </div>
       </div>
@@ -2294,7 +2294,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
         <>
           <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 22 }}>
             {[
-              { label: "Produktů celkem", value: products.length, color: "#60a5fa" },
+              { label: "Produktů celkem", value: products.length, color: "#2E9BE0" },
               { label: "Nízký stav", value: products.filter(p => p.stock <= p.minStock).length, color: "#f87171" },
               { label: "Hodnota skladu", value: fmtKc(products.reduce((s, p) => s + p.price * p.stock, 0)), color: "#34d399" },
             ].map(s => (
@@ -2316,11 +2316,11 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                         {img && <img src={img} alt="" onError={e => e.target.remove()} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", borderRadius: 6, background: "#fff" }} />}
                       </div>
                       </td>
-                      <td style={{ ...S.td, fontWeight: 600, color: "#1e293b" }}>{p.name}</td>
+                      <td style={{ ...S.td, fontWeight: 600, color: "#1A1A1A" }}>{p.name}</td>
                       <td style={{ ...S.td, fontSize: 12, color: "#64748b" }}>{p.sku}</td>
                       <td style={{ ...S.td, fontSize: 12, color: "#64748b" }}>{p.category}</td>
                       <td style={S.td}>{fmtKc(p.price)}</td>
-                      <td style={{ ...S.td, color: "#f97316", fontWeight: 600 }}>{p.price_sell ? fmtKc(p.price_sell) : "—"}</td>
+                      <td style={{ ...S.td, color: "#F5821F", fontWeight: 600 }}>{p.price_sell ? fmtKc(p.price_sell) : "—"}</td>
                       <td style={S.td}><span style={{ ...S.tag(low ? "#ef4444" : "#16a34a"), fontWeight: 700 }}>{p.stock} {p.unit}</span></td>
                       <td style={{ ...S.td, fontSize: 12, color: "#94a3b8" }}>{p.minStock || p.min_stock || 0} {p.unit}</td>
                       <td style={S.td}>
@@ -2376,7 +2376,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                                       📦
                                       {img && <img src={img} alt="" onError={e => e.target.remove()} style={{ position: "absolute", inset: 0, width: 28, height: 28, objectFit: "contain", background: "#fff", borderRadius: 4 }} />}
                                     </span>
-                            <span style={{ color: "#1e293b", fontWeight: 500 }}>{p.name}</span>
+                            <span style={{ color: "#1A1A1A", fontWeight: 500 }}>{p.name}</span>
                             <span style={{ color: "#64748b", fontSize: 11, marginLeft: "auto" }}>{p.stock} {p.unit}</span>
                           </div>
                         );
@@ -2436,7 +2436,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                       <td style={{ ...S.td, fontWeight: 700, color: m.movement_type === "in" ? "#34d399" : "#f87171" }}>{m.movement_type === "in" ? "+" : "−"}{m.quantity} {m.unit}</td>
                       <td style={{ ...S.td, fontSize: 11 }}>{m.from_location} → {m.to_location}</td>
                       <td style={S.td}>{contr ? <span style={S.tag("#34d399")}>🔧 {contr.name}</span> : m.vehicle ? <span style={S.tag("#f59e0b")}>🚗 {m.vehicle}</span> : m.note || "—"}</td>
-                      <td style={{ ...S.td, fontSize: 11, color: "#2563eb" }}>{m.created_by}</td>
+                      <td style={{ ...S.td, fontSize: 11, color: "#2E9BE0" }}>{m.created_by}</td>
                     </tr>
                   );
                 })}
@@ -2456,7 +2456,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
             ))}
           </div>
           <div style={{ marginTop: 8, padding: "10px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", marginBottom: 6 }}>🖼 Obrázek produktu</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#2E9BE0", marginBottom: 6 }}>🖼 Obrázek produktu</div>
             <label style={S.label}>Kód produktu z emas.cz (číslo)</label>
             <input style={S.input} value={newP.emas_code} onChange={e => setNewP({ ...newP, emas_code: e.target.value })} placeholder="např. 12345" />
             <label style={S.label}>Nebo přímý URL obrázku</label>
@@ -2481,7 +2481,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
             ))}
           </div>
           <div style={{ marginTop: 8, padding: "10px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", marginBottom: 6 }}>🖼 Obrázek produktu</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#2E9BE0", marginBottom: 6 }}>🖼 Obrázek produktu</div>
             <label style={S.label}>Kód emas.cz</label>
             <input style={S.input} value={editP.emas_code || ""} onChange={e => setEditP({ ...editP, emas_code: e.target.value })} placeholder="12345" />
             <label style={S.label}>URL obrázku</label>
@@ -2568,7 +2568,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
 
   // Barvy podle oddělení
   const deptColor = (dept) => {
-    const map = { "IT": "#2563eb", "Obchod": "#f59e0b", "Výroba": "#34d399", "Management": "#a78bfa", "Finance": "#38bdf8", "HR": "#f87171" };
+    const map = { "IT": "#2E9BE0", "Obchod": "#f59e0b", "Výroba": "#34d399", "Management": "#a78bfa", "Finance": "#38bdf8", "HR": "#f87171" };
     return map[dept] || "#64748b";
   };
 
@@ -2592,7 +2592,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
           </button>
           {["info","ukoly"].map(t => (
             <button key={t} onClick={() => setHrTab(t)}
-              style={{ ...S.btn(hrTab === t ? "#6366f1" : "#1e293b"), padding: "7px 18px", fontSize: 13 }}>
+              style={{ ...S.btn(hrTab === t ? "#6366f1" : "#0E3B5E"), padding: "7px 18px", fontSize: 13 }}>
               {t === "info" ? "👤 Profil" : "✅ Úkoly"}
             </button>
           ))}
@@ -2643,9 +2643,9 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
               <div style={{ position: "relative", display: "inline-block" }}>
                 {emp.photo_url
                   ? <img src={emp.photo_url} alt={emp.name} style={{ width: 120, height: 120, borderRadius: "50%", objectFit: "cover", border: "3px solid #6366f1" }} />
-                  : <div style={{ width: 120, height: 120, borderRadius: "50%", background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 48, color: "#fff", fontWeight: 800, margin: "0 auto" }}>{getInitial(emp.name)}</div>
+                  : <div style={{ width: 120, height: 120, borderRadius: "50%", background: "#2E9BE0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 48, color: "#fff", fontWeight: 800, margin: "0 auto" }}>{getInitial(emp.name)}</div>
                 }
-                <label style={{ position: "absolute", bottom: 0, right: 0, background: "#2563eb", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }} title="Nahrát foto">
+                <label style={{ position: "absolute", bottom: 0, right: 0, background: "#2E9BE0", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }} title="Nahrát foto">
                   {uploading ? "⏳" : "📷"}
                   <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => uploadPhoto(e.target.files[0])} />
                 </label>
@@ -2666,9 +2666,9 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                 { label: "Sazba fakturace", value: `${Number(editField.hourly_rate_client || emp.hourly_rate_client || 0)} Kč/h`, color: "#34d399" },
                 { label: "Vyplaceno ze zakázek", value: fmtKc(totalPaid), color: "#f87171" },
                 { label: "Fakturováno ze zakázek", value: fmtKc(totalBilled), color: "#34d399" },
-                { label: `Hodiny tento měsíc (${thisMonth})`, value: fmtHours(monthHours), color: "#2563eb" },
+                { label: `Hodiny tento měsíc (${thisMonth})`, value: fmtHours(monthHours), color: "#2E9BE0" },
               ].map(s => (
-                <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #1e293b" }}>
+                <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #e2e8f0" }}>
                   <span style={{ color: "#475569", fontSize: 12 }}>{s.label}</span>
                   <span style={{ color: s.color, fontWeight: 700, fontSize: 14 }}>{s.value}</span>
                 </div>
@@ -3037,8 +3037,8 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
       {/* Stats */}
       <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { label: "Celkem projektů", value: projects.length, color: "#2563eb" },
-          { label: "Probíhá", value: projects.filter(p => p.status === "Probíhá").length, color: "#60a5fa" },
+          { label: "Celkem projektů", value: projects.length, color: "#2E9BE0" },
+          { label: "Probíhá", value: projects.filter(p => p.status === "Probíhá").length, color: "#2E9BE0" },
           { label: "Celkový rozpočet", value: fmtKc(projectBudget), color: "#34d399" },
         ].map(s => (
           <div key={s.label} style={S.statCard(s.color)}><div style={S.statLabel}>{s.label}</div><div style={S.statValue(s.color)}>{s.value}</div></div>
@@ -3083,12 +3083,12 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#475569", marginBottom: 3 }}>
                       <span>Reálný postup dle kroků: {doneSteps}/{steps.length} kroků</span>
-                      <span style={{ color: "#2563eb", fontWeight: 700 }}>{realProgress}%</span>
+                      <span style={{ color: "#2E9BE0", fontWeight: 700 }}>{realProgress}%</span>
                     </div>
                     {/* Kroky vizuální progress */}
                     <div style={{ display: "flex", gap: 2 }}>
                       {steps.map(s => (
-                        <div key={s.id} style={{ flex: 1, height: 6, borderRadius: 3, background: s.done ? "#2563eb" : "#e2e8f0", transition: "background 0.3s" }} title={s.title} />
+                        <div key={s.id} style={{ flex: 1, height: 6, borderRadius: 3, background: s.done ? "#2E9BE0" : "#e2e8f0", transition: "background 0.3s" }} title={s.title} />
                       ))}
                     </div>
                   </div>
@@ -3115,7 +3115,7 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                     <input type="range" min={0} max={100} value={p.progress}
                       onChange={e => updateProgress(p.id, e.target.value)}
                       style={{ accentColor: PROJ_COLORS[p.status], width: 100 }} />
-                    <span style={{ fontSize: 11, color: "#2563eb", fontWeight: 700 }}>{p.progress}%</span>
+                    <span style={{ fontSize: 11, color: "#2E9BE0", fontWeight: 700 }}>{p.progress}%</span>
                   </div>
                 )}
               </div>
@@ -3127,7 +3127,7 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                   <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid #1a2035" }}>
                     {["kroky", "material"].map(tab => (
                       <button key={tab} onClick={() => setProjectTab(prev => ({ ...prev, [p.id]: tab }))}
-                        style={{ padding: "7px 18px", background: "none", border: "none", borderBottom: (projectTab[p.id] || "kroky") === tab ? "2px solid #2563eb" : "2px solid transparent", color: (projectTab[p.id] || "kroky") === tab ? "#2563eb" : "#475569", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                        style={{ padding: "7px 18px", background: "none", border: "none", borderBottom: (projectTab[p.id] || "kroky") === tab ? "2px solid #2E9BE0" : "2px solid transparent", color: (projectTab[p.id] || "kroky") === tab ? "#2E9BE0" : "#475569", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
                         {tab === "kroky" ? "📋 Kroky" : "📦 Materiál / Dodací list"}
                       </button>
                     ))}
@@ -3174,7 +3174,7 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                           <div key={step.id} style={{ display: "flex", gap: 12, padding: "10px 0", borderBottom: "1px solid #1a2035", alignItems: "flex-start" }}>
                             {/* Číslo a checkbox */}
                             <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 2 }}>
-                              <div style={{ width: 22, height: 22, borderRadius: "50%", background: step.done ? "#2563eb" : "#e2e8f0", border: step.done ? "none" : "1px solid #252d45", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: step.done ? "#fff" : "#334155", flexShrink: 0, cursor: "pointer", fontWeight: 700 }}
+                              <div style={{ width: 22, height: 22, borderRadius: "50%", background: step.done ? "#2E9BE0" : "#e2e8f0", border: step.done ? "none" : "1px solid #252d45", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: step.done ? "#fff" : "#334155", flexShrink: 0, cursor: "pointer", fontWeight: 700 }}
                                 onClick={() => toggleStep(p.id, step.id)}>
                                 {step.done ? "✓" : idx + 1}
                               </div>
@@ -3206,7 +3206,7 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                                   📝 {step.note}
                                 </div>
                               ) : (
-                                <div style={{ fontSize: 11, color: "#1e293b", marginTop: 3, cursor: "pointer" }}
+                                <div style={{ fontSize: 11, color: "#1A1A1A", marginTop: 3, cursor: "pointer" }}
                                   onClick={() => setEditingNote({ [step.id]: "" })}>
                                   + Přidat poznámku
                                 </div>
@@ -3230,7 +3230,7 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                       placeholder="Přidat nový krok..."
                       onKeyDown={e => e.key === "Enter" && addStep(p.id)}
                     />
-                    <button style={{ ...S.btn("#2563eb"), padding: "9px 16px", fontSize: 13 }} onClick={() => addStep(p.id)}>+ Přidat</button>
+                    <button style={{ ...S.btn("#2E9BE0"), padding: "9px 16px", fontSize: 13 }} onClick={() => addStep(p.id)}>+ Přidat</button>
                   </div>
                     </div>
                   )}
@@ -3264,13 +3264,13 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                                       autoFocus
                                     />
                                     <button onClick={() => updateDeliveryQty(p.id, item.id, editingItem[item.id])}
-                                      style={{ ...S.btn("#2563eb"), padding: "4px 10px", fontSize: 12 }}>✓</button>
+                                      style={{ ...S.btn("#2E9BE0"), padding: "4px 10px", fontSize: 12 }}>✓</button>
                                     <button onClick={() => setEditingItem({})}
                                       style={{ ...S.btnGhost, padding: "4px 8px", fontSize: 12 }}>✕</button>
                                   </div>
                                 ) : (
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                    <span style={{ fontWeight: 700, color: "#2563eb", fontSize: 14 }}>{item.quantity}</span>
+                                    <span style={{ fontWeight: 700, color: "#2E9BE0", fontSize: 14 }}>{item.quantity}</span>
                                     <button onClick={() => setEditingItem({ [item.id]: item.quantity })}
                                       style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 13, padding: "2px 6px" }}
                                       title="Upravit množství">✏️</button>
@@ -3329,7 +3329,7 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                               onChange={e => setNewDeliveryItem(prev => ({ ...prev, [p.id]: { ...prev[p.id], note: e.target.value } }))}
                             />
                           </div>
-                          <button style={{ ...S.btn("#2563eb"), padding: "9px 16px", fontSize: 13, flexShrink: 0 }}
+                          <button style={{ ...S.btn("#2E9BE0"), padding: "9px 16px", fontSize: 13, flexShrink: 0 }}
                             onClick={() => addDeliveryItem(p.id)}>+ Přidat</button>
                         </div>
                       </div>
@@ -3389,7 +3389,7 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
             {["💻", "🌐", "🏗️", "📣", "⚙️", "🎨", "📦", "🔬", "🎯", "📋", "🚀", "💡"].map(ico => (
               <button key={ico} onClick={() => setNewTemplate({ ...newTemplate, icon: ico })}
-                style={{ fontSize: 20, padding: "6px 10px", borderRadius: 8, background: newTemplate.icon === ico ? "#2563eb33" : "#f8fafc", border: newTemplate.icon === ico ? "1px solid #6366f1" : "1px solid #252d45", cursor: "pointer" }}>
+                style={{ fontSize: 20, padding: "6px 10px", borderRadius: 8, background: newTemplate.icon === ico ? "#2E9BE033" : "#f8fafc", border: newTemplate.icon === ico ? "1px solid #6366f1" : "1px solid #252d45", cursor: "pointer" }}>
                 {ico}
               </button>
             ))}
@@ -3496,7 +3496,7 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {[
           { label: "Náklady celkem", value: fmtKc(totalAll), color: "#f87171" },
-          ...quarters.map(q => ({ label: q.label, value: fmtKc(q.total), color: "#2563eb" })),
+          ...quarters.map(q => ({ label: q.label, value: fmtKc(q.total), color: "#2E9BE0" })),
         ].map(s => (
           <div key={s.label} style={S.statCard(s.color)}>
             <div style={S.statLabel}>{s.label}</div>
@@ -3524,7 +3524,7 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
                     })}
                   </div>
                 </div>
-                <div style={{ fontSize: 10, color: i === 3 ? "#2563eb" : "#475569", fontWeight: i === 3 ? 700 : 400 }}>{m.month}</div>
+                <div style={{ fontSize: 10, color: i === 3 ? "#2E9BE0" : "#475569", fontWeight: i === 3 ? 700 : 400 }}>{m.month}</div>
               </div>
             );
           })}
@@ -3549,7 +3549,7 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                   <div style={{ width: 10, height: 10, borderRadius: 2, background: CAT_COLORS[c.cat] }} />
-                  <span style={{ fontSize: 13, color: "#1e293b" }}>{c.cat}</span>
+                  <span style={{ fontSize: 13, color: "#1A1A1A" }}>{c.cat}</span>
                   <span style={{ fontSize: 11, color: "#334155" }}>({c.count}×)</span>
                 </div>
                 <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{fmtKc(c.total)}</span>
@@ -3566,14 +3566,14 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>Pravidelné vs. jednorázové</div>
           {[
-            { label: "Pravidelné náklady", items: costs.filter(c => c.recurring), color: "#2563eb" },
+            { label: "Pravidelné náklady", items: costs.filter(c => c.recurring), color: "#2E9BE0" },
             { label: "Jednorázové náklady", items: costs.filter(c => !c.recurring), color: "#f59e0b" },
           ].map(g => {
             const total = g.items.reduce((s, c) => s + c.amount, 0);
             return (
               <div key={g.label} style={{ marginBottom: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 13, color: "#1e293b" }}>{g.label}</span>
+                  <span style={{ fontSize: 13, color: "#1A1A1A" }}>{g.label}</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: g.color }}>{fmtKc(total)}</span>
                 </div>
                 {g.items.slice(0, 3).map(item => (
@@ -3596,7 +3596,7 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {["Vše", ...COST_CATEGORIES].map(cat => (
               <button key={cat} onClick={() => setFilterCat(cat)}
-                style={{ ...S.btn(filterCat === cat ? CAT_COLORS[cat] || "#2563eb" : "#e2e8f0"), padding: "5px 12px", fontSize: 11, border: filterCat === cat ? "none" : "1px solid #252d45" }}>
+                style={{ ...S.btn(filterCat === cat ? CAT_COLORS[cat] || "#2E9BE0" : "#e2e8f0"), padding: "5px 12px", fontSize: 11, border: filterCat === cat ? "none" : "1px solid #252d45" }}>
                 {cat}
               </button>
             ))}
@@ -3608,10 +3608,10 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
             {filtered.sort((a, b) => b.date.localeCompare(a.date)).map(c => (
               <tr key={c.id}>
                 <td style={S.td}>{c.date}</td>
-                <td style={S.td}><span style={S.tag(CAT_COLORS[c.category] || "#2563eb")}>{c.category}</span></td>
-                <td style={{ ...S.td, color: "#1e293b" }}>{c.description}</td>
+                <td style={S.td}><span style={S.tag(CAT_COLORS[c.category] || "#2E9BE0")}>{c.category}</span></td>
+                <td style={{ ...S.td, color: "#1A1A1A" }}>{c.description}</td>
                 <td style={{ ...S.td, color: "#fff", fontWeight: 700 }}>{fmtKc(c.amount)}</td>
-                <td style={S.td}><span style={S.tag(c.recurring ? "#2563eb" : "#f59e0b")}>{c.recurring ? "Pravidelný" : "Jednorázový"}</span></td>
+                <td style={S.td}><span style={S.tag(c.recurring ? "#2E9BE0" : "#f59e0b")}>{c.recurring ? "Pravidelný" : "Jednorázový"}</span></td>
                 <td style={S.td}>
                   <button onClick={() => deleteCost(c.id)}
                     style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 16 }}>×</button>
@@ -3636,7 +3636,7 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
           <label style={S.label}>Částka (Kč)</label>
           <input style={S.input} type="number" value={newC.amount} onChange={e => setNewC({ ...newC, amount: e.target.value })} />
           <label style={{ ...S.label, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-            <input type="checkbox" checked={newC.recurring} onChange={e => setNewC({ ...newC, recurring: e.target.checked })} style={{ accentColor: "#2563eb" }} />
+            <input type="checkbox" checked={newC.recurring} onChange={e => setNewC({ ...newC, recurring: e.target.checked })} style={{ accentColor: "#2E9BE0" }} />
             Pravidelný náklad
           </label>
           <ModalActions onSave={save} onClose={closeModal} />
@@ -3696,7 +3696,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects }) {
         <h1 style={S.h1}>📈 Analytika & reporty</h1>
         <div style={{ display: "flex", gap: 8 }}>
           {["2026"].map(y => (
-            <button key={y} style={{ ...S.btn(period === y ? "#2563eb" : "#e2e8f0"), border: "1px solid #252d45" }} onClick={() => setPeriod(y)}>{y}</button>
+            <button key={y} style={{ ...S.btn(period === y ? "#2E9BE0" : "#e2e8f0"), border: "1px solid #252d45" }} onClick={() => setPeriod(y)}>{y}</button>
           ))}
         </div>
       </div>
@@ -3705,7 +3705,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {[
           { label: "Celkový zisk", value: fmtKc(profit), sub: `Marže ${margin}%`, color: profit >= 0 ? "#34d399" : "#f87171" },
-          { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena").length} faktur`, color: "#2563eb" },
+          { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena").length} faktur`, color: "#2E9BE0" },
           { label: "Náklady", value: fmtKc(totalCosts), sub: `${costs.length} položek`, color: "#f87171" },
           { label: "Konverzní poměr", value: `${conversionRate}%`, sub: `Ø deal ${fmtKc(avgDealValue)}`, color: "#f59e0b" },
         ].map(k => (
@@ -3735,7 +3735,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects }) {
                   <div style={{ width: 10, height: revH || 2, background: "#34d399", borderRadius: "2px 2px 0 0", opacity: 0.85 }} title={`Příjmy: ${fmtKc(m.revenue)}`} />
                   <div style={{ width: 10, height: costH || 2, background: "#f87171", borderRadius: "2px 2px 0 0", opacity: 0.85 }} title={`Náklady: ${fmtKc(m.costs)}`} />
                 </div>
-                <div style={{ fontSize: 9, color: i === 3 ? "#2563eb" : "#334155" }}>{m.month}</div>
+                <div style={{ fontSize: 9, color: i === 3 ? "#2E9BE0" : "#334155" }}>{m.month}</div>
               </div>
             );
           })}
@@ -3789,7 +3789,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects }) {
           <div style={{ ...S.divider, margin: "14px 0" }} />
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontSize: 13, color: "#475569" }}>Celková pipeline hodnota</span>
-            <span style={{ fontSize: 14, fontWeight: 800, color: "#2563eb" }}>{fmtKc(totalPipeline)}</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#2E9BE0" }}>{fmtKc(totalPipeline)}</span>
           </div>
         </div>
 
@@ -3802,7 +3802,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects }) {
             return (
               <div key={p.id} style={{ marginBottom: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, color: "#1e293b" }}>{p.name}</span>
+                  <span style={{ fontSize: 13, color: "#1A1A1A" }}>{p.name}</span>
                   <span style={{ fontSize: 12, color: over ? "#f87171" : "#34d399", fontWeight: 700 }}>{pct}%</span>
                 </div>
                 <div style={{ height: 6, borderRadius: 3, background: "#e2e8f0", overflow: "hidden" }}>
@@ -3835,7 +3835,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects }) {
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", background: avatarColors[i % 6] }} />
-                    <span style={{ fontSize: 13, color: "#1e293b" }}>{d.dept}</span>
+                    <span style={{ fontSize: 13, color: "#1A1A1A" }}>{d.dept}</span>
                     <span style={{ fontSize: 11, color: "#334155" }}>{d.count} os.</span>
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{fmtKc(d.salary)}</span>
@@ -3954,7 +3954,7 @@ Odpovídej vždy v češtině. Buď konkrétní, stručný a praktický. Pokud t
         {suggestions.map(s => (
           <button key={s} onClick={() => send(s)}
             style={{ background: "#ffffff", border: "1px solid #252d45", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#475569", cursor: "pointer", transition: "all 0.15s" }}
-            onMouseEnter={e => { e.target.style.borderColor = "#2563eb"; e.target.style.color = "#fff"; }}
+            onMouseEnter={e => { e.target.style.borderColor = "#2E9BE0"; e.target.style.color = "#fff"; }}
             onMouseLeave={e => { e.target.style.borderColor = "#e2e8f0"; e.target.style.color = "#94a3b8"; }}>
             {s}
           </button>
@@ -3965,11 +3965,11 @@ Odpovídej vždy v češtině. Buď konkrétní, stručný a praktický. Pokud t
       <div style={{ ...S.card, height: 440, overflowY: "auto", marginBottom: 16, display: "flex", flexDirection: "column", gap: 16, padding: 20 }}>
         {messages.map((m, i) => (
           <div key={i} style={{ display: "flex", gap: 12, flexDirection: m.role === "user" ? "row-reverse" : "row", alignItems: "flex-start" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: m.role === "user" ? "#2563eb" : "#e2e8f0", border: m.role === "assistant" ? "1px solid #252d45" : "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: m.role === "user" ? "#2E9BE0" : "#e2e8f0", border: m.role === "assistant" ? "1px solid #252d45" : "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
               {m.role === "user" ? "👤" : "🤖"}
             </div>
-            <div style={{ maxWidth: "75%", background: m.role === "user" ? "#2563eb33" : "#e2e8f0", border: `1px solid ${m.role === "user" ? "#6366f155" : "#e2e8f0"}`, borderRadius: m.role === "user" ? "16px 4px 16px 16px" : "4px 16px 16px 16px", padding: "12px 16px" }}>
-              <div style={{ fontSize: 13, color: "#1e293b", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{m.content}</div>
+            <div style={{ maxWidth: "75%", background: m.role === "user" ? "#2E9BE033" : "#e2e8f0", border: `1px solid ${m.role === "user" ? "#6366f155" : "#e2e8f0"}`, borderRadius: m.role === "user" ? "16px 4px 16px 16px" : "4px 16px 16px 16px", padding: "12px 16px" }}>
+              <div style={{ fontSize: 13, color: "#1A1A1A", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{m.content}</div>
             </div>
           </div>
         ))}
@@ -3979,7 +3979,7 @@ Odpovídej vždy v češtině. Buď konkrétní, stručný a praktický. Pokud t
             <div style={{ background: "#e2e8f0", border: "1px solid #252d45", borderRadius: "4px 16px 16px 16px", padding: "14px 18px" }}>
               <div style={{ display: "flex", gap: 5 }}>
                 {[0, 1, 2].map(j => (
-                  <div key={j} style={{ width: 7, height: 7, borderRadius: "50%", background: "#2563eb", animation: `pulse 1.2s ease-in-out ${j * 0.2}s infinite` }} />
+                  <div key={j} style={{ width: 7, height: 7, borderRadius: "50%", background: "#2E9BE0", animation: `pulse 1.2s ease-in-out ${j * 0.2}s infinite` }} />
                 ))}
               </div>
             </div>
@@ -4009,8 +4009,8 @@ Odpovídej vždy v češtině. Buď konkrétní, stručný a praktický. Pokud t
 // ─── KALENDÁŘ ────────────────────────────────────────────────────────────────
 
 const WORK_TYPES = {
-  "Zakázka":     { color: "#2563eb", bg: "#dbeafe" },
-  "Servis":      { color: "#f97316", bg: "#ffedd5" },
+  "Zakázka":     { color: "#2E9BE0", bg: "#dbeafe" },
+  "Servis":      { color: "#F5821F", bg: "#ffedd5" },
   "Hrubé práce": { color: "#dc2626", bg: "#fee2e2" },
   "Nedodělek":   { color: "#d97706", bg: "#fef3c7" },
   "Reklamace":   { color: "#7c3aed", bg: "#ede9fe" },
@@ -4074,7 +4074,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1e293b" }}>📅 Kalendář</h2>
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1A1A1A" }}>📅 Kalendář</h2>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           {isAdmin && (
             <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)}
@@ -4085,7 +4085,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
           )}
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <button onClick={prevMonth} style={{ ...S.btnGhost, padding: "6px 12px" }}>‹</button>
-            <span style={{ fontWeight: 700, fontSize: 16, color: "#1e293b", minWidth: 160, textAlign: "center" }}>
+            <span style={{ fontWeight: 700, fontSize: 16, color: "#1A1A1A", minWidth: 160, textAlign: "center" }}>
               {CZ_MONTHS[viewMonth]} {viewYear}
             </span>
             <button onClick={nextMonth} style={{ ...S.btnGhost, padding: "6px 12px" }}>›</button>
@@ -4120,8 +4120,8 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
             const dayEvents = eventsOnDay(dateStr);
             return (
               <div key={i} style={{ minHeight: 90, borderRight: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9", padding: 6, position: "relative", background: isToday ? "#eff6ff" : "#fff" }}>
-                <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 500, color: isToday ? "#2563eb" : "#374151",
-                  background: isToday ? "#2563eb" : "transparent", color: isToday ? "#fff" : "#374151",
+                <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 500, color: isToday ? "#2E9BE0" : "#374151",
+                  background: isToday ? "#2E9BE0" : "transparent", color: isToday ? "#fff" : "#374151",
                   borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
                   {dayNum}
                 </div>
@@ -4241,12 +4241,12 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
                 <span style={{ fontSize: 14, color: "#64748b" }}>{detailEvent.date}</span>
               </div>
 
-              {detailEvent.title && <div style={{ fontSize: 17, fontWeight: 700, color: "#1e293b", marginBottom: 16 }}>{detailEvent.title}</div>}
+              {detailEvent.title && <div style={{ fontSize: 17, fontWeight: 700, color: "#1A1A1A", marginBottom: 16 }}>{detailEvent.title}</div>}
 
               {(detailEvent.customer_name || detailEvent.customer_company) && (
                 <div style={{ marginBottom: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
                   <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Zákazník</div>
-                  {detailEvent.customer_name && <div style={{ fontSize: 15, fontWeight: 600, color: "#1e293b" }}>{detailEvent.customer_name}</div>}
+                  {detailEvent.customer_name && <div style={{ fontSize: 15, fontWeight: 600, color: "#1A1A1A" }}>{detailEvent.customer_name}</div>}
                   {detailEvent.customer_company && <div style={{ fontSize: 13, color: "#64748b" }}>{detailEvent.customer_company}</div>}
                 </div>
               )}
@@ -4254,16 +4254,16 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
               {detailEvent.address && (
                 <div style={{ marginBottom: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
                   <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Adresa</div>
-                  <div style={{ fontSize: 14, color: "#1e293b", marginBottom: 8 }}>📍 {detailEvent.address}</div>
-                  {mapsUrl && <a href={mapsUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: "#dbeafe", color: "#2563eb", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>🗺 Otevřít v Mapy.cz →</a>}
+                  <div style={{ fontSize: 14, color: "#1A1A1A", marginBottom: 8 }}>📍 {detailEvent.address}</div>
+                  {mapsUrl && <a href={mapsUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: "#dbeafe", color: "#2E9BE0", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>🗺 Otevřít v Mapy.cz →</a>}
                 </div>
               )}
 
               {(detailEvent.contact_name || detailEvent.contact_phone) && (
                 <div style={{ marginBottom: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
                   <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Kontakt</div>
-                  {detailEvent.contact_name && <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>👤 {detailEvent.contact_name}</div>}
-                  {detailEvent.contact_phone && <a href={`tel:${detailEvent.contact_phone}`} style={{ fontSize: 14, color: "#2563eb", textDecoration: "none" }}>📞 {detailEvent.contact_phone}</a>}
+                  {detailEvent.contact_name && <div style={{ fontSize: 14, fontWeight: 600, color: "#1A1A1A" }}>👤 {detailEvent.contact_name}</div>}
+                  {detailEvent.contact_phone && <a href={`tel:${detailEvent.contact_phone}`} style={{ fontSize: 14, color: "#2E9BE0", textDecoration: "none" }}>📞 {detailEvent.contact_phone}</a>}
                 </div>
               )}
 
@@ -4587,7 +4587,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     }).join("");
     const totalRow = "<tr class='total'><td colspan='3'>Celkem</td><td><strong>" + fmtHours(totalH) + "</strong></td><td colspan='2'>" + recs.length + " záznamů</td></tr>";
     const monthNames = ["","Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
-    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Výkaz práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e293b;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}tr:nth-child(even) td{background:#f8fafc}.total{font-weight:bold}@media print{body{padding:16px}}</style></head><body><h1>Výkaz práce</h1><h2>" + (empObj ? empObj.name : "") + " · " + monthNames[reportMonth] + " " + reportYear + "</h2><table><thead><tr><th>Datum</th><th>Příchod</th><th>Odchod</th><th>Odpracováno</th><th>Zakázka</th><th>Popis</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>";
+    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Výkaz práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}tr:nth-child(even) td{background:#f8fafc}.total{font-weight:bold}@media print{body{padding:16px}}</style></head><body><h1>Výkaz práce</h1><h2>" + (empObj ? empObj.name : "") + " · " + monthNames[reportMonth] + " " + reportYear + "</h2><table><thead><tr><th>Datum</th><th>Příchod</th><th>Odchod</th><th>Odpracováno</th><th>Zakázka</th><th>Popis</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>";
     const win = window.open("", "_blank");
     win.document.write(html);
     win.document.close();
@@ -4611,10 +4611,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               <button key={t.id} onClick={() => setAttTab(t.id)} style={{
                 padding: "10px 22px",
                 background: attTab === t.id ? "#0d2137" : "rgba(100,116,139,0.25)",
-                border: attTab === t.id ? "1.5px solid #2563eb" : "1.5px solid #64748b",
+                border: attTab === t.id ? "1.5px solid #2E9BE0" : "1.5px solid #64748b",
                 borderBottom: attTab === t.id ? "1.5px solid #0d2137" : "1.5px solid #64748b",
                 borderRadius: "10px 10px 0 0",
-                color: attTab === t.id ? "#93c5fd" : "#1e293b",
+                color: attTab === t.id ? "#93c5fd" : "#1A1A1A",
                 fontWeight: attTab === t.id ? 700 : 500,
                 cursor: "pointer", fontSize: 14, marginBottom: -1,
               }}>{t.label}</button>
@@ -4641,7 +4641,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
       {/* TAB CONTENT PANEL */}
       <div style={{
-        border: "1.5px solid #2563eb",
+        border: "1.5px solid #2E9BE0",
         borderTop: "none",
         borderRadius: "0 10px 10px 10px",
         padding: "20px 16px",
@@ -4653,7 +4653,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         <>
           {viewEmp && (
             <div style={{ ...S.card, margin: "16px 0", display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ ...S.avatar("#2563eb"), width: 48, height: 48, fontSize: 18 }}>{getInitial(viewEmp.name)}</div>
+              <div style={{ ...S.avatar("#2E9BE0"), width: 48, height: 48, fontSize: 18 }}>{getInitial(viewEmp.name)}</div>
               <div>
                 <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{viewEmp.name}</div>
                 <div style={{ color: "#475569", fontSize: 12 }}>{viewEmp.position} · {viewEmp.department}</div>
@@ -4683,7 +4683,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               {todayRecord?.checkin && todayRecord?.checkout && (
                 <div>
                   <div style={S.statLabel}>Odpracováno</div>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: "#2563eb" }}>{fmtHours(todayEffective)}</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: "#2E9BE0" }}>{fmtHours(todayEffective)}</div>
                 </div>
               )}
             </div>
@@ -4728,7 +4728,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 </select>
               </>)}
             </>)}
-            <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#334155" : "#2563eb"), width: "100%", padding: "12px", fontWeight: 700, marginTop: 8, fontSize: 15 }}
+            <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#334155" : "#2E9BE0"), width: "100%", padding: "12px", fontWeight: 700, marginTop: 8, fontSize: 15 }}
               onClick={checkinNow} disabled={!!todayRecord?.checkout}>
               {todayRecord?.checkout ? "✓ Odchod zapsán (" + todayRecord.checkout + ")" : todayRecord?.checkin ? "⏱ Zapsat odchod (příchod " + todayRecord.checkin + ")" : "▶ Zapsat příchod"}
             </button>
@@ -4736,7 +4736,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
           {/* Ruční zadání */}
           <div style={{ ...S.card, marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 12, fontSize: 13 }}>✏️ Ruční záznam</div>
+            <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 12, fontSize: 13 }}>✏️ Ruční záznam</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr auto", gap: 10, alignItems: "end" }}>
               <div><label style={S.label}>Datum</label><input type="date" style={S.input} value={manualDate} onChange={e => setManualDate(e.target.value)} /></div>
               <div><label style={S.label}>Příchod</label><input type="time" style={S.input} value={manualIn} onChange={e => setManualIn(e.target.value)} /></div>
@@ -4796,7 +4796,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                       }}
                       onBlur={() => setTimeout(() => setTlSuggestions([]), 150)} />
                     {tlSuggestions.length > 0 && (
-                      <div style={{ position: "absolute", zIndex: 200, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, width: "100%", top: "100%", boxShadow: "0 4px 16px #0006", maxHeight: 220, overflowY: "auto" }}>
+                      <div style={{ position: "absolute", zIndex: 200, background: "#0E3B5E", border: "1px solid #334155", borderRadius: 8, width: "100%", top: "100%", boxShadow: "0 4px 16px #0006", maxHeight: 220, overflowY: "auto" }}>
                         {tlSuggestions.map(b => (
                           <div key={b.id} style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #0f172a" }}
                             onMouseDown={() => { setTlActivity(b.description || b.name); setTlSuggestions([]); }}>
@@ -4848,7 +4848,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                         {hours.map(({ h, y }) => (
                           <div key={h} style={{ position: "absolute", left: -72, right: 0, top: y + 12, display: "flex", alignItems: "center", gap: 8 }}>
                             <span style={{ fontSize: 11, color: "#475569", minWidth: 38, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{pad(h)}:00</span>
-                            <div style={{ flex: 1, borderTop: "1px dashed #1e293b" }} />
+                            <div style={{ flex: 1, borderTop: "1px dashed #e2e8f0" }} />
                           </div>
                         ))}
                         {hlRecs.map((rec, ri) => {
@@ -4879,7 +4879,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                     <div>
                                       <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>Detail bloku</div>
                                       <div style={{ fontSize: 13, color: "#475569" }}>🕐 {rec.checkin.slice(0,5)} – {rec.checkout ? rec.checkout.slice(0,5) : "—"} {h > 0 ? " · " + fmtHours(h) : ""}</div>
-                                      {contract && <div style={{ fontSize: 13, color: "#60a5fa", marginTop: 4 }}>📋 Zakázka: {contract.name}</div>}
+                                      {contract && <div style={{ fontSize: 13, color: "#2E9BE0", marginTop: 4 }}>📋 Zakázka: {contract.name}</div>}
                                       <div style={{ marginTop: 8, fontSize: 13, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>{rec.activity || "Žádný popis"}</div>
                                     </div>
                                     {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
@@ -4910,8 +4910,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, margin: "16px 0 20px" }}>
             {[
-              { label: "Dnes (bez pauzy)", value: todayEffective > 0 ? fmtHours(todayEffective) : todayRecord?.checkin ? "Probíhá..." : "—", color: "#2563eb" },
-              { label: "Tento týden", value: fmtHours(weekHours), color: "#60a5fa" },
+              { label: "Dnes (bez pauzy)", value: todayEffective > 0 ? fmtHours(todayEffective) : todayRecord?.checkin ? "Probíhá..." : "—", color: "#2E9BE0" },
+              { label: "Tento týden", value: fmtHours(weekHours), color: "#2E9BE0" },
               { label: viewMonth === "all" ? "Celkem" : monthLabel, value: fmtHours(viewMonth === "all" ? yearHours : viewMonthHours), color: "#34d399" },
               { label: "Tento rok", value: fmtHours(yearHours), color: "#f59e0b" },
             ].map(s => (
@@ -4931,7 +4931,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
           <div style={S.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, color: "#1e293b", fontSize: 14 }}>Historie docházky</div>
+              <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 14 }}>Historie docházky</div>
               {isHR && <button onClick={syncCostEntries} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 12px" }}>⚡ Sync do nákladů</button>}
             </div>
             <table style={S.table}>
@@ -5016,7 +5016,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                           <div key={p.id} style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 7, borderBottom: "1px solid #f1f5f9" }}
                                             onClick={() => { setMatItem(p.name); setMatUnit(p.unit); setMatSuggestions([]); }}>
                                             {img ? <img src={img} alt="" onError={e => e.target.style.display="none"} style={{ width: 24, height: 24, objectFit: "contain", borderRadius: 4 }} /> : <span>📦</span>}
-                                            <span style={{ color: "#1e293b" }}>{p.name}</span>
+                                            <span style={{ color: "#1A1A1A" }}>{p.name}</span>
                                             <span style={{ color: "#94a3b8", marginLeft: "auto", fontSize: 11 }}>{p.stock} {p.unit}</span>
                                           </div>
                                         );
@@ -5152,7 +5152,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                     onClick={() => setKalDay(isSelected ? null : dateStr)}
                     style={{
                       background: isSelected ? "#1e3a5f" : isToday ? "#0f2d47" : "#0f172a",
-                      border: isSelected ? "1.5px solid #3b82f6" : isToday ? "1.5px solid #2563eb55" : "1px solid #1e293b",
+                      border: isSelected ? "1.5px solid #3b82f6" : isToday ? "1.5px solid #2E9BE055" : "1px solid #e2e8f0",
                       borderRadius: 8,
                       padding: "6px 4px",
                       cursor: dayRecs.length > 0 ? "pointer" : "default",
@@ -5193,7 +5193,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr>{["Zaměstnanec","Příchod","Odchod","Hodiny","Zakázka","Činnost"].map(h => (
-                          <th key={h} style={{ textAlign: "left", padding: "4px 10px", fontSize: 11, color: "#475569", fontWeight: 600, borderBottom: "1px solid #1e293b" }}>{h}</th>
+                          <th key={h} style={{ textAlign: "left", padding: "4px 10px", fontSize: 11, color: "#475569", fontWeight: 600, borderBottom: "1px solid #e2e8f0" }}>{h}</th>
                         ))}</tr>
                       </thead>
                       <tbody>
@@ -5247,7 +5247,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
           const totalRow = "<tr class='total'><td colspan='4'>Celkem</td><td><strong>" + fmtHours(totalH) + "</strong></td><td colspan='2'>" + filtered.length + " záznamů</td></tr>";
           const title = empObj ? empObj.name : "Všichni zaměstnanci";
           const period = viewMonth !== "all" ? monthNames[m] + " " + y : "Celé období";
-          const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Soupis práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e293b;color:#fff;padding:8px 12px;text-align:left;font-size:12px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}tr:nth-child(even) td{background:#f8fafc}tr.total td{font-weight:bold;background:#e0f2fe;border-top:2px solid #0284c7}@media print{body{padding:16px}}</style></head><body><h1>Soupis práce</h1><h2>" + title + " · " + period + "</h2><table><thead><tr><th>Datum</th><th>Zaměstnanec</th><th>Příchod</th><th>Odchod</th><th>Odprac.</th><th>Zakázka</th><th>Činnost</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>";
+          const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Soupis práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:12px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}tr:nth-child(even) td{background:#f8fafc}tr.total td{font-weight:bold;background:#e0f2fe;border-top:2px solid #0284c7}@media print{body{padding:16px}}</style></head><body><h1>Soupis práce</h1><h2>" + title + " · " + period + "</h2><table><thead><tr><th>Datum</th><th>Zaměstnanec</th><th>Příchod</th><th>Odchod</th><th>Odprac.</th><th>Zakázka</th><th>Činnost</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>";
           const win = window.open("", "_blank");
           win.document.write(html);
           win.document.close();
@@ -5277,7 +5277,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>{["Datum","Zaměstnanec","Příchod","Odchod","Hodiny","Zakázka","Činnost"].map(h => (
-                      <th key={h} style={{ textAlign: "left", padding: "7px 12px", fontSize: 11, color: "#475569", fontWeight: 700, borderBottom: "1.5px solid #1e293b", whiteSpace: "nowrap" }}>{h}</th>
+                      <th key={h} style={{ textAlign: "left", padding: "7px 12px", fontSize: 11, color: "#475569", fontWeight: 700, borderBottom: "1.5px solid #e2e8f0", whiteSpace: "nowrap" }}>{h}</th>
                     ))}</tr>
                   </thead>
                   <tbody>
@@ -5286,7 +5286,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                       const h = calcHours(r.checkin, r.checkout);
                       const contract = contractOpts.find(c => c.id === r.contract_id);
                       return (
-                        <tr key={r.id} style={{ borderBottom: "1px solid #1e293b" }}>
+                        <tr key={r.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#94a3b8", whiteSpace: "nowrap" }}>{r.date}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#fff", fontWeight: 600 }}>{emp?.name || "—"}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#34d399" }}>{r.checkin || "—"}</td>
@@ -5315,7 +5315,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       {/* MODAL: VÝKAZ PRÁCE */}
       {reportModal && (
         <div style={{ position: "fixed", inset: 0, background: "#0009", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ background: "#1e293b", borderRadius: 16, padding: "28px 32px", minWidth: 360, maxWidth: 460, width: "100%" }}>
+          <div style={{ background: "#0E3B5E", borderRadius: 16, padding: "28px 32px", minWidth: 360, maxWidth: 460, width: "100%" }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 20 }}>📄 Generovat výkaz práce</div>
             {isHR && (
               <div style={{ marginBottom: 14 }}>
@@ -5379,9 +5379,9 @@ function Profile({ currentUser, attendance, employees }) {
       <div style={{ ...S.grid2, marginBottom: 20 }}>
         <div style={S.card}>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
-            <div style={{ width: 60, height: 60, borderRadius: "50%", background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#fff", fontWeight: 800 }}>{getInitial(myName)}</div>
+            <div style={{ width: 60, height: 60, borderRadius: "50%", background: "#2E9BE0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#fff", fontWeight: 800 }}>{getInitial(myName)}</div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 18, color: "#1e293b" }}>{myName}</div>
+              <div style={{ fontWeight: 700, fontSize: 18, color: "#1A1A1A" }}>{myName}</div>
               <div style={{ color: "#64748b", fontSize: 13 }}>{currentUser.role}</div>
             </div>
           </div>
@@ -5392,9 +5392,9 @@ function Profile({ currentUser, attendance, employees }) {
           </div>
         </div>
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 14 }}>Statistiky tento měsíc</div>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14 }}>Statistiky tento měsíc</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div style={S.statCard("#2563eb")}><div style={S.statLabel}>Odpracováno</div><div style={S.statValue("#2563eb")}>{fmtHours(totalH)}</div></div>
+            <div style={S.statCard("#2E9BE0")}><div style={S.statLabel}>Odpracováno</div><div style={S.statValue("#2E9BE0")}>{fmtHours(totalH)}</div></div>
             <div style={S.statCard("#34d399")}><div style={S.statLabel}>Docházka</div><div style={S.statValue("#34d399")}>{thisMonth.length} dní</div></div>
           </div>
         </div>
@@ -5472,14 +5472,14 @@ function PermissionsPanel() {
         return (
           <div key={p.id} style={{ ...S.card, marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 700, color: "#1e293b", fontSize: 15, minWidth: 160 }}>{p.name}</div>
+              <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 15, minWidth: 160 }}>{p.name}</div>
               <div>
                 <label style={{ ...S.label, marginBottom: 2 }}>Role</label>
                 <select style={{ ...S.select, marginBottom: 0, width: 160 }} value={p.role} onChange={e => changeRole(p.id, e.target.value)}>
                   {Object.keys(ROLES).map(r => <option key={r} value={r}>{ROLES[r].label}</option>)}
                 </select>
               </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#1e293b", cursor: "pointer", marginTop: 18 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#1A1A1A", cursor: "pointer", marginTop: 18 }}>
                 <input type="checkbox" checked={!!perm?.can_edit_km} onChange={() => toggleKm(p)} />
                 🚗 Zapisovat kilometry v knize jízd
               </label>
@@ -5491,7 +5491,7 @@ function PermissionsPanel() {
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {NAV.map(n => (
-                <label key={n.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: navSelected.includes(n.id) ? "#1e293b" : "#94a3b8", background: navSelected.includes(n.id) ? "#eff6ff" : "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>
+                <label key={n.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: navSelected.includes(n.id) ? "#1A1A1A" : "#94a3b8", background: navSelected.includes(n.id) ? "#eff6ff" : "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>
                   <input type="checkbox" checked={navSelected.includes(n.id)} onChange={() => toggleNav(p, n.id)} />
                   {n.icon} {n.label}
                 </label>
@@ -5660,15 +5660,15 @@ function KnihaJizd({ currentUser, employees, contracts }) {
 
       {/* Statistiky */}
       <div style={{ ...S.grid3, marginBottom: 20 }}>
-        <div style={S.statCard("#2563eb")}><div style={S.statLabel}>Celkem km</div><div style={S.statValue("#2563eb")}>{totalKm.toLocaleString("cs-CZ")} km</div></div>
-        <div style={S.statCard("#f97316")}><div style={S.statLabel}>Odhadované náklady</div><div style={S.statValue("#f97316")}>{fmtKc(totalCost)}</div></div>
+        <div style={S.statCard("#2E9BE0")}><div style={S.statLabel}>Celkem km</div><div style={S.statValue("#2E9BE0")}>{totalKm.toLocaleString("cs-CZ")} km</div></div>
+        <div style={S.statCard("#F5821F")}><div style={S.statLabel}>Odhadované náklady</div><div style={S.statValue("#F5821F")}>{fmtKc(totalCost)}</div></div>
         <div style={S.statCard("#34d399")}><div style={S.statLabel}>Počet jízd</div><div style={S.statValue("#34d399")}>{logs.length}</div></div>
       </div>
 
       {/* Formulář */}
       {showForm && (
-        <div style={{ ...S.card, marginBottom: 20, borderLeft: "3px solid #2563eb" }}>
-          <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 14, fontSize: 14 }}>Nová jízda</div>
+        <div style={{ ...S.card, marginBottom: 20, borderLeft: "3px solid #2E9BE0" }}>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, fontSize: 14 }}>Nová jízda</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
             <div><label style={S.label}>Datum</label><input type="date" style={S.input} value={fDate} onChange={e => setFDate(e.target.value)} /></div>
             <div>
@@ -5758,7 +5758,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
             <tbody>
               {logs.map(l => (
                 <tr key={l.id}>
-                  <td style={{ ...S.td, fontWeight: 600, color: "#1e293b" }}>{l.date}</td>
+                  <td style={{ ...S.td, fontWeight: 600, color: "#1A1A1A" }}>{l.date}</td>
                   <td style={S.td}>{l.employee_name || "—"}</td>
                   <td style={{ ...S.td, fontWeight: 600 }}>{l.vehicle}</td>
                   <td style={S.td}>
@@ -5767,7 +5767,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
                         value={editKmLog.km_start} onChange={e => setEditKmLog({ ...editKmLog, km_start: e.target.value })} autoFocus />
                     ) : canEditKm ? (
                       <span onClick={() => setEditKmLog({ id: l.id, km_start: l.km_start ?? "", km_end: l.km_end ?? "" })} style={{ cursor: "pointer", borderBottom: "1px dashed #94a3b8" }} title="Klikněte pro úpravu">
-                        {l.km_start != null ? l.km_start.toLocaleString("cs-CZ") : <span style={{ color: "#f97316" }}>doplnit</span>}
+                        {l.km_start != null ? l.km_start.toLocaleString("cs-CZ") : <span style={{ color: "#F5821F" }}>doplnit</span>}
                       </span>
                     ) : (
                       l.km_start != null ? l.km_start.toLocaleString("cs-CZ") : <span style={{ color: "#cbd5e1" }}>čeká na doplnění</span>
@@ -5783,14 +5783,14 @@ function KnihaJizd({ currentUser, employees, contracts }) {
                       </div>
                     ) : canEditKm ? (
                       <span onClick={() => setEditKmLog({ id: l.id, km_start: l.km_start ?? "", km_end: l.km_end ?? "" })} style={{ cursor: "pointer", borderBottom: "1px dashed #94a3b8" }} title="Klikněte pro úpravu">
-                        {l.km_end != null ? l.km_end.toLocaleString("cs-CZ") : <span style={{ color: "#f97316" }}>doplnit</span>}
+                        {l.km_end != null ? l.km_end.toLocaleString("cs-CZ") : <span style={{ color: "#F5821F" }}>doplnit</span>}
                       </span>
                     ) : (
                       l.km_end != null ? l.km_end.toLocaleString("cs-CZ") : <span style={{ color: "#cbd5e1" }}>čeká na doplnění</span>
                     )}
                   </td>
-                  <td style={{ ...S.td, fontWeight: 700, color: "#2563eb" }}>{l.km_total != null ? l.km_total?.toLocaleString("cs-CZ") + " km" : <span style={{ color: "#f97316" }}>probíhá</span>}</td>
-                  <td style={S.td}>{l.contract_name ? <span style={S.tag("#2563eb")}>{l.contract_name}</span> : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                  <td style={{ ...S.td, fontWeight: 700, color: "#2E9BE0" }}>{l.km_total != null ? l.km_total?.toLocaleString("cs-CZ") + " km" : <span style={{ color: "#F5821F" }}>probíhá</span>}</td>
+                  <td style={S.td}>{l.contract_name ? <span style={S.tag("#2E9BE0")}>{l.contract_name}</span> : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                   <td style={{ ...S.td, color: "#64748b" }}>{l.note || "—"}</td>
                   <td style={S.td}>
                     {isHR && <button style={{ ...S.btn("#ef4444"), padding: "3px 8px", fontSize: 11 }} onClick={() => deleteLog(l.id)}>✕</button>}
@@ -5889,7 +5889,7 @@ export default function App() {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <ProudOSMark size={48} />
             <div style={{ fontWeight: 800, fontSize: 22, textAlign: "center" }}>
-              <span style={{ color: "#2563eb" }}>Proud</span><span style={{ color: "#f97316" }}>OS</span>
+              <span style={{ color: "#2E9BE0" }}>Proud</span><span style={{ color: "#F5821F" }}>OS</span>
             </div>
           </div>
           <div style={{ color: "#64748b", fontSize: 13, textAlign: "center", marginBottom: 28 }}>Přihlaste se do systému</div>
@@ -5904,8 +5904,8 @@ export default function App() {
             {AUTH_USERS.map(u => (
               <button key={u.username} onClick={() => { setLoginName(u.name); setLoginPass(""); }}
                 style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 12px", width: "100%", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
-                <span style={{ fontSize: 12, color: "#1e293b", fontWeight: 500 }}>{u.name}</span>
-                <span style={{ ...S.tag(ROLES[u.role]?.color || "#2563eb"), fontSize: 10 }}>{ROLES[u.role]?.label}</span>
+                <span style={{ fontSize: 12, color: "#1A1A1A", fontWeight: 500 }}>{u.name}</span>
+                <span style={{ ...S.tag(ROLES[u.role]?.color || "#2E9BE0"), fontSize: 10 }}>{ROLES[u.role]?.label}</span>
               </button>
             ))}
           </div>
