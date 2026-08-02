@@ -116,7 +116,7 @@ const AUTH_USERS = [
 ];
 
 const ROLES = {
-  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","profile"] },
+  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","permissions","profile"] },
   manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","profile"] },
   employee: { label: "Zaměstnanec",   color: "#60a5fa", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","profile"] },
@@ -283,6 +283,7 @@ const NAV = [
   { id: "knjiga", label: "Kniha jízd", icon: "🚗", group: "Osobní" },
   { id: "onedrive", label: "OneDrive", icon: "☁️", group: "Osobní" },
   { id: "profile", label: "Můj profil", icon: "👤", group: "Osobní" },
+  { id: "permissions", label: "Oprávnění", icon: "🔐", group: "ERP" },
 ];
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
@@ -494,7 +495,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const dbAdd = async (table, data) => { const { data: row } = await supabase.from(table).insert(data).select().single(); return row; };
   const dbUpdate = async (table, id, data) => { await supabase.from(table).update(data).eq("id", id); };
   const dbDelete = async (table, id) => { await supabase.from(table).delete().eq("id", id); };
-  const allowedTabs = ROLES[currentUser.role]?.nav || [];
+  const allowedTabs = currentUser.navOverride || ROLES[currentUser.role]?.nav || [];
   const visibleNav = NAV.filter(n => allowedTabs.includes(n.id));
   const groups = [...new Set(visibleNav.map(n => n.group))];
 
@@ -772,6 +773,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "profile" && <Profile
           currentUser={currentUser} attendance={attendance} employees={employees}
         />}
+        {tab === "permissions" && <PermissionsPanel />}
 
         {/* ── NOTIFIKACE ── */}
         {tab === "notifications" && (
@@ -5284,8 +5286,108 @@ function Profile({ currentUser, attendance, employees }) {
 
 // ─── KNIHA JÍZD ──────────────────────────────────────────────────────────────
 
+// ─── OPRÁVNĚNÍ — kdo vidí jaké záložky a kdo smí zapisovat km ────────────────
+function PermissionsPanel() {
+  const [profiles, setProfiles] = useState([]);
+  const [perms, setPerms] = useState({}); // profile_id -> { can_edit_km, nav_override }
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    const [{ data: pr }, { data: pe }] = await Promise.all([
+      supabase.from("profiles").select("*").order("name"),
+      supabase.from("user_permissions").select("*"),
+    ]);
+    setProfiles(pr || []);
+    const map = {};
+    (pe || []).forEach(p => { map[p.profile_id] = p; });
+    setPerms(map);
+    setLoading(false);
+  };
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, []);
+
+  const changeRole = async (profileId, role) => {
+    setSavingId(profileId);
+    await supabase.from("profiles").update({ role }).eq("id", profileId);
+    setProfiles(ps => ps.map(p => p.id === profileId ? { ...p, role } : p));
+    setSavingId(null);
+  };
+
+  const upsertPerm = async (profileId, patch) => {
+    setSavingId(profileId);
+    const current = perms[profileId] || { profile_id: profileId, can_edit_km: false, nav_override: null };
+    const next = { ...current, ...patch };
+    await supabase.from("user_permissions").upsert(next);
+    setPerms(m => ({ ...m, [profileId]: next }));
+    setSavingId(null);
+  };
+
+  const toggleKm = (profile) => upsertPerm(profile.id, { can_edit_km: !(perms[profile.id]?.can_edit_km) });
+
+  const toggleNav = (profile, navId) => {
+    const roleDefault = ROLES[profile.role]?.nav || [];
+    const current = perms[profile.id]?.nav_override || roleDefault;
+    const next = current.includes(navId) ? current.filter(n => n !== navId) : [...current, navId];
+    upsertPerm(profile.id, { nav_override: next });
+  };
+
+  const resetNav = (profile) => upsertPerm(profile.id, { nav_override: null });
+
+  if (loading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Načítám…</div>;
+
+  return (
+    <div>
+      <div style={S.header}>
+        <h1 style={S.h1}>🔐 Oprávnění</h1>
+      </div>
+      <p style={{ color: "#64748b", fontSize: 13, marginBottom: 20 }}>
+        Nastav roli, kdo smí zapisovat kilometry v knize jízd, a které záložky menu daný člověk vidí (přepíše výchozí nastavení role).
+      </p>
+      {profiles.map(p => {
+        const perm = perms[p.id];
+        const roleDefault = ROLES[p.role]?.nav || [];
+        const navSelected = perm?.nav_override || roleDefault;
+        const jeVychozi = !perm?.nav_override;
+        return (
+          <div key={p.id} style={{ ...S.card, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 700, color: "#1e293b", fontSize: 15, minWidth: 160 }}>{p.name}</div>
+              <div>
+                <label style={{ ...S.label, marginBottom: 2 }}>Role</label>
+                <select style={{ ...S.select, marginBottom: 0, width: 160 }} value={p.role} onChange={e => changeRole(p.id, e.target.value)}>
+                  {Object.keys(ROLES).map(r => <option key={r} value={r}>{ROLES[r].label}</option>)}
+                </select>
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#1e293b", cursor: "pointer", marginTop: 18 }}>
+                <input type="checkbox" checked={!!perm?.can_edit_km} onChange={() => toggleKm(p)} />
+                🚗 Zapisovat kilometry v knize jízd
+              </label>
+              {savingId === p.id && <span style={{ fontSize: 11, color: "#94a3b8" }}>Ukládám…</span>}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginBottom: 8 }}>
+              Viditelné záložky {jeVychozi ? "(výchozí podle role)" : "(vlastní nastavení)"}
+              {!jeVychozi && <button onClick={() => resetNav(p)} style={{ ...S.btnGhost, marginLeft: 10, padding: "2px 8px", fontSize: 11 }}>↺ vrátit výchozí</button>}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {NAV.map(n => (
+                <label key={n.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: navSelected.includes(n.id) ? "#1e293b" : "#94a3b8", background: navSelected.includes(n.id) ? "#eff6ff" : "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>
+                  <input type="checkbox" checked={navSelected.includes(n.id)} onChange={() => toggleNav(p, n.id)} />
+                  {n.icon} {n.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function KnihaJizd({ currentUser, employees, contracts }) {
   const isHR = ["admin", "hr", "manager"].includes(currentUser?.role);
+  const canEditKm = currentUser?.role === "admin" || !!currentUser?.canEditKm;
   const [logs, setLogs] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5332,14 +5434,36 @@ function KnihaJizd({ currentUser, employees, contracts }) {
   const selectedVehicle = vehicles.find(v => String(v.id) === String(fVehicleId));
   const fVehicle = selectedVehicle ? `${selectedVehicle.name}${selectedVehicle.spz ? " (" + selectedVehicle.spz + ")" : ""}` : "";
 
-  const saveKmEnd = async () => {
+  const RATE_PER_KM = 6.5; // Kč/km (paušál)
+
+  const addDopravaCost = async (log, kmTotal) => {
+    if (!log.contract_id) return;
+    await supabase.from("contract_cost_entries").insert({
+      contract_id: log.contract_id,
+      cost_type: "doprava",
+      is_extra: false,
+      date: log.date,
+      description: `Doprava – ${log.vehicle} (${log.employee_name})`,
+      quantity: kmTotal,
+      unit: "km",
+      unit_price_cost: RATE_PER_KM,
+      unit_price_client: RATE_PER_KM,
+      employee_id: log.employee_id,
+    });
+  };
+
+  // editKmLog: { id, km_start, km_end } — doplnění kilometrů (jen kdo má canEditKm)
+  const saveKm = async () => {
     if (!editKmLog) return;
+    const kmStart = Number(editKmLog.km_start);
     const kmEnd = Number(editKmLog.km_end);
     const log = logs.find(l => l.id === editKmLog.id);
-    if (!log || kmEnd <= 0) return;
-    const kmTotal = kmEnd - Number(log.km_start);
-    await supabase.from("vehicle_log").update({ km_end: kmEnd, km_total: kmTotal }).eq("id", editKmLog.id);
-    setLogs(logs.map(l => l.id === editKmLog.id ? { ...l, km_end: kmEnd, km_total: kmTotal } : l));
+    if (!log || kmEnd <= kmStart) { alert("Konečný stav km musí být větší než počáteční."); return; }
+    const kmTotal = kmEnd - kmStart;
+    const melKmDrive = log.km_start != null && log.km_end != null;
+    await supabase.from("vehicle_log").update({ km_start: kmStart, km_end: kmEnd, km_total: kmTotal }).eq("id", editKmLog.id);
+    setLogs(logs.map(l => l.id === editKmLog.id ? { ...l, km_start: kmStart, km_end: kmEnd, km_total: kmTotal } : l));
+    if (!melKmDrive) await addDopravaCost(log, kmTotal); // náklad na dopravu se založí až teď, při prvním doplnění km
     setEditKmLog(null);
   };
 
@@ -5354,11 +5478,13 @@ function KnihaJizd({ currentUser, employees, contracts }) {
   };
 
   const saveLog = async () => {
-    if (!fDate || !fVehicleId || !fKmStart || !fKmEnd) {
-      alert("Vyberte datum, vozidlo a zadejte kilometry."); return;
+    if (!fDate || !fVehicleId) { alert("Vyberte datum a vozidlo."); return; }
+    let kmTotal = null;
+    if (canEditKm) {
+      if (!fKmStart || !fKmEnd) { alert("Zadejte počáteční i konečný stav km."); return; }
+      kmTotal = Number(fKmEnd) - Number(fKmStart);
+      if (kmTotal <= 0) { alert("Konečný stav km musí být větší než počáteční."); return; }
     }
-    const kmTotal = Number(fKmEnd) - Number(fKmStart);
-    if (kmTotal <= 0) { alert("Konečný stav km musí být větší než počáteční."); return; }
     setSaving(true);
     const empId = Number(fEmpId) || currentUser?.employeeId;
     const empName = employees.find(e => e.id === empId)?.name || currentUser?.name || "";
@@ -5368,8 +5494,9 @@ function KnihaJizd({ currentUser, employees, contracts }) {
       employee_name: empName,
       date: fDate,
       vehicle: fVehicle,
-      km_start: Number(fKmStart),
-      km_end: Number(fKmEnd),
+      km_start: canEditKm ? Number(fKmStart) : null,
+      km_end: canEditKm ? Number(fKmEnd) : null,
+      km_total: kmTotal,
       contract_id: fContractId ? Number(fContractId) : null,
       contract_name: contractName,
       note: fNote || null,
@@ -5377,22 +5504,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
     const { data: inserted } = await supabase.from("vehicle_log").insert(row).select().single();
     if (inserted) {
       setLogs(prev => [inserted, ...prev]);
-      // Auto-add transport cost to contract
-      if (fContractId) {
-        const RATE_PER_KM = 6.5; // Kč/km (paušal)
-        await supabase.from("contract_cost_entries").insert({
-          contract_id: Number(fContractId),
-          cost_type: "doprava",
-          is_extra: false,
-          date: fDate,
-          description: `Doprava – ${fVehicle} (${empName})`,
-          quantity: kmTotal,
-          unit: "km",
-          unit_price_cost: RATE_PER_KM,
-          unit_price_client: RATE_PER_KM,
-          employee_id: empId,
-        });
-      }
+      if (canEditKm && fContractId) await addDopravaCost(inserted, kmTotal);
     }
     setFDate(fmt(new Date())); setFVehicleId(""); setFKmStart(""); setFKmEnd("");
     setFContractId(""); setFNote("");
@@ -5459,23 +5571,36 @@ function KnihaJizd({ currentUser, employees, contracts }) {
               </div>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr", gap: 12, marginBottom: 12 }}>
-            <div><label style={S.label}>Stav km – start</label><input type="number" style={S.input} placeholder="0" value={fKmStart} onChange={e => setFKmStart(e.target.value)} /></div>
-            <div><label style={S.label}>Stav km – konec</label><input type="number" style={S.input} placeholder="0" value={fKmEnd} onChange={e => setFKmEnd(e.target.value)} /></div>
-            <div>
-              <label style={S.label}>Ujeto km</label>
-              <div style={{ ...S.input, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, display: "flex", alignItems: "center" }}>
-                {fKmStart && fKmEnd ? Math.max(0, Number(fKmEnd) - Number(fKmStart)) : "—"} km
+          {canEditKm ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={S.label}>Stav km – start</label><input type="number" style={S.input} placeholder="0" value={fKmStart} onChange={e => setFKmStart(e.target.value)} /></div>
+              <div><label style={S.label}>Stav km – konec</label><input type="number" style={S.input} placeholder="0" value={fKmEnd} onChange={e => setFKmEnd(e.target.value)} /></div>
+              <div>
+                <label style={S.label}>Ujeto km</label>
+                <div style={{ ...S.input, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, display: "flex", alignItems: "center" }}>
+                  {fKmStart && fKmEnd ? Math.max(0, Number(fKmEnd) - Number(fKmStart)) : "—"} km
+                </div>
+              </div>
+              <div>
+                <label style={S.label}>Zakázka</label>
+                <select style={S.select} value={fContractId} onChange={e => setFContractId(e.target.value)}>
+                  <option value="">— bez zakázky —</option>
+                  {contractList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
               </div>
             </div>
-            <div>
-              <label style={S.label}>Zakázka</label>
-              <select style={S.select} value={fContractId} onChange={e => setFContractId(e.target.value)}>
-                <option value="">— bez zakázky —</option>
-                {contractList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={S.label}>Zakázka</label>
+                <select style={S.select} value={fContractId} onChange={e => setFContractId(e.target.value)}>
+                  <option value="">— bez zakázky —</option>
+                  {contractList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>Kilometry doplní Šárlota nebo Roman.</div>
             </div>
-          </div>
+          )}
           <div><label style={S.label}>Poznámka</label><input style={S.input} placeholder="Účel jízdy..." value={fNote} onChange={e => setFNote(e.target.value)} /></div>
           <div style={{ display: "flex", gap: 10 }}>
             <button style={S.btn()} onClick={saveLog} disabled={saving}>{saving ? "Ukládám…" : "Uložit jízdu"}</button>
@@ -5517,19 +5642,32 @@ function KnihaJizd({ currentUser, employees, contracts }) {
                   <td style={{ ...S.td, fontWeight: 600, color: "#1e293b" }}>{l.date}</td>
                   <td style={S.td}>{l.employee_name || "—"}</td>
                   <td style={{ ...S.td, fontWeight: 600 }}>{l.vehicle}</td>
-                  <td style={S.td}>{l.km_start?.toLocaleString("cs-CZ")}</td>
+                  <td style={S.td}>
+                    {editKmLog?.id === l.id ? (
+                      <input type="number" style={{ ...S.input, marginBottom: 0, width: 80, padding: "3px 6px", fontSize: 13 }}
+                        value={editKmLog.km_start} onChange={e => setEditKmLog({ ...editKmLog, km_start: e.target.value })} autoFocus />
+                    ) : canEditKm ? (
+                      <span onClick={() => setEditKmLog({ id: l.id, km_start: l.km_start ?? "", km_end: l.km_end ?? "" })} style={{ cursor: "pointer", borderBottom: "1px dashed #94a3b8" }} title="Klikněte pro úpravu">
+                        {l.km_start != null ? l.km_start.toLocaleString("cs-CZ") : <span style={{ color: "#f97316" }}>doplnit</span>}
+                      </span>
+                    ) : (
+                      l.km_start != null ? l.km_start.toLocaleString("cs-CZ") : <span style={{ color: "#cbd5e1" }}>čeká na doplnění</span>
+                    )}
+                  </td>
                   <td style={S.td}>
                     {editKmLog?.id === l.id ? (
                       <div style={{ display: "flex", gap: 4 }}>
-                        <input type="number" style={{ ...S.input, marginBottom: 0, width: 90, padding: "3px 6px", fontSize: 13 }}
-                          value={editKmLog.km_end} onChange={e => setEditKmLog({ ...editKmLog, km_end: e.target.value })} autoFocus />
-                        <button style={{ ...S.btn("#16a34a"), padding: "3px 8px", fontSize: 11 }} onClick={saveKmEnd}>✓</button>
+                        <input type="number" style={{ ...S.input, marginBottom: 0, width: 80, padding: "3px 6px", fontSize: 13 }}
+                          value={editKmLog.km_end} onChange={e => setEditKmLog({ ...editKmLog, km_end: e.target.value })} />
+                        <button style={{ ...S.btn("#16a34a"), padding: "3px 8px", fontSize: 11 }} onClick={saveKm}>✓</button>
                         <button style={{ ...S.btnGhost, padding: "3px 8px", fontSize: 11 }} onClick={() => setEditKmLog(null)}>✕</button>
                       </div>
-                    ) : (
-                      <span onClick={() => setEditKmLog({ id: l.id, km_end: l.km_end })} style={{ cursor: "pointer", borderBottom: "1px dashed #94a3b8" }} title="Klikněte pro úpravu">
-                        {l.km_end?.toLocaleString("cs-CZ")}
+                    ) : canEditKm ? (
+                      <span onClick={() => setEditKmLog({ id: l.id, km_start: l.km_start ?? "", km_end: l.km_end ?? "" })} style={{ cursor: "pointer", borderBottom: "1px dashed #94a3b8" }} title="Klikněte pro úpravu">
+                        {l.km_end != null ? l.km_end.toLocaleString("cs-CZ") : <span style={{ color: "#f97316" }}>doplnit</span>}
                       </span>
+                    ) : (
+                      l.km_end != null ? l.km_end.toLocaleString("cs-CZ") : <span style={{ color: "#cbd5e1" }}>čeká na doplnění</span>
                     )}
                   </td>
                   <td style={{ ...S.td, fontWeight: 700, color: "#2563eb" }}>{l.km_total != null ? l.km_total?.toLocaleString("cs-CZ") + " km" : <span style={{ color: "#f97316" }}>probíhá</span>}</td>
@@ -5561,14 +5699,19 @@ export default function App() {
   // Sestaví currentUser z profilu podle přihlášeného Supabase Auth uživatele
   const loadProfileUser = async (authUser) => {
     const { data: profile } = await supabase.from("profiles").select("*").eq("id", authUser.id).single();
+    const { data: perm } = await supabase.from("user_permissions").select("*").eq("profile_id", authUser.id).maybeSingle();
     const fallback = AUTH_USERS.find(u => u.email.toLowerCase() === (authUser.email || "").toLowerCase());
+    const role = profile?.role || fallback?.role || "employee";
     const user = {
       id: profile?.employee_id ?? authUser.id,
+      authId: authUser.id,
       name: profile?.name || fallback?.name || authUser.email,
-      role: profile?.role || fallback?.role || "employee",
+      role,
       employeeId: profile?.employee_id ?? null,
       vacationDays: profile?.vacation_days ?? 20,
       vacationUsed: profile?.vacation_used ?? 0,
+      canEditKm: role === "admin" || !!perm?.can_edit_km,
+      navOverride: perm?.nav_override || null,
     };
     setCurrentUser(user);
     return user;
