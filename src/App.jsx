@@ -1008,9 +1008,39 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
   );
 }
 
+const DASH_WIDGETS = [
+  { id: "zakazky", label: "Zakázky a fakturace", icon: "📄" },
+  { id: "dochazka", label: "Docházka / HR", icon: "🕐" },
+  { id: "sklad", label: "Sklad / materiál", icon: "📦" },
+  { id: "projekty", label: "Projekty", icon: "📁" },
+];
+
+function widgetCardHeader(icon, label, color, action) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 7 }}>
+        <span style={{ color, fontSize: 15 }}>{icon}</span> {label}
+      </span>
+      {action}
+    </div>
+  );
+}
+
 function Dashboard({ customers, deals, tasks, invoices, products, employees, projects,
   totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab, contracts, attendance, onOpenSheet }) {
   const [sheetSearch, setSheetSearch] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [hiddenWidgets, setHiddenWidgets] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("proudos_dash_hidden") || "[]"); } catch { return []; }
+  });
+  const toggleWidget = (id) => {
+    setHiddenWidgets(prev => {
+      const next = prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id];
+      try { localStorage.setItem("proudos_dash_hidden", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
   const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
   const todayStr = fmt(new Date());
   const thisMonth = todayStr.slice(0, 7);
@@ -1018,6 +1048,19 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   const profit = totalRevenue - totalCosts;
   const activeEmployees = employees.filter(e => e.status === "Aktivní");
   const presentToday = (attendance || []).filter(a => a.date === todayStr && a.checkin);
+  const openInvoices = invoices.filter(i => i.status === "Čeká" || i.status === "Po splatnosti");
+
+  // Tržby (zaplacené faktury) za posledních 6 měsíců pro mini graf
+  const monthKeys = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(todayStr + "T00:00:00");
+    d.setMonth(d.getMonth() - (5 - i));
+    return d.toISOString().slice(0, 7);
+  });
+  const revenueByMonth = monthKeys.map(mk =>
+    invoices.filter(i => i.status === "Zaplacena" && (i.issued || "").startsWith(mk)).reduce((s, i) => s + i.amount, 0)
+  );
+  const maxRevenue = Math.max(1, ...revenueByMonth);
+
   const stats = [
     { label: "Zákazníci", value: customers.length, color: "#2563eb" },
     { label: "Zaplaceno (příjmy)", value: fmtKc(totalRevenue), color: "#34d399" },
@@ -1035,8 +1078,11 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
     <>
       <div style={S.header}>
         <h1 style={S.h1}>Dashboard</h1>
-        <span style={{ color: "#475569", fontSize: 13 }}>Sobota, 11. dubna 2026</span>
+        <button style={{ ...S.btnGhost, fontSize: 12, padding: "7px 14px" }} onClick={() => setEditMode(!editMode)}>
+          {editMode ? "✓ Hotovo" : "⚙ Přizpůsobit rozvržení"}
+        </button>
       </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {stats.map(s => (
           <div key={s.label} style={S.statCard(s.color)}>
@@ -1046,10 +1092,113 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         ))}
       </div>
 
+      {/* Přizpůsobitelné widgety */}
+      {editMode && (
+        <div style={{ ...S.card, marginBottom: 16, display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>Zobrazit widgety:</span>
+          {DASH_WIDGETS.map(w => (
+            <label key={w.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#1e293b", cursor: "pointer" }}>
+              <input type="checkbox" checked={!hiddenWidgets.includes(w.id)} onChange={() => toggleWidget(w.id)} />
+              {w.icon} {w.label}
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+        {/* Zakázky a fakturace */}
+        {!hiddenWidgets.includes("zakazky") && (
+          <div style={S.card}>
+            {widgetCardHeader("📄", "Zakázky a fakturace", "#2563eb",
+              <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>)}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+              <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ fontSize: 11, color: "#64748b" }}>Tržby tento měsíc</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#1e293b" }}>{fmtKc(revenueByMonth[5])}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ fontSize: 11, color: "#64748b" }}>Otevřené faktury</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#f97316" }}>{openInvoices.length}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 44 }}>
+              {revenueByMonth.map((v, i) => (
+                <div key={i} title={fmtKc(v)} style={{ flex: 1, background: i === 5 ? "#2563eb" : "#bfdbfe", borderRadius: "3px 3px 0 0", height: `${Math.max(4, (v / maxRevenue) * 100)}%` }} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Docházka / HR */}
+        {!hiddenWidgets.includes("dochazka") && (
+          <div style={S.card}>
+            {widgetCardHeader("🕐", "Docházka / HR", "#2563eb",
+              <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>)}
+            {activeEmployees.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádní aktivní zaměstnanci</div> :
+              activeEmployees.map(e => {
+                const rec = presentToday.find(a => a.employeeId === e.id);
+                return (
+                  <div key={e.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, marginBottom: 9, opacity: rec ? 1 : 0.55 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#1e293b" }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: rec ? (rec.checkout ? "#94a3b8" : "#34d399") : "#cbd5e1" }} />
+                      {e.name}
+                    </span>
+                    <span style={{ color: "#64748b", fontSize: 12 }}>
+                      {rec ? (rec.checkout ? `Odešel/a ${rec.checkout}` : `Od ${rec.checkin}`) : "Nezapsáno"}
+                    </span>
+                  </div>
+                );
+              })
+            }
+          </div>
+        )}
+
+        {/* Sklad / materiál */}
+        {!hiddenWidgets.includes("sklad") && (
+          <div style={S.card}>
+            {widgetCardHeader("📦", "Sklad / materiál", "#2563eb",
+              <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("warehouse")}>Sklad →</span>)}
+            {lowStock.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Vše skladem v pořádku ✓</div> :
+              lowStock.slice(0, 4).map(p => {
+                const critical = p.stock <= p.minStock * 0.5;
+                return (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, marginBottom: 9 }}>
+                    <span style={{ color: "#1e293b" }}>{p.name}</span>
+                    <span style={S.tag(critical ? "#f87171" : "#f59e0b")}>zbývá {p.stock} {p.unit}</span>
+                  </div>
+                );
+              })
+            }
+          </div>
+        )}
+
+        {/* Projekty */}
+        {!hiddenWidgets.includes("projekty") && (
+          <div style={S.card}>
+            {widgetCardHeader("📁", "Projekty", "#2563eb",
+              <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("projects")}>Vše →</span>)}
+            {projects.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné projekty</div> :
+              projects.slice(0, 3).map(p => (
+                <div key={p.id} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, color: "#1e293b" }}>{p.name}</span>
+                    <span style={S.badge(PROJ_COLORS[p.status])}>{p.status}</span>
+                  </div>
+                  <div style={S.progress(p.progress)}>
+                    <div style={S.progressBar(p.progress, PROJ_COLORS[p.status])} />
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{p.progress}% dokončeno</div>
+                </div>
+              ))
+            }
+          </div>
+        )}
+      </div>
+
       <div style={S.grid2}>
         {/* ZAKÁZKOVÝ LIST — rychlé vyhledání */}
         <div style={{ ...S.card, gridColumn: "1 / -1", marginBottom: 0 }}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
             <span>📋</span> Zakázkový list — rychlé vyhledání
           </div>
           <div style={{ display: "flex", gap: 10 }}>
@@ -1091,18 +1240,18 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
                 .slice(0, 5)
                 .map(c => (
                   <div key={c.id} onClick={() => { onOpenSheet(c.id, c.name); setSheetSearch(""); }}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#0a0d14", borderRadius: 8, cursor: "pointer", border: "1px solid #1a2035" }}>
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#f8fafc", borderRadius: 8, cursor: "pointer", border: "1px solid #e2e8f0" }}>
                     <span style={{ fontSize: 16 }}>📋</span>
                     <div>
-                      <div style={{ fontWeight: 600, color: "#fff", fontSize: 13 }}>{c.name}</div>
-                      {c.code && <div style={{ fontSize: 11, color: "#475569" }}>{c.code}</div>}
+                      <div style={{ fontWeight: 600, color: "#1e293b", fontSize: 13 }}>{c.name}</div>
+                      {c.code && <div style={{ fontSize: 11, color: "#64748b" }}>{c.code}</div>}
                     </div>
                     <span style={{ marginLeft: "auto", color: "#2563eb", fontSize: 12 }}>Otevřít →</span>
                   </div>
                 ))
               }
               {(contracts || []).filter(c => c.name?.toLowerCase().includes(sheetSearch.toLowerCase()) || c.code?.toLowerCase().includes(sheetSearch.toLowerCase())).length === 0 && (
-                <div style={{ color: "#475569", fontSize: 12, padding: "8px 12px" }}>Žádná zakázka nenalezena</div>
+                <div style={{ color: "#64748b", fontSize: 12, padding: "8px 12px" }}>Žádná zakázka nenalezena</div>
               )}
             </div>
           )}
@@ -1110,7 +1259,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
 
         {/* Nejbližší úkoly */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
             Nejbližší úkoly <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
           </div>
           {tasks.filter(t => !t.done).slice(0, 4).map(t => (
@@ -1118,73 +1267,16 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
               <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} style={{ accentColor: "#2563eb" }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: "#1e293b" }}>{t.title}</div>
-                <div style={{ fontSize: 11, color: "#475569" }}>{t.due}</div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>{t.due}</div>
               </div>
               <span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span>
             </div>
           ))}
         </div>
 
-        {/* Varování skladu */}
-        <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
-            ⚠️ Nízký stav skladu <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("warehouse")}>Sklad →</span>
-          </div>
-          {lowStock.length === 0 ? <div style={{ color: "#475569", fontSize: 13 }}>Vše v pořádku ✓</div> :
-            lowStock.map(p => (
-              <div key={p.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: 13, color: "#1e293b" }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>{p.sku}</div>
-                </div>
-                <span style={S.tag("#f87171")}>{p.stock} {p.unit}</span>
-              </div>
-            ))
-          }
-        </div>
-
-        {/* Docházka dnes */}
-        <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
-            🕐 Docházka dnes <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>
-          </div>
-          {activeEmployees.length === 0 ? <div style={{ color: "#475569", fontSize: 13 }}>Žádní aktivní zaměstnanci</div> :
-            activeEmployees.map(e => {
-              const rec = presentToday.find(a => a.employeeId === e.id);
-              return (
-                <div key={e.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
-                  <div style={{ fontSize: 13, color: "#1e293b" }}>{e.name}</div>
-                  {rec
-                    ? <span style={S.tag(rec.checkout ? "#34d399" : "#f59e0b")}>{rec.checkout ? `Odešel/a ${rec.checkout}` : `Přítomen/na od ${rec.checkin}`}</span>
-                    : <span style={S.tag("#94a3b8")}>Nezapsáno</span>}
-                </div>
-              );
-            })
-          }
-        </div>
-
-        {/* Přehled projektů */}
-        <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
-            Projekty <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("projects")}>Vše →</span>
-          </div>
-          {projects.slice(0, 3).map(p => (
-            <div key={p.id} style={{ marginBottom: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 13, color: "#1e293b" }}>{p.name}</span>
-                <span style={S.badge(PROJ_COLORS[p.status])}>{p.status}</span>
-              </div>
-              <div style={S.progress(p.progress)}>
-                <div style={S.progressBar(p.progress, PROJ_COLORS[p.status])} />
-              </div>
-              <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>{p.progress}% dokončeno</div>
-            </div>
-          ))}
-        </div>
-
         {/* Poslední faktury */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
             Poslední faktury <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>
           </div>
           {invoices.slice(-3).reverse().map(inv => {
@@ -1193,10 +1285,10 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
               <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 13, color: "#1e293b" }}>{inv.number}</div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>{cust?.name}</div>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>{cust?.name}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{fmtKc(inv.amount)}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{fmtKc(inv.amount)}</div>
                   <span style={S.tag(INV_COLORS[inv.status])}>{inv.status}</span>
                 </div>
               </div>
