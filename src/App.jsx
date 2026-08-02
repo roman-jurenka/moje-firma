@@ -664,7 +664,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
               overdueRevenue={overdueRevenue} lowStock={lowStock}
               totalPayroll={totalPayroll} activeProjects={activeProjects}
               costs={costs} toggleTask={toggleTaskGlobal} setTab={setTab}
-              contracts={contracts}
+              contracts={contracts} attendance={attendance}
               onOpenSheet={(id, name) => { setSheetContractId(id); setSheetContractName(name); setTab("sheets"); }}
             />
         )}
@@ -1009,19 +1009,26 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
 }
 
 function Dashboard({ customers, deals, tasks, invoices, products, employees, projects,
-  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab, contracts, onOpenSheet }) {
+  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab, contracts, attendance, onOpenSheet }) {
   const [sheetSearch, setSheetSearch] = useState("");
   const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
-  const thisMonthCosts = costs.filter(c => c.date.startsWith("2026-04")).reduce((s, c) => s + c.amount, 0);
+  const todayStr = fmt(new Date());
+  const thisMonth = todayStr.slice(0, 7);
+  const thisMonthCosts = costs.filter(c => c.date.startsWith(thisMonth)).reduce((s, c) => s + c.amount, 0);
+  const profit = totalRevenue - totalCosts;
+  const activeEmployees = employees.filter(e => e.status === "Aktivní");
+  const presentToday = (attendance || []).filter(a => a.date === todayStr && a.checkin);
   const stats = [
     { label: "Zákazníci", value: customers.length, color: "#2563eb" },
     { label: "Zaplaceno (příjmy)", value: fmtKc(totalRevenue), color: "#34d399" },
     { label: "Náklady celkem", value: fmtKc(totalCosts), color: "#f87171" },
+    { label: "Zisk", value: fmtKc(profit), color: profit >= 0 ? "#34d399" : "#f87171" },
     { label: "Náklady tento měsíc", value: fmtKc(thisMonthCosts), color: "#f59e0b" },
     { label: "Produkty skladu", value: products.length, color: "#60a5fa" },
     { label: "Zaměstnanci", value: employees.length, color: "#a78bfa" },
     { label: "Aktivní projekty", value: activeProjects, color: "#34d399" },
     { label: "Mzdové náklady", value: fmtKc(totalPayroll), color: "#f59e0b" },
+    { label: "Na pracovišti dnes", value: `${presentToday.length} / ${activeEmployees.length}`, color: "#60a5fa" },
   ];
 
   return (
@@ -1133,6 +1140,26 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
                 <span style={S.tag("#f87171")}>{p.stock} {p.unit}</span>
               </div>
             ))
+          }
+        </div>
+
+        {/* Docházka dnes */}
+        <div style={S.card}>
+          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
+            🕐 Docházka dnes <span style={{ color: "#2563eb", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>
+          </div>
+          {activeEmployees.length === 0 ? <div style={{ color: "#475569", fontSize: 13 }}>Žádní aktivní zaměstnanci</div> :
+            activeEmployees.map(e => {
+              const rec = presentToday.find(a => a.employeeId === e.id);
+              return (
+                <div key={e.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, alignItems: "center" }}>
+                  <div style={{ fontSize: 13, color: "#1e293b" }}>{e.name}</div>
+                  {rec
+                    ? <span style={S.tag(rec.checkout ? "#34d399" : "#f59e0b")}>{rec.checkout ? `Odešel/a ${rec.checkout}` : `Přítomen/na od ${rec.checkin}`}</span>
+                    : <span style={S.tag("#94a3b8")}>Nezapsáno</span>}
+                </div>
+              );
+            })
           }
         </div>
 
