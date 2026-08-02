@@ -245,25 +245,28 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   };
 
   // ─── Propsat plán i skutečnost (contracts = plán, contract_cost_entries = skutečnost) ─
-  const nacistSkutecneNaklady = async () => {
+  const nacistSkutecneNaklady = async (silent = false) => {
     if (!activeCId) return;
     const b = data.bilance || {};
     const maZaplneno = [
       b.skutMaterialNaklad, b.skutPraceNaklad, b.skutDopravaNaklad, b.skutCelkemNaklad,
       b.planMaterialNaklad, b.planPraceNaklad, b.planDopravaNaklad, b.planCelkemNaklad,
     ].some(v => v);
-    if (maZaplneno && !confirm("Přepsat ručně zadané náklady daty z modulu Zakázky a Náklady?")) return;
+    if (silent && maZaplneno) return; // tiché auto-obnovení nepřepisuje už vyplněná data
+    if (!silent && maZaplneno && !confirm("Přepsat ručně zadané náklady daty z modulu Zakázky a Náklady?")) return;
 
     setNakladySyncing(true);
     try {
       const [{ data: entries, error: entriesErr }, { data: contract, error: contractErr }] = await Promise.all([
-        supabase.from("contract_cost_entries").select("cost_type, amount_cost").eq("contract_id", activeCId),
+        supabase.from("contract_cost_entries").select("cost_type, amount_cost, quantity, unit_price_cost").eq("contract_id", activeCId),
         supabase.from("contracts").select("price, budget_prace, budget_material, budget_doprava").eq("id", activeCId).single(),
       ]);
       if (entriesErr) throw entriesErr;
       if (contractErr) throw contractErr;
 
-      const sum = (typ) => (entries || []).filter(e => e.cost_type === typ).reduce((s, e) => s + Number(e.amount_cost || 0), 0);
+      // amount_cost bývá u řady záznamů prázdné (nepočítá ho DB) — spočti fallbackem jako v Zakázkách
+      const costOf = (e) => e.amount_cost != null ? Number(e.amount_cost) : Number(e.quantity || 1) * Number(e.unit_price_cost || 0);
+      const sum = (typ) => (entries || []).filter(e => e.cost_type === typ).reduce((s, e) => s + costOf(e), 0);
       const material = sum("materiál"), prace = sum("práce"), doprava = sum("doprava");
       const celkem = material + prace + doprava;
       const prodej = Number(data.bilance.skutProdejBezDph) || 0;
@@ -293,11 +296,17 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         ...(planMarzeKc !== null ? { planMarzeKc: String(planMarzeKc), planMarzePct: String(planMarzePct) } : {}),
       } }));
     } catch (e) {
-      alert("Načtení nákladů selhalo: " + e.message);
+      if (!silent) alert("Načtení nákladů selhalo: " + e.message);
     } finally {
       setNakladySyncing(false);
     }
   };
+
+  // Po otevření listu tiše doplň náklady/plán, pokud ještě nejsou vyplněné
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (activeCId) nacistSkutecneNaklady(true);
+  }, [activeCId]);
 
   // Seznam listů (výběr zakázky)
   const filteredSheets = sheets.filter(s => !search || (s.data?._nazev || "").toLowerCase().includes(search.toLowerCase()));
