@@ -2273,6 +2273,20 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
         await supabase.from("products").update({ stock: ns }).eq("id", prod.id);
         setProducts(products.map(p => p.id === prod.id ? { ...p, stock: ns } : p));
       }
+      // Výdej materiálu na zakázku se zároveň propíše jako nákladová položka (materiál) k dané zakázce
+      if (newMov.movement_type === "out_contract" && newMov.contract_id) {
+        await supabase.from("contract_cost_entries").insert({
+          contract_id: Number(newMov.contract_id),
+          cost_type: "materiál",
+          is_extra: false,
+          date: fmt(new Date()),
+          description: `Materiál – ${newMov.product_name}`,
+          quantity: Number(newMov.quantity),
+          unit: newMov.unit,
+          unit_price_cost: Number(prod?.price || 0),
+          unit_price_client: Number(prod?.price_sell || prod?.price || 0),
+        });
+      }
     }
     setNewMov({ product_name: "", quantity: "", unit: "ks", movement_type: "in", contract_id: "", vehicle: "", from_location: "Sklad", to_location: "", note: "" });
   };
