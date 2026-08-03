@@ -278,7 +278,8 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
       const sum = (typ) => (entries || []).filter(e => e.cost_type === typ).reduce((s, e) => s + costOf(e), 0);
       const material = sum("materiál"), prace = sum("práce"), doprava = sum("doprava");
       const celkem = material + prace + doprava;
-      const prodej = Number(data.bilance.skutProdejBezDph) || 0;
+      // Dokud není zadaná skutečná prodejní cena (po fakturaci), počítej marži proti plánované ceně ze zakázky
+      const prodej = Number(data.bilance.skutProdejBezDph) || Number(contract?.price) || 0;
       const marzeKc = prodej ? prodej - celkem : null;
       const marzePct = prodej ? Math.round((marzeKc / prodej) * 1000) / 10 : null;
 
