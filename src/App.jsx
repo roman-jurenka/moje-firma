@@ -3,6 +3,7 @@ import { supabase } from "./supabase.js";
 import Contracts from "./Contracts.jsx";
 import ZakazkaSheet from "./ZakazkaSheet.jsx";
 import FotoUpload from "./FotoUpload.jsx";
+import Pricing from "./Pricing.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import { handleOAuthCallback } from "./onedrive.js";
 
@@ -116,8 +117,8 @@ const AUTH_USERS = [
 ];
 
 const ROLES = {
-  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","permissions","profile"] },
-  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
+  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","permissions","profile"] },
+  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","profile"] },
   employee: { label: "Zaměstnanec",   color: "#2E9BE0", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","profile"] },
 };
@@ -265,6 +266,7 @@ const avatarColors = ["#2E9BE0", "#f59e0b", "#34d399", "#f87171", "#a78bfa", "#2
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "ti-layout-dashboard", group: "CRM" },
   { id: "customers", label: "Zákazníci", icon: "ti-users", group: "CRM" },
+  { id: "pricing", label: "Nacenění", icon: "ti-calculator", group: "CRM" },
   { id: "deals", label: "Obchodní příp.", icon: "ti-briefcase", group: "CRM" },
   // { id: "communication", label: "Komunikace", icon: "ti-message-circle", group: "CRM" }, // odebráno — data zachována pro detail zákazníka
   { id: "contracts", label: "Zakázky", icon: "ti-file-invoice", group: "CRM" },
@@ -676,6 +678,12 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           contracts={contracts}
           search={search} setSearch={setSearch}
           modal={modal} setModal={setModal} closeModal={closeModal}
+        />}
+
+        {/* ── NACENĚNÍ ── */}
+        {tab === "pricing" && <Pricing
+          customers={customers} employees={employees} currentUser={currentUser}
+          onConvertToDeal={(deal) => { setDeals(prev => [deal, ...prev]); setTab("deals"); }}
         />}
 
         {/* ── DEALY ── */}
@@ -5507,7 +5515,7 @@ function PermissionsPanel() {
               {NAV.map(n => (
                 <label key={n.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: navSelected.includes(n.id) ? "#1A1A1A" : "#94a3b8", background: navSelected.includes(n.id) ? "#eff6ff" : "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>
                   <input type="checkbox" checked={navSelected.includes(n.id)} onChange={() => toggleNav(p, n.id)} />
-                  {n.icon} {n.label}
+                  <i className={`ti ${n.icon}`} aria-hidden="true"></i> {n.label}
                 </label>
               ))}
             </div>
