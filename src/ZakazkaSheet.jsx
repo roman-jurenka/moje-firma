@@ -145,6 +145,15 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const [fotoUploading, setFotoUploading] = useState({}); // { [kategorie]: pocetVeFrontě }
   const [docUploading, setDocUploading] = useState(null);  // klíč dokumentu, který se právě nahrává
   const [nakladySyncing, setNakladySyncing] = useState(false);
+  const [contractPhotos, setContractPhotos] = useState([]); // fotky nahrané přímo u zakázky (záložka Zakázky)
+
+  // Fotky uložené u zakázky (contract_photos) se mají zobrazit i v zakázkovém listu
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!activeCId) { setContractPhotos([]); return; }
+    supabase.from("contract_photos").select("*").eq("contract_id", activeCId).order("date", { ascending: false })
+      .then(({ data: d }) => setContractPhotos(d || []));
+  }, [activeCId]);
 
   // Načti listy ze Supabase
   useEffect(() => {
@@ -791,6 +800,21 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                 </a>
               )}
             </div>
+            {contractPhotos.length>0&&(
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Nahráno v Zakázkách ({contractPhotos.length})</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  {contractPhotos.map(f=>(
+                    <div key={f.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #1a2035",position:"relative"}}>
+                      <a href={f.url} target="_blank" rel="noreferrer">
+                        <OneDriveThumb itemId={f.item_id} fallbackUrl={f.url} alt={f.description||""} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
+                      </a>
+                      {f.description&&<div style={{fontSize:9,color:"#94a3b8",padding:"2px 4px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.description}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {FOTO_KATEGORIE.map(kat=>{
               const fc=(data.fotky.nahrane||[]).filter(f=>f.kategorie===kat);
               const busy=fotoUploading[kat]>0;
