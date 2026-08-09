@@ -894,6 +894,13 @@ function RadialMenu({ currentUser, tab, setTab }) {
   const pickOuter = (id) => { setSelectedOuter(id); setStep("inner"); setHoverId(null); };
   const back = () => { setStep("outer"); setSelectedOuter(null); setHoverId(null); };
   const confirm = (id) => { if (step === "outer") pickOuter(id); else go(id); };
+  // Klik mimo kruh (na ztmavené pozadí) potvrdí to, co je zrovna najeté/vybrané —
+  // nezahodí rozjetý výběr, jen ho rovnou uplatní a menu zavře.
+  const commitAndClose = () => {
+    if (hoverId) go(hoverId);
+    else if (step === "inner" && selectedOuter) go(selectedOuter);
+    else close();
+  };
 
   const outerR = 175, innerR = 96;
   const activeIds = step === "outer" ? outerIds : innerIds;
@@ -946,7 +953,6 @@ function RadialMenu({ currentUser, tab, setTab }) {
         <button title={n.label} aria-label={n.label} data-radial-id={id}
           onClick={() => confirm(id)}
           onMouseEnter={() => setHoverId(id)}
-          onMouseLeave={() => setHoverId((h) => (h === id ? null : h))}
           style={{
             position: "absolute", left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)`, width: size, height: size,
             marginLeft: -size / 2, marginTop: -size / 2,
@@ -971,7 +977,7 @@ function RadialMenu({ currentUser, tab, setTab }) {
   return (
     <>
       {open && (
-        <div onClick={close} style={{
+        <div onClick={commitAndClose} style={{
           position: "fixed", inset: 0, zIndex: 998, background: "rgba(14,59,94,0.35)",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
@@ -1007,7 +1013,7 @@ function RadialMenu({ currentUser, tab, setTab }) {
         </div>
       )}
       <div style={{ position: "fixed", right: 28, bottom: 28, zIndex: 999, width: 56, height: 56 }}>
-        <button onClick={() => setOpen((o) => !o)} title={open ? "Zavřít" : (centerNav?.label || "Rychlé menu")}
+        <button onClick={() => { if (open) close(); else setOpen(true); }} title={open ? "Zavřít" : (centerNav?.label || "Rychlé menu")}
           aria-label={open ? "Zavřít rychlé menu" : "Otevřít rychlé menu"}
           style={{
             width: 56, height: 56, borderRadius: "50%", border: "none", cursor: "pointer",
