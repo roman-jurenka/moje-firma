@@ -2614,9 +2614,15 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
     // 1) Pošli pozvánku e-mailem — appka sama založí Auth účet přes zabezpečenou funkci
     const { data: inviteRes, error: inviteErr } = await supabase.functions.invoke("invite-employee", { body: { email: accessForm.email } });
     if (inviteErr || inviteRes?.error) {
-      const msg = (inviteRes?.error || inviteErr?.message || "").toLowerCase();
+      // Edge Function při chybě (non-2xx) vrací tělo jen přes inviteErr.context — supabase-js
+      // ho samo nerozbalí, takže bez tohohle bychom viděli jen obecné "non-2xx" hlášení.
+      let detail = inviteRes?.error || inviteErr?.message || "neznámá chyba";
+      if (inviteErr?.context?.json) {
+        try { const body = await inviteErr.context.json(); if (body?.error) detail = body.error; } catch { /* tělo se nepodařilo přečíst */ }
+      }
+      const msg = detail.toLowerCase();
       if (!msg.includes("already") && !msg.includes("registrov")) {
-        setAccessErr("Odeslání pozvánky selhalo: " + (inviteRes?.error || inviteErr?.message));
+        setAccessErr("Odeslání pozvánky selhalo: " + detail);
         setAccessBusy(false);
         return;
       }
