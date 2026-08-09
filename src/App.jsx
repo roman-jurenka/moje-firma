@@ -824,7 +824,113 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           onClearInitial={() => { setSheetContractId(null); setSheetContractName(""); }}
         />}
       </div>
+      <RadialMenu currentUser={currentUser} setTab={setTab} />
     </div>
+  );
+}
+
+// ─── RADIÁLNÍ MENU (kolečko rychlých akcí, vpravo dole) ──────────────────────
+
+const RADIAL_MENU = {
+  admin: [
+    { icon: "ti-layout-dashboard", label: "Dashboard", tab: "dashboard" },
+    { icon: "ti-calculator", label: "Nacenění", tab: "pricing" },
+    { icon: "ti-file-invoice", label: "Zakázky", tab: "contracts" },
+    { icon: "ti-users", label: "Zákazníci", tab: "customers" },
+    { icon: "ti-package", label: "Sklad", tab: "warehouse" },
+    { icon: "ti-plus", label: "Rychlé přidání", children: [
+      { icon: "ti-briefcase", label: "Obchodní případ", tab: "deals" },
+      { icon: "ti-receipt", label: "Faktura", tab: "invoices" },
+      { icon: "ti-checkbox", label: "Úkol", tab: "tasks" },
+      { icon: "ti-trending-down", label: "Náklad", tab: "costs" },
+    ] },
+  ],
+  manager: [
+    { icon: "ti-layout-dashboard", label: "Dashboard", tab: "dashboard" },
+    { icon: "ti-calculator", label: "Nacenění", tab: "pricing" },
+    { icon: "ti-file-invoice", label: "Zakázky", tab: "contracts" },
+    { icon: "ti-users", label: "Zákazníci", tab: "customers" },
+    { icon: "ti-plus", label: "Rychlé přidání", children: [
+      { icon: "ti-briefcase", label: "Obchodní případ", tab: "deals" },
+      { icon: "ti-receipt", label: "Faktura", tab: "invoices" },
+      { icon: "ti-checkbox", label: "Úkol", tab: "tasks" },
+    ] },
+  ],
+  hr: [
+    { icon: "ti-user", label: "Zaměstnanci", tab: "hr" },
+    { icon: "ti-clock", label: "Docházka", tab: "attendance" },
+    { icon: "ti-trending-down", label: "Náklady", tab: "costs" },
+    { icon: "ti-calendar", label: "Kalendář", tab: "calendar" },
+  ],
+  employee: [
+    { icon: "ti-camera", label: "Nahrát fotky", tab: "fotoupload" },
+    { icon: "ti-clock", label: "Docházka", tab: "attendance" },
+    { icon: "ti-car", label: "Kniha jízd", tab: "knjiga" },
+    { icon: "ti-calendar", label: "Kalendář", tab: "calendar" },
+  ],
+};
+
+function RadialMenu({ currentUser, setTab }) {
+  const [open, setOpen] = useState(false);
+  const [level2, setLevel2] = useState(null); // pole položek hlubší úrovně, nebo null
+
+  const items = level2 || RADIAL_MENU[currentUser?.role] || RADIAL_MENU.employee;
+  const radius = 110;
+  // Vějíř od 180° (doleva) do 270° (nahoru) — kolečko je v pravém dolním rohu
+  const startDeg = 180, endDeg = 270;
+  const step = items.length > 1 ? (endDeg - startDeg) / (items.length - 1) : 0;
+
+  const close = () => { setOpen(false); setLevel2(null); };
+
+  const pick = (item) => {
+    if (item.children) { setLevel2(item.children); return; }
+    if (item.tab) setTab(item.tab);
+    close();
+  };
+
+  return (
+    <>
+      {open && <div onClick={close} style={{ position: "fixed", inset: 0, zIndex: 998 }} />}
+      <div style={{ position: "fixed", right: 28, bottom: 28, zIndex: 999, width: 56, height: 56 }}>
+        {open && items.map((it, i) => {
+          const deg = startDeg + step * i;
+          const rad = (deg * Math.PI) / 180;
+          const x = Math.cos(rad) * radius, y = Math.sin(rad) * radius;
+          return (
+            <button key={it.label} title={it.label} onClick={() => pick(it)}
+              style={{
+                position: "absolute", left: 28, top: 28, width: 46, height: 46, marginLeft: -23, marginTop: -23,
+                transform: `translate(${x}px, ${y}px)`, transition: "transform .22s cubic-bezier(.34,1.56,.64,1), opacity .18s",
+                borderRadius: "50%", border: "none", background: "#fff", color: "#0E3B5E",
+                boxShadow: "0 4px 14px #0000002a", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 18, opacity: 1,
+              }}>
+              <i className={`ti ${it.icon}`} aria-hidden="true"></i>
+            </button>
+          );
+        })}
+        {open && level2 && (
+          <button title="Zpět" onClick={() => setLevel2(null)}
+            style={{
+              position: "absolute", left: 28, top: 28, width: 40, height: 40, marginLeft: -20, marginTop: -20,
+              transform: `translate(${Math.cos((225 * Math.PI) / 180) * 70}px, ${Math.sin((225 * Math.PI) / 180) * 70}px)`,
+              borderRadius: "50%", border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b",
+              boxShadow: "0 4px 14px #0000002a", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+            }}>
+            <i className="ti ti-arrow-back-up" aria-hidden="true"></i>
+          </button>
+        )}
+        <button onClick={() => { if (open) close(); else setOpen(true); }} title={open ? "Zavřít" : "Rychlé menu"}
+          style={{
+            width: 56, height: 56, borderRadius: "50%", border: "none", cursor: "pointer",
+            background: "#F5821F", color: "#fff", fontSize: 24, boxShadow: "0 6px 20px #0000003a",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transform: open ? "rotate(135deg)" : "rotate(0deg)", transition: "transform .22s ease",
+          }}>
+          <i className="ti ti-plus" aria-hidden="true"></i>
+        </button>
+      </div>
+    </>
   );
 }
 
