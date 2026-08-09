@@ -2611,11 +2611,23 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
     if (!accessForm.email || !accessForm.username) { setAccessErr("Vyplňte email i uživatelské jméno."); return; }
     setAccessBusy(true);
     setAccessErr("");
+    // 1) Pošli pozvánku e-mailem — appka sama založí Auth účet přes zabezpečenou funkci
+    const { data: inviteRes, error: inviteErr } = await supabase.functions.invoke("invite-employee", { body: { email: accessForm.email } });
+    if (inviteErr || inviteRes?.error) {
+      const msg = (inviteRes?.error || inviteErr?.message || "").toLowerCase();
+      if (!msg.includes("already") && !msg.includes("registrov")) {
+        setAccessErr("Odeslání pozvánky selhalo: " + (inviteRes?.error || inviteErr?.message));
+        setAccessBusy(false);
+        return;
+      }
+      // účet s tímto emailem už existuje — v pořádku, pokračuj propojením
+    }
+    // 2) Propoj založený účet se zaměstnancem a rolí v appce
     const { error } = await supabase.rpc("link_employee_profile", {
       p_employee_id: emp.id, p_email: accessForm.email, p_role: accessForm.role, p_name: emp.name,
     });
     if (error) {
-      setAccessErr(error.message.includes("v Supabase Authentication") ? error.message : "Založení přístupu selhalo: " + error.message);
+      setAccessErr("Založení přístupu selhalo: " + error.message);
       setAccessBusy(false);
       return;
     }
@@ -2793,10 +2805,10 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
               ) : (
                 <>
                   <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
-                    Zaměstnanec zatím nemá přihlašovací účet. Nejdřív mu v Supabase (Authentication → Add user) založ účet s tímto emailem a heslem, pak tady klikni na "Vytvořit přístup".
+                    Zaměstnanec zatím nemá přihlašovací účet. Appka mu na zadaný email pošle pozvánku, kterou si sám otevře a nastaví si vlastní heslo.
                   </div>
-                  <label style={S.label}>Email pro přihlášení</label>
-                  <input style={S.input} value={accessForm.email} onChange={e => setAccessForm({ ...accessForm, email: e.target.value })} placeholder="jmeno@proudos.app" />
+                  <label style={S.label}>Email zaměstnance</label>
+                  <input style={S.input} value={accessForm.email} onChange={e => setAccessForm({ ...accessForm, email: e.target.value })} placeholder="jmeno@email.cz" />
                   <label style={S.label}>Uživatelské jméno</label>
                   <input style={S.input} value={accessForm.username} onChange={e => setAccessForm({ ...accessForm, username: e.target.value })} placeholder="jmeno" />
                   <label style={S.label}>Role</label>
@@ -2804,7 +2816,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                     {Object.keys(ROLES).map(r => <option key={r} value={r}>{ROLES[r].label}</option>)}
                   </select>
                   <button style={{ ...S.btn("#34d399"), width: "100%", fontSize: 12, padding: "8px" }} disabled={accessBusy} onClick={() => createAccess(emp)}>
-                    {accessBusy ? "Vytvářím…" : "Vytvořit přístup"}
+                    {accessBusy ? "Odesílám pozvánku…" : "Vytvořit přístup a poslat pozvánku"}
                   </button>
                 </>
               )}
