@@ -870,16 +870,45 @@ const RADIAL_COLOR_CENTER = { bg: "#FDEEE0", border: "#F5821F", icon: "#B85F14",
 
 function RadialMenu({ currentUser, tab, setTab }) {
   const [open, setOpen] = useState(false);
+  const [hoverId, setHoverId] = useState(null); // najetá/přidržená položka — myší nebo prstem
+  const dragging = useRef(false);
 
   const roleNav = ROLES[currentUser?.role]?.nav || [];
   const outerIds = (RADIAL_OUTER[currentUser?.role] || RADIAL_OUTER.employee).filter((id) => roleNav.includes(id));
-  const innerIds = (RADIAL_QUICK_LINKS[tab] || []).filter((id) => roleNav.includes(id) && id !== tab);
-  const centerNav = NAV_BY_ID[tab];
+  const previewTab = (hoverId && outerIds.includes(hoverId)) ? hoverId : tab;
+  const innerIds = (RADIAL_QUICK_LINKS[previewTab] || []).filter((id) => roleNav.includes(id) && id !== previewTab);
+  const centerNav = NAV_BY_ID[previewTab];
 
-  const close = () => setOpen(false);
+  const close = () => { setOpen(false); setHoverId(null); };
   const go = (id) => { setTab(id); close(); };
 
   const outerR = 175, innerR = 96;
+
+  // Na dotykové obrazovce najíždíme prstem nad různé položky — sleduje se, co je
+  // aktuálně pod prstem, a puštěním se potvrdí výběr (jako u kolečka fotoaparátu).
+  const findRadialId = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    const target = el && el.closest ? el.closest("[data-radial-id]") : null;
+    return target ? target.getAttribute("data-radial-id") : null;
+  };
+  const onWheelTouchStart = (e) => {
+    dragging.current = true;
+    const t = e.touches[0];
+    const id = findRadialId(t.clientX, t.clientY);
+    if (id) setHoverId(id);
+  };
+  const onWheelTouchMove = (e) => {
+    if (!dragging.current) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const id = findRadialId(t.clientX, t.clientY);
+    if (id) setHoverId(id);
+  };
+  const onWheelTouchEnd = (e) => {
+    e.preventDefault();
+    dragging.current = false;
+    if (hoverId) go(hoverId); else close();
+  };
 
   const ring = (ids, radius, size, colors, isOuter) => ids.map((id, i) => {
     const n = NAV_BY_ID[id];
@@ -888,7 +917,7 @@ function RadialMenu({ currentUser, tab, setTab }) {
     const rad = (deg * Math.PI) / 180;
     const x = Math.cos(rad) * radius, y = Math.sin(rad) * radius;
     const dx = Math.cos(rad), dy = Math.sin(rad);
-    const active = isOuter && id === tab;
+    const active = id === hoverId || (isOuter && !hoverId && id === tab);
     const labelDist = radius + size / 2 + (isOuter ? 26 : 20);
     const lx = Math.cos(rad) * labelDist, ly = Math.sin(rad) * labelDist;
     return (
@@ -899,21 +928,24 @@ function RadialMenu({ currentUser, tab, setTab }) {
             transformOrigin: "0 0", transform: `rotate(${deg}deg)`,
           }} />
         )}
-        <button title={n.label} aria-label={n.label} onClick={() => go(id)}
+        <button title={n.label} aria-label={n.label} data-radial-id={id}
+          onClick={() => go(id)}
+          onMouseEnter={() => setHoverId(id)}
+          onMouseLeave={() => setHoverId((h) => (h === id ? null : h))}
           style={{
             position: "absolute", left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)`, width: size, height: size,
             marginLeft: -size / 2, marginTop: -size / 2,
             borderRadius: "50%", border: `${active ? 2 : 1}px solid ${active ? colors.borderActive || colors.border : colors.border}`,
             background: active ? (colors.bgActive || colors.bg) : colors.bg, color: colors.text,
             cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: size >= 50 ? 20 : 16, zIndex: 2,
+            fontSize: size >= 50 ? 20 : 16, zIndex: 2, touchAction: "none",
           }}>
           <i className={`ti ${n.icon}`} aria-hidden="true"></i>
         </button>
         <div style={{
           position: "absolute", left: `calc(50% + ${lx}px)`, top: `calc(50% + ${ly}px)`,
           width: "max-content", maxWidth: 96, marginLeft: dx >= 0 ? 0 : -96, marginTop: -10, textAlign: dx >= 0 ? "left" : "right",
-          fontSize: isOuter ? 11 : 10, fontWeight: 500, color: colors.text, background: colors.bg,
+          fontSize: isOuter ? 11 : 10, fontWeight: active ? 700 : 500, color: colors.text, background: colors.bg,
           border: `1px solid ${colors.border}`, borderRadius: 6, padding: "2px 6px",
           pointerEvents: "none", lineHeight: 1.2, zIndex: 4, whiteSpace: "nowrap",
         }}>{n.label}</div>
@@ -928,7 +960,9 @@ function RadialMenu({ currentUser, tab, setTab }) {
           position: "fixed", inset: 0, zIndex: 998, background: "rgba(14,59,94,0.35)",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", width: 480, height: 480 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            onTouchStart={onWheelTouchStart} onTouchMove={onWheelTouchMove} onTouchEnd={onWheelTouchEnd} onTouchCancel={onWheelTouchEnd}
+            style={{ position: "relative", width: 480, height: 480, touchAction: "none" }}>
             <div style={{
               position: "absolute", left: "50%", top: "50%", width: outerR * 2, height: outerR * 2,
               marginLeft: -outerR, marginTop: -outerR, borderRadius: "50%", border: "1px dashed #cbd5e1",
