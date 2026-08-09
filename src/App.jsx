@@ -889,6 +889,8 @@ function RadialMenu({ currentUser, tab, setTab }) {
     const x = Math.cos(rad) * radius, y = Math.sin(rad) * radius;
     const dx = Math.cos(rad), dy = Math.sin(rad);
     const active = isOuter && id === tab;
+    const labelDist = radius + size / 2 + (isOuter ? 26 : 20);
+    const lx = Math.cos(rad) * labelDist, ly = Math.sin(rad) * labelDist;
     return (
       <React.Fragment key={id}>
         {isOuter && (
@@ -909,9 +911,11 @@ function RadialMenu({ currentUser, tab, setTab }) {
           <i className={`ti ${n.icon}`} aria-hidden="true"></i>
         </button>
         <div style={{
-          position: "absolute", left: `calc(50% + ${x + dx * 34}px)`, top: `calc(50% + ${y + dy * 34}px)`,
-          width: 84, marginLeft: -42, marginTop: -7, textAlign: "center",
-          fontSize: isOuter ? 11 : 10, color: "#5A7085", pointerEvents: "none", lineHeight: 1.2,
+          position: "absolute", left: `calc(50% + ${lx}px)`, top: `calc(50% + ${ly}px)`,
+          width: "max-content", maxWidth: 96, marginLeft: dx >= 0 ? 0 : -96, marginTop: -10, textAlign: dx >= 0 ? "left" : "right",
+          fontSize: isOuter ? 11 : 10, fontWeight: 500, color: colors.text, background: colors.bg,
+          border: `1px solid ${colors.border}`, borderRadius: 6, padding: "2px 6px",
+          pointerEvents: "none", lineHeight: 1.2, zIndex: 4, whiteSpace: "nowrap",
         }}>{n.label}</div>
       </React.Fragment>
     );
@@ -924,7 +928,7 @@ function RadialMenu({ currentUser, tab, setTab }) {
           position: "fixed", inset: 0, zIndex: 998, background: "rgba(14,59,94,0.35)",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", width: 420, height: 420 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", width: 480, height: 480 }}>
             <div style={{
               position: "absolute", left: "50%", top: "50%", width: outerR * 2, height: outerR * 2,
               marginLeft: -outerR, marginTop: -outerR, borderRadius: "50%", border: "1px dashed #cbd5e1",
