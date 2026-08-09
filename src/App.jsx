@@ -2594,6 +2594,45 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
     closeModal();
   };
 
+  // ── Přístup do aplikace (Auth účet + role) ──
+  const [accessProfile, setAccessProfile] = useState(null); // { id, email, role, ... } nebo null = zatím nemá přístup
+  const [accessForm, setAccessForm] = useState({ email: "", username: "", role: "employee" });
+  const [accessBusy, setAccessBusy] = useState(false);
+  const [accessErr, setAccessErr] = useState("");
+
+  const loadAccess = async (emp) => {
+    const { data } = await supabase.from("profiles").select("*").eq("employee_id", emp.id).maybeSingle();
+    setAccessProfile(data || null);
+    setAccessForm({ email: data?.email || emp.email || "", username: (emp.name || "").split(" ")[0].toLowerCase(), role: data?.role || "employee" });
+    setAccessErr("");
+  };
+
+  const createAccess = async (emp) => {
+    if (!accessForm.email || !accessForm.username) { setAccessErr("Vyplňte email i uživatelské jméno."); return; }
+    setAccessBusy(true);
+    setAccessErr("");
+    const { error } = await supabase.rpc("link_employee_profile", {
+      p_employee_id: emp.id, p_email: accessForm.email, p_role: accessForm.role, p_name: emp.name,
+    });
+    if (error) {
+      setAccessErr(error.message.includes("v Supabase Authentication") ? error.message : "Založení přístupu selhalo: " + error.message);
+      setAccessBusy(false);
+      return;
+    }
+    await supabase.from("login_directory").upsert({ username: accessForm.username, email: accessForm.email, name: emp.name });
+    await loadAccess(emp);
+    setAccessBusy(false);
+  };
+
+  const removeAccess = async (emp) => {
+    if (!confirm("Zrušit přístup do aplikace? Účet v Supabase Authentication zůstane zachovaný, jen se odpojí role a přihlášení k appce.")) return;
+    setAccessBusy(true);
+    await supabase.rpc("unlink_employee_profile", { p_employee_id: emp.id });
+    if (accessForm.username) await supabase.from("login_directory").delete().eq("username", accessForm.username);
+    await loadAccess(emp);
+    setAccessBusy(false);
+  };
+
   const openDetail = (emp) => {
     setDetailEmp(emp);
     setEditField({
@@ -2605,6 +2644,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
       hourly_rate_cost: emp.hourly_rate_cost || "",
       hourly_rate_client: emp.hourly_rate_client || "",
     });
+    loadAccess(emp);
   };
 
   const saveDetail = async () => {
@@ -2735,6 +2775,39 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
               <div style={{ marginTop: 8 }}>
                 <span style={S.tag(emp.status === "Aktivní" ? "#34d399" : "#f59e0b")}>{emp.status}</span>
               </div>
+            </div>
+
+            {/* Přístup do aplikace */}
+            <div style={S.card}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 12 }}>PŘÍSTUP DO APLIKACE</div>
+              {accessErr && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 8, padding: "8px 10px", fontSize: 12, marginBottom: 10 }}>{accessErr}</div>}
+              {accessProfile ? (
+                <>
+                  <div style={{ fontSize: 13, color: "#34d399", fontWeight: 700, marginBottom: 6 }}>✅ Má přístup</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>{accessProfile.email}</div>
+                  <div style={{ marginBottom: 10 }}><span style={S.tag(ROLES[accessProfile.role]?.color || "#2E9BE0")}>{ROLES[accessProfile.role]?.label || accessProfile.role}</span></div>
+                  <button style={{ ...S.btn("#ef4444"), width: "100%", fontSize: 12, padding: "7px" }} disabled={accessBusy} onClick={() => removeAccess(emp)}>
+                    {accessBusy ? "Ruším…" : "Zrušit přístup"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+                    Zaměstnanec zatím nemá přihlašovací účet. Nejdřív mu v Supabase (Authentication → Add user) založ účet s tímto emailem a heslem, pak tady klikni na "Vytvořit přístup".
+                  </div>
+                  <label style={S.label}>Email pro přihlášení</label>
+                  <input style={S.input} value={accessForm.email} onChange={e => setAccessForm({ ...accessForm, email: e.target.value })} placeholder="jmeno@proudos.app" />
+                  <label style={S.label}>Uživatelské jméno</label>
+                  <input style={S.input} value={accessForm.username} onChange={e => setAccessForm({ ...accessForm, username: e.target.value })} placeholder="jmeno" />
+                  <label style={S.label}>Role</label>
+                  <select style={S.select} value={accessForm.role} onChange={e => setAccessForm({ ...accessForm, role: e.target.value })}>
+                    {Object.keys(ROLES).map(r => <option key={r} value={r}>{ROLES[r].label}</option>)}
+                  </select>
+                  <button style={{ ...S.btn("#34d399"), width: "100%", fontSize: 12, padding: "8px" }} disabled={accessBusy} onClick={() => createAccess(emp)}>
+                    {accessBusy ? "Vytvářím…" : "Vytvořit přístup"}
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Statistiky */}
@@ -5912,12 +5985,27 @@ export default function App() {
   const [loginErr, setLoginErr] = useState("");
   const [employees, setEmployees] = useState([]);
   const [authChecking, setAuthChecking] = useState(true);
+  const [loginDirectory, setLoginDirectory] = useState([]); // dynamický seznam pro přihlášení (jméno/email) — doplňuje AUTH_USERS
+
+  // login_directory je veřejně čitelné (i bez přihlášení), aby šlo podle jména/uživatelského
+  // jména dohledat email pro přihlášení. Nový přístup se sem přidá automaticky z HR.
+  useEffect(() => {
+    supabase.from("login_directory").select("*").then(({ data }) => setLoginDirectory(data || []));
+  }, []);
+
+  // Sloučený seznam pro přihlášení: nově založení lidé z HR (login_directory) + původní pevný seznam
+  const ALL_LOGIN_USERS = [
+    ...AUTH_USERS,
+    ...loginDirectory
+      .filter(d => !AUTH_USERS.some(u => u.username === d.username))
+      .map(d => ({ username: d.username, email: d.email, name: d.name, role: d.role || "employee" })),
+  ];
 
   // Sestaví currentUser z profilu podle přihlášeného Supabase Auth uživatele
   const loadProfileUser = async (authUser) => {
     const { data: profile } = await supabase.from("profiles").select("*").eq("id", authUser.id).single();
     const { data: perm } = await supabase.from("user_permissions").select("*").eq("profile_id", authUser.id).maybeSingle();
-    const fallback = AUTH_USERS.find(u => u.email.toLowerCase() === (authUser.email || "").toLowerCase());
+    const fallback = ALL_LOGIN_USERS.find(u => u.email.toLowerCase() === (authUser.email || "").toLowerCase());
     const role = profile?.role || fallback?.role || "employee";
     const user = {
       id: profile?.employee_id ?? authUser.id,
@@ -5958,7 +6046,7 @@ export default function App() {
     const name = loginName.trim();
     if (!name || !loginPass) { setLoginErr("Zadejte jméno i heslo."); return; }
 
-    const match = AUTH_USERS.find(u => u.name.toLowerCase() === name.toLowerCase() || u.username.toLowerCase() === name.toLowerCase());
+    const match = ALL_LOGIN_USERS.find(u => u.name.toLowerCase() === name.toLowerCase() || u.username.toLowerCase() === name.toLowerCase());
     if (!match) { setLoginErr("Zaměstnanec nenalezen."); return; }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email: match.email, password: loginPass });
@@ -5999,7 +6087,7 @@ export default function App() {
           <button style={{ ...S.btn(), width: "100%", padding: 12, fontSize: 15, marginTop: 6 }} onClick={handleLogin}>Přihlásit se</button>
           <div style={{ marginTop: 16, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
             <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8, textAlign: "center" }}>Rychlé přihlášení</div>
-            {AUTH_USERS.map(u => (
+            {ALL_LOGIN_USERS.map(u => (
               <button key={u.username} onClick={() => { setLoginName(u.name); setLoginPass(""); }}
                 style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 12px", width: "100%", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
                 <span style={{ fontSize: 12, color: "#1A1A1A", fontWeight: 500 }}>{u.name}</span>
