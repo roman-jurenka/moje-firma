@@ -298,7 +298,7 @@ const S = {
   logoB: { color: "#F5821F" },
   groupLabel: { padding: "16px 20px 4px", fontSize: 10, color: "#7C97AC", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 },
   navItem: (a) => ({ padding: "9px 16px", margin: "2px 10px", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 500, color: a ? "#fff" : "#B9CBDA", background: a ? "rgba(255,255,255,0.14)" : "transparent", transition: "all 0.12s" }),
-  main: { marginLeft: 220, padding: "28px 32px", flex: 1, minHeight: "100vh" },
+  main: { marginLeft: 0, padding: "28px 32px", flex: 1, minHeight: "100vh" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 },
   h1: { fontSize: 24, fontWeight: 700, color: "#1A1A1A", margin: 0 },
   btn: (c = "#F5C518") => ({ background: c, color: c === "#F5C518" ? "#1A1A1A" : "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
@@ -551,12 +551,19 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   return (
     <div style={S.app}>
       <style>{`
+        /* Boční menu je na obou velikostech schované mimo obrazovku, dokud na něj
+           nenajedete myší (desktop, přes úzký proužek u levého okraje) nebo ho
+           neotevřete hamburgerem (mobil). Obsah proto nikdy nerezervuje 220px. */
+        .sidebar-nav { transform: translateX(-100%); }
+        .sidebar-nav.open { transform: translateX(0); }
+        @media (min-width: 769px) {
+          .sidebar-backdrop { display: none !important; }
+        }
         @media (max-width: 768px) {
           .hamburger-btn { display: flex !important; }
           .sidebar-close { display: flex !important; }
-          .main-content { margin-left: 0 !important; padding: 60px 12px 24px !important; }
-          .sidebar-nav { transform: translateX(-100%); }
-          .sidebar-nav.open { transform: translateX(0); }
+          .main-content { padding: 60px 12px 24px !important; }
+          .sidebar-hover-zone { display: none !important; }
 
           /* Grid layouts → single column */
           .stat-grid, .kpi-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
@@ -586,15 +593,16 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           /* Inputs full width on mobile */
           .mobile-full { width: 100% !important; box-sizing: border-box; }
         }
-        @media (min-width: 769px) {
-          .sidebar-nav { transform: translateX(0) !important; }
-        }
       `}</style>
       <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} style={{ display: "none", position: "fixed", top: 10, left: 10, zIndex: 300, background: "#0E3B5E", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 22, color: "#fff", alignItems: "center", justifyContent: "center" }}><i className="ti ti-menu-2" aria-hidden="true"></i></button>
-      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "#0007", zIndex: 150 }} />}
+      {/* Úzký proužek u levého okraje — najetím myší na desktopu vyjede menu */}
+      <div className="sidebar-hover-zone" onMouseEnter={() => setSidebarOpen(true)}
+        style={{ position: "fixed", top: 0, bottom: 0, left: 0, width: 14, zIndex: 199 }} />
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "#0007", zIndex: 150 }} />}
 
       {/* SIDEBAR */}
-      <div className={`sidebar-nav${sidebarOpen ? " open" : ""}`} style={S.sidebar()}>
+      <div className={`sidebar-nav${sidebarOpen ? " open" : ""}`} style={S.sidebar()}
+        onMouseLeave={() => setSidebarOpen(false)}>
         <div style={{ ...S.logo, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <ProudOSMark size={26} />
