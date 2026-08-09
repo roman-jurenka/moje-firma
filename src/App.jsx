@@ -5986,6 +5986,11 @@ export default function App() {
   const [employees, setEmployees] = useState([]);
   const [authChecking, setAuthChecking] = useState(true);
   const [loginDirectory, setLoginDirectory] = useState([]); // dynamický seznam pro přihlášení (jméno/email) — doplňuje AUTH_USERS
+  const [needsPassword, setNeedsPassword] = useState(false); // po kliknutí na pozvánku/reset z e-mailu
+  const [newPass1, setNewPass1] = useState("");
+  const [newPass2, setNewPass2] = useState("");
+  const [passErr, setPassErr] = useState("");
+  const [passSaving, setPassSaving] = useState(false);
 
   // login_directory je veřejně čitelné (i bez přihlášení), aby šlo podle jména/uživatelského
   // jména dohledat email pro přihlášení. Nový přístup se sem přidá automaticky z HR.
@@ -6023,17 +6028,39 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Odkaz z pozvánky/resetu hesla v e-mailu appku přesměruje s "type=invite"
+    // nebo "type=recovery" v URL — appka pak místo přihlášení nabídne nastavení hesla.
+    if (window.location.hash.includes("type=invite") || window.location.hash.includes("type=recovery")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setNeedsPassword(true);
+    }
+
     // Obnov session, pokud je uživatel pořád přihlášený (Supabase si token drží sám)
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) await loadProfileUser(session.user);
       setAuthChecking(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") setNeedsPassword(true);
       if (!session?.user) setCurrentUser(null);
     });
     return () => sub?.subscription?.unsubscribe();
   }, []);
+
+  const setOwnPassword = async () => {
+    setPassErr("");
+    if (!newPass1 || newPass1.length < 6) { setPassErr("Heslo musí mít alespoň 6 znaků."); return; }
+    if (newPass1 !== newPass2) { setPassErr("Hesla se neshodují."); return; }
+    setPassSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPass1 });
+    if (error) { setPassErr("Nepodařilo se nastavit heslo: " + error.message); setPassSaving(false); return; }
+    window.history.replaceState({}, "", window.location.pathname);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) await loadProfileUser(session.user);
+    setNeedsPassword(false);
+    setNewPass1(""); setNewPass2(""); setPassSaving(false); setAuthChecking(false);
+  };
 
   // employees se smí číst jen po přihlášení (RLS) — natáhni je až jakmile je currentUser hotový
   useEffect(() => {
@@ -6059,6 +6086,30 @@ export default function App() {
     await supabase.auth.signOut();
     setCurrentUser(null);
   };
+
+  if (needsPassword) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+        <div style={{ background: "#fff", borderRadius: 16, padding: 40, width: 360, boxShadow: "0 8px 40px #0000001a", border: "1px solid #e2e8f0" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <ProudOSMark size={48} />
+            <div style={{ fontWeight: 800, fontSize: 22, textAlign: "center" }}>
+              <span style={{ color: "#2E9BE0" }}>Proud</span><span style={{ color: "#F5821F" }}>OS</span>
+            </div>
+          </div>
+          <div style={{ color: "#64748b", fontSize: 13, textAlign: "center", marginBottom: 24 }}>Vítej! Nastav si vlastní heslo pro přihlášení.</div>
+          {passErr && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 12 }}>{passErr}</div>}
+          <label style={S.label}>Nové heslo</label>
+          <input type="password" style={S.input} value={newPass1} onChange={e => setNewPass1(e.target.value)} onKeyDown={e => e.key === "Enter" && setOwnPassword()} placeholder="alespoň 6 znaků" />
+          <label style={S.label}>Nové heslo znovu</label>
+          <input type="password" style={S.input} value={newPass2} onChange={e => setNewPass2(e.target.value)} onKeyDown={e => e.key === "Enter" && setOwnPassword()} placeholder="zopakujte heslo" />
+          <button style={{ ...S.btn(), width: "100%", padding: 12, fontSize: 15, marginTop: 6 }} disabled={passSaving} onClick={setOwnPassword}>
+            {passSaving ? "Ukládám…" : "Nastavit heslo a pokračovat"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (authChecking) {
     return (
