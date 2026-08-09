@@ -824,110 +824,112 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           onClearInitial={() => { setSheetContractId(null); setSheetContractName(""); }}
         />}
       </div>
-      <RadialMenu currentUser={currentUser} setTab={setTab} />
+      <RadialMenu currentUser={currentUser} tab={tab} setTab={setTab} />
     </div>
   );
 }
 
 // ─── RADIÁLNÍ MENU (kolečko rychlých akcí, vpravo dole) ──────────────────────
+// Dvouprstencové: střed = aktuální sekce, vnitřní mezikruží = rychlé (existující)
+// odkazy k aktuální sekci, vnější kruh = hlavní sekce. Vše jen na existující taby.
+//
+// NEPOSTAVENO ZATÍM (na budoucí úpravy — uživatel je chce, ale ne teď):
+// Šablony (u Nacenění), Export (CSV), Report (Dashboard), Nastavení (Dashboard),
+// Přehled nákladů — tyhle byly v návrhu jen jako ukázka, appka je zatím neumí.
 
-const RADIAL_MENU = {
-  admin: [
-    { icon: "ti-layout-dashboard", label: "Dashboard", tab: "dashboard" },
-    { icon: "ti-calculator", label: "Nacenění", tab: "pricing" },
-    { icon: "ti-file-invoice", label: "Zakázky", tab: "contracts" },
-    { icon: "ti-users", label: "Zákazníci", tab: "customers" },
-    { icon: "ti-package", label: "Sklad", tab: "warehouse" },
-    { icon: "ti-plus", label: "Rychlé přidání", children: [
-      { icon: "ti-briefcase", label: "Obchodní případ", tab: "deals" },
-      { icon: "ti-receipt", label: "Faktura", tab: "invoices" },
-      { icon: "ti-checkbox", label: "Úkol", tab: "tasks" },
-      { icon: "ti-trending-down", label: "Náklad", tab: "costs" },
-    ] },
-  ],
-  manager: [
-    { icon: "ti-layout-dashboard", label: "Dashboard", tab: "dashboard" },
-    { icon: "ti-calculator", label: "Nacenění", tab: "pricing" },
-    { icon: "ti-file-invoice", label: "Zakázky", tab: "contracts" },
-    { icon: "ti-users", label: "Zákazníci", tab: "customers" },
-    { icon: "ti-plus", label: "Rychlé přidání", children: [
-      { icon: "ti-briefcase", label: "Obchodní případ", tab: "deals" },
-      { icon: "ti-receipt", label: "Faktura", tab: "invoices" },
-      { icon: "ti-checkbox", label: "Úkol", tab: "tasks" },
-    ] },
-  ],
-  hr: [
-    { icon: "ti-user", label: "Zaměstnanci", tab: "hr" },
-    { icon: "ti-clock", label: "Docházka", tab: "attendance" },
-    { icon: "ti-trending-down", label: "Náklady", tab: "costs" },
-    { icon: "ti-calendar", label: "Kalendář", tab: "calendar" },
-  ],
-  employee: [
-    { icon: "ti-camera", label: "Nahrát fotky", tab: "fotoupload" },
-    { icon: "ti-clock", label: "Docházka", tab: "attendance" },
-    { icon: "ti-car", label: "Kniha jízd", tab: "knjiga" },
-    { icon: "ti-calendar", label: "Kalendář", tab: "calendar" },
-  ],
+const NAV_BY_ID = Object.fromEntries(NAV.map((n) => [n.id, n]));
+
+const RADIAL_OUTER = {
+  admin: ["dashboard", "pricing", "contracts", "customers", "warehouse", "hr"],
+  manager: ["dashboard", "pricing", "contracts", "customers", "costs"],
+  hr: ["dashboard", "hr", "attendance", "costs", "calendar"],
+  employee: ["dashboard", "fotoupload", "attendance", "knjiga", "calendar"],
 };
 
-function RadialMenu({ currentUser, setTab }) {
+const RADIAL_QUICK_LINKS = {
+  dashboard: ["calendar", "attendance", "costs"],
+  pricing: ["deals", "contracts", "invoices"],
+  contracts: ["invoices", "costs", "fotoupload"],
+  customers: ["deals", "contracts", "tasks"],
+  warehouse: ["costs", "contracts"],
+  hr: ["attendance", "calendar", "costs"],
+  costs: ["contracts", "reports"],
+  attendance: ["hr", "calendar"],
+  calendar: ["attendance", "hr"],
+  fotoupload: ["knjiga", "attendance"],
+  knjiga: ["attendance", "fotoupload"],
+  invoices: ["contracts", "costs"],
+  deals: ["pricing", "contracts"],
+  tasks: ["contracts", "customers"],
+};
+
+function RadialMenu({ currentUser, tab, setTab }) {
   const [open, setOpen] = useState(false);
-  const [level2, setLevel2] = useState(null); // pole položek hlubší úrovně, nebo null
 
-  const items = level2 || RADIAL_MENU[currentUser?.role] || RADIAL_MENU.employee;
-  const radius = 110;
-  // Vějíř od 180° (doleva) do 270° (nahoru) — kolečko je v pravém dolním rohu
+  const roleNav = ROLES[currentUser?.role]?.nav || [];
+  const outerIds = (RADIAL_OUTER[currentUser?.role] || RADIAL_OUTER.employee).filter((id) => roleNav.includes(id));
+  const innerIds = (RADIAL_QUICK_LINKS[tab] || []).filter((id) => roleNav.includes(id) && id !== tab);
+  const centerNav = NAV_BY_ID[tab];
+
+  const close = () => setOpen(false);
+  const go = (id) => { setTab(id); close(); };
+
+  const outerR = 150, innerR = 88;
   const startDeg = 180, endDeg = 270;
-  const step = items.length > 1 ? (endDeg - startDeg) / (items.length - 1) : 0;
 
-  const close = () => { setOpen(false); setLevel2(null); };
+  const arcButtons = (ids, radius, size) => ids.map((id, i) => {
+    const n = NAV_BY_ID[id];
+    if (!n) return null;
+    const step = ids.length > 1 ? (endDeg - startDeg) / (ids.length - 1) : 0;
+    const deg = startDeg + step * i;
+    const rad = (deg * Math.PI) / 180;
+    const x = Math.cos(rad) * radius, y = Math.sin(rad) * radius;
+    return (
+      <button key={id} title={n.label} aria-label={n.label} onClick={() => go(id)}
+        style={{
+          position: "absolute", left: 28, top: 28, width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2,
+          transform: `translate(${x}px, ${y}px)`, transition: "transform .2s ease",
+          borderRadius: "50%", border: "none", background: "#fff", color: "#0E3B5E",
+          boxShadow: "0 4px 14px #0000002a", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: size >= 46 ? 18 : 15, zIndex: 1,
+        }}>
+        <i className={`ti ${n.icon}`} aria-hidden="true"></i>
+      </button>
+    );
+  });
 
-  const pick = (item) => {
-    if (item.children) { setLevel2(item.children); return; }
-    if (item.tab) setTab(item.tab);
-    close();
-  };
+  const arcLabels = (ids, radius) => ids.map((id, i) => {
+    const n = NAV_BY_ID[id];
+    if (!n) return null;
+    const step = ids.length > 1 ? (endDeg - startDeg) / (ids.length - 1) : 0;
+    const deg = startDeg + step * i;
+    const rad = (deg * Math.PI) / 180;
+    const x = Math.cos(rad) * (radius + 30), y = Math.sin(rad) * radius;
+    return (
+      <div key={id} style={{
+        position: "absolute", left: 28, top: 28, width: 90, marginLeft: -90, marginTop: -7,
+        transform: `translate(${x + 90}px, ${y}px)`, textAlign: "right",
+        fontSize: 11, color: "#5A7085", pointerEvents: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+      }}>{n.label}</div>
+    );
+  });
 
   return (
     <>
       {open && <div onClick={close} style={{ position: "fixed", inset: 0, zIndex: 998 }} />}
       <div style={{ position: "fixed", right: 28, bottom: 28, zIndex: 999, width: 56, height: 56 }}>
-        {open && items.map((it, i) => {
-          const deg = startDeg + step * i;
-          const rad = (deg * Math.PI) / 180;
-          const x = Math.cos(rad) * radius, y = Math.sin(rad) * radius;
-          return (
-            <button key={it.label} title={it.label} onClick={() => pick(it)}
-              style={{
-                position: "absolute", left: 28, top: 28, width: 46, height: 46, marginLeft: -23, marginTop: -23,
-                transform: `translate(${x}px, ${y}px)`, transition: "transform .22s cubic-bezier(.34,1.56,.64,1), opacity .18s",
-                borderRadius: "50%", border: "none", background: "#fff", color: "#0E3B5E",
-                boxShadow: "0 4px 14px #0000002a", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 18, opacity: 1,
-              }}>
-              <i className={`ti ${it.icon}`} aria-hidden="true"></i>
-            </button>
-          );
-        })}
-        {open && level2 && (
-          <button title="Zpět" onClick={() => setLevel2(null)}
-            style={{
-              position: "absolute", left: 28, top: 28, width: 40, height: 40, marginLeft: -20, marginTop: -20,
-              transform: `translate(${Math.cos((225 * Math.PI) / 180) * 70}px, ${Math.sin((225 * Math.PI) / 180) * 70}px)`,
-              borderRadius: "50%", border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b",
-              boxShadow: "0 4px 14px #0000002a", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-            }}>
-            <i className="ti ti-arrow-back-up" aria-hidden="true"></i>
-          </button>
-        )}
-        <button onClick={() => { if (open) close(); else setOpen(true); }} title={open ? "Zavřít" : "Rychlé menu"}
+        {open && arcLabels(outerIds, outerR)}
+        {open && arcLabels(innerIds, innerR)}
+        {open && arcButtons(outerIds, outerR, 46)}
+        {open && arcButtons(innerIds, innerR, 38)}
+        <button onClick={() => setOpen((o) => !o)} title={open ? "Zavřít" : (centerNav?.label || "Rychlé menu")}
+          aria-label={open ? "Zavřít rychlé menu" : "Otevřít rychlé menu"}
           style={{
             width: 56, height: 56, borderRadius: "50%", border: "none", cursor: "pointer",
-            background: "#F5821F", color: "#fff", fontSize: 24, boxShadow: "0 6px 20px #0000003a",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            transform: open ? "rotate(135deg)" : "rotate(0deg)", transition: "transform .22s ease",
+            background: "#F5821F", color: "#fff", fontSize: 22, boxShadow: "0 6px 20px #0000003a",
+            display: "flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 2,
           }}>
-          <i className="ti ti-plus" aria-hidden="true"></i>
+          <i className={`ti ${open ? "ti-x" : (centerNav?.icon || "ti-layout-grid")}`} aria-hidden="true"></i>
         </button>
       </div>
     </>
