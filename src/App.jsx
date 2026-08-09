@@ -1312,9 +1312,12 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
 
 function Customers({ customers, setCustomers, invoices, deals, communication, contracts, search, setSearch, modal, setModal, closeModal }) {
   const [newC, setNewC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový" });
+  const [showArchived, setShowArchived] = useState(false);
+  const archivedCount = customers.filter(c => c.archived).length;
   const filtered = customers.filter(c =>
-    (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (c.company || "").toLowerCase().includes(search.toLowerCase())
+    !!c.archived === showArchived &&
+    ((c.name || "").toLowerCase().includes(search.toLowerCase()) ||
+    (c.company || "").toLowerCase().includes(search.toLowerCase()))
   );
 
   const save = async () => {
@@ -1328,23 +1331,44 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
     closeModal();
   };
 
+  // Zákazník se nikdy fyzicky nemaže — jen se archivuje, aby zůstaly zachované
+  // vazby na jeho zakázky, poptávky, faktury i komunikaci v historii.
+  const archiveCustomer = async (id) => {
+    if (!confirm("Smazat zákazníka? Jeho zakázky, poptávky a faktury zůstanou zachované v historii, zákazník se jen skryje ze seznamu.")) return;
+    await supabase.from("customers").update({ archived: true }).eq("id", id);
+    setCustomers(customers.map(c => c.id === id ? { ...c, archived: true } : c));
+    closeModal();
+  };
+
+  const restoreCustomer = async (id) => {
+    await supabase.from("customers").update({ archived: false }).eq("id", id);
+    setCustomers(customers.map(c => c.id === id ? { ...c, archived: false } : c));
+    closeModal();
+  };
+
   return (
     <>
       <div style={S.header}>
         <h1 style={S.h1}>Zákazníci</h1>
         <div style={{ display: "flex", gap: 10 }}>
           <input style={S.search} placeholder="🔍 Hledat..." value={search} onChange={e => setSearch(e.target.value)} />
-          <button style={S.btn()} onClick={() => setModal({ type: "addCustomer" })}>+ Přidat</button>
+          <button style={showArchived ? S.btn("#334155") : S.btnGhost} onClick={() => setShowArchived(!showArchived)}>
+            {showArchived ? "← Zpět na aktivní" : `🗑️ Smazaní (${archivedCount})`}
+          </button>
+          {!showArchived && <button style={S.btn()} onClick={() => setModal({ type: "addCustomer" })}>+ Přidat</button>}
         </div>
       </div>
       <div style={S.card}>
         <table style={S.table}>
           <thead><tr>{["Jméno", "Firma", "Email", "Telefon", "Faktury", "Štítek", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={7} style={{ ...S.td, color: "#334155", textAlign: "center", padding: 20 }}>{showArchived ? "Žádní smazaní zákazníci." : "Žádní zákazníci."}</td></tr>
+            )}
             {filtered.map((c, i) => {
               const custInvoices = invoices.filter(inv => inv.customerId === c.id);
               return (
-                <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setModal({ type: "customerDetail", data: c })}>
+                <tr key={c.id} style={{ cursor: "pointer", opacity: c.archived ? 0.6 : 1 }} onClick={() => setModal({ type: "customerDetail", data: c })}>
                   <td style={S.td}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={S.avatar(avatarColors[i % 6])}>{getInitial(c.name)}</div>
@@ -1356,7 +1380,13 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
                   <td style={S.td}>{c.phone || "—"}</td>
                   <td style={S.td}>{custInvoices.length} faktur</td>
                   <td style={S.td}><span style={S.tag(TAG_COLORS[c.tag] || "#2E9BE0")}>{c.tag}</span></td>
-                  <td style={S.td}><span style={{ color: "#2E9BE0", fontSize: 12 }}>Detail →</span></td>
+                  <td style={S.td}>
+                    {c.archived ? (
+                      <button onClick={e => { e.stopPropagation(); restoreCustomer(c.id); }} style={{ ...S.btn("#34d399"), padding: "4px 10px", fontSize: 11 }}>↺ Obnovit</button>
+                    ) : (
+                      <button onClick={e => { e.stopPropagation(); archiveCustomer(c.id); }} style={{ ...S.btn("#ef4444"), padding: "4px 10px", fontSize: 11 }}>🗑️ Smazat</button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -1395,6 +1425,13 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
                 {c.email && <a href={`mailto:${c.email}`} style={{ color: "#2E9BE0" }}>{c.email}</a>}
                 {c.phone && <span> · <a href={`tel:${c.phone}`} style={{ color: "#16a34a" }}>📞 {c.phone}</a></span>}
                 {c.email_contact && c.email_contact !== c.email && <span> · <a href={`mailto:${c.email_contact}`} style={{ color: "#a78bfa" }}>✉️ {c.email_contact}</a></span>}
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                {c.archived ? (
+                  <button onClick={() => restoreCustomer(c.id)} style={{ ...S.btn("#34d399"), padding: "6px 14px", fontSize: 12 }}>↺ Obnovit zákazníka</button>
+                ) : (
+                  <button onClick={() => archiveCustomer(c.id)} style={{ ...S.btn("#ef4444"), padding: "6px 14px", fontSize: 12 }}>🗑️ Smazat zákazníka</button>
+                )}
               </div>
 
               <SectionTitle>🔧 Zakázky ({custContracts.length})</SectionTitle>
