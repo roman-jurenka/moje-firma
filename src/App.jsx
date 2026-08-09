@@ -2565,6 +2565,22 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
   const [detailEmp, setDetailEmp] = useState(null);
   const [editField, setEditField] = useState({});
   const [uploading, setUploading] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Zaměstnanec se nikdy fyzicky nemaže — jen se archivuje, aby zůstaly
+  // zachované jeho staré záznamy (docházka, náklady, kniha jízd, úkoly) v historii.
+  const archiveEmployee = async (id) => {
+    if (!confirm("Smazat zaměstnance? Jeho stará docházka, náklady i kniha jízd zůstanou zachované v historii, jen se skryje ze seznamu.")) return;
+    await supabase.from("employees").update({ archived: true }).eq("id", id);
+    setEmployees(employees.map(e => e.id === id ? { ...e, archived: true } : e));
+    setDetailEmp(null);
+  };
+
+  const restoreEmployee = async (id) => {
+    await supabase.from("employees").update({ archived: false }).eq("id", id);
+    setEmployees(employees.map(e => e.id === id ? { ...e, archived: false } : e));
+    setDetailEmp(null);
+  };
 
   const save = async () => {
     if (!newE.name) return;
@@ -2623,7 +2639,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
     setUploading(false);
   };
 
-  const totalPayroll = employees.filter(e => e.status === "Aktivní").reduce((s, e) => s + (e.salary || 0), 0);
+  const totalPayroll = employees.filter(e => e.status === "Aktivní" && !e.archived).reduce((s, e) => s + (e.salary || 0), 0);
 
   // Barvy podle oddělení
   const deptColor = (dept) => {
@@ -2655,6 +2671,11 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
               {t === "info" ? "👤 Profil" : "✅ Úkoly"}
             </button>
           ))}
+          {emp.archived ? (
+            <button onClick={() => restoreEmployee(emp.id)} style={{ ...S.btn("#34d399"), padding: "7px 16px", fontSize: 13, marginLeft: "auto" }}>↺ Obnovit zaměstnance</button>
+          ) : (
+            <button onClick={() => archiveEmployee(emp.id)} style={{ ...S.btn("#ef4444"), padding: "7px 16px", fontSize: 13, marginLeft: "auto" }}>🗑️ Smazat zaměstnance</button>
+          )}
         </div>
 
         {hrTab === "ukoly" && (() => {
@@ -2812,22 +2833,35 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
 
   return (
     <>
-      <div style={S.header}><h1 style={S.h1}>Zaměstnanci & HR</h1><button style={S.btn()} onClick={() => setModal({ type: "addEmployee" })}>+ Přidat zaměstnance</button></div>
+      <div style={S.header}>
+        <h1 style={S.h1}>Zaměstnanci & HR</h1>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button style={showArchived ? S.btn("#334155") : S.btnGhost} onClick={() => setShowArchived(!showArchived)}>
+            {showArchived ? "← Zpět na aktivní" : `🗑️ Smazaní (${employees.filter(e => e.archived).length})`}
+          </button>
+          {!showArchived && <button style={S.btn()} onClick={() => setModal({ type: "addEmployee" })}>+ Přidat zaměstnance</button>}
+        </div>
+      </div>
       <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { label: "Celkem zaměstnanců", value: employees.length, color: "#a78bfa" },
-          { label: "Aktivních", value: employees.filter(e => e.status === "Aktivní").length, color: "#34d399" },
+          { label: "Celkem zaměstnanců", value: employees.filter(e => !e.archived).length, color: "#a78bfa" },
+          { label: "Aktivních", value: employees.filter(e => e.status === "Aktivní" && !e.archived).length, color: "#34d399" },
           { label: "Mzdové náklady/měs.", value: fmtKc(totalPayroll), color: "#f59e0b" },
         ].map(s => (
           <div key={s.label} style={S.statCard(s.color)}><div style={S.statLabel}>{s.label}</div><div style={S.statValue(s.color)}>{s.value}</div></div>
         ))}
       </div>
       <div className="emp-card-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 16 }}>
-        {employees.map((e, i) => {
+        {employees.filter(e => !!e.archived === showArchived).length === 0 && (
+          <div style={{ color: "#334155", fontSize: 13, gridColumn: "1 / -1", textAlign: "center", padding: 24 }}>
+            {showArchived ? "Žádní smazaní zaměstnanci." : "Žádní zaměstnanci."}
+          </div>
+        )}
+        {employees.filter(e => !!e.archived === showArchived).map((e, i) => {
           const empPaid   = (costEntries || []).filter(c => c.employee_id === e.id).reduce((s, c) => s + Number(c.amount_cost || 0), 0);
           const empBilled = (costEntries || []).filter(c => c.employee_id === e.id).reduce((s, c) => s + Number(c.amount_client || 0), 0);
           return (
-            <div key={e.id} style={{ ...S.card, cursor: "pointer", transition: "transform .15s", padding: 20 }}
+            <div key={e.id} style={{ ...S.card, cursor: "pointer", transition: "transform .15s", padding: 20, opacity: e.archived ? 0.6 : 1 }}
               onClick={() => openDetail(e)}
               onMouseEnter={ev => ev.currentTarget.style.transform = "translateY(-3px)"}
               onMouseLeave={ev => ev.currentTarget.style.transform = "none"}>
@@ -2837,7 +2871,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                   ? <img src={e.photo_url} alt="" style={{ width: 52, height: 52, borderRadius: "50%", objectFit: "cover", border: "3px solid #6366f1", flexShrink: 0 }} />
                   : <div style={{ ...S.avatar(avatarColors[i % 6]), width: 52, height: 52, fontSize: 22, flexShrink: 0 }}>{getInitial(e.name)}</div>
                 }
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{e.name}</div>
                   <div style={{ color: "#475569", fontSize: 12, marginTop: 2 }}>{e.position}</div>
                   <div style={{ marginTop: 5 }}>
@@ -2845,6 +2879,11 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                     {e.department && <span style={{ ...S.tag(deptColor(e.department)), marginLeft: 4 }}>{e.department}</span>}
                   </div>
                 </div>
+                {e.archived ? (
+                  <button onClick={ev => { ev.stopPropagation(); restoreEmployee(e.id); }} style={{ ...S.btn("#34d399"), padding: "4px 9px", fontSize: 11, flexShrink: 0 }}>↺</button>
+                ) : (
+                  <button onClick={ev => { ev.stopPropagation(); archiveEmployee(e.id); }} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11, flexShrink: 0 }}>🗑️</button>
+                )}
               </div>
               {/* Specializace */}
               {e.specialization && (
