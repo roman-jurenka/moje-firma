@@ -863,6 +863,11 @@ const RADIAL_QUICK_LINKS = {
   tasks: ["contracts", "customers"],
 };
 
+// Barvy prstenců — modrá = hlavní sekce, zelená = rychlé akce, oranžová = aktuální sekce
+const RADIAL_COLOR_OUTER = { bg: "#E6F1FB", bgActive: "#B5D4F4", border: "#85B7EB", borderActive: "#185FA5", text: "#0C447C" };
+const RADIAL_COLOR_INNER = { bg: "#E1F5EE", border: "#5DCAA5", text: "#085041" };
+const RADIAL_COLOR_CENTER = { bg: "#FDEEE0", border: "#F5821F", icon: "#B85F14", text: "#8A3E0A" };
+
 function RadialMenu({ currentUser, tab, setTab }) {
   const [open, setOpen] = useState(false);
 
@@ -874,54 +879,74 @@ function RadialMenu({ currentUser, tab, setTab }) {
   const close = () => setOpen(false);
   const go = (id) => { setTab(id); close(); };
 
-  const outerR = 150, innerR = 88;
-  const startDeg = 180, endDeg = 270;
+  const outerR = 175, innerR = 96;
 
-  const arcButtons = (ids, radius, size) => ids.map((id, i) => {
+  const ring = (ids, radius, size, colors, isOuter) => ids.map((id, i) => {
     const n = NAV_BY_ID[id];
     if (!n) return null;
-    const step = ids.length > 1 ? (endDeg - startDeg) / (ids.length - 1) : 0;
-    const deg = startDeg + step * i;
+    const deg = (360 / ids.length) * i - 90;
     const rad = (deg * Math.PI) / 180;
     const x = Math.cos(rad) * radius, y = Math.sin(rad) * radius;
+    const dx = Math.cos(rad), dy = Math.sin(rad);
+    const active = isOuter && id === tab;
     return (
-      <button key={id} title={n.label} aria-label={n.label} onClick={() => go(id)}
-        style={{
-          position: "absolute", left: 28, top: 28, width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2,
-          transform: `translate(${x}px, ${y}px)`, transition: "transform .2s ease",
-          borderRadius: "50%", border: "none", background: "#fff", color: "#0E3B5E",
-          boxShadow: "0 4px 14px #0000002a", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: size >= 46 ? 18 : 15, zIndex: 1,
-        }}>
-        <i className={`ti ${n.icon}`} aria-hidden="true"></i>
-      </button>
-    );
-  });
-
-  const arcLabels = (ids, radius) => ids.map((id, i) => {
-    const n = NAV_BY_ID[id];
-    if (!n) return null;
-    const step = ids.length > 1 ? (endDeg - startDeg) / (ids.length - 1) : 0;
-    const deg = startDeg + step * i;
-    const rad = (deg * Math.PI) / 180;
-    const x = Math.cos(rad) * (radius + 30), y = Math.sin(rad) * radius;
-    return (
-      <div key={id} style={{
-        position: "absolute", left: 28, top: 28, width: 90, marginLeft: -90, marginTop: -7,
-        transform: `translate(${x + 90}px, ${y}px)`, textAlign: "right",
-        fontSize: 11, color: "#5A7085", pointerEvents: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-      }}>{n.label}</div>
+      <React.Fragment key={id}>
+        {isOuter && (
+          <div style={{
+            position: "absolute", left: "50%", top: "50%", width: radius, height: 1, background: "#e2e8f0",
+            transformOrigin: "0 0", transform: `rotate(${deg}deg)`,
+          }} />
+        )}
+        <button title={n.label} aria-label={n.label} onClick={() => go(id)}
+          style={{
+            position: "absolute", left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)`, width: size, height: size,
+            marginLeft: -size / 2, marginTop: -size / 2,
+            borderRadius: "50%", border: `${active ? 2 : 1}px solid ${active ? colors.borderActive || colors.border : colors.border}`,
+            background: active ? (colors.bgActive || colors.bg) : colors.bg, color: colors.text,
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: size >= 50 ? 20 : 16, zIndex: 2,
+          }}>
+          <i className={`ti ${n.icon}`} aria-hidden="true"></i>
+        </button>
+        <div style={{
+          position: "absolute", left: `calc(50% + ${x + dx * 34}px)`, top: `calc(50% + ${y + dy * 34}px)`,
+          width: 84, marginLeft: -42, marginTop: -7, textAlign: "center",
+          fontSize: isOuter ? 11 : 10, color: "#5A7085", pointerEvents: "none", lineHeight: 1.2,
+        }}>{n.label}</div>
+      </React.Fragment>
     );
   });
 
   return (
     <>
-      {open && <div onClick={close} style={{ position: "fixed", inset: 0, zIndex: 998 }} />}
+      {open && (
+        <div onClick={close} style={{
+          position: "fixed", inset: 0, zIndex: 998, background: "rgba(14,59,94,0.35)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", width: 420, height: 420 }}>
+            <div style={{
+              position: "absolute", left: "50%", top: "50%", width: outerR * 2, height: outerR * 2,
+              marginLeft: -outerR, marginTop: -outerR, borderRadius: "50%", border: "1px dashed #cbd5e1",
+            }} />
+            <div style={{
+              position: "absolute", left: "50%", top: "50%", width: innerR * 2, height: innerR * 2,
+              marginLeft: -innerR, marginTop: -innerR, borderRadius: "50%", border: "1px dashed #cbd5e1",
+            }} />
+            {ring(outerIds, outerR, 56, RADIAL_COLOR_OUTER, true)}
+            {ring(innerIds, innerR, 44, RADIAL_COLOR_INNER, false)}
+            <div style={{
+              position: "absolute", left: "50%", top: "50%", width: 104, height: 104, marginLeft: -52, marginTop: -52,
+              borderRadius: "50%", background: RADIAL_COLOR_CENTER.bg, border: `1px solid ${RADIAL_COLOR_CENTER.border}`,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, zIndex: 3,
+            }}>
+              <i className={`ti ${centerNav?.icon || "ti-layout-grid"}`} style={{ fontSize: 24, color: RADIAL_COLOR_CENTER.icon }} aria-hidden="true"></i>
+              <span style={{ fontSize: 11, fontWeight: 500, color: RADIAL_COLOR_CENTER.text }}>{centerNav?.label || ""}</span>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ position: "fixed", right: 28, bottom: 28, zIndex: 999, width: 56, height: 56 }}>
-        {open && arcLabels(outerIds, outerR)}
-        {open && arcLabels(innerIds, innerR)}
-        {open && arcButtons(outerIds, outerR, 46)}
-        {open && arcButtons(innerIds, innerR, 38)}
         <button onClick={() => setOpen((o) => !o)} title={open ? "Zavřít" : (centerNav?.label || "Rychlé menu")}
           aria-label={open ? "Zavřít rychlé menu" : "Otevřít rychlé menu"}
           style={{
