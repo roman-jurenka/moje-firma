@@ -878,19 +878,28 @@ const RADIAL_COLOR_CENTER = { bg: "#FDEEE0", border: "#F5821F", icon: "#B85F14",
 
 function RadialMenu({ currentUser, tab, setTab }) {
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState("outer"); // "outer" → vybírám sekci, "inner" → vybírám úkon
+  const [selectedOuter, setSelectedOuter] = useState(null);
   const [hoverId, setHoverId] = useState(null); // najetá/přidržená položka — myší nebo prstem
   const dragging = useRef(false);
 
   const roleNav = ROLES[currentUser?.role]?.nav || [];
   const outerIds = (RADIAL_OUTER[currentUser?.role] || RADIAL_OUTER.employee).filter((id) => roleNav.includes(id));
-  const previewTab = (hoverId && outerIds.includes(hoverId)) ? hoverId : tab;
-  const innerIds = (RADIAL_QUICK_LINKS[previewTab] || []).filter((id) => roleNav.includes(id) && id !== previewTab);
+  const previewTab = step === "outer" ? (hoverId && outerIds.includes(hoverId) ? hoverId : tab) : selectedOuter;
+  const innerIds = (RADIAL_QUICK_LINKS[selectedOuter] || []).filter((id) => roleNav.includes(id) && id !== selectedOuter);
   const centerNav = NAV_BY_ID[previewTab];
 
-  const close = () => { setOpen(false); setHoverId(null); };
+  const close = () => { setOpen(false); setStep("outer"); setSelectedOuter(null); setHoverId(null); };
   const go = (id) => { setTab(id); close(); };
+  const pickOuter = (id) => { setSelectedOuter(id); setStep("inner"); setHoverId(null); };
+  const back = () => { setStep("outer"); setSelectedOuter(null); setHoverId(null); };
+  const confirm = (id) => { if (step === "outer") pickOuter(id); else go(id); };
 
   const outerR = 175, innerR = 96;
+  const activeIds = step === "outer" ? outerIds : innerIds;
+  const activeRadius = step === "outer" ? outerR : innerR;
+  const activeSize = step === "outer" ? 56 : 48;
+  const activeColors = step === "outer" ? RADIAL_COLOR_OUTER : RADIAL_COLOR_INNER;
 
   // Na dotykové obrazovce najíždíme prstem nad různé položky — sleduje se, co je
   // aktuálně pod prstem, a puštěním se potvrdí výběr (jako u kolečka fotoaparátu).
@@ -915,29 +924,27 @@ function RadialMenu({ currentUser, tab, setTab }) {
   const onWheelTouchEnd = (e) => {
     e.preventDefault();
     dragging.current = false;
-    if (hoverId) go(hoverId); else close();
+    if (hoverId) confirm(hoverId); else if (step === "inner") back(); else close();
   };
 
-  const ring = (ids, radius, size, colors, isOuter) => ids.map((id, i) => {
+  const ring = (ids, radius, size, colors) => ids.map((id, i) => {
     const n = NAV_BY_ID[id];
     if (!n) return null;
     const deg = (360 / ids.length) * i - 90;
     const rad = (deg * Math.PI) / 180;
     const x = Math.cos(rad) * radius, y = Math.sin(rad) * radius;
     const dx = Math.cos(rad), dy = Math.sin(rad);
-    const active = id === hoverId || (isOuter && !hoverId && id === tab);
-    const labelDist = radius + size / 2 + (isOuter ? 26 : 20);
+    const active = id === hoverId || (step === "outer" && !hoverId && id === tab);
+    const labelDist = radius + size / 2 + 26;
     const lx = Math.cos(rad) * labelDist, ly = Math.sin(rad) * labelDist;
     return (
       <React.Fragment key={id}>
-        {isOuter && (
-          <div style={{
-            position: "absolute", left: "50%", top: "50%", width: radius, height: 1, background: "#e2e8f0",
-            transformOrigin: "0 0", transform: `rotate(${deg}deg)`,
-          }} />
-        )}
+        <div style={{
+          position: "absolute", left: "50%", top: "50%", width: radius, height: 1, background: "#e2e8f0",
+          transformOrigin: "0 0", transform: `rotate(${deg}deg)`,
+        }} />
         <button title={n.label} aria-label={n.label} data-radial-id={id}
-          onClick={() => go(id)}
+          onClick={() => confirm(id)}
           onMouseEnter={() => setHoverId(id)}
           onMouseLeave={() => setHoverId((h) => (h === id ? null : h))}
           style={{
@@ -946,15 +953,15 @@ function RadialMenu({ currentUser, tab, setTab }) {
             borderRadius: "50%", border: `${active ? 2 : 1}px solid ${active ? colors.borderActive || colors.border : colors.border}`,
             background: active ? (colors.bgActive || colors.bg) : colors.bg, color: colors.text,
             cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: size >= 50 ? 20 : 16, zIndex: 2, touchAction: "none",
+            fontSize: size >= 50 ? 20 : 17, zIndex: 2, touchAction: "none",
           }}>
           <i className={`ti ${n.icon}`} aria-hidden="true"></i>
         </button>
         <div style={{
           position: "absolute", left: `calc(50% + ${lx}px)`, top: `calc(50% + ${ly}px)`,
-          width: "max-content", maxWidth: 96, marginLeft: dx >= 0 ? 0 : -96, marginTop: -10, textAlign: dx >= 0 ? "left" : "right",
-          fontSize: isOuter ? 11 : 10, fontWeight: active ? 700 : 500, color: colors.text, background: colors.bg,
-          border: `1px solid ${colors.border}`, borderRadius: 6, padding: "2px 6px",
+          width: "max-content", maxWidth: 110, marginLeft: dx >= 0 ? 0 : -110, marginTop: -10, textAlign: dx >= 0 ? "left" : "right",
+          fontSize: 12, fontWeight: active ? 700 : 500, color: colors.text, background: colors.bg,
+          border: `1px solid ${colors.border}`, borderRadius: 6, padding: "3px 7px",
           pointerEvents: "none", lineHeight: 1.2, zIndex: 4, whiteSpace: "nowrap",
         }}>{n.label}</div>
       </React.Fragment>
@@ -972,19 +979,26 @@ function RadialMenu({ currentUser, tab, setTab }) {
             onTouchStart={onWheelTouchStart} onTouchMove={onWheelTouchMove} onTouchEnd={onWheelTouchEnd} onTouchCancel={onWheelTouchEnd}
             style={{ position: "relative", width: 480, height: 480, touchAction: "none" }}>
             <div style={{
-              position: "absolute", left: "50%", top: "50%", width: outerR * 2, height: outerR * 2,
-              marginLeft: -outerR, marginTop: -outerR, borderRadius: "50%", border: "1px dashed #cbd5e1",
+              position: "absolute", left: "50%", top: "50%", width: activeRadius * 2, height: activeRadius * 2,
+              marginLeft: -activeRadius, marginTop: -activeRadius, borderRadius: "50%", border: "1px dashed #cbd5e1",
+              transition: "width .18s ease, height .18s ease, margin .18s ease",
             }} />
-            <div style={{
-              position: "absolute", left: "50%", top: "50%", width: innerR * 2, height: innerR * 2,
-              marginLeft: -innerR, marginTop: -innerR, borderRadius: "50%", border: "1px dashed #cbd5e1",
-            }} />
-            {ring(outerIds, outerR, 56, RADIAL_COLOR_OUTER, true)}
-            {ring(innerIds, innerR, 44, RADIAL_COLOR_INNER, false)}
-            <div style={{
+            {ring(activeIds, activeRadius, activeSize, activeColors)}
+            {step === "inner" && (
+              <button title="Zpět na sekce" aria-label="Zpět na sekce" onClick={back}
+                style={{
+                  position: "absolute", left: "50%", top: `calc(50% - ${activeRadius + 60}px)`, marginLeft: -18, marginTop: -18,
+                  width: 36, height: 36, borderRadius: "50%", border: "1px solid #cbd5e1", background: "#fff", color: "#64748b",
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, zIndex: 4,
+                }}>
+                <i className="ti ti-arrow-back-up" aria-hidden="true"></i>
+              </button>
+            )}
+            <div onClick={() => step === "inner" && go(selectedOuter)} style={{
               position: "absolute", left: "50%", top: "50%", width: 104, height: 104, marginLeft: -52, marginTop: -52,
               borderRadius: "50%", background: RADIAL_COLOR_CENTER.bg, border: `1px solid ${RADIAL_COLOR_CENTER.border}`,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, zIndex: 3,
+              cursor: step === "inner" ? "pointer" : "default",
             }}>
               <i className={`ti ${centerNav?.icon || "ti-layout-grid"}`} style={{ fontSize: 24, color: RADIAL_COLOR_CENTER.icon }} aria-hidden="true"></i>
               <span style={{ fontSize: 11, fontWeight: 500, color: RADIAL_COLOR_CENTER.text }}>{centerNav?.label || ""}</span>
