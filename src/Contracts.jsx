@@ -2,6 +2,16 @@ import { isConnected, uploadFileObject, getDirectDownloadUrl } from "./onedrive.
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 
+// Čitelné zobrazení data pro uživatele — den v týdnu, den, měsíc slovem, rok (bez pomlček).
+const DNY_ZKR = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
+const MESICE_2P = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
+const fmtDateCz = (v) => {
+  if (!v) return "";
+  const d = new Date(v.length === 10 ? v + "T00:00:00" : v);
+  if (isNaN(d.getTime())) return v;
+  return `${DNY_ZKR[d.getDay()]} ${d.getDate()}. ${MESICE_2P[d.getMonth()]} ${d.getFullYear()}`;
+};
+
 // Náhled fotky z OneDrive — natáhne čerstvý přímý odkaz přes item_id, se
 // spolehlivým fallbackem na uložený sdílený odkaz (starší fotky bez item_id).
 function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
@@ -86,7 +96,7 @@ function DatePicker({ value, onChange, placeholder = "Vyberte datum", style = {}
           color: value ? "#e2e8f0" : "#475569", fontSize: 13, cursor: "pointer", textAlign: "left",
           display: "flex", alignItems: "center", gap: 8 }}>
         <span>📅</span>
-        <span>{value || placeholder}</span>
+        <span>{value ? fmtDateCz(value) : placeholder}</span>
       </button>
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 9999 }}>
@@ -1069,7 +1079,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                     const rows = sorted.map(r => {
                       const emp = employees.find(e => e.id === (r.employee_id || r.employeeId));
                       const h = calcH(r.checkin, r.checkout);
-                      return "<tr><td>"+r.date+"</td><td>"+(emp?.name||"—")+"</td><td>"+(r.checkin||"—")+"</td><td>"+(r.checkout||"—")+"</td><td><strong>"+fmtH(h)+"</strong></td><td>"+(r.activity||"—")+"</td></tr>";
+                      return "<tr><td>"+fmtDateCz(r.date)+"</td><td>"+(emp?.name||"—")+"</td><td>"+(r.checkin||"—")+"</td><td>"+(r.checkout||"—")+"</td><td><strong>"+fmtH(h)+"</strong></td><td>"+(r.activity||"—")+"</td></tr>";
                     }).join("");
                     const totalRow = "<tr class='total'><td colspan='4'>Celkem</td><td><strong>"+fmtH(totalH)+"</strong></td><td>"+sorted.length+" záznamů</td></tr>";
                     const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Soupis práce — "+contract.name+"</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:12px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}tr:nth-child(even) td{background:#f8fafc}tr.total td{font-weight:bold;background:#e0f2fe;border-top:2px solid #0284c7}@media print{body{padding:16px}}</style></head><body><h1>Soupis práce</h1><h2>"+contract.name+(contract.code?" · "+contract.code:"")+"</h2><table><thead><tr><th>Datum</th><th>Zaměstnanec</th><th>Příchod</th><th>Odchod</th><th>Odprac.</th><th>Činnost</th></tr></thead><tbody>"+rows+totalRow+"</tbody></table><script>window.onload=function(){window.print();<\/script><\/body><\/html>";
@@ -1103,7 +1113,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                               const h = calcH(r.checkin, r.checkout);
                               return (
                                 <tr key={r.id} style={{ borderBottom:"1px solid #e2e8f0" }}>
-                                  <td style={{ padding:"6px 10px", fontSize:13, color:"#94a3b8" }}>{r.date}</td>
+                                  <td style={{ padding:"6px 10px", fontSize:13, color:"#94a3b8" }}>{fmtDateCz(r.date)}</td>
                                   <td style={{ padding:"6px 10px", fontSize:13, color:"#fff", fontWeight:600 }}>{emp?.name||"—"}</td>
                                   <td style={{ padding:"6px 10px", fontSize:13, color:"#34d399" }}>{r.checkin||"—"}</td>
                                   <td style={{ padding:"6px 10px", fontSize:13, color:"#f59e0b" }}>{r.checkout||<span style={{color:"#475569"}}>probíhá</span>}</td>
@@ -1257,7 +1267,7 @@ function CostSection({ label, actual, budget, entries, employees, onUpdateBudget
                 />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 11, color: "#475569" }}>
-                    {e.date} {emp ? `· ${emp.name}` : ""}
+                    {fmtDateCz(e.date)} {emp ? `· ${emp.name}` : ""}
                     {isBilled && <span style={{ marginLeft: 6, background: "#f59e0b22", color: "#f59e0b", borderRadius: 4, padding: "1px 5px", fontSize: 10 }}>Fakturováno</span>}
                     {isApproved && !isBilled && <span style={{ marginLeft: 6, background: "#34d39922", color: "#34d399", borderRadius: 4, padding: "1px 5px", fontSize: 10 }}>✓ Schváleno</span>}
                   </div>
@@ -1386,7 +1396,7 @@ function EmployeesTab({ attendance, employees, contracts, contractId }) {
               const billed = h * currentRate;
               return (
                 <tr key={r.id}>
-                  <td style={S.td}>{r.date}</td>
+                  <td style={S.td}>{fmtDateCz(r.date)}</td>
                   <td style={{ ...S.td, color: "#fff", fontWeight: 600 }}>{emp?.name || "—"}</td>
                   <td style={{ ...S.td, color: "#34d399" }}>{r.checkin || "—"}</td>
                   <td style={{ ...S.td, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#334155" }}>probíhá</span>}</td>
@@ -2479,7 +2489,7 @@ function BillingTab({ contractId, entries, summaries, employees, onMarkBilled, o
                   return (
                     <tr key={e.id} style={{ opacity: isBilled ? 0.6 : 1, background: isApproved && !isBilled ? "#34d39906" : "transparent" }}>
                       <td style={S_td}><input type="checkbox" checked={isApproved} disabled={isBilled} onChange={() => onToggleApproved(e.id, !isApproved)} style={{ accentColor: "#34d399" }} /></td>
-                      <td style={S_td}>{e.date}</td>
+                      <td style={S_td}>{fmtDateCz(e.date)}</td>
                       <td style={{ ...S_td, color: "#cbd5e1" }}>{e.description}</td>
                       <td style={S_td}>{emp?.name || "-"}</td>
                       <td style={S_td}>{e.quantity} {e.unit}</td>

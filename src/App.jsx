@@ -91,7 +91,7 @@ function DatePicker({ value, onChange, placeholder = "Vyberte datum", style = {}
           color: value ? "#e2e8f0" : "#475569", fontSize: 13, cursor: "pointer", textAlign: "left",
           display: "flex", alignItems: "center", gap: 8 }}>
         <span>📅</span>
-        <span>{value || placeholder}</span>
+        <span>{value ? fmtDateCz(value) : placeholder}</span>
       </button>
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 9999 }}>
@@ -127,6 +127,16 @@ const ROLES = {
 const today = new Date();
 const fmt = (d) => d.toISOString().slice(0, 10);
 const pad = (n) => String(n).padStart(2, "0");
+// Čitelné zobrazení data pro uživatele — den v týdnu, den, měsíc slovem, rok (bez pomlček).
+// fmt()/ISO řetězec zůstává beze změny pro ukládání a query, tohle je jen pro DISPLAY.
+const DNY_ZKR = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
+const MESICE_2P = ["ledna", "února", "března", "dubna", "května", "června", "července", "srpna", "září", "října", "listopadu", "prosince"];
+const fmtDateCz = (v) => {
+  if (!v) return "";
+  const d = new Date(v.length === 10 ? v + "T00:00:00" : v);
+  if (isNaN(d.getTime())) return v; // neplatné/textové hodnoty necháme beze změny
+  return `${DNY_ZKR[d.getDay()]} ${d.getDate()}. ${MESICE_2P[d.getMonth()]} ${d.getFullYear()}`;
+};
 const initialAttendance = [
   // Markéta (emp 1)
   { id: 1, employeeId: 1, date: "2026-04-07", checkin: "08:02", checkout: "16:45" },
@@ -1177,7 +1187,7 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
                 <input type="checkbox" checked={false} onChange={() => toggleTask(t.id)} style={{ accentColor: "#2E9BE0", flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, color: "#1A1A1A" }}>{t.title}</div>
-                  {t.due && <div style={{ fontSize: 11, color: "#475569" }}>📅 {t.due}</div>}
+                  {t.due && <div style={{ fontSize: 11, color: "#475569" }}>📅 {fmtDateCz(t.due)}</div>}
                 </div>
                 {t.priority && <span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span>}
               </div>
@@ -1474,7 +1484,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
               <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} style={{ accentColor: "#2E9BE0" }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: "#1A1A1A" }}>{t.title}</div>
-                <div style={{ fontSize: 11, color: "#64748b" }}>{t.due}</div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>{fmtDateCz(t.due)}</div>
               </div>
               <span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span>
             </div>
@@ -2000,7 +2010,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
                     <span style={{ fontWeight: 600, color: "#fff", fontSize: 13 }}>{cust?.name || "—"}</span>
                     <span style={S.tag(c.type === "Email" ? "#2E9BE0" : c.type === "Hovor" ? "#34d399" : "#f59e0b")}>{c.type}</span>
-                    <span style={{ color: "#475569", fontSize: 11, marginLeft: "auto" }}>{c.date}</span>
+                    <span style={{ color: "#475569", fontSize: 11, marginLeft: "auto" }}>{fmtDateCz(c.date)}</span>
                   </div>
                   <div style={{ color: "#475569", fontSize: 13 }}>{c.note}</div>
                 </div>
@@ -2158,7 +2168,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                     {deal && <span style={S.tag("#f59e0b")}>💼 {deal.name}</span>}
                     {!contr && !deal && "—"}
                   </td>
-                  <td style={S.td}>{t.due}</td>
+                  <td style={S.td}>{fmtDateCz(t.due)}</td>
                   <td style={{ ...S.td, color: "#2E9BE0", fontSize: 11 }}>{t.created_by || "—"}</td>
                   <td style={S.td}><span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span></td>
                 </tr>
@@ -2185,7 +2195,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
           <div style={{ ...S.modalBox, width: 560 }}>
             <ModalHeader title={detailTask.title} onClose={() => setDetailTask(null)} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-              <div><div style={S.statLabel}>Termín</div><div style={{ color: "#fff", fontWeight: 600 }}>{detailTask.due || "—"}</div></div>
+              <div><div style={S.statLabel}>Termín</div><div style={{ color: "#fff", fontWeight: 600 }}>{fmtDateCz(detailTask.due) || "—"}</div></div>
               <div><div style={S.statLabel}>Priorita</div><span style={S.tag(PRIO_COLORS[detailTask.priority] || "#64748b")}>{detailTask.priority}</span></div>
               <div><div style={S.statLabel}>Zadal</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.created_by || "—"}</div></div>
               <div><div style={S.statLabel}>Přiřazeno</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.assigned_to || "—"}</div></div>
@@ -2380,8 +2390,8 @@ function Invoices({ invoices, setInvoices, customers, modal, setModal, closeModa
                   <td style={S.td}>{cust?.name || "—"}</td>
                   <td style={{ ...S.td, color: "#fff", fontWeight: 700 }}>{fmtKc(inv.amount)}</td>
                   <td style={S.td}>{fmtKc(inv.tax)}</td>
-                  <td style={S.td}>{inv.issued}</td>
-                  <td style={S.td}>{inv.due}</td>
+                  <td style={S.td}>{fmtDateCz(inv.issued)}</td>
+                  <td style={S.td}>{fmtDateCz(inv.due)}</td>
                   <td style={S.td}><span style={S.tag(INV_COLORS[inv.status])}>{inv.status}</span></td>
                   <td style={S.td}>
                     <select style={{ ...S.select, marginBottom: 0, width: 130, padding: "5px 8px", fontSize: 12 }}
@@ -3450,7 +3460,7 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{p.name}</div>
-                  <div style={{ color: "#475569", fontSize: 12, marginTop: 2 }}>{cust?.name || "—"} · Deadline: {p.deadline}</div>
+                  <div style={{ color: "#475569", fontSize: 12, marginTop: 2 }}>{cust?.name || "—"} · Deadline: {fmtDateCz(p.deadline)}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span style={S.badge(PROJ_COLORS[p.status])}>{p.status}</span>
@@ -3995,7 +4005,7 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
           <tbody>
             {filtered.sort((a, b) => b.date.localeCompare(a.date)).map(c => (
               <tr key={c.id}>
-                <td style={S.td}>{c.date}</td>
+                <td style={S.td}>{fmtDateCz(c.date)}</td>
                 <td style={S.td}><span style={S.tag(CAT_COLORS[c.category] || "#2E9BE0")}>{c.category}</span></td>
                 <td style={{ ...S.td, color: "#1A1A1A" }}>{c.description}</td>
                 <td style={{ ...S.td, color: "#fff", fontWeight: 700 }}>{fmtKc(c.amount)}</td>
@@ -4626,7 +4636,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
             <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 460, maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
                 <span style={{ background: wt.bg, color: wt.color, border: `1px solid ${wt.color}44`, borderRadius: 20, padding: "4px 14px", fontSize: 13, fontWeight: 700 }}>{detailEvent.work_type}</span>
-                <span style={{ fontSize: 14, color: "#64748b" }}>{detailEvent.date}</span>
+                <span style={{ fontSize: 14, color: "#64748b" }}>{fmtDateCz(detailEvent.date)}</span>
               </div>
 
               {detailEvent.title && <div style={{ fontSize: 17, fontWeight: 700, color: "#1A1A1A", marginBottom: 16 }}>{detailEvent.title}</div>}
@@ -4971,7 +4981,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     const rows = recs.map(r => {
       const h = calcEffectiveHours(r.checkin, r.checkout);
       const contract = contractOpts.find(c => c.id === r.contract_id);
-      return "<tr><td>" + r.date + "</td><td>" + (r.checkin||"—") + "</td><td>" + (r.checkout||"—") + "</td><td><strong>" + fmtHours(h) + "</strong></td><td>" + (contract ? contract.name : "—") + "</td><td>" + (r.activity||"—") + "</td></tr>";
+      return "<tr><td>" + fmtDateCz(r.date) + "</td><td>" + (r.checkin||"—") + "</td><td>" + (r.checkout||"—") + "</td><td><strong>" + fmtHours(h) + "</strong></td><td>" + (contract ? contract.name : "—") + "</td><td>" + (r.activity||"—") + "</td></tr>";
     }).join("");
     const totalRow = "<tr class='total'><td colspan='3'>Celkem</td><td><strong>" + fmtHours(totalH) + "</strong></td><td colspan='2'>" + recs.length + " záznamů</td></tr>";
     const monthNames = ["","Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
@@ -5332,7 +5342,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   return (
                     <React.Fragment key={rec.id}>
                       <tr>
-                        <td style={S.td}>{rec.date}</td>
+                        <td style={S.td}>{fmtDateCz(rec.date)}</td>
                         <td style={{ ...S.td, color: "#34d399" }}>{rec.checkin || "—"}</td>
                         <td style={{ ...S.td, color: "#f59e0b" }}>{rec.checkout || <span style={{ color: "#334155" }}>probíhá</span>}</td>
                         <td style={{ ...S.td, fontWeight: 700, color: "#fff" }}>{h > 0 ? fmtHours(h) : "—"}</td>
@@ -5630,7 +5640,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             const emp = employees.find(e => e.id === (r.employeeId || r.employee_id));
             const h = calcHours(r.checkin, r.checkout);
             const contract = contractOpts.find(c => c.id === r.contract_id);
-            return "<tr><td>" + r.date + "</td><td>" + (emp?.name || "—") + "</td><td>" + (r.checkin||"—") + "</td><td>" + (r.checkout||"—") + "</td><td><strong>" + fmtHours(h) + "</strong></td><td>" + (contract?.name||"—") + "</td><td>" + (r.activity||"—") + "</td></tr>";
+            return "<tr><td>" + fmtDateCz(r.date) + "</td><td>" + (emp?.name || "—") + "</td><td>" + (r.checkin||"—") + "</td><td>" + (r.checkout||"—") + "</td><td><strong>" + fmtHours(h) + "</strong></td><td>" + (contract?.name||"—") + "</td><td>" + (r.activity||"—") + "</td></tr>";
           }).join("");
           const totalRow = "<tr class='total'><td colspan='4'>Celkem</td><td><strong>" + fmtHours(totalH) + "</strong></td><td colspan='2'>" + filtered.length + " záznamů</td></tr>";
           const title = empObj ? empObj.name : "Všichni zaměstnanci";
@@ -5675,7 +5685,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                       const contract = contractOpts.find(c => c.id === r.contract_id);
                       return (
                         <tr key={r.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#94a3b8", whiteSpace: "nowrap" }}>{r.date}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#94a3b8", whiteSpace: "nowrap" }}>{fmtDateCz(r.date)}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#fff", fontWeight: 600 }}>{emp?.name || "—"}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#34d399" }}>{r.checkin || "—"}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#475569" }}>probíhá</span>}</td>
@@ -6146,7 +6156,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
             <tbody>
               {logs.map(l => (
                 <tr key={l.id}>
-                  <td style={{ ...S.td, fontWeight: 600, color: "#1A1A1A" }}>{l.date}</td>
+                  <td style={{ ...S.td, fontWeight: 600, color: "#1A1A1A" }}>{fmtDateCz(l.date)}</td>
                   <td style={S.td}>{l.employee_name || "—"}</td>
                   <td style={{ ...S.td, fontWeight: 600 }}>{l.vehicle}</td>
                   <td style={S.td}>
