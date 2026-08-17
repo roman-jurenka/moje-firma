@@ -12,6 +12,18 @@ const fmtDateCz = (v) => {
   return `${DNY_ZKR[d.getDay()]} ${d.getDate()}. ${MESICE_2P[d.getMonth()]} ${d.getFullYear()}`;
 };
 
+// Spočítá celkový počet MD z interního nacenění uložené nabídky (stejná
+// logika jako radekVypocet v Pricing.jsx) — používá se při zakládání
+// projektu ze zakázky, ať se plán MD nemusí přepisovat ručně.
+function mdZeStareInterniho(interni) {
+  if (!interni?.radky?.length) return 0;
+  const hodinNaMd = Number(interni.hodinNaMd) || 8;
+  return interni.radky.reduce((sum, r) => {
+    const hod = (Number(r.casAutoHod) || 0) + (Number(r.casPraceHod) || 0) + (Number(r.casPapiryHod) || 0);
+    return sum + (hodinNaMd ? hod / hodinNaMd : 0);
+  }, 0);
+}
+
 // Náhled fotky z OneDrive — natáhne čerstvý přímý odkaz přes item_id, se
 // spolehlivým fallbackem na uložený sdílený odkaz (starší fotky bez item_id).
 function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
@@ -319,12 +331,15 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const [deliveryNotes, setDeliveryNotes] = useState([]);
   const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
   const [nakCostFilter, setNakCostFilter] = useState({});
+  const [vehicleLog, setVehicleLog] = useState([]);
+  const [dayPlan, setDayPlan] = useState([]);
+  const [projects, setProjects] = useState([]);
 
   // ── Load ──
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [c, e, p, t, att, bs, msgs, globalTasksData, dn, dni] = await Promise.all([
+      const [c, e, p, t, att, bs, msgs, globalTasksData, dn, dni, vl, dp, proj] = await Promise.all([
         supabase.from("contracts").select("*").order("id"),
         supabase.from("contract_cost_entries").select("*").order("date"),
         supabase.from("contract_photos").select("*").order("date"),
@@ -335,6 +350,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         supabase.from("tasks").select("*").order("id"),
         supabase.from("delivery_notes").select("*").order("id"),
         supabase.from("delivery_note_items").select("*").order("id"),
+        supabase.from("vehicle_log").select("*").order("date"),
+        supabase.from("project_day_plan").select("*").order("date"),
+        supabase.from("projects").select("*").order("id"),
       ]);
       setContracts(c.data || []);
       setEntries(e.data || []);
@@ -346,6 +364,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       setGlobalTasks(globalTasksData.data || []);
       setDeliveryNotes(dn.data || []);
       setDeliveryNoteItems(dni.data || []);
+      setVehicleLog(vl.data || []);
+      setDayPlan(dp.data || []);
+      setProjects(proj.data || []);
       setLoading(false);
       // Pokud přicházíme z Dealu — rovnou otevřeme modal pro novou zakázku
       if (initialDeal) setModal({ type: "newContract", deal: initialDeal });
@@ -430,6 +451,38 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     }).select().single();
     if (error) { alert("Chyba při ukládání zakázky: " + error.message); return; }
     if (row) setContracts([...contracts, row]);
+
+    // Pokud zakázka vznikla z obchodního případu, který má napojenou nabídku
+    // z Nacenění, založíme rovnou i Projekt s plánem MD a rozvrhem po dnech.
+    if (row && form.dealId) {
+      try {
+        const { data: quote } = await supabase
+          .from("quotes").select("*").eq("deal_id", form.dealId)
+          .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+        const qd = quote?.data;
+        if (qd && (qd.interni?.radky?.length || qd.denniPlan?.length)) {
+          const plannedMd = mdZeStareInterniho(qd.interni);
+          const { data: proj } = await supabase.from("projects").insert({
+            name: row.name, customer_id: row.customer_id, status: "Plánování",
+            progress: 0, budget: Number(row.price) || 0, spent: 0,
+            deadline: null, assignees: [],
+            contract_id: row.id, planned_md: plannedMd,
+          }).select().single();
+          const dny = (qd.denniPlan || []).filter(p => p.datum).map(p => ({
+            contract_id: row.id, project_id: proj?.id || null,
+            date: p.datum, planned_people: Number(p.pocetLidi) || 1,
+            note: p.poznamka || null,
+          }));
+          if (dny.length) await supabase.from("project_day_plan").insert(dny);
+        }
+      } catch (e) {
+        // Zakázka je hlavní věc a je bezpečně uložená — založení projektu
+        // je jen doplněk, takže případnou chybu nebudeme blokovat alertem,
+        // jen ji necháme v konzoli pro ladění.
+        console.warn("Nepodařilo se založit navazující projekt:", e);
+      }
+    }
+
     closeModal();
   }
 
@@ -735,6 +788,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
           ...globalTasks.filter(t => t.contract_id === contract.id),
         ];
         const contAttendance = attendance.filter(a => (a.contract_id || a.contractId) === contract.id);
+        const contVehicleLog = vehicleLog.filter(v => v.contract_id === contract.id);
+        const contDayPlan = dayPlan.filter(d => d.contract_id === contract.id);
+        const contProject = projects.find(p => p.contract_id === contract.id);
         const sc = STATUS_COLORS[contract.status] || STATUS_COLORS["Nová"];
 
         return (
@@ -812,7 +868,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 {view === "prehled" && (<>
                 {/* TABS */}
                 <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #1a2035", marginBottom: 20 }}>
-                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
+                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
                     <button key={t} onClick={() => setTab(contract.id, t)}
                       style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #6366f1" : "2px solid transparent", color: tab === t ? "#fff" : "#475569", padding: "8px 16px", fontSize: 13, cursor: "pointer", fontWeight: tab === t ? 600 : 400 }}>
                       {label}
@@ -988,6 +1044,11 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 {/* TAB: ZAMĚSTNANCI */}
                 {tab === "zamestnanci" && (
                   <EmployeesTab attendance={contAttendance} employees={employees} contracts={contracts} contractId={contract.id} />
+                )}
+
+                {/* TAB: PLÁN VS. SKUTEČNOST */}
+                {tab === "plan" && (
+                  <PlanTab project={contProject} dayPlan={contDayPlan} attendance={contAttendance} vehicleLog={contVehicleLog} employees={employees} />
                 )}
 
                 {/* TAB: ÚKOLY */}
@@ -1414,6 +1475,88 @@ function EmployeesTab({ attendance, employees, contracts, contractId }) {
                   </td>
                   <td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{h > 0 ? fmtKc(billed) : "—"}</td>
                   <td style={{ ...S.td, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+// ─── TAB: PLÁN VS. SKUTEČNOST ────────────────────────────────────────────────
+// Plán (z Nacenění: planned_md + project_day_plan) vs. skutečnost odvozená
+// automaticky z docházky a knihy jízd navázané na tuto zakázku — bez
+// samostatného ručního deníku, přesně jak bylo zadáno.
+function PlanTab({ project, dayPlan, attendance, vehicleLog, employees }) {
+  const HOD_NA_MD = 8;
+  const calcH = (ci, co) => {
+    if (!ci || !co) return 0;
+    const [h1, m1] = ci.split(":").map(Number);
+    const [h2, m2] = co.split(":").map(Number);
+    return Math.max(0, (h2 * 60 + m2 - (h1 * 60 + m1)) / 60);
+  };
+
+  const skutecneHod = attendance.reduce((s, a) => s + calcH(a.checkin, a.checkout), 0);
+  const skutecneMd = skutecneHod / HOD_NA_MD;
+  const plannedMd = Number(project?.planned_md) || 0;
+  const rozdilMd = skutecneMd - plannedMd;
+
+  const skutecneKm = vehicleLog.reduce((s, v) => s + (Number(v.km_total) || 0), 0);
+
+  // Skutečný počet lidí za den — podle unikátních zaměstnanců v docházce daného dne.
+  const lidePoDnu = {};
+  attendance.forEach(a => {
+    if (!a.date) return;
+    if (!lidePoDnu[a.date]) lidePoDnu[a.date] = new Set();
+    lidePoDnu[a.date].add(a.employeeId || a.employee_id);
+  });
+
+  const vsechnyDny = Array.from(new Set([...dayPlan.map(d => d.date), ...Object.keys(lidePoDnu)])).sort();
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
+        <div style={{ ...S.card, marginBottom: 0, padding: 14 }}>
+          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>Plán MD</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#a78bfa" }}>{plannedMd ? Math.round(plannedMd * 100) / 100 : "—"}</div>
+        </div>
+        <div style={{ ...S.card, marginBottom: 0, padding: 14 }}>
+          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>Skutečnost MD</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff" }}>{Math.round(skutecneMd * 100) / 100}</div>
+        </div>
+        <div style={{ ...S.card, marginBottom: 0, padding: 14 }}>
+          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>Rozdíl</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: rozdilMd <= 0 ? "#34d399" : "#f87171" }}>
+            {rozdilMd > 0 ? "+" : ""}{Math.round(rozdilMd * 100) / 100}
+          </div>
+        </div>
+        <div style={{ ...S.card, marginBottom: 0, padding: 14 }}>
+          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>Najeto km</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff" }}>{skutecneKm}</div>
+        </div>
+      </div>
+
+      {!plannedMd && dayPlan.length === 0 ? (
+        <div style={{ color: "#334155", fontSize: 13 }}>Tato zakázka nemá plán z Nacenění — porovnání se zobrazí u zakázek založených z nabídky s rozvrhem po dnech.</div>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>{["Datum", "Plán (lidí)", "Skutečnost (lidí)", "Poznámka z plánu"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {vsechnyDny.map(date => {
+              const plan = dayPlan.find(d => d.date === date);
+              const skutLide = lidePoDnu[date]?.size || 0;
+              const planLide = plan ? Number(plan.planned_people) || 0 : null;
+              const sedi = planLide == null || planLide === skutLide;
+              return (
+                <tr key={date}>
+                  <td style={S.td}>{fmtDateCz(date)}</td>
+                  <td style={{ ...S.td, color: "#a78bfa", fontWeight: 700 }}>{planLide ?? "—"}</td>
+                  <td style={{ ...S.td, fontWeight: 700, color: sedi ? "#34d399" : "#f59e0b" }}>{skutLide || "—"}</td>
+                  <td style={{ ...S.td, color: "#64748b" }}>{plan?.note || ""}</td>
                 </tr>
               );
             })}

@@ -15,59 +15,138 @@ const S = {
 
 const fmtKc = (n) => (Number(n) || 0).toLocaleString("cs-CZ") + " Kč";
 const uid = () => Date.now() + Math.random();
+const RATE_PER_KM = 6.5; // Kč/km — stejný paušál jako v Knize jízd
 
 const PRAZDNA_NABIDKA = () => ({
-  people: [],
-  vehicles: [],
-  accommodation: [],
-  materials: [],
+  interni: {
+    sazbaMd: 3200,   // Kč / MD (člověko-den) — jednotná sazba pro celou nabídku
+    hodinNaMd: 8,    // kolik hodin práce = 1 MD
+    radky: [],       // [{id, popis, dopravaKm, casAutoHod, casPraceHod, casPapiryHod, materialKc}]
+  },
+  zakaznik: {
+    cilovaCena: "",  // cílová prodejní cena celkem — co uvidí zákazník; prázdné = návrh z interní ceny + marže
+    sekce: [],       // [{id, nazev, castka}] — volné sekce, appka je nijak nepředepisuje
+  },
+  denniPlan: [],     // [{id, datum, pocetLidi, poznamka}] — rozvrh po dnech, přenese se do projektu/zakázky
   notes: "",
 });
 
-// ─── Obecná editovatelná tabulka řádků ─────────────────────────────────────
-function RowsTable({ columns, rows, setRows, addLabel }) {
-  const update = (id, key, value) => setRows(rows.map(r => r.id === id ? { ...r, [key]: value } : r));
-  const remove = (id) => setRows(rows.filter(r => r.id !== id));
-  const add = () => setRows([...rows, { id: uid(), ...Object.fromEntries(columns.map(c => [c.key, c.type === "number" ? "" : ""])) }]);
+// Spočítá MD a cenu jednoho řádku interního nacenění.
+const radekVypocet = (r, sazbaMd, hodinNaMd) => {
+  const hod = (Number(r.casAutoHod) || 0) + (Number(r.casPraceHod) || 0) + (Number(r.casPapiryHod) || 0);
+  const md = hodinNaMd ? hod / Number(hodinNaMd) : 0;
+  const doprava = (Number(r.dopravaKm) || 0) * RATE_PER_KM;
+  const material = Number(r.materialKc) || 0;
+  const laborKc = md * (Number(sazbaMd) || 0);
+  const cena = laborKc + doprava + material;
+  return { hod, md, doprava, material, laborKc, cena };
+};
+
+// ─── Tabulka interního nacenění (MD) ────────────────────────────────────────
+function InterniTabulka({ radky, setRadky, sazbaMd, hodinNaMd }) {
+  const update = (id, key, value) => setRadky(radky.map(r => r.id === id ? { ...r, [key]: value } : r));
+  const remove = (id) => setRadky(radky.filter(r => r.id !== id));
+  const add = () => setRadky([...radky, { id: uid(), popis: "", dopravaKm: "", casAutoHod: "", casPraceHod: "", casPapiryHod: "", materialKc: "" }]);
+
+  const cols = [
+    { key: "popis", label: "Popis (fáze / úkon)", width: "100%", type: "text" },
+    { key: "dopravaKm", label: "Doprava (km)", width: 90, type: "number" },
+    { key: "casAutoHod", label: "Čas v autě (h)", width: 90, type: "number" },
+    { key: "casPraceHod", label: "Práce na zakázce (h)", width: 100, type: "number" },
+    { key: "casPapiryHod", label: "Papíry (h)", width: 80, type: "number" },
+    { key: "materialKc", label: "Materiál (Kč)", width: 100, type: "number" },
+  ];
 
   return (
     <div>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            {columns.map(c => <th key={c.key} style={S.th}>{c.label}</th>)}
-            <th style={S.th}>Náklad</th>
-            <th style={S.th}>K fakturaci</th>
+            {cols.map(c => <th key={c.key} style={S.th}>{c.label}</th>)}
+            <th style={S.th}>MD</th>
+            <th style={S.th}>Cena</th>
             <th style={S.th}></th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => {
+          {radky.map(r => {
+            const v = radekVypocet(r, sazbaMd, hodinNaMd);
             return (
               <tr key={r.id}>
-                {columns.map(c => (
+                {cols.map(c => (
                   <td key={c.key} style={S.td}>
-                    <input
-                      type={c.type || "text"}
-                      style={{ ...S.input, marginBottom: 0, width: c.width || "100%" }}
-                      placeholder={c.placeholder || ""}
-                      value={r[c.key] ?? ""}
-                      onChange={e => update(r.id, c.key, e.target.value)}
-                    />
+                    <input type={c.type} style={{ ...S.input, marginBottom: 0, width: c.width }} value={r[c.key] ?? ""} onChange={e => update(r.id, c.key, e.target.value)} />
                   </td>
                 ))}
-                <td style={{ ...S.td, color: "#f87171", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtKc(columns.costCalc(r))}</td>
-                <td style={{ ...S.td, color: "#34d399", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtKc(columns.sellCalc(r))}</td>
+                <td style={{ ...S.td, color: "#a78bfa", fontWeight: 700, whiteSpace: "nowrap" }}>{Math.round(v.md * 100) / 100}</td>
+                <td style={{ ...S.td, color: "#f87171", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtKc(v.cena)}</td>
                 <td style={S.td}><button onClick={() => remove(r.id)} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11 }}>✕</button></td>
               </tr>
             );
           })}
-          {rows.length === 0 && (
-            <tr><td colSpan={columns.length + 3} style={{ ...S.td, color: "#334155", padding: "12px 8px" }}>Zatím žádné položky.</td></tr>
+          {radky.length === 0 && (
+            <tr><td colSpan={cols.length + 3} style={{ ...S.td, color: "#334155", padding: "12px 8px" }}>Zatím žádné řádky interního nacenění.</td></tr>
           )}
         </tbody>
       </table>
-      <button onClick={add} style={{ ...S.btnGhost, marginTop: 10, padding: "6px 14px", fontSize: 12 }}>+ {addLabel}</button>
+      <button onClick={add} style={{ ...S.btnGhost, marginTop: 10, padding: "6px 14px", fontSize: 12 }}>+ Přidat řádek</button>
+    </div>
+  );
+}
+
+// ─── Tabulka sekcí pro zákazníka ─────────────────────────────────────────────
+function SekceTabulka({ sekce, setSekce }) {
+  const update = (id, key, value) => setSekce(sekce.map(s => s.id === id ? { ...s, [key]: value } : s));
+  const remove = (id) => setSekce(sekce.filter(s => s.id !== id));
+  const add = () => setSekce([...sekce, { id: uid(), nazev: "", castka: "" }]);
+
+  return (
+    <div>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead><tr><th style={S.th}>Název sekce (vlastní)</th><th style={S.th}>Částka (Kč)</th><th style={S.th}></th></tr></thead>
+        <tbody>
+          {sekce.map(s => (
+            <tr key={s.id}>
+              <td style={S.td}><input style={{ ...S.input, marginBottom: 0 }} placeholder="např. Materiál, Montáž, Doprava a revize..." value={s.nazev} onChange={e => update(s.id, "nazev", e.target.value)} /></td>
+              <td style={S.td}><input type="number" style={{ ...S.input, marginBottom: 0, width: 130 }} value={s.castka} onChange={e => update(s.id, "castka", e.target.value)} /></td>
+              <td style={S.td}><button onClick={() => remove(s.id)} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11 }}>✕</button></td>
+            </tr>
+          ))}
+          {sekce.length === 0 && (
+            <tr><td colSpan={3} style={{ ...S.td, color: "#334155", padding: "12px 8px" }}>Zatím žádné sekce — přidej vlastní členění, které dává smysl u téhle zakázky.</td></tr>
+          )}
+        </tbody>
+      </table>
+      <button onClick={add} style={{ ...S.btnGhost, marginTop: 10, padding: "6px 14px", fontSize: 12 }}>+ Přidat sekci</button>
+    </div>
+  );
+}
+
+// ─── Tabulka rozvrhu po dnech ────────────────────────────────────────────────
+function DenniPlanTabulka({ plan, setPlan }) {
+  const update = (id, key, value) => setPlan(plan.map(p => p.id === id ? { ...p, [key]: value } : p));
+  const remove = (id) => setPlan(plan.filter(p => p.id !== id));
+  const add = () => setPlan([...plan, { id: uid(), datum: "", pocetLidi: 1, poznamka: "" }]);
+
+  return (
+    <div>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead><tr><th style={S.th}>Datum</th><th style={S.th}>Počet lidí</th><th style={S.th}>Poznámka</th><th style={S.th}></th></tr></thead>
+        <tbody>
+          {plan.map(p => (
+            <tr key={p.id}>
+              <td style={S.td}><input type="date" style={{ ...S.input, marginBottom: 0, width: 150 }} value={p.datum} onChange={e => update(p.id, "datum", e.target.value)} /></td>
+              <td style={S.td}><input type="number" min={1} style={{ ...S.input, marginBottom: 0, width: 90 }} value={p.pocetLidi} onChange={e => update(p.id, "pocetLidi", e.target.value)} /></td>
+              <td style={S.td}><input style={{ ...S.input, marginBottom: 0 }} value={p.poznamka} onChange={e => update(p.id, "poznamka", e.target.value)} /></td>
+              <td style={S.td}><button onClick={() => remove(p.id)} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11 }}>✕</button></td>
+            </tr>
+          ))}
+          {plan.length === 0 && (
+            <tr><td colSpan={4} style={{ ...S.td, color: "#334155", padding: "12px 8px" }}>Zatím žádné naplánované dny.</td></tr>
+          )}
+        </tbody>
+      </table>
+      <button onClick={add} style={{ ...S.btnGhost, marginTop: 10, padding: "6px 14px", fontSize: 12 }}>+ Přidat den</button>
     </div>
   );
 }
@@ -86,12 +165,22 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     supabase.from("quotes").select("*").order("updated_at", { ascending: false }).then(({ data: d }) => setQuotes(d || []));
   }, []);
 
+  // Stará data (před přechodem na interní/MD model) nemusí mít nové klíče —
+  // doplníme prázdnou kostru, ať appka nespadne na starších nabídkách.
+  const normalize = (d) => ({
+    ...PRAZDNA_NABIDKA(),
+    ...d,
+    interni: { ...PRAZDNA_NABIDKA().interni, ...(d?.interni || {}) },
+    zakaznik: { ...PRAZDNA_NABIDKA().zakaznik, ...(d?.zakaznik || {}) },
+    denniPlan: d?.denniPlan || [],
+  });
+
   const openQuote = (q) => {
     setActiveId(q.id);
     setName(q.name);
     setCustomerId(q.customer_id ? String(q.customer_id) : "");
     setStatus(q.status || "Návrh");
-    setData({ ...PRAZDNA_NABIDKA(), ...(q.data || {}) });
+    setData(normalize(q.data));
   };
 
   const newQuote = () => {
@@ -105,30 +194,25 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const closeQuote = () => { setActiveId(null); setData(null); };
 
   // ── Výpočty ──
-  const peopleCost = (r) => (Number(r.days) || 0) * (Number(r.costPerDay) || 0);
-  const peopleSell = (r) => (Number(r.days) || 0) * (Number(r.sellPerDay) || 0);
-  const vehicleCost = (r) => (Number(r.km) || 0) * (Number(r.costPerKm) || 0);
-  const vehicleSell = (r) => (Number(r.km) || 0) * (Number(r.sellPerKm) || 0);
-  const accomCost = (r) => (Number(r.nights) || 0) * (Number(r.costPerNight) || 0) * (Number(r.people) || 1);
-  const accomSell = (r) => (Number(r.nights) || 0) * (Number(r.sellPerNight) || 0) * (Number(r.people) || 1);
-  const matCost = (r) => (Number(r.quantity) || 0) * (Number(r.costPerUnit) || 0);
-  const matSell = (r) => (Number(r.quantity) || 0) * (Number(r.sellPerUnit) || 0);
+  const sazbaMd = data?.interni?.sazbaMd || 0;
+  const hodinNaMd = data?.interni?.hodinNaMd || 8;
+  const radkyVypoctene = data ? data.interni.radky.map(r => ({ r, v: radekVypocet(r, sazbaMd, hodinNaMd) })) : [];
+  const celkemMd = radkyVypoctene.reduce((s, x) => s + x.v.md, 0);
+  const celkemDoprava = radkyVypoctene.reduce((s, x) => s + x.v.doprava, 0);
+  const celkemMaterial = radkyVypoctene.reduce((s, x) => s + x.v.material, 0);
+  const celkemPrace = radkyVypoctene.reduce((s, x) => s + x.v.laborKc, 0);
+  const celkemNaklad = celkemDoprava + celkemMaterial + celkemPrace;
 
-  const sumOf = (rows, fn) => rows.reduce((s, r) => s + fn(r), 0);
+  const cilovaCenaZadana = data?.zakaznik?.cilovaCena;
+  const cilovaCena = cilovaCenaZadana !== "" && cilovaCenaZadana != null ? Number(cilovaCenaZadana) : Math.round(celkemNaklad * 1.25);
+  const marze = cilovaCena - celkemNaklad;
+  const marzePct = cilovaCena ? Math.round((marze / cilovaCena) * 1000) / 10 : 0;
 
-  const laborCost = data ? sumOf(data.people, peopleCost) : 0;
-  const laborSell = data ? sumOf(data.people, peopleSell) : 0;
-  const travelCost = data ? sumOf(data.vehicles, vehicleCost) : 0;
-  const travelSell = data ? sumOf(data.vehicles, vehicleSell) : 0;
-  const accomTotalCost = data ? sumOf(data.accommodation, accomCost) : 0;
-  const accomTotalSell = data ? sumOf(data.accommodation, accomSell) : 0;
-  const materialCost = data ? sumOf(data.materials, matCost) : 0;
-  const materialSell = data ? sumOf(data.materials, matSell) : 0;
+  const sekceSuma = data ? data.zakaznik.sekce.reduce((s, x) => s + (Number(x.castka) || 0), 0) : 0;
+  const sekceRozdil = cilovaCena - sekceSuma;
 
-  const totalCost = laborCost + travelCost + accomTotalCost + materialCost;
-  const totalSell = laborSell + travelSell + accomTotalSell + materialSell;
-  const margin = totalSell - totalCost;
-  const marginPct = totalSell ? Math.round((margin / totalSell) * 1000) / 10 : 0;
+  const planClovekDni = data ? data.denniPlan.reduce((s, p) => s + (Number(p.pocetLidi) || 0), 0) : 0;
+  const planDniPocet = data ? data.denniPlan.length : 0;
 
   const save = async () => {
     if (!name.trim()) { alert("Zadejte název nabídky."); return; }
@@ -162,7 +246,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     if (!onConvertToDeal) return;
     const cust = customers.find(c => c.id === Number(customerId));
     const { data: dealRow } = await supabase.from("deals").insert({
-      name, value: Math.round(totalSell), stage: "Nový",
+      name, value: Math.round(cilovaCena), stage: "Nový",
       customer_id: customerId ? Number(customerId) : null,
       assigned_to: currentUser?.name || "",
     }).select().single();
@@ -173,24 +257,38 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     }
   };
 
+  // Nabídka pro zákazníka — jen sekce a celková cena, žádný vnitřní rozpis.
   const printQuote = () => {
     const cust = customers.find(c => c.id === Number(customerId));
-    const rowsHtml = (title, rows, costFn, sellFn, cols) => rows.length === 0 ? "" : `
-      <h3>${title}</h3>
-      <table><thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}<th>Cena</th></tr></thead><tbody>
-      ${rows.map(r => `<tr>${cols.map(c => `<td>${r[c.key] ?? ""}</td>`).join("")}<td>${fmtKc(sellFn(r))}</td></tr>`).join("")}
+    const sekceHtml = data.zakaznik.sekce.length === 0 ? "" : `
+      <table><thead><tr><th>Položka</th><th>Cena</th></tr></thead><tbody>
+      ${data.zakaznik.sekce.map(s => `<tr><td>${s.nazev || "—"}</td><td>${fmtKc(s.castka)}</td></tr>`).join("")}
       </tbody></table>`;
     const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Nabídka – " + name + "</title>" +
-      "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}h3{font-size:14px;margin:18px 0 6px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#0E3B5E;color:#fff;padding:6px 10px;text-align:left;font-size:12px}td{padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:12px}.total{font-size:18px;font-weight:bold;margin-top:16px;text-align:right}@media print{body{padding:16px}}</style>" +
+      "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.total{font-size:20px;font-weight:bold;margin-top:18px;text-align:right}@media print{body{padding:16px}}</style>" +
       "</head><body>" +
       "<h1>Nabídka – " + name + "</h1>" +
       "<h2>" + (cust ? cust.name : "") + " · " + new Date().toLocaleDateString("cs-CZ") + "</h2>" +
-      rowsHtml("Práce", data.people, peopleCost, peopleSell, [{ key: "name", label: "Osoba" }, { key: "days", label: "Počet dní" }]) +
-      rowsHtml("Doprava", data.vehicles, vehicleCost, vehicleSell, [{ key: "name", label: "Vozidlo / jízda" }, { key: "km", label: "Km" }]) +
-      rowsHtml("Ubytování", data.accommodation, accomCost, accomSell, [{ key: "name", label: "Místo" }, { key: "nights", label: "Nocí" }, { key: "people", label: "Osob" }]) +
-      rowsHtml("Materiál", data.materials, matCost, matSell, [{ key: "name", label: "Položka" }, { key: "quantity", label: "Množství" }, { key: "unit", label: "Jednotka" }]) +
-      "<div class='total'>Celkem k fakturaci: " + fmtKc(totalSell) + "</div>" +
+      sekceHtml +
+      "<div class='total'>Celková cena: " + fmtKc(cilovaCena) + "</div>" +
       (data.notes ? "<p style='margin-top:20px;white-space:pre-wrap;font-size:13px'>" + data.notes + "</p>" : "") +
+      "<script>window.onload=function(){window.print();}</script></body></html>";
+    const w = window.open("", "_blank");
+    w.document.write(html);
+    w.document.close();
+  };
+
+  // Interní přehled — MD rozpis, jen pro vlastní potřebu firmy (necháváme si to interně).
+  const printInterni = () => {
+    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Interní nacenění – " + name + "</title>" +
+      "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#334155;color:#fff;padding:6px 8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:12px}.total{font-size:16px;font-weight:bold;margin-top:16px;text-align:right}@media print{body{padding:16px}}</style>" +
+      "</head><body>" +
+      "<h1>Interní nacenění – " + name + "</h1>" +
+      "<h2>Sazba: " + fmtKc(sazbaMd) + " / MD · " + hodinNaMd + " h = 1 MD</h2>" +
+      "<table><thead><tr><th>Popis</th><th>Doprava km</th><th>Auto h</th><th>Práce h</th><th>Papíry h</th><th>Materiál</th><th>MD</th><th>Cena</th></tr></thead><tbody>" +
+      radkyVypoctene.map(({ r, v }) => `<tr><td>${r.popis || "—"}</td><td>${r.dopravaKm || 0}</td><td>${r.casAutoHod || 0}</td><td>${r.casPraceHod || 0}</td><td>${r.casPapiryHod || 0}</td><td>${fmtKc(r.materialKc)}</td><td>${Math.round(v.md * 100) / 100}</td><td>${fmtKc(v.cena)}</td></tr>`).join("") +
+      "</tbody></table>" +
+      "<div class='total'>Celkem MD: " + (Math.round(celkemMd * 100) / 100) + " · Celkem interní náklad: " + fmtKc(celkemNaklad) + " · Cílová cena: " + fmtKc(cilovaCena) + " · Marže: " + fmtKc(marze) + " (" + marzePct + " %)</div>" +
       "<script>window.onload=function(){window.print();}</script></body></html>";
     const w = window.open("", "_blank");
     w.document.write(html);
@@ -207,7 +305,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", margin: 0 }}>💰 Nacenění</h1>
           <button style={S.btn()} onClick={newQuote}>+ Nová nabídka</button>
         </div>
-        <p style={{ color: "#64748b", fontSize: 13, marginBottom: 18 }}>Sestav nabídku po dnech (lidé, doprava, ubytování, materiál) a následně ji překlop na obchodní případ.</p>
+        <p style={{ color: "#64748b", fontSize: 13, marginBottom: 18 }}>Interní nacenění po MD (člověko-dnech) + rozvrh po dnech + volné sekce pro zákazníka. Následně překlop na obchodní případ.</p>
         <input style={{ ...S.input, marginBottom: 16, maxWidth: 340 }} placeholder="Hledat nabídku..." value={search} onChange={e => setSearch(e.target.value)} />
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {filtered.length === 0 && <div style={{ color: "#334155", fontSize: 13 }}>Zatím žádné nabídky.</div>}
@@ -251,78 +349,59 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         </div>
       </div>
 
+      {/* INTERNÍ NACENĚNÍ — po MD */}
       <div style={S.card}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 10 }}>👷 Lidé — cena za den</div>
-        <RowsTable
-          addLabel="Přidat osobu"
-          rows={data.people}
-          setRows={rows => setData({ ...data, people: rows })}
-          columns={Object.assign(
-            [
-              { key: "name", label: "Osoba", width: "100%" },
-              { key: "days", label: "Počet dní", type: "number", width: 80 },
-              { key: "costPerDay", label: "Cena/den náklad", type: "number", width: 110 },
-              { key: "sellPerDay", label: "Cena/den klient", type: "number", width: 110 },
-            ],
-            { costCalc: peopleCost, sellCalc: peopleSell }
-          )}
+        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4 }}>🧮 Interní nacenění — po MD (člověko-dnech)</div>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Rozpis podle TZ: doprava, čas v autě, odpracovaný čas, čas v papírech a zvlášť materiál. Jen pro vnitřní potřebu — zákazník tohle nevidí.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14, maxWidth: 400 }}>
+          <div><label style={S.label}>Sazba (Kč / MD)</label><input type="number" style={S.input} value={data.interni.sazbaMd} onChange={e => setData({ ...data, interni: { ...data.interni, sazbaMd: e.target.value } })} /></div>
+          <div><label style={S.label}>Hodin = 1 MD</label><input type="number" style={S.input} value={data.interni.hodinNaMd} onChange={e => setData({ ...data, interni: { ...data.interni, hodinNaMd: e.target.value } })} /></div>
+        </div>
+        <InterniTabulka
+          radky={data.interni.radky}
+          setRadky={radky => setData({ ...data, interni: { ...data.interni, radky } })}
+          sazbaMd={sazbaMd}
+          hodinNaMd={hodinNaMd}
         />
+        <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13 }}>
+          <div><span style={{ color: "#64748b" }}>Celkem MD: </span><b style={{ color: "#a78bfa" }}>{Math.round(celkemMd * 100) / 100}</b></div>
+          <div><span style={{ color: "#64748b" }}>Doprava: </span><b>{fmtKc(celkemDoprava)}</b></div>
+          <div><span style={{ color: "#64748b" }}>Práce: </span><b>{fmtKc(celkemPrace)}</b></div>
+          <div><span style={{ color: "#64748b" }}>Materiál: </span><b>{fmtKc(celkemMaterial)}</b></div>
+          <div><span style={{ color: "#64748b" }}>Celkem interní náklad: </span><b style={{ color: "#f87171" }}>{fmtKc(celkemNaklad)}</b></div>
+        </div>
       </div>
 
+      {/* ROZVRH PO DNECH */}
       <div style={S.card}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 10 }}>🚗 Doprava — km na vozidlo/jízdu <span style={{ color: "#64748b", fontWeight: 400, fontSize: 12 }}>(pokud jede víc lidí jedním autem, stačí jeden řádek)</span></div>
-        <RowsTable
-          addLabel="Přidat jízdu"
-          rows={data.vehicles}
-          setRows={rows => setData({ ...data, vehicles: rows })}
-          columns={Object.assign(
-            [
-              { key: "name", label: "Vozidlo / jízda", width: "100%" },
-              { key: "km", label: "Km", type: "number", width: 80 },
-              { key: "costPerKm", label: "Kč/km náklad", type: "number", width: 100 },
-              { key: "sellPerKm", label: "Kč/km klient", type: "number", width: 100 },
-            ],
-            { costCalc: vehicleCost, sellCalc: vehicleSell }
+        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4 }}>📅 Rozvrh po dnech</div>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Kolik lidí je potřeba který den — přenese se do projektu a zakázky jako plán, proti kterému appka srovná skutečnou docházku.</div>
+        <DenniPlanTabulka plan={data.denniPlan} setPlan={plan => setData({ ...data, denniPlan: plan })} />
+        <div style={{ marginTop: 12, fontSize: 13 }}>
+          <span style={{ color: "#64748b" }}>Naplánováno: </span><b>{planDniPocet} dní, {planClovekDni} člověko-dní celkem</b>
+          {celkemMd > 0 && (
+            <span style={{ marginLeft: 10, color: Math.abs(planClovekDni - celkemMd) < 0.5 ? "#34d399" : "#f59e0b" }}>
+              {Math.abs(planClovekDni - celkemMd) < 0.5 ? "✓ odpovídá nacenění" : `⚠️ nacenění počítá s ${Math.round(celkemMd * 100) / 100} MD — rozvrh ${Math.abs(planClovekDni - celkemMd) > 0 ? (planClovekDni > celkemMd ? "přesahuje" : "nepokrývá") : "sedí"} o ${Math.round(Math.abs(planClovekDni - celkemMd) * 100) / 100}`}
+            </span>
           )}
-        />
+        </div>
       </div>
 
+      {/* NABÍDKA PRO ZÁKAZNÍKA — po sekcích */}
       <div style={S.card}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 10 }}>🏨 Ubytování</div>
-        <RowsTable
-          addLabel="Přidat ubytování"
-          rows={data.accommodation}
-          setRows={rows => setData({ ...data, accommodation: rows })}
-          columns={Object.assign(
-            [
-              { key: "name", label: "Místo", width: "100%" },
-              { key: "nights", label: "Nocí", type: "number", width: 70 },
-              { key: "people", label: "Osob", type: "number", width: 70 },
-              { key: "costPerNight", label: "Cena/noc náklad", type: "number", width: 110 },
-              { key: "sellPerNight", label: "Cena/noc klient", type: "number", width: 110 },
-            ],
-            { costCalc: accomCost, sellCalc: accomSell }
-          )}
-        />
-      </div>
-
-      <div style={S.card}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 10 }}>📦 Materiál</div>
-        <RowsTable
-          addLabel="Přidat materiál"
-          rows={data.materials}
-          setRows={rows => setData({ ...data, materials: rows })}
-          columns={Object.assign(
-            [
-              { key: "name", label: "Položka", width: "100%" },
-              { key: "quantity", label: "Množství", type: "number", width: 80 },
-              { key: "unit", label: "Jednotka", width: 70 },
-              { key: "costPerUnit", label: "Cena/j náklad", type: "number", width: 100 },
-              { key: "sellPerUnit", label: "Cena/j klient", type: "number", width: 100 },
-            ],
-            { costCalc: matCost, sellCalc: matSell }
-          )}
-        />
+        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4 }}>📋 Nabídka pro zákazníka — po sekcích</div>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>To, co uvidí zákazník: vlastní pojmenované sekce a jejich cena, bez vnitřního rozpisu hodin a nákladů.</div>
+        <div style={{ maxWidth: 260, marginBottom: 14 }}>
+          <label style={S.label}>Cílová prodejní cena celkem (Kč) <span style={{ textTransform: "none" }}>— prázdné = návrh {fmtKc(Math.round(celkemNaklad * 1.25))}</span></label>
+          <input type="number" style={S.input} placeholder={String(Math.round(celkemNaklad * 1.25))} value={data.zakaznik.cilovaCena} onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: e.target.value } })} />
+        </div>
+        <SekceTabulka sekce={data.zakaznik.sekce} setSekce={sekce => setData({ ...data, zakaznik: { ...data.zakaznik, sekce } })} />
+        <div style={{ marginTop: 12, fontSize: 13 }}>
+          <span style={{ color: "#64748b" }}>Součet sekcí: </span><b>{fmtKc(sekceSuma)}</b>
+          <span style={{ marginLeft: 10, color: Math.abs(sekceRozdil) < 1 ? "#34d399" : "#f59e0b" }}>
+            {Math.abs(sekceRozdil) < 1 ? "✓ sedí na cílovou cenu" : `⚠️ nerozděleno: ${fmtKc(sekceRozdil)}`}
+          </span>
+        </div>
       </div>
 
       <div style={S.card}>
@@ -332,14 +411,15 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
 
       <div style={{ ...S.card, background: "#0a0d14" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
-          <div><div style={S.label}>Celkem náklad</div><div style={{ fontSize: 20, fontWeight: 800, color: "#f87171" }}>{fmtKc(totalCost)}</div></div>
-          <div><div style={S.label}>Celkem k fakturaci</div><div style={{ fontSize: 20, fontWeight: 800, color: "#34d399" }}>{fmtKc(totalSell)}</div></div>
-          <div><div style={S.label}>Marže</div><div style={{ fontSize: 20, fontWeight: 800, color: margin >= 0 ? "#34d399" : "#f87171" }}>{fmtKc(margin)}</div></div>
-          <div><div style={S.label}>Marže %</div><div style={{ fontSize: 20, fontWeight: 800, color: margin >= 0 ? "#34d399" : "#f87171" }}>{marginPct} %</div></div>
+          <div><div style={S.label}>Celkem interní náklad</div><div style={{ fontSize: 20, fontWeight: 800, color: "#f87171" }}>{fmtKc(celkemNaklad)}</div></div>
+          <div><div style={S.label}>Cílová cena</div><div style={{ fontSize: 20, fontWeight: 800, color: "#34d399" }}>{fmtKc(cilovaCena)}</div></div>
+          <div><div style={S.label}>Marže</div><div style={{ fontSize: 20, fontWeight: 800, color: marze >= 0 ? "#34d399" : "#f87171" }}>{fmtKc(marze)}</div></div>
+          <div><div style={S.label}>Marže %</div><div style={{ fontSize: 20, fontWeight: 800, color: marze >= 0 ? "#34d399" : "#f87171" }}>{marzePct} %</div></div>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button style={S.btn("#34d399")} onClick={save} disabled={saving}>{saving ? "Ukládám…" : "💾 Uložit nabídku"}</button>
-          <button style={S.btnGhost} onClick={printQuote}>🖨️ Vygenerovat nabídku</button>
+          <button style={S.btnGhost} onClick={printQuote}>🖨️ Nabídka pro zákazníka</button>
+          <button style={S.btnGhost} onClick={printInterni}>📊 Interní přehled (MD)</button>
           {activeId && <button style={S.btn("#F5C518")} onClick={convertToDeal}>➡️ Převést na obchodní případ</button>}
         </div>
       </div>
