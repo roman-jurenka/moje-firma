@@ -3,6 +3,8 @@ import { supabase } from "./supabase.js";
 import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected, getDirectDownloadUrl } from "./onedrive.js";
 
 const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#2E9BE0" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
+// Formátování peněžních částek jednotně s tisícovými oddělovači, jako všude jinde v appce.
+const fmtKc = (v) => { const n = Number(v); return (!v || isNaN(n)) ? "—" : n.toLocaleString("cs-CZ") + " Kč"; };
 export const FOTO_KATEGORIE = ["Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"];
 const SEKCE = [
   { id: "zakaznik",  icon: "👤", label: "Zákazník",         barva: "#6366f1" },
@@ -146,6 +148,12 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const [docUploading, setDocUploading] = useState(null);  // klíč dokumentu, který se právě nahrává
   const [nakladySyncing, setNakladySyncing] = useState(false);
   const [contractPhotos, setContractPhotos] = useState([]); // fotky nahrané přímo u zakázky (záložka Zakázky)
+  const [savedSnapshot, setSavedSnapshot] = useState(null); // poslední uložený stav — pro varování při odchodu s neuloženými změnami
+  const [linkedCustomer, setLinkedCustomer] = useState(null); // zákazník napojený na zakázku (z modulu Zákazníci)
+
+  const isDirty = () => data && savedSnapshot !== null && JSON.stringify(data) !== savedSnapshot;
+  const confirmLeave = () => !isDirty() || confirm("V zakázkovém listu máš neuložené změny. Opravdu odejít bez uložení?");
+  const goBack = () => { if (!confirmLeave()) return; setData(null); setActiveCId(null); setSavedSnapshot(null); setLinkedCustomer(null); };
 
   // Fotky uložené u zakázky (contract_photos) se mají zobrazit i v zakázkovém listu
   useEffect(() => {
@@ -168,29 +176,63 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     }
   }, [initialContractId, sheets]);
 
+  // Najde zákazníka napojeného na zakázku (přes contracts.customer_id) a u nové,
+  // ještě neuložené karty jím předvyplní prázdná pole v sekci Zákazník — omezuje
+  // riziko, že se jméno/telefon rozejdou mezi CRM a zakázkovým listem.
+  const loadLinkedCustomer = async (contractId, isNewSheet) => {
+    const { data: contract } = await supabase.from("contracts").select("customer_id").eq("id", contractId).single();
+    const cust = contract?.customer_id ? (customers || []).find(c => c.id === contract.customer_id) : null;
+    setLinkedCustomer(cust || null);
+    if (cust && isNewSheet) {
+      setData(d => {
+        if (!d) return d;
+        const next = { ...d, zakaznik: {
+          ...d.zakaznik,
+          jmeno: d.zakaznik.jmeno || cust.name || "",
+          adresa: d.zakaznik.adresa || cust.address || "",
+          telefon: d.zakaznik.telefon || cust.phone || "",
+          email: d.zakaznik.email || cust.email || "",
+        } };
+        setSavedSnapshot(JSON.stringify(next)); // předvyplnění se nepočítá jako neuložená změna
+        return next;
+      });
+    }
+  };
+
   const openSheet = async (contractId, contractName) => {
     const existing = sheets.find(s => s.project_id === contractId);
     if (existing) {
       setData(existing.data);
       setSheetId(existing.id);
+      setSavedSnapshot(JSON.stringify(existing.data));
     } else {
       const d = { ...PRAZDNA_DATA, _nazev: contractName || "" };
       setData(d);
       setSheetId(null);
+      setSavedSnapshot(JSON.stringify(d));
     }
     setActiveCId(contractId);
+    loadLinkedCustomer(contractId, !existing);
   };
 
   const save = async () => {
-    if (!activeCId || !data) return;
+    if (!activeCId || !data || saving) return; // blokace proti dvojkliku (dvojitý insert při prvním uložení)
     setSaving(true);
-    if (sheetId) {
-      await supabase.from("project_sheets").update({ data, updated_at: new Date().toISOString() }).eq("id", sheetId);
-    } else {
-      const { data: row } = await supabase.from("project_sheets").insert({ project_id: activeCId, data }).select().single();
-      if (row) { setSheetId(row.id); setSheets(s => [row, ...s]); }
+    try {
+      if (sheetId) {
+        const { error } = await supabase.from("project_sheets").update({ data, updated_at: new Date().toISOString() }).eq("id", sheetId);
+        if (error) throw error;
+      } else {
+        const { data: row, error } = await supabase.from("project_sheets").insert({ project_id: activeCId, data }).select().single();
+        if (error) throw error;
+        if (row) { setSheetId(row.id); setSheets(s => [row, ...s]); }
+      }
+      setSavedSnapshot(JSON.stringify(data));
+    } catch (e) {
+      alert("Uložení zakázkového listu selhalo: " + e.message);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const upd = (sekce, key, val) => setData(d => ({ ...d, [sekce]: { ...d[sekce], [key]: val } }));
@@ -330,7 +372,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {filteredSheets.length === 0 && <div style={{color:"#334155",fontSize:13}}>Žádné listy. Otevři zakázku a klikni na 📋.</div>}
           {filteredSheets.map(s=>(
-            <div key={s.id} onClick={()=>{setData(s.data);setSheetId(s.id);setActiveCId(s.project_id);}}
+            <div key={s.id} onClick={()=>{setData(s.data);setSheetId(s.id);setActiveCId(s.project_id);setSavedSnapshot(JSON.stringify(s.data));loadLinkedCustomer(s.project_id,false);}}
               style={{background:"#0f1117",borderRadius:12,padding:"14px 18px",border:"1px solid #1a2035",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
               <span style={{fontSize:22}}>📋</span>
               <div>
@@ -355,7 +397,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     <div style={S.app}>
       {/* Top bar */}
       <div style={S.topBar}>
-        <button onClick={()=>{setData(null);setActiveCId(null);}} style={{...S.btn("#1a2035"),color:"#94a3b8",padding:"6px 12px"}}>← Zpět</button>
+        <button onClick={goBack} style={{...S.btn("#1a2035"),color:"#94a3b8",padding:"6px 12px"}}>← Zpět</button>
         <div>
           <div style={{fontWeight:800,fontSize:15,color:"#fff"}}>{data._nazev||"Nová zakázka"}</div>
           <div style={{fontSize:11,color:"#475569"}}>Zakázkový list</div>
@@ -367,7 +409,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
               {s.icon} {s.label}
             </div>
           ))}
-          <button onClick={save} style={{...S.btn(saving?"#334155":"#16a34a"),padding:"7px 18px",flexShrink:0}}>
+          <button onClick={save} disabled={saving} style={{...S.btn(saving?"#334155":"#16a34a"),padding:"7px 18px",flexShrink:0,cursor:saving?"default":"pointer",opacity:saving?0.7:1}}>
             {saving?"⏳ Ukládám...":"💾 Uložit"}
           </button>
         </div>
@@ -380,6 +422,15 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         <div id="s-zakaznik" style={S.card(true,"#6366f1")}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="zakaznik")} stav={st.zakaznik||"Čeká"} onStav={v=>updStav("zakaznik",v)}/>
           <div style={S.body}>
+            {linkedCustomer ? (
+              <div style={{background:"#6366f118",border:"1px solid #6366f144",borderRadius:7,padding:"6px 10px",marginBottom:10,fontSize:11,color:"#a5b4fc"}}>
+                🔗 Napojeno na zákazníka v CRM: <b>{linkedCustomer.name}</b>. Pole níže jsou samostatná kopie (kvůli historii) — při změně kontaktu uprav i záznam v modulu Zákazníci.
+              </div>
+            ) : (
+              <div style={{background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:7,padding:"6px 10px",marginBottom:10,fontSize:11,color:"#fbbf24"}}>
+                ⚠️ Tato zakázka nemá napojeného zákazníka v CRM (nebo mu chybí customer_id). Pole níže jsou čistě volný text.
+              </div>
+            )}
             <EF label="Jméno a příjmení"  value={data.zakaznik.jmeno}          onChange={v=>upd("zakaznik","jmeno",v)}/>
             <EF label="Adresa"             value={data.zakaznik.adresa}         onChange={v=>upd("zakaznik","adresa",v)}/>
             <EF label="Telefon"            value={data.zakaznik.telefon}        onChange={v=>upd("zakaznik","telefon",v)}/>
@@ -404,9 +455,10 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             <EF label="Datum nabídky"       value={data.nabidka.datumNabidky}    onChange={v=>upd("nabidka","datumNabidky",v)}/>
             <EF label="Platnost do"         value={data.nabidka.platnostDo}      onChange={v=>upd("nabidka","platnostDo",v)}/>
             <div style={S.div}/>
-            <EF label="Cena s DPH (Kč)"    value={data.nabidka.cenaSDph}        onChange={v=>upd("nabidka","cenaSDph",v)}/>
+            <EF label="Cena s DPH (Kč) — jen orientační z nabídky" value={data.nabidka.cenaSDph}        onChange={v=>upd("nabidka","cenaSDph",v)}/>
             <EF label="Dotace NMP (Kč)"    value={data.nabidka.dotace}          onChange={v=>upd("nabidka","dotace",v)}/>
             <EF label="Cena po dotaci (Kč)" value={data.nabidka.cenaPoOdecteni} onChange={v=>upd("nabidka","cenaPoOdecteni",v)}/>
+            <div style={{fontSize:10,color:"#475569",marginTop:-4,marginBottom:10}}>Platná cena zakázky (bez DPH) je v sekci Ekonomika → „Prodejní cena – skutečnost".</div>
             <div style={S.div}/>
             <EF label="Poznámka"            value={data.nabidka.poznamka}        onChange={v=>upd("nabidka","poznamka",v)} multi/>
           </div>
@@ -727,11 +779,11 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                 <th style={{textAlign:"right",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#10b981",textTransform:"uppercase",borderBottom:"1px solid #1a2035"}}>Skutečnost</th>
               </tr></thead>
               <tbody>
-                {[["Materiál","planMaterialNaklad","skutMaterialNaklad"],["Práce","planPraceNaklad","skutPraceNaklad"],["Doprava","planDopravaNaklad","skutDopravaNaklad"],["Celkem náklad","planCelkemNaklad","skutCelkemNaklad"],["Prodejní cena","planProdejBezDph","skutProdejBezDph"]].map(([l,pk,sk])=>(
+                {[["Materiál","planMaterialNaklad","skutMaterialNaklad"],["Práce","planPraceNaklad","skutPraceNaklad"],["Doprava","planDopravaNaklad","skutDopravaNaklad"],["Celkem náklad","planCelkemNaklad","skutCelkemNaklad"],["Prodejní cena (bez DPH)","planProdejBezDph","skutProdejBezDph"]].map(([l,pk,sk])=>(
                   <tr key={l} style={{borderBottom:"1px solid #1a2035"}}>
                     <td style={{padding:"6px 8px",fontSize:12,color:"#94a3b8"}}>{l}</td>
-                    <td style={{padding:"6px 8px",fontSize:12,color:"#2E9BE0",textAlign:"right"}}>{data.bilance[pk]||"—"}</td>
-                    <td style={{padding:"6px 8px",fontSize:12,color:"#10b981",textAlign:"right"}}>{data.bilance[sk]||"—"}</td>
+                    <td style={{padding:"6px 8px",fontSize:12,color:"#2E9BE0",textAlign:"right"}}>{fmtKc(data.bilance[pk])}</td>
+                    <td style={{padding:"6px 8px",fontSize:12,color:"#10b981",textAlign:"right"}}>{fmtKc(data.bilance[sk])}</td>
                   </tr>
                 ))}
               </tbody>
@@ -740,13 +792,13 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
               <div style={{flex:1,textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#475569",marginBottom:3}}>PLÁN</div>
                 <div style={{fontSize:18,fontWeight:800,color:"#2E9BE0"}}>{data.bilance.planMarzePct||"—"} %</div>
-                <div style={{fontSize:11,color:"#475569"}}>{data.bilance.planMarzeKc||"—"} Kč</div>
+                <div style={{fontSize:11,color:"#475569"}}>{fmtKc(data.bilance.planMarzeKc)}</div>
               </div>
               <div style={{width:1,background:"#1a2035"}}/>
               <div style={{flex:1,textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#475569",marginBottom:3}}>SKUTEČNOST</div>
                 <div style={{fontSize:18,fontWeight:800,color:"#10b981"}}>{data.bilance.skutMarzePct||"—"} %</div>
-                <div style={{fontSize:11,color:"#475569"}}>{data.bilance.skutMarzeKc||"—"} Kč</div>
+                <div style={{fontSize:11,color:"#475569"}}>{fmtKc(data.bilance.skutMarzeKc)}</div>
               </div>
             </div>
             <div style={S.div}/>
@@ -754,6 +806,10 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
               {nakladySyncing?"⏳ Načítám...":"🔄 Načíst plán ze Zakázky a skutečnost z Nákladů"}
             </button>
             <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8}}>Zadat skutečné náklady</div>
+            <div style={{background:"#10b98118",border:"1px solid #10b98144",borderRadius:7,padding:"6px 10px",marginBottom:10,fontSize:11,color:"#6ee7b7"}}>
+              Toto je platná (autoritativní) prodejní cena zakázky — dokud tu není vyplněná, počítá se marže jen orientačně z plánované ceny na zakázce.
+            </div>
+            <EF label="Prodejní cena – skutečnost (Kč, bez DPH)" value={data.bilance.skutProdejBezDph} onChange={v=>upd("bilance","skutProdejBezDph",v)}/>
             <EF label="Materiál skutečný (Kč)"  value={data.bilance.skutMaterialNaklad} onChange={v=>upd("bilance","skutMaterialNaklad",v)}/>
             <EF label="Práce skutečná (Kč)"     value={data.bilance.skutPraceNaklad}    onChange={v=>upd("bilance","skutPraceNaklad",v)}/>
             <EF label="Doprava skutečná (Kč)"   value={data.bilance.skutDopravaNaklad}  onChange={v=>upd("bilance","skutDopravaNaklad",v)}/>
@@ -879,7 +935,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     <input style={{...S.inp,padding:"5px 8px",fontSize:12,flex:1}} placeholder="Datum..." value={d2.datum} onChange={e=>updD("datum",e.target.value)}/>
-                    {doc.gen&&<button style={{...S.btn(),padding:"5px 10px",fontSize:11,flexShrink:0}}>⬇️ Gen.</button>}
+                    {doc.gen&&<button disabled title="Automatické generování dokumentu zatím není v appce hotové — použij zatím nahrání hotového souboru níže." style={{...S.btn("#334155"),padding:"5px 10px",fontSize:11,flexShrink:0,cursor:"not-allowed",opacity:0.6}}>⬇️ Gen. (brzy)</button>}
                   </div>
                   {!doc.gen&&<input style={{...S.inp,marginTop:6,padding:"5px 8px",fontSize:11,color:"#475569"}} placeholder="Poznámka..." value={d2.poznamka} onChange={e=>updD("poznamka",e.target.value)}/>}
                   <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid #1a2035"}}>
