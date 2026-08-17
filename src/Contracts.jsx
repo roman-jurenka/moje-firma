@@ -302,7 +302,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const [detailView, setDetailView] = useState({});     // {contractId: "prehled"|"popis"}
   const [modal, setModal] = useState(null);
   const [searchQ, setSearchQ] = useState("");
-  const [filterStatus, setFilterStatus] = useState("vše");
+  // Výchozí pohled skryje dokončené/fakturované zakázky, ať se v seznamu neztrácí
+  // rozpracovaná práce — přes filtr "Vše" jdou samozřejmě zobrazit i ty.
+  const [filterStatus, setFilterStatus] = useState("aktivní");
   const closeModal = () => setModal(null);
   const [deliveryNotes, setDeliveryNotes] = useState([]);
   const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
@@ -645,6 +647,15 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const getNakFilter = (cid) => nakCostFilter[cid] || "vše";
   const setNakFilter = (cid, v) => setNakCostFilter(prev => ({ ...prev, [cid]: v }));
 
+  const visibleContracts = contracts.filter(c => {
+    const q = searchQ.toLowerCase();
+    const matchSearch = !q || c.name?.toLowerCase().includes(q) || c.code?.toLowerCase().includes(q) || c.address?.toLowerCase().includes(q);
+    const matchStatus = filterStatus === "vše" ? true
+      : filterStatus === "aktivní" ? (c.status !== "Dokončena" && c.status !== "Fakturována")
+      : c.status === filterStatus;
+    return matchSearch && matchStatus;
+  });
+
   return (
     <>
       {/* HEADER */}
@@ -675,13 +686,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
           placeholder="🔍 Hledat zakázku..."
           value={searchQ}
           onChange={e => setSearchQ(e.target.value)} />
-        {["vše","Nová","Probíhá","Dokončena","Fakturována"].map(s => (
+        {["aktivní","vše","Nová","Probíhá","Dokončena","Fakturována"].map(s => (
           <button key={s} onClick={() => setFilterStatus(s)}
             style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid", fontSize: 12, cursor: "pointer", fontWeight: filterStatus === s ? 700 : 400,
               background: filterStatus === s ? "#6366f1" : "#1a2035",
               color: filterStatus === s ? "#fff" : "#94a3b8",
               borderColor: filterStatus === s ? "#6366f1" : "#252d45" }}>
-            {s === "vše" ? "Vše" : s}
+            {s === "vše" ? "Vše" : s === "aktivní" ? "Aktivní" : s}
           </button>
         ))}
       </div>
@@ -692,13 +703,15 @@ export default function Contracts({ customers, employees, currentUser, initialDe
           Žádné zakázky. Klikněte "+ Nová zakázka" nebo převeďte obchodní případ.
         </div>
       )}
+      {contracts.length > 0 && visibleContracts.length === 0 && (
+        <div style={{ ...S.card, color: "#475569", textAlign: "center", padding: 40 }}>
+          {filterStatus === "aktivní"
+            ? "Žádné aktivní zakázky — všechny jsou dokončené nebo fakturované. Zobrazit je můžeš přes filtr \"Vše\"."
+            : "Žádná zakázka neodpovídá filtru/hledání."}
+        </div>
+      )}
 
-      {contracts.filter(c => {
-        const q = searchQ.toLowerCase();
-        const matchSearch = !q || c.name?.toLowerCase().includes(q) || c.code?.toLowerCase().includes(q) || c.address?.toLowerCase().includes(q);
-        const matchStatus = filterStatus === "vše" || c.status === filterStatus;
-        return matchSearch && matchStatus;
-      }).map(contract => {
+      {visibleContracts.map(contract => {
         const cust = customers.find(c => c.id === contract.customer_id);
         const sums = contractSums(contract.id);
         const { totalCost, totalRevenue, profit } = contractProfit(contract);
