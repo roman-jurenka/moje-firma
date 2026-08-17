@@ -5918,6 +5918,23 @@ function KnihaJizd({ currentUser, employees, contracts }) {
   const [fVehicleId, setFVehicleId] = useState("");
   const [fKmStart, setFKmStart] = useState("");
   const [fKmEnd, setFKmEnd] = useState("");
+  const [fUjeteKm, setFUjeteKm] = useState("");
+
+  // Vzájemné dopočítávání — kterékoli dvě ze tří polí (start / konec / ujeto)
+  // dopočítají to třetí, aby se nemuselo počítat ručně.
+  const onKmStartChange = (v) => {
+    setFKmStart(v);
+    if (v !== "" && fKmEnd !== "") setFUjeteKm(String(Math.max(0, Number(fKmEnd) - Number(v))));
+  };
+  const onKmEndChange = (v) => {
+    setFKmEnd(v);
+    if (fKmStart !== "") setFUjeteKm(String(Math.max(0, Number(v) - Number(fKmStart))));
+    else if (fUjeteKm !== "") setFKmStart(String(Math.max(0, Number(v) - Number(fUjeteKm))));
+  };
+  const onUjeteKmChange = (v) => {
+    setFUjeteKm(v);
+    if (fKmEnd !== "") setFKmStart(String(Math.max(0, Number(fKmEnd) - Number(v))));
+  };
   const [fContractId, setFContractId] = useState("");
   const [fNote, setFNote] = useState("");
   const [fEmpId, setFEmpId] = useState(String(currentUser?.employeeId || ""));
@@ -6023,7 +6040,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
       setLogs(prev => [inserted, ...prev]);
       if (canEditKm && fContractId) await addDopravaCost(inserted, kmTotal);
     }
-    setFDate(fmt(new Date())); setFVehicleId(""); setFKmStart(""); setFKmEnd("");
+    setFDate(fmt(new Date())); setFVehicleId(""); setFKmStart(""); setFKmEnd(""); setFUjeteKm("");
     setFContractId(""); setFNote("");
     setShowForm(false);
     setSaving(false);
@@ -6090,13 +6107,11 @@ function KnihaJizd({ currentUser, employees, contracts }) {
           </div>
           {canEditKm ? (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr", gap: 12, marginBottom: 12 }}>
-              <div><label style={S.label}>Stav km – start</label><input type="number" style={S.input} placeholder="0" value={fKmStart} onChange={e => setFKmStart(e.target.value)} /></div>
-              <div><label style={S.label}>Stav km – konec</label><input type="number" style={S.input} placeholder="0" value={fKmEnd} onChange={e => setFKmEnd(e.target.value)} /></div>
+              <div><label style={S.label}>Stav km – start</label><input type="number" style={S.input} placeholder="0" value={fKmStart} onChange={e => onKmStartChange(e.target.value)} /></div>
+              <div><label style={S.label}>Stav km – konec</label><input type="number" style={S.input} placeholder="0" value={fKmEnd} onChange={e => onKmEndChange(e.target.value)} /></div>
               <div>
                 <label style={S.label}>Ujeto km</label>
-                <div style={{ ...S.input, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, display: "flex", alignItems: "center" }}>
-                  {fKmStart && fKmEnd ? Math.max(0, Number(fKmEnd) - Number(fKmStart)) : "—"} km
-                </div>
+                <input type="number" style={{ ...S.input, background: "#e0f2fe", color: "#0369a1", fontWeight: 700 }} placeholder="0" value={fUjeteKm} onChange={e => onUjeteKmChange(e.target.value)} />
               </div>
               <div>
                 <label style={S.label}>Zakázka</label>
