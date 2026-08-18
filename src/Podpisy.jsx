@@ -19,6 +19,13 @@ const STATUS_COLOR = {
 
 const fmtKc = (n) => (Number(n) || 0).toLocaleString("cs-CZ") + " Kč";
 
+// PIN se nikam neukládá v čitelné podobě — jen jako SHA-256 otisk (dost na to,
+// aby to nebylo prosté heslo v databázi, není to ale bankovní zabezpečení).
+async function hashPin(pin) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pin));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 // ─── Podpisový panel — kreslení myší / prstem, ukládá se jako base64 PNG ────
 function SignaturePad({ onSave, height = 160 }) {
   const canvasRef = useRef(null);
@@ -65,6 +72,77 @@ function SignaturePad({ onSave, height = 160 }) {
         <button onClick={clear} style={{ ...S.btnGhost, padding: "6px 14px", fontSize: 12 }}>Vymazat</button>
         <button onClick={save} style={{ ...S.btn("#34d399"), padding: "6px 14px", fontSize: 12 }}>✓ Uložit podpis</button>
       </div>
+    </div>
+  );
+}
+
+// ─── Podpisový krok v modalu — buď PINem z uloženého vzoru, nebo nové kreslení ──
+function SignFlow({ currentUser, onSigned }) {
+  const [saved, setSaved] = useState(undefined); // undefined = načítá se, null = žádný uložený vzor
+  const [mode, setMode] = useState("pin");
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [saveTemplate, setSaveTemplate] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [newPinConfirm, setNewPinConfirm] = useState("");
+
+  useEffect(() => {
+    supabase.from("saved_signatures").select("*").eq("owner_auth_id", currentUser.authId).maybeSingle()
+      .then(({ data }) => { setSaved(data || null); setMode(data ? "pin" : "draw"); });
+  }, [currentUser.authId]);
+
+  const confirmPin = async () => {
+    if (!pin) return;
+    const hash = await hashPin(pin);
+    if (hash !== saved.pin_hash) { setPinError("Nesprávný PIN."); return; }
+    onSigned(saved.signature);
+  };
+
+  const finishDraw = async (dataUrl) => {
+    if (saveTemplate) {
+      if (newPin.length < 4) { alert("PIN musí mít alespoň 4 znaky."); return; }
+      if (newPin !== newPinConfirm) { alert("PIN a jeho potvrzení se neshodují."); return; }
+      const pin_hash = await hashPin(newPin);
+      await supabase.from("saved_signatures").upsert(
+        { owner_auth_id: currentUser.authId, owner_name: currentUser.name, signature: dataUrl, pin_hash, updated_at: new Date().toISOString() },
+        { onConflict: "owner_auth_id" }
+      );
+    }
+    onSigned(dataUrl);
+  };
+
+  if (saved === undefined) return <div style={{ color: "#334155", fontSize: 13 }}>Načítám…</div>;
+
+  if (mode === "pin" && saved) {
+    return (
+      <div>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>Máš uložený podpis — zadej svůj PIN a použije se automaticky.</div>
+        <img src={saved.signature} alt="uložený podpis" style={{ maxHeight: 70, background: "#fff", borderRadius: 6, padding: 4, marginBottom: 10 }} />
+        <input type="password" inputMode="numeric" placeholder="PIN" style={{ ...S.input, marginBottom: 6 }}
+          value={pin} onChange={e => { setPin(e.target.value); setPinError(""); }} onKeyDown={e => e.key === "Enter" && confirmPin()} />
+        {pinError && <div style={{ color: "#f87171", fontSize: 12, marginBottom: 6 }}>{pinError}</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <button onClick={confirmPin} style={{ ...S.btn("#34d399"), padding: "6px 14px", fontSize: 12 }}>✓ Podepsat</button>
+          <button onClick={() => setMode("draw")} style={{ ...S.btnGhost, padding: "6px 14px", fontSize: 12 }}>Podepsat jinak (nakreslit)</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SignaturePad onSave={finishDraw} />
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#94a3b8", marginTop: 12 }}>
+        <input type="checkbox" checked={saveTemplate} onChange={e => setSaveTemplate(e.target.checked)} />
+        Uložit tento podpis jako můj vzor — příště stačí PIN
+      </label>
+      {saveTemplate && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+          <input type="password" inputMode="numeric" placeholder="Nový PIN" style={{ ...S.input, marginBottom: 0 }} value={newPin} onChange={e => setNewPin(e.target.value)} />
+          <input type="password" inputMode="numeric" placeholder="Potvrdit PIN" style={{ ...S.input, marginBottom: 0 }} value={newPinConfirm} onChange={e => setNewPinConfirm(e.target.value)} />
+        </div>
+      )}
+      {saved && <button onClick={() => setMode("pin")} style={{ ...S.btnGhost, marginTop: 10, padding: "6px 14px", fontSize: 12 }}>Zpět na PIN</button>}
     </div>
   );
 }
@@ -133,6 +211,60 @@ function emailDoc(doc, employees) {
   window.location.href = `mailto:${emp.email}?subject=${subject}&body=${encodeURIComponent(lines)}`;
 }
 
+// ─── Karta pro správu vlastního uloženého podpisu (nezávislé na konkrétním dokumentu) ──
+function MujPodpisKarta({ currentUser }) {
+  const [saved, setSaved] = useState(undefined);
+  const [editing, setEditing] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [newPinConfirm, setNewPinConfirm] = useState("");
+
+  const load = () => supabase.from("saved_signatures").select("*").eq("owner_auth_id", currentUser.authId).maybeSingle()
+    .then(({ data }) => setSaved(data || null));
+  useEffect(() => { load(); }, [currentUser.authId]);
+
+  const uložit = async (dataUrl) => {
+    if (newPin.length < 4) { alert("PIN musí mít alespoň 4 znaky."); return; }
+    if (newPin !== newPinConfirm) { alert("PIN a jeho potvrzení se neshodují."); return; }
+    const pin_hash = await hashPin(newPin);
+    await supabase.from("saved_signatures").upsert(
+      { owner_auth_id: currentUser.authId, owner_name: currentUser.name, signature: dataUrl, pin_hash, updated_at: new Date().toISOString() },
+      { onConflict: "owner_auth_id" }
+    );
+    setNewPin(""); setNewPinConfirm(""); setEditing(false);
+    load();
+  };
+
+  if (saved === undefined) return null;
+
+  return (
+    <div style={S.card}>
+      <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4 }}>🔐 Můj uložený podpis</div>
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Nastav si podpis a vlastní PIN jednou — příště pak dokumenty podepíšeš jen zadáním PINu, bez kreslení.</div>
+      {!editing ? (
+        <div>
+          {saved ? (
+            <img src={saved.signature} alt="podpis" style={{ maxHeight: 60, background: "#fff", borderRadius: 6, padding: 4, marginBottom: 10, display: "block" }} />
+          ) : (
+            <div style={{ color: "#334155", fontSize: 13, marginBottom: 10 }}>Zatím nemáš nastavený podpis.</div>
+          )}
+          <button onClick={() => setEditing(true)} style={{ ...S.btnGhost, padding: "6px 14px", fontSize: 12 }}>{saved ? "Změnit podpis" : "Nastavit podpis"}</button>
+        </div>
+      ) : (
+        <div>
+          <SignaturePad onSave={uložit} />
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 12, marginBottom: 6 }}>Zvol si PIN (min. 4 znaky), kterým podpis příště potvrdíš:</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <input type="password" inputMode="numeric" placeholder="Nový PIN" style={{ ...S.input, marginBottom: 0 }} value={newPin} onChange={e => setNewPin(e.target.value)} />
+            <input type="password" inputMode="numeric" placeholder="Potvrdit PIN" style={{ ...S.input, marginBottom: 0 }} value={newPinConfirm} onChange={e => setNewPinConfirm(e.target.value)} />
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>Podpis se uloží po kliknutí na „✓ Uložit podpis" v panelu výše.</div>
+          <button onClick={() => setEditing(false)} style={{ ...S.btnGhost, marginTop: 10, padding: "6px 14px", fontSize: 12 }}>Zrušit</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PodpisyModule({ employees, currentUser }) {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -169,6 +301,8 @@ export default function PodpisyModule({ employees, currentUser }) {
       <p style={{ color: "#64748b", fontSize: 13, marginBottom: 20 }}>
         Digitální podepisování dokumentů — výkazy práce a do budoucna i další. Zaměstnanec podepíše hned při vytvoření, zaměstnavatel dokument dopodepíše zde.
       </p>
+
+      <MujPodpisKarta currentUser={currentUser} />
 
       {loading ? (
         <div style={{ color: "#334155", fontSize: 13 }}>Načítám…</div>
@@ -209,7 +343,7 @@ export default function PodpisyModule({ employees, currentUser }) {
             <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>{signModal.doc.title}</div>
             <label style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Jméno podepisujícího</label>
             <input style={{ ...S.input, marginBottom: 14 }} value={signName} onChange={e => setSignName(e.target.value)} />
-            <SignaturePad onSave={saveSignature} />
+            <SignFlow currentUser={currentUser} onSigned={saveSignature} />
             <button onClick={() => setSignModal(null)} style={{ ...S.btnGhost, marginTop: 14, padding: "6px 14px", fontSize: 12 }}>Zrušit</button>
           </div>
         </div>
