@@ -20,7 +20,7 @@ const RATE_PER_KM = 6.5; // Kč/km — stejný paušál jako v Knize jízd
 const PRAZDNA_NABIDKA = () => ({
   interni: {
     sazbaMd: 3200,   // Kč / MD (člověko-den) — jednotná sazba pro celou nabídku
-    radky: [],       // [{id, popis, dopravaKm, materialKc, pocetMd}]
+    radky: [],       // [{id, popis, dopravaKm, materialKc, pocetMd, pocetLidi}]
     polozky: [],     // [{id, nazev, md}] — samostatné položky mimo fáze, např. revize, dokumentace
   },
   zakaznik: {
@@ -31,28 +31,33 @@ const PRAZDNA_NABIDKA = () => ({
   notes: "",
 });
 
-// Cena řádku interního nacenění: Počet MD se píše ručně (ne z hodin) a
-// násobí se jím práce i doprava. Materiál je samostatný — nenásobí se MD,
+// Cena řádku interního nacenění: Počet MD (dní) se píše ručně a když na tom
+// dni dělá víc lidí, Počet lidí to dál násobí (2 dny × 3 lidi = 6 MD).
+// Celkovým MD se násobí práce; doprava se násobí jen počtem dní (stejná
+// cesta, ať jede kdokoliv). Materiál je samostatný — nenásobí se vůbec,
 // je to prostě celková částka materiálu na daný řádek.
 const radekVypocet = (r, sazbaMd) => {
-  const md = Number(r.pocetMd) || 0;
-  const doprava = (Number(r.dopravaKm) || 0) * RATE_PER_KM * md;
+  const dny = Number(r.pocetMd) || 0;
+  const lide = Number(r.pocetLidi) || 1;
+  const md = dny * lide;
+  const doprava = (Number(r.dopravaKm) || 0) * RATE_PER_KM * dny;
   const material = Number(r.materialKc) || 0;
   const laborKc = md * (Number(sazbaMd) || 0);
   const cena = laborKc + doprava + material;
-  return { md, doprava, material, laborKc, cena };
+  return { dny, lide, md, doprava, material, laborKc, cena };
 };
 
 // ─── Tabulka interního nacenění (MD) ────────────────────────────────────────
 function InterniTabulka({ radky, setRadky, sazbaMd }) {
   const update = (id, key, value) => setRadky(radky.map(r => r.id === id ? { ...r, [key]: value } : r));
   const remove = (id) => setRadky(radky.filter(r => r.id !== id));
-  const add = () => setRadky([...radky, { id: uid(), popis: "", dopravaKm: "", materialKc: "", pocetMd: "" }]);
+  const add = () => setRadky([...radky, { id: uid(), popis: "", dopravaKm: "", materialKc: "", pocetMd: "", pocetLidi: "" }]);
 
   const cols = [
     { key: "popis", label: "Popis (fáze / úkon)", width: "100%", type: "text" },
-    { key: "dopravaKm", label: "Doprava (km / 1 MD)", width: 110, type: "number" },
-    { key: "pocetMd", label: "Počet MD", width: 90, type: "number" },
+    { key: "dopravaKm", label: "Doprava (km / 1 den)", width: 110, type: "number" },
+    { key: "pocetMd", label: "Počet MD (dní)", width: 100, type: "number" },
+    { key: "pocetLidi", label: "Počet lidí", width: 90, type: "number" },
     { key: "materialKc", label: "Materiál (Kč, celkem)", width: 130, type: "number" },
   ];
 
@@ -62,6 +67,7 @@ function InterniTabulka({ radky, setRadky, sazbaMd }) {
         <thead>
           <tr>
             {cols.map(c => <th key={c.key} style={S.th}>{c.label}</th>)}
+            <th style={S.th}>Celkem MD</th>
             <th style={S.th}>Cena</th>
             <th style={S.th}></th>
           </tr>
@@ -76,13 +82,14 @@ function InterniTabulka({ radky, setRadky, sazbaMd }) {
                     <input type={c.type} style={{ ...S.input, marginBottom: 0, width: c.width }} value={r[c.key] ?? ""} onChange={e => update(r.id, c.key, e.target.value)} />
                   </td>
                 ))}
+                <td style={{ ...S.td, color: "#a78bfa", fontWeight: 700, whiteSpace: "nowrap" }}>{Math.round(v.md * 100) / 100}</td>
                 <td style={{ ...S.td, color: "#f87171", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtKc(v.cena)}</td>
                 <td style={S.td}><button onClick={() => remove(r.id)} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11 }}>✕</button></td>
               </tr>
             );
           })}
           {radky.length === 0 && (
-            <tr><td colSpan={cols.length + 2} style={{ ...S.td, color: "#334155", padding: "12px 8px" }}>Zatím žádné řádky interního nacenění.</td></tr>
+            <tr><td colSpan={cols.length + 3} style={{ ...S.td, color: "#334155", padding: "12px 8px" }}>Zatím žádné řádky interního nacenění.</td></tr>
           )}
         </tbody>
       </table>
@@ -318,8 +325,8 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       "</head><body>" +
       "<h1>Interní nacenění – " + name + "</h1>" +
       "<h2>Sazba: " + fmtKc(sazbaMd) + " / MD</h2>" +
-      "<table><thead><tr><th>Popis</th><th>Doprava km/MD</th><th>Počet MD</th><th>Materiál</th><th>Cena</th></tr></thead><tbody>" +
-      radkyVypoctene.map(({ r, v }) => `<tr><td>${r.popis || "—"}</td><td>${r.dopravaKm || 0}</td><td>${v.md}</td><td>${fmtKc(r.materialKc)}</td><td>${fmtKc(v.cena)}</td></tr>`).join("") +
+      "<table><thead><tr><th>Popis</th><th>Doprava km/den</th><th>Počet dní</th><th>Počet lidí</th><th>Celkem MD</th><th>Materiál</th><th>Cena</th></tr></thead><tbody>" +
+      radkyVypoctene.map(({ r, v }) => `<tr><td>${r.popis || "—"}</td><td>${r.dopravaKm || 0}</td><td>${v.dny}</td><td>${v.lide}</td><td>${Math.round(v.md * 100) / 100}</td><td>${fmtKc(r.materialKc)}</td><td>${fmtKc(v.cena)}</td></tr>`).join("") +
       "</tbody></table>" +
       (polozkyVypoctene.length ? "<h2 style='margin-top:14px'>Samostatné položky</h2><table><thead><tr><th>Název</th><th>MD</th><th>Cena</th></tr></thead><tbody>" +
         polozkyVypoctene.map(({ p, md, cena }) => `<tr><td>${p.nazev || "—"}</td><td>${Math.round(md * 100) / 100}</td><td>${fmtKc(cena)}</td></tr>`).join("") +
@@ -388,7 +395,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       {/* INTERNÍ NACENĚNÍ — po MD */}
       <div style={S.card}>
         <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4 }}>🧮 Interní nacenění — po MD (člověko-dnech)</div>
-        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Počet MD se u každého řádku píše ručně. Násobí se jím práce (MD × sazba) i doprava (km × MD). Materiál se nenásobí — je to vždy celková částka za řádek. Jen pro vnitřní potřebu — zákazník tohle nevidí.</div>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Počet MD (dní) a počet lidí se u každého řádku píší ručně — appka je vynásobí (2 dny × 3 lidi = 6 MD) a tím se počítá práce (MD × sazba). Doprava se násobí jen počtem dní (stejná cesta bez ohledu na počet lidí). Materiál se nenásobí vůbec — je to vždy celková částka za řádek. Jen pro vnitřní potřebu — zákazník tohle nevidí.</div>
         <div style={{ maxWidth: 200, marginBottom: 14 }}>
           <label style={S.label}>Sazba (Kč / MD)</label><input type="number" style={S.input} value={data.interni.sazbaMd} onChange={e => setData({ ...data, interni: { ...data.interni, sazbaMd: e.target.value } })} />
         </div>
