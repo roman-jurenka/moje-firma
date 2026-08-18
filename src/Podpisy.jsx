@@ -33,10 +33,17 @@ function SignaturePad({ onSave, height = 160 }) {
   const last = useRef(null);
   const [empty, setEmpty] = useState(true);
 
+  // Canvas má pevné vnitřní rozlišení (width/height atributy), ale na
+  // obrazovce se roztahuje na 100% šířky — bez přepočtu poměru by se kreslilo
+  // jinde, než je kurzor. Tady se souřadnice myši/prstu přepočítají z
+  // zobrazené velikosti na vnitřní rozlišení plátna.
   const pos = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
     const t = e.touches ? e.touches[0] : e;
-    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
   };
   const start = (e) => { e.preventDefault(); drawing.current = true; last.current = pos(e); };
   const move = (e) => {
