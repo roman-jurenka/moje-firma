@@ -5,6 +5,7 @@ import ZakazkaSheet from "./ZakazkaSheet.jsx";
 import FotoUpload from "./FotoUpload.jsx";
 import Pricing from "./Pricing.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
+import PodpisyModule from "./Podpisy.jsx";
 import { handleOAuthCallback } from "./onedrive.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
@@ -117,10 +118,10 @@ const AUTH_USERS = [
 ];
 
 const ROLES = {
-  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","permissions","profile"] },
-  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","profile"] },
-  hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","profile"] },
-  employee: { label: "Zaměstnanec",   color: "#2E9BE0", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","profile"] },
+  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","reports","ai","attendance","calendar","knjiga","onedrive","permissions","podpisy","profile"] },
+  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","projects","costs","reports","ai","attendance","calendar","knjiga","podpisy","profile"] },
+  hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","podpisy","profile"] },
+  employee: { label: "Zaměstnanec",   color: "#2E9BE0", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","podpisy","profile"] },
 };
 
 // Simulovaná docházka — záznamy příchod/odchod
@@ -294,6 +295,7 @@ const NAV = [
   { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Osobní" },
   { id: "knjiga", label: "Kniha jízd", icon: "ti-car", group: "Osobní" },
   { id: "onedrive", label: "OneDrive", icon: "ti-cloud", group: "Osobní" },
+  { id: "podpisy", label: "Podpisy", icon: "ti-signature", group: "Osobní" },
   { id: "profile", label: "Můj profil", icon: "ti-user-circle", group: "Osobní" },
   { id: "permissions", label: "Oprávnění", icon: "ti-lock", group: "ERP" },
 ];
@@ -777,8 +779,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {tab === "attendance" && <Attendance
           currentUser={currentUser} attendance={attendance} setAttendance={setAttendance}
-          employees={employees} contracts={contracts} products={products}
+          employees={employees} contracts={contracts} products={products} setTab={setTab}
         />}
+
+        {tab === "podpisy" && <PodpisyModule employees={employees} currentUser={currentUser} />}
 
         {tab === "calendar" && <CalendarModule
           currentUser={currentUser} employees={employees} contracts={contracts}
@@ -4715,7 +4719,7 @@ const getWeekDates = () => {
 
 // ─── DOCHÁZKA ─────────────────────────────────────────────────────────────────
 
-function Attendance({ currentUser, attendance, setAttendance, employees, contracts, products }) {
+function Attendance({ currentUser, attendance, setAttendance, employees, contracts, products, setTab }) {
   const isHR = ["admin", "hr", "manager"].includes(currentUser.role);
   const [viewEmpId, setViewEmpId] = useState(currentUser.employeeId);
   // Tvrdý zámek — zaměstnanec vidí vždy jen sebe
@@ -4996,6 +5000,38 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     win.document.write(html);
     win.document.close();
     setReportModal(false);
+  };
+
+  // Vytvoří výkaz jako digitálně podepisovatelný dokument (modul Podpisy) —
+  // uloží snapshot dat, zaměstnanec ho tam hned podepíše, zaměstnavatel dopodepíše později.
+  const signReportDigitally = async () => {
+    const empForReport = isHR && reportEmpId ? reportEmpId : effectiveEmpId;
+    const recs = attendance.filter(a => {
+      const empMatch = a.employeeId === empForReport || a.employee_id === empForReport;
+      const dateMatch = a.date && a.date.startsWith(reportYear + "-" + String(reportMonth).padStart(2,"0"));
+      return empMatch && dateMatch;
+    }).sort((a,b) => a.date.localeCompare(b.date));
+    const empObj = employees.find(e => e.id === empForReport);
+    const totalH = recs.reduce((s,r) => s + calcEffectiveHours(r.checkin, r.checkout), 0);
+    const monthNames = ["","Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
+    const sazba = Number(empObj?.hourly_rate_cost) || 0;
+    const rowsData = recs.map(r => {
+      const h = calcEffectiveHours(r.checkin, r.checkout);
+      const contract = contractOpts.find(c => c.id === r.contract_id);
+      return { date: fmtDateCz(r.date), checkin: r.checkin, checkout: r.checkout, hoursLabel: fmtHours(h), contractName: contract ? contract.name : "", activity: r.activity || "" };
+    });
+    const monthLabel = monthNames[reportMonth] + " " + reportYear;
+    const { error } = await supabase.from("signed_documents").insert({
+      doc_type: "vykaz_prace",
+      title: "Výkaz práce – " + (empObj ? empObj.name : "") + " – " + monthLabel,
+      employee_id: empForReport,
+      data: { empName: empObj ? empObj.name : "", monthLabel, rows: rowsData, totalHLabel: fmtHours(totalH), sazba, castka: totalH * sazba },
+      status: "čeká na podpis zaměstnance",
+      created_by: currentUser.name,
+    });
+    if (error) { alert("Chyba při vytváření dokumentu: " + error.message); return; }
+    setReportModal(false);
+    if (setTab) setTab("podpisy");
   };
 
   return (
@@ -5745,9 +5781,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 </select>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button style={{ ...S.btn("#334155"), padding: "9px 20px" }} onClick={() => setReportModal(false)}>Zrušit</button>
               <button style={{ ...S.btn("#6366f1"), padding: "9px 20px", fontWeight: 700 }} onClick={generateReport}>📥 Generovat & Tisknout</button>
+              <button style={{ ...S.btn("#34d399"), padding: "9px 20px", fontWeight: 700 }} onClick={signReportDigitally}>✍️ Podepsat digitálně</button>
             </div>
           </div>
         </div>
