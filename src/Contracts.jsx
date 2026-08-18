@@ -17,11 +17,7 @@ const fmtDateCz = (v) => {
 // projektu ze zakázky, ať se plán MD nemusí přepisovat ručně.
 function mdZeStareInterniho(interni) {
   if (!interni) return 0;
-  const hodinNaMd = Number(interni.hodinNaMd) || 8;
-  const zRadku = (interni.radky || []).reduce((sum, r) => {
-    const hod = (Number(r.casAutoHod) || 0) + (Number(r.casPraceHod) || 0) + (Number(r.casPapiryHod) || 0);
-    return sum + (hodinNaMd ? hod / hodinNaMd : 0);
-  }, 0);
+  const zRadku = (interni.radky || []).reduce((sum, r) => sum + (Number(r.pocetMd) || 0), 0);
   const zPolozek = (interni.polozky || []).reduce((sum, p) => sum + (Number(p.md) || 0), 0);
   return zRadku + zPolozek;
 }
