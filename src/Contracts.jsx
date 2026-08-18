@@ -16,12 +16,14 @@ const fmtDateCz = (v) => {
 // logika jako radekVypocet v Pricing.jsx) — používá se při zakládání
 // projektu ze zakázky, ať se plán MD nemusí přepisovat ručně.
 function mdZeStareInterniho(interni) {
-  if (!interni?.radky?.length) return 0;
+  if (!interni) return 0;
   const hodinNaMd = Number(interni.hodinNaMd) || 8;
-  return interni.radky.reduce((sum, r) => {
+  const zRadku = (interni.radky || []).reduce((sum, r) => {
     const hod = (Number(r.casAutoHod) || 0) + (Number(r.casPraceHod) || 0) + (Number(r.casPapiryHod) || 0);
     return sum + (hodinNaMd ? hod / hodinNaMd : 0);
   }, 0);
+  const zPolozek = (interni.polozky || []).reduce((sum, p) => sum + (Number(p.md) || 0), 0);
+  return zRadku + zPolozek;
 }
 
 // Náhled fotky z OneDrive — natáhne čerstvý přímý odkaz přes item_id, se
