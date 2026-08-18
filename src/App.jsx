@@ -5,7 +5,7 @@ import ZakazkaSheet from "./ZakazkaSheet.jsx";
 import FotoUpload from "./FotoUpload.jsx";
 import Pricing from "./Pricing.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
-import PodpisyModule from "./Podpisy.jsx";
+import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import { handleOAuthCallback } from "./onedrive.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
@@ -4741,6 +4741,84 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [editRecord, setEditRecord] = useState(null); // for editing project/activity on existing record
   const todayStr = fmt(new Date());
 
+  // ── Uzamčení docházky po měsíčním podpisu + žádosti o zápis/úpravu ──
+  const [lockedMonths, setLockedMonths] = useState(new Set());
+  const [myRequests, setMyRequests] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [requestModal, setRequestModal] = useState(null);
+  const [monthSignModal, setMonthSignModal] = useState(null);
+
+  useEffect(() => {
+    if (!currentUser.employeeId) return;
+    supabase.from("signed_documents").select("data,employee_signature")
+      .eq("doc_type", "dochazka_mesic").eq("employee_id", currentUser.employeeId)
+      .not("employee_signature", "is", null)
+      .then(({ data }) => {
+        setLockedMonths(new Set((data || []).map(d => `${d.data?.year}-${String(d.data?.month).padStart(2, "0")}`)));
+      });
+  }, [currentUser.employeeId]);
+
+  const reloadRequests = () => {
+    if (currentUser.role === "admin") {
+      supabase.from("attendance_change_requests").select("*").eq("status", "čeká na schválení").order("created_at", { ascending: false })
+        .then(({ data }) => setPendingRequests(data || []));
+    }
+    if (currentUser.employeeId) {
+      supabase.from("attendance_change_requests").select("*").eq("employee_id", currentUser.employeeId).order("created_at", { ascending: false })
+        .then(({ data }) => setMyRequests(data || []));
+    }
+  };
+  useEffect(() => { reloadRequests(); }, [currentUser.role, currentUser.employeeId]);
+
+  // Je daný den v už podepsaném (uzamčeném) měsíci? Admin zámek vždy obchází.
+  const isMonthLocked = (dateStr) => lockedMonths.has((dateStr || "").slice(0, 7));
+  const guardWrite = (dateStr, proposed) => {
+    if (currentUser.role === "admin") return true;
+    if (!isMonthLocked(dateStr)) return true;
+    setRequestModal({
+      date: dateStr, checkin: proposed.checkin || "", checkout: proposed.checkout || "",
+      contract_id: proposed.contract_id || "", activity: proposed.activity || "",
+      target_attendance_id: proposed.target_attendance_id || null, reason: "",
+    });
+    return false;
+  };
+
+  const submitChangeRequest = async () => {
+    if (!requestModal.reason.trim()) { alert("Napiš prosím krátký důvod žádosti."); return; }
+    await supabase.from("attendance_change_requests").insert({
+      employee_id: effectiveEmpId,
+      target_attendance_id: requestModal.target_attendance_id,
+      date: requestModal.date,
+      checkin: requestModal.checkin || null,
+      checkout: requestModal.checkout || null,
+      contract_id: requestModal.contract_id || null,
+      activity: requestModal.activity || null,
+      reason: requestModal.reason.trim(),
+    });
+    setRequestModal(null);
+    reloadRequests();
+    alert("Žádost byla odeslána ke schválení administrátorovi.");
+  };
+
+  const approveRequest = async (req) => {
+    if (req.target_attendance_id) {
+      await supabase.from("attendance").update({ checkin: req.checkin, checkout: req.checkout, contract_id: req.contract_id, activity: req.activity }).eq("id", req.target_attendance_id);
+      setAttendance(attendance.map(a => a.id === req.target_attendance_id ? { ...a, checkin: req.checkin, checkout: req.checkout, contract_id: req.contract_id, activity: req.activity } : a));
+    } else {
+      const { data: row } = await supabase.from("attendance").insert({
+        employee_id: req.employee_id, date: req.date, checkin: req.checkin, checkout: req.checkout, contract_id: req.contract_id, activity: req.activity,
+      }).select().single();
+      if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
+    }
+    await supabase.from("attendance_change_requests").update({ status: "schváleno", reviewed_by: currentUser.name, reviewed_at: new Date().toISOString() }).eq("id", req.id);
+    reloadRequests();
+  };
+
+  const rejectRequest = async (req) => {
+    await supabase.from("attendance_change_requests").update({ status: "zamítnuto", reviewed_by: currentUser.name, reviewed_at: new Date().toISOString() }).eq("id", req.id);
+    reloadRequests();
+  };
+
   useEffect(() => {
     if (window.location.search.includes("code=")) {
       handleOAuthCallback().then(ok => { if (ok) console.log("OneDrive připojeno"); });
@@ -4754,6 +4832,61 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
   const contractOpts = (contracts && contracts.length > 0) ? contracts : attLocalContracts;
   const activeContractOpts = contractOpts.filter(c => !c.status || c.status === "Nová" || c.status === "Probíhá");
+
+  // Připomenutí odsouhlasit docházku za předchozí měsíc — jen pro vlastního
+  // zaměstnance, admin zámek/podpis netýká.
+  const prevMonthDateObj = new Date(); prevMonthDateObj.setDate(1); prevMonthDateObj.setMonth(prevMonthDateObj.getMonth() - 1);
+  const prevYear = prevMonthDateObj.getFullYear();
+  const prevMonthNum = prevMonthDateObj.getMonth() + 1;
+  const prevMonthKey = `${prevYear}-${String(prevMonthNum).padStart(2, "0")}`;
+  const prevMonthLabel = prevMonthDateObj.toLocaleString("cs-CZ", { month: "long", year: "numeric" });
+  const hasPrevMonthRecords = currentUser.employeeId && attendance.some(a => a.employeeId === currentUser.employeeId && a.date && a.date.startsWith(prevMonthKey));
+  const showConfirmBanner = currentUser.role !== "admin" && hasPrevMonthRecords && !lockedMonths.has(prevMonthKey);
+
+  const monthNamesCz = ["", "Leden", "Únor", "Březen", "Duben", "Květen", "Červen", "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"];
+
+  const openMonthSign = async (year, month) => {
+    const ym = `${year}-${String(month).padStart(2, "0")}`;
+    const recs = attendance.filter(a => a.employeeId === currentUser.employeeId && a.date && a.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date));
+    const totalH = recs.reduce((s, r) => s + calcEffectiveHours(r.checkin, r.checkout), 0);
+    const monthLabelStr = monthNamesCz[month] + " " + year;
+    const empObj = employees.find(e => e.id === currentUser.employeeId);
+    const { data: existingDoc } = await supabase.from("signed_documents").select("*")
+      .eq("doc_type", "dochazka_mesic").eq("employee_id", currentUser.employeeId)
+      .eq("data->>year", String(year)).eq("data->>month", String(month))
+      .maybeSingle();
+    let doc = existingDoc;
+    if (!doc) {
+      const rowsData = recs.map(r => {
+        const h = calcEffectiveHours(r.checkin, r.checkout);
+        const contract = contractOpts.find(c => c.id === r.contract_id);
+        return { date: fmtDateCz(r.date), checkin: r.checkin, checkout: r.checkout, hoursLabel: fmtHours(h), contractName: contract ? contract.name : "", activity: r.activity || "" };
+      });
+      const { data: inserted } = await supabase.from("signed_documents").insert({
+        doc_type: "dochazka_mesic",
+        title: "Docházka – " + (empObj ? empObj.name : "") + " – " + monthLabelStr,
+        employee_id: currentUser.employeeId,
+        data: { year, month, empName: empObj ? empObj.name : "", monthLabel: monthLabelStr, rows: rowsData, totalHLabel: fmtHours(totalH) },
+        status: "čeká na podpis zaměstnance",
+        created_by: currentUser.name,
+      }).select().single();
+      doc = inserted;
+    }
+    if (doc) setMonthSignModal({ doc });
+  };
+
+  const onMonthSigned = async (dataUrl) => {
+    const { doc } = monthSignModal;
+    const now = new Date().toISOString();
+    const { data: updated } = await supabase.from("signed_documents").update({
+      employee_signature: dataUrl, employee_signed_at: now, employee_signed_name: currentUser.name,
+      status: "čeká na podpis zaměstnavatele",
+    }).eq("id", doc.id).select().single();
+    if (updated) {
+      setLockedMonths(prev => new Set([...prev, `${updated.data.year}-${String(updated.data.month).padStart(2, "0")}`]));
+    }
+    setMonthSignModal(null);
+  };
 
   const empRecords = attendance.filter(a => a.employeeId === effectiveEmpId && (viewMonth === "all" || (a.date && a.date.startsWith(viewMonth)))).sort((a, b) => b.date.localeCompare(a.date));
   const viewMonthHours = empRecords.reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
@@ -4926,6 +5059,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     if (!manualDate || !manualIn) return;
     const existing = attendance.find(a => a.employeeId === effectiveEmpId && a.date === manualDate);
     const contractIdVal = manualContractId ? Number(manualContractId) : null;
+    if (!guardWrite(manualDate, { checkin: manualIn, checkout: manualOut, contract_id: contractIdVal, target_attendance_id: existing?.id || null })) return;
     if (existing) {
       await supabase.from("attendance").update({ checkin: manualIn, checkout: manualOut || null, contract_id: contractIdVal }).eq("id", existing.id);
       const updated = { ...existing, checkin: manualIn, checkout: manualOut || null, contract_id: contractIdVal };
@@ -5047,6 +5181,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               { id: "kalendar", label: "📆 Kalendář" },
               { id: "soupis", label: "📋 Soupis práce" },
               ...((currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") ? [{ id: "sablony", label: "📋 Šablony bloků" }] : []),
+              ...(currentUser.role === "admin" ? [{ id: "zadosti", label: "📩 Žádosti" + (pendingRequests.length ? ` (${pendingRequests.length})` : "") }] : []),
             ].map(t => (
               <button key={t.id} onClick={() => setAttTab(t.id)} style={{
                 padding: "10px 22px",
@@ -5087,6 +5222,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         padding: "20px 16px",
         marginBottom: 16,
       }}>
+
+      {showConfirmBanner && (
+        <div style={{ ...S.card, background: "#fffbeb", border: "1px solid #fde68a", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13, color: "#92400e" }}>📢 Potvrď prosím docházku za <strong>{prevMonthLabel}</strong> — po podpisu se měsíc uzamkne a nepůjde do něj dál zapisovat (jen žádostí ke schválení).</div>
+          <button style={S.btn("#f59e0b")} onClick={() => openMonthSign(prevYear, prevMonthNum)}>✍️ Podepsat docházku</button>
+        </div>
+      )}
 
       {/* LIST 1: ZÁZNAMY & DOCHÁZKA */}
       {attTab === "zaznam" && (
@@ -5191,7 +5333,55 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               <button style={{ ...S.btn(), marginBottom: 0 }} onClick={addManual}>Uložit</button>
             </div>
           </div>
+
+          {/* Moje žádosti o zápis/úpravu po uzamčení měsíce */}
+          {!isHR && myRequests.length > 0 && (
+            <div style={{ ...S.card, marginBottom: 20 }}>
+              <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 12, fontSize: 13 }}>📩 Moje žádosti o úpravu</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {myRequests.map(req => {
+                  const reqColor = req.status === "schváleno" ? "#34d399" : req.status === "zamítnuto" ? "#ef4444" : "#f59e0b";
+                  return (
+                    <div key={req.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "6px 0", borderBottom: "1px solid #e2e8f0" }}>
+                      <span>{fmtDateCz(req.date)} · {req.checkin || "—"}–{req.checkout || "—"}</span>
+                      <span style={{ color: reqColor, fontWeight: 700 }}>{req.status}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
+      )}
+
+      {/* ŽÁDOSTI O ZÁPIS/ÚPRAVU PO UZAMČENÍ MĚSÍCE — jen admin */}
+      {attTab === "zadosti" && (
+        <div>
+          {pendingRequests.length === 0 ? (
+            <div style={{ color: "#334155", fontSize: 13 }}>Žádné čekající žádosti.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {pendingRequests.map(req => {
+                const emp = employees.find(e => e.id === req.employee_id);
+                const contract = contractOpts.find(c => c.id === req.contract_id);
+                return (
+                  <div key={req.id} style={{ ...S.card, marginBottom: 0 }}>
+                    <div style={{ fontWeight: 700, color: "#1A1A1A" }}>{emp?.name || "?"} · {fmtDateCz(req.date)}</div>
+                    <div style={{ fontSize: 12, color: "#475569", margin: "4px 0" }}>
+                      {req.checkin || "—"}–{req.checkout || "—"} · {contract ? contract.name : "bez zakázky"} · {req.target_attendance_id ? "úprava existujícího záznamu" : "nový záznam"}
+                    </div>
+                    {req.activity && <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Popis: {req.activity}</div>}
+                    <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>Důvod: {req.reason}</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button style={{ ...S.btn("#34d399"), padding: "6px 14px", fontSize: 12 }} onClick={() => approveRequest(req)}>✓ Schválit</button>
+                      <button style={{ ...S.btn("#ef4444"), padding: "6px 14px", fontSize: 12 }} onClick={() => rejectRequest(req)}>✕ Zamítnout</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {/* LIST 2: HARMONOGRAM */}
@@ -5393,6 +5583,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                             value={rec.contract_id || ""}
                             onChange={async e => {
                               const cid = e.target.value ? Number(e.target.value) : null;
+                              if (!guardWrite(rec.date, { checkin: rec.checkin, checkout: rec.checkout, contract_id: cid, activity: rec.activity, target_attendance_id: rec.id })) return;
                               await supabase.from("attendance").update({ contract_id: cid }).eq("id", rec.id);
                               const updated = { ...rec, contract_id: cid };
                               setAttendance(attendance.map(a => a.id === rec.id ? updated : a));
@@ -5425,6 +5616,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                               <textarea style={{ ...S.input, minHeight: 60, resize: "vertical" }}
                                 defaultValue={rec.activity || ""}
                                 onBlur={async e => {
+                                  if (!guardWrite(rec.date, { checkin: rec.checkin, checkout: rec.checkout, contract_id: rec.contract_id, activity: e.target.value, target_attendance_id: rec.id })) return;
                                   await supabase.from("attendance").update({ activity: e.target.value }).eq("id", rec.id);
                                   setAttendance(attendance.map(a => a.id === rec.id ? { ...a, activity: e.target.value } : a));
                                 }} />
@@ -5785,6 +5977,47 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               <button style={{ ...S.btn("#334155"), padding: "9px 20px" }} onClick={() => setReportModal(false)}>Zrušit</button>
               <button style={{ ...S.btn("#6366f1"), padding: "9px 20px", fontWeight: 700 }} onClick={generateReport}>📥 Generovat & Tisknout</button>
               <button style={{ ...S.btn("#34d399"), padding: "9px 20px", fontWeight: 700 }} onClick={signReportDigitally}>✍️ Podepsat digitálně</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PODPIS DOCHÁZKY ZA MĚSÍC */}
+      {monthSignModal && (
+        <div style={{ position: "fixed", inset: 0, background: "#0009", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "#0E3B5E", borderRadius: 16, padding: "28px 32px", minWidth: 360, maxWidth: 460, width: "100%" }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 4 }}>✍️ {monthSignModal.doc.title}</div>
+            <div style={{ fontSize: 12, color: "#93c5fd", marginBottom: 16 }}>Podpisem odsouhlasíš docházku za tento měsíc — poté už do něj nepůjde přímo zapisovat, jen žádostí ke schválení.</div>
+            <SignFlow currentUser={currentUser} onSigned={onMonthSigned} />
+            <button onClick={() => setMonthSignModal(null)} style={{ ...S.btn("#334155"), marginTop: 16, padding: "8px 18px" }}>Zrušit</button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ŽÁDOST O ZÁPIS/ÚPRAVU PO UZAMČENÍ MĚSÍCE */}
+      {requestModal && (
+        <div style={{ position: "fixed", inset: 0, background: "#0009", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "#0E3B5E", borderRadius: 16, padding: "28px 32px", minWidth: 360, maxWidth: 460, width: "100%" }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 4 }}>📩 Žádost o zápis/úpravu záznamu</div>
+            <div style={{ fontSize: 12, color: "#93c5fd", marginBottom: 16 }}>Měsíc {fmtDateCz(requestModal.date)} je už odsouhlasený a uzamčený. Návrh záznamu pošli ke schválení administrátorovi.</div>
+            <label style={S.label}>Datum</label>
+            <input style={{ ...S.input, opacity: 0.7 }} value={requestModal.date} disabled />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div><label style={S.label}>Příchod</label><input type="time" style={S.input} value={requestModal.checkin} onChange={e => setRequestModal({ ...requestModal, checkin: e.target.value })} /></div>
+              <div><label style={S.label}>Odchod</label><input type="time" style={S.input} value={requestModal.checkout} onChange={e => setRequestModal({ ...requestModal, checkout: e.target.value })} /></div>
+            </div>
+            <label style={S.label}>Zakázka</label>
+            <select style={S.select} value={requestModal.contract_id || ""} onChange={e => setRequestModal({ ...requestModal, contract_id: e.target.value ? Number(e.target.value) : null })}>
+              <option value="">—</option>
+              {(contracts || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <label style={S.label}>Popis práce</label>
+            <textarea style={{ ...S.input, minHeight: 50 }} value={requestModal.activity || ""} onChange={e => setRequestModal({ ...requestModal, activity: e.target.value })} />
+            <label style={S.label}>Důvod žádosti</label>
+            <textarea style={{ ...S.input, minHeight: 60 }} value={requestModal.reason} onChange={e => setRequestModal({ ...requestModal, reason: e.target.value })} placeholder="Proč se záznam přidává/upravuje dodatečně..." />
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
+              <button style={{ ...S.btn("#334155"), padding: "9px 20px" }} onClick={() => setRequestModal(null)}>Zrušit</button>
+              <button style={{ ...S.btn("#6366f1"), padding: "9px 20px", fontWeight: 700 }} onClick={submitChangeRequest}>Odeslat žádost</button>
             </div>
           </div>
         </div>

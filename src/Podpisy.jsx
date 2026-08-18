@@ -27,7 +27,7 @@ async function hashPin(pin) {
 }
 
 // ─── Podpisový panel — kreslení myší / prstem, ukládá se jako base64 PNG ────
-function SignaturePad({ onSave, height = 160 }) {
+export function SignaturePad({ onSave, height = 160 }) {
   const canvasRef = useRef(null);
   const drawing = useRef(false);
   const last = useRef(null);
@@ -84,7 +84,7 @@ function SignaturePad({ onSave, height = 160 }) {
 }
 
 // ─── Podpisový krok v modalu — buď PINem z uloženého vzoru, nebo nové kreslení ──
-function SignFlow({ currentUser, onSigned }) {
+export function SignFlow({ currentUser, onSigned }) {
   const [saved, setSaved] = useState(undefined); // undefined = načítá se, null = žádný uložený vzor
   const [mode, setMode] = useState("pin");
   const [pin, setPin] = useState("");
