@@ -6,7 +6,7 @@ import FotoUpload from "./FotoUpload.jsx";
 import Pricing from "./Pricing.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
-import { handleOAuthCallback } from "./onedrive.js";
+import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -4740,6 +4740,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [attLocalContracts, setAttLocalContracts] = useState([]);
   const [editRecord, setEditRecord] = useState(null); // for editing project/activity on existing record
   const todayStr = fmt(new Date());
+  const [attPhotoUploading, setAttPhotoUploading] = useState(false);
+  const [attUploadedPhotos, setAttUploadedPhotos] = useState([]);
 
   // ── Uzamčení docházky po měsíčním podpisu + žádosti o zápis/úpravu ──
   const [lockedMonths, setLockedMonths] = useState(new Set());
@@ -5023,6 +5025,42 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     setShowCheckinModal(false);
   };
 
+  // Fotka k dnešní práci — uloží se na zakázku, kterou má zaměstnanec v
+  // dnešním záznamu vybranou (stejná logika jako upload fotek u zakázky).
+  const uploadAttendancePhoto = async (file) => {
+    const contractIdVal = todayRecord?.contract_id || (ciContractId ? Number(ciContractId) : null);
+    if (!contractIdVal) { alert("Nejdřív vyber zakázku, ke které fotku přiřadit."); return; }
+    setAttPhotoUploading(true);
+    try {
+      let url, storagePath, itemId = null;
+      const contract = contractOpts.find(c => c.id === contractIdVal);
+      const folderName = (contract?.name || String(contractIdVal)).replace(/[/\\?%*:|"<>]/g, "_");
+      if (isConnected()) {
+        const res = await uploadFileObject(`FirmaCRM/Zakázky/${folderName}/Fotky`, file);
+        url = res.webUrl; itemId = res.itemId; storagePath = "onedrive:" + file.name;
+      } else {
+        const ext = file.name.split(".").pop();
+        const path = `${contractIdVal}/${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage.from("zakazky-fotky").upload(path, file);
+        if (error) { alert("Chyba uploadu: " + error.message); setAttPhotoUploading(false); return; }
+        url = supabase.storage.from("zakazky-fotky").getPublicUrl(path).data.publicUrl;
+        storagePath = path;
+      }
+      const { data: row } = await supabase.from("contract_photos").insert({
+        contract_id: contractIdVal, date: todayStr, storage_path: storagePath, url, item_id: itemId,
+        description: "Docházka " + todayStr, uploaded_by: currentUser?.employeeId || null,
+      }).select().single();
+      if (row) setAttUploadedPhotos(prev => [...prev, row]);
+    } catch (e) {
+      alert("Chyba uploadu: " + e.message);
+    }
+    setAttPhotoUploading(false);
+  };
+  const onAttPhotoInput = (e) => {
+    Array.from(e.target.files || []).forEach(f => uploadAttendancePhoto(f));
+    e.target.value = "";
+  };
+
   const saveRecordDetail = async (id, projectId, contractId, activity) => {
     await supabase.from("attendance").update({ project_id: projectId || null, contract_id: contractId || null, activity: activity || null }).eq("id", id);
     setAttendance(attendance.map(a => a.id === id ? { ...a, project_id: projectId, contract_id: contractId, activity } : a));
@@ -5294,6 +5332,19 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, activity: e.target.value } : a));
                 }
               }} />
+            <label style={S.label}>📷 Fotky ze zakázky</label>
+            <input type="file" accept="image/*" multiple capture="environment"
+              onChange={onAttPhotoInput} disabled={attPhotoUploading || !(todayRecord?.contract_id || ciContractId)}
+              style={{ ...S.input, padding: 8 }} />
+            {!(todayRecord?.contract_id || ciContractId) && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Nejdřív vyber zakázku výše.</div>}
+            {attPhotoUploading && <div style={{ fontSize: 12, color: "#2E9BE0", marginTop: 4 }}>Nahrávám…</div>}
+            {attUploadedPhotos.length > 0 && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, marginBottom: 4 }}>
+                {attUploadedPhotos.map(p => (
+                  <img key={p.id} src={p.url} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, border: "1px solid #252d45" }} />
+                ))}
+              </div>
+            )}
             {!todayRecord && (<>
               <label style={S.label}>Vozidlo (volitelné)</label>
               <select style={S.select} value={ciVehicleId} onChange={e => setCiVehicleId(e.target.value)}>
