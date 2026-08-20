@@ -55,7 +55,7 @@ function guessFromOcrText(text) {
   return { amount: amount ? Number(amount) : "", date, vendor };
 }
 
-export default function FinanceModule({ currentUser }) {
+export default function FinanceModule({ currentUser, employees = [] }) {
   const [settings, setSettings] = useState({ starting_balance: 0, starting_date: todayStr() });
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +73,8 @@ export default function FinanceModule({ currentUser }) {
     });
   };
   useEffect(load, []);
+
+  const empName = (id) => employees.find(e => e.id === id)?.name || "—";
 
   const saveSettings = async (startBal, startDate) => {
     const { data } = await supabase.from("cashflow_settings")
@@ -96,6 +98,15 @@ export default function FinanceModule({ currentUser }) {
     await supabase.from("cashflow_entries").delete().eq("id", id);
     setEntries(prev => prev.filter(e => e.id !== id));
   };
+
+  const markReimbursed = async (id) => {
+    const { data } = await supabase.from("cashflow_entries")
+      .update({ reimbursed: true, reimbursed_at: new Date().toISOString() })
+      .eq("id", id).select().single();
+    if (data) setEntries(prev => prev.map(e => e.id === id ? data : e));
+  };
+
+  const pendingReimbursements = entries.filter(e => e.paid_by_employee && !e.reimbursed);
 
   const prijmy = entries.reduce((s, e) => s + (e.direction === "prijem" ? Number(e.amount) : 0), 0);
   const vydaje = entries.reduce((s, e) => s + (e.direction === "vydaj" ? Number(e.amount) : 0), 0);
@@ -136,6 +147,24 @@ export default function FinanceModule({ currentUser }) {
         </div>
       </div>
 
+      {pendingReimbursements.length > 0 && (
+        <div style={{ ...card, marginBottom: 20, borderColor: "#f59e0b66" }}>
+          <div style={{ ...cardLabel, color: "#b45309" }}>Účtenky zaměstnanců k proplacení ({pendingReimbursements.length})</div>
+          {pendingReimbursements.map(e => (
+            <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: "1px solid #f1f5f9" }}>
+              <div style={{ fontSize: 13 }}>
+                <strong>{empName(e.employee_id)}</strong> — {e.description || "účtenka"} · {e.entry_date}
+                {e.photo_url && <a href={e.photo_url} target="_blank" rel="noreferrer" style={{ marginLeft: 8 }}>📎 doklad</a>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontWeight: 700 }}>{fmtKc(e.amount)}</span>
+                <button onClick={() => markReimbursed(e.id)} style={{ ...btnPrimary, padding: "6px 12px", fontSize: 12 }}>✓ Proplaceno</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
         <span style={{ fontSize: 12, color: "#64748b" }}>Měsíc:</span>
         <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
@@ -147,14 +176,14 @@ export default function FinanceModule({ currentUser }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-              {["Datum", "Typ", "Popis", "Protistrana", "Částka", "Doklad", ""].map(h => (
+              {["Datum", "Typ", "Popis", "Protistrana", "Nahrál", "Částka", "Doklad", "Stav", ""].map(h => (
                 <th key={h} style={{ padding: "10px 14px", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {monthEntries.length === 0 && (
-              <tr><td colSpan={7} style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>Žádné záznamy v tomto měsíci.</td></tr>
+              <tr><td colSpan={9} style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>Žádné záznamy v tomto měsíci.</td></tr>
             )}
             {monthEntries.map(e => (
               <tr key={e.id} style={{ borderTop: "1px solid #f1f5f9" }}>
@@ -166,11 +195,19 @@ export default function FinanceModule({ currentUser }) {
                 </td>
                 <td style={{ padding: "9px 14px" }}>{e.description || "—"}</td>
                 <td style={{ padding: "9px 14px" }}>{e.counterparty || "—"}</td>
+                <td style={{ padding: "9px 14px" }}>{e.created_by || "—"}</td>
                 <td style={{ padding: "9px 14px", fontWeight: 700, color: e.direction === "prijem" ? "#065f46" : "#991b1b" }}>
                   {e.direction === "prijem" ? "+" : "-"}{fmtKc(e.amount)}
                 </td>
                 <td style={{ padding: "9px 14px" }}>
                   {e.photo_url ? <a href={e.photo_url} target="_blank" rel="noreferrer">📎 foto</a> : "—"}
+                </td>
+                <td style={{ padding: "9px 14px" }}>
+                  {e.paid_by_employee
+                    ? (e.reimbursed
+                      ? <span style={{ color: "#065f46", fontWeight: 600, fontSize: 12 }}>✓ Proplaceno</span>
+                      : <span style={{ color: "#b45309", fontWeight: 600, fontSize: 12 }}>⏳ Čeká na proplacení</span>)
+                    : "—"}
                 </td>
                 <td style={{ padding: "9px 14px", textAlign: "right" }}>
                   <button onClick={() => deleteEntry(e.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 13 }}>Smazat</button>
@@ -185,7 +222,83 @@ export default function FinanceModule({ currentUser }) {
         <SettingsModal settings={settings} onSave={saveSettings} onClose={() => setModal(null)} />
       )}
       {modal === "entry" && (
-        <EntryModal onSave={addEntry} onClose={() => setModal(null)} />
+        <EntryModal onSave={addEntry} onClose={() => setModal(null)} currentUser={currentUser} />
+      )}
+    </div>
+  );
+}
+
+// ─── Zjednodušený modul pro zaměstnance: jen nahrávání účtenek ──────────────
+// Zaměstnanec smí přidávat pouze účtenky (ne faktury) a vidí jen svoje vlastní
+// se stavem proplacení. Admin/manažer vidí a schvaluje proplacení v plném
+// modulu FinanceModule výše.
+export function ReceiptsModule({ currentUser }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+
+  const load = () => {
+    supabase.from("cashflow_entries").select("*")
+      .eq("employee_id", currentUser?.employeeId)
+      .order("entry_date", { ascending: false }).order("id", { ascending: false })
+      .then(({ data }) => { setEntries(data || []); setLoading(false); });
+  };
+  useEffect(load, [currentUser?.employeeId]);
+
+  const addEntry = async (payload) => {
+    const { data } = await supabase.from("cashflow_entries").insert({
+      ...payload,
+      created_by: currentUser?.name || null,
+    }).select().single();
+    if (data) setEntries(prev => [data, ...prev]);
+    setModal(false);
+  };
+
+  if (loading) return <div style={{ padding: 24, color: "#94a3b8" }}>Načítání…</div>;
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "#1A1A1A" }}>Účtenky</h1>
+        <button onClick={() => setModal(true)} style={btnPrimary}>+ Nahrát účtenku</button>
+      </div>
+
+      <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+              {["Datum", "Popis", "Částka", "Doklad", "Stav"].map(h => (
+                <th key={h} style={{ padding: "10px 14px", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length === 0 && (
+              <tr><td colSpan={5} style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>Zatím jsi nenahrál žádnou účtenku.</td></tr>
+            )}
+            {entries.map(e => (
+              <tr key={e.id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                <td style={{ padding: "9px 14px" }}>{e.entry_date}</td>
+                <td style={{ padding: "9px 14px" }}>{e.description || "—"}</td>
+                <td style={{ padding: "9px 14px", fontWeight: 700 }}>{fmtKc(e.amount)}</td>
+                <td style={{ padding: "9px 14px" }}>
+                  {e.photo_url ? <a href={e.photo_url} target="_blank" rel="noreferrer">📎 foto</a> : "—"}
+                </td>
+                <td style={{ padding: "9px 14px" }}>
+                  {e.paid_by_employee
+                    ? (e.reimbursed
+                      ? <span style={{ color: "#065f46", fontWeight: 600, fontSize: 12 }}>✓ Proplaceno</span>
+                      : <span style={{ color: "#b45309", fontWeight: 600, fontSize: 12 }}>⏳ Čeká na proplacení</span>)
+                    : <span style={{ color: "#64748b", fontSize: 12 }}>Firemní platba</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal && (
+        <EntryModal onSave={addEntry} onClose={() => setModal(false)} currentUser={currentUser} restrictToReceipts />
       )}
     </div>
   );
@@ -211,7 +324,7 @@ function SettingsModal({ settings, onSave, onClose }) {
   );
 }
 
-function EntryModal({ onSave, onClose }) {
+function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false }) {
   const [type, setType] = useState("uctenka");
   const [direction, setDirection] = useState(TYPY.uctenka.direction);
   const [amount, setAmount] = useState("");
@@ -222,6 +335,7 @@ function EntryModal({ onSave, onClose }) {
   const [uploading, setUploading] = useState(false);
   const [ocrRunning, setOcrRunning] = useState(false);
   const [ocrText, setOcrText] = useState("");
+  const [paidByEmployee, setPaidByEmployee] = useState(restrictToReceipts);
 
   const onTypeChange = (t) => {
     setType(t);
@@ -272,20 +386,26 @@ function EntryModal({ onSave, onClose }) {
     onSave({
       entry_type: type, direction, amount: Number(amount), entry_date: date,
       description, counterparty, photo_url: photoUrl, ocr_raw_text: ocrText || null,
+      paid_by_employee: type === "uctenka" ? paidByEmployee : false,
+      employee_id: type === "uctenka" && paidByEmployee ? (currentUser?.employeeId || null) : null,
     });
   };
 
   return (
     <div style={modalOverlay}>
       <div style={modalBox}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>Nový záznam finančního toku</div>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>{restrictToReceipts ? "Nahrát účtenku" : "Nový záznam finančního toku"}</div>
 
-        <label style={label}>Typ</label>
-        <select value={type} onChange={e => onTypeChange(e.target.value)} style={input}>
-          {Object.entries(TYPY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
+        {!restrictToReceipts && (
+          <>
+            <label style={label}>Typ</label>
+            <select value={type} onChange={e => onTypeChange(e.target.value)} style={input}>
+              {Object.entries(TYPY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </>
+        )}
 
-        {type === "jine" && (
+        {type === "jine" && !restrictToReceipts && (
           <>
             <label style={label}>Směr</label>
             <select value={direction} onChange={e => setDirection(e.target.value)} style={input}>
@@ -302,6 +422,13 @@ function EntryModal({ onSave, onClose }) {
             {uploading && <div style={{ fontSize: 12, color: "#94a3b8" }}>Nahrávám doklad…</div>}
             {ocrRunning && <div style={{ fontSize: 12, color: "#94a3b8" }}>Čtu doklad (OCR)… zkontroluj prosím vyplněné údaje níže.</div>}
             {photoUrl && !uploading && <div style={{ fontSize: 12, color: "#34d399" }}>✓ Doklad nahrán</div>}
+
+            <div style={{ marginTop: 10, background: "#f8fafc", borderRadius: 8, padding: 10 }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "#334155", cursor: "pointer" }}>
+                <input type="checkbox" checked={paidByEmployee} onChange={e => setPaidByEmployee(e.target.checked)} style={{ marginTop: 2 }} />
+                <span>Moje účtenka — zaplaceno vlastními penězi, čeká na proplacení zaměstnanci. (Nezaškrtnuté = zaplaceno firmou/kartou, žádné proplacení netřeba.)</span>
+              </label>
+            </div>
           </>
         )}
 

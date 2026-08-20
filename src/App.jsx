@@ -6,7 +6,7 @@ import FotoUpload from "./FotoUpload.jsx";
 import Pricing from "./Pricing.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
-import FinanceModule from "./Finance.jsx";
+import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
 import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
@@ -121,8 +121,8 @@ const AUTH_USERS = [
 const ROLES = {
   admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","finance","reports","ai","attendance","calendar","knjiga","onedrive","permissions","podpisy","profile"] },
   manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","projects","costs","finance","reports","ai","attendance","calendar","knjiga","podpisy","profile"] },
-  hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","podpisy","profile"] },
-  employee: { label: "Zaměstnanec",   color: "#2E9BE0", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","podpisy","profile"] },
+  hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
+  employee: { label: "Zaměstnanec",   color: "#2E9BE0", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
 };
 
 // Simulovaná docházka — záznamy příchod/odchod
@@ -291,6 +291,7 @@ const NAV = [
   { id: "projects", label: "Projekty", icon: "ti-building", group: "ERP" },
   { id: "costs", label: "Náklady", icon: "ti-trending-down", group: "ERP" },
   { id: "finance", label: "Finanční tok", icon: "ti-cash", group: "ERP" },
+  { id: "uctenky", label: "Účtenky", icon: "ti-receipt-2", group: "Osobní" },
   { id: "reports", label: "Reporty", icon: "ti-chart-line", group: "Analytika" },
   { id: "ai", label: "AI Asistent", icon: "ti-robot", group: "Analytika" },
   { id: "attendance", label: "Docházka", icon: "ti-clock", group: "Osobní" },
@@ -791,7 +792,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
 
-        {tab === "finance" && <FinanceModule currentUser={currentUser} />}
+        {tab === "finance" && <FinanceModule currentUser={currentUser} employees={employees} />}
+
+        {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} />}
 
         {tab === "reports" && <Reports
           customers={customers} deals={deals} invoices={invoices}
