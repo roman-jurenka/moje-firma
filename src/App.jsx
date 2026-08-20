@@ -449,6 +449,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("proudos-theme") || "light");
+  useEffect(() => { localStorage.setItem("proudos-theme", theme); }, [theme]);
 
   const closeModal = () => setModal(null);
 
@@ -561,13 +563,34 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   };
 
   return (
-    <div style={S.app}>
+    <>
+      <button
+        onClick={() => setTheme(t => t === "light" ? "dark" : "light")}
+        title={theme === "light" ? "Přepnout na tmavý motiv" : "Přepnout na světlý motiv"}
+        style={{
+          position: "fixed", top: 14, right: 16, zIndex: 500,
+          width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
+          background: "#fff", color: "#0E3B5E", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
+          boxShadow: "0 2px 8px #0002",
+        }}
+      >
+        <i className={`ti ${theme === "light" ? "ti-moon" : "ti-sun"}`} aria-hidden="true"></i>
+      </button>
+    <div data-app-theme={theme} style={{ ...S.app, ...(theme === "dark" ? { filter: "invert(1) hue-rotate(180deg)" } : {}) }}>
       <style>{`
         /* Boční menu je na obou velikostech schované mimo obrazovku, dokud na něj
            nenajedete myší (desktop, přes úzký proužek u levého okraje) nebo ho
            neotevřete hamburgerem (mobil). Obsah proto nikdy nerezervuje 220px. */
         .sidebar-nav { transform: translateX(-100%); }
         .sidebar-nav.open { transform: translateX(0); }
+        /* Tmavý motiv: invertujeme celou plochu filtrem, ale obrázky (fotky ze
+           zakázek, loga apod.) invertujeme podruhé, aby zůstaly v přirozených
+           barvách. */
+        [data-app-theme="dark"] img,
+        [data-app-theme="dark"] video {
+          filter: invert(1) hue-rotate(180deg);
+        }
         @media (min-width: 769px) {
           .sidebar-backdrop { display: none !important; }
         }
@@ -848,6 +871,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       </div>
       <RadialMenu currentUser={currentUser} tab={tab} setTab={setTab} />
     </div>
+    </>
   );
 }
 
