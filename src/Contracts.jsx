@@ -12,6 +12,29 @@ const fmtDateCz = (v) => {
   return `${DNY_ZKR[d.getDay()]} ${d.getDate()}. ${MESICE_2P[d.getMonth()]} ${d.getFullYear()}`;
 };
 
+// Kód zakázky ve tvaru TYP-YYM-INICIÁLY-0001, např. FVE-268-RJ-0001.
+// Sekvenční číslo na konci se počítá zvlášť pro každý typ a měsíc (atomicky
+// přes RPC next_contract_code_number, takže se dvě zakázky nikdy netrefí do
+// stejného čísla, i kdyby je zakládali dva lidé současně).
+const TYPY_ZAKAZEK = [
+  { id: "FVE", label: "FVE — Fotovoltaika" },
+  { id: "HRM", label: "HRM — Hromosvody" },
+  { id: "ELK", label: "ELK — Elektroinstalace" },
+  { id: "SRV", label: "SRV — Servis" },
+];
+const initialsFromName = (name) => (name || "").trim().split(/\s+/).filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 3);
+
+async function generateContractCode(type, currentUser) {
+  if (!type) return "";
+  const now = new Date();
+  const year = now.getFullYear() % 100;
+  const month = now.getMonth() + 1;
+  const { data: counter, error } = await supabase.rpc("next_contract_code_number", { p_type: type, p_year: year, p_month: month });
+  if (error || counter == null) return "";
+  const initials = initialsFromName(currentUser?.name) || "XX";
+  return `${type}-${year}${month}-${initials}-${String(counter).padStart(4, "0")}`;
+}
+
 // Spočítá celkový počet MD z interního nacenění uložené nabídky (stejná
 // logika jako radekVypocet v Pricing.jsx) — používá se při zakládání
 // projektu ze zakázky, ať se plán MD nemusí přepisovat ručně.
@@ -439,6 +462,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       deal_id:     form.dealId || null,
       customer_id: Number(form.customerId) || null,
       code:        form.code || "",
+      type:        form.type || null,
       name:        form.name,
       status:      form.status,
       price:       Number(form.price) || 0,
@@ -632,6 +656,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     const upd = {
       name:        form.name,
       code:        form.code,
+      type:        form.type || null,
       customer_id: Number(form.customerId) || null,
       price:       Number(form.price) || 0,
       address:     form.address || "",
@@ -1207,7 +1232,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       {/* ── MODÁLY ── */}
       {modal?.type === "newContract" && (
         <NewContractModal
-          customers={customers} deal={modal.deal}
+          customers={customers} deal={modal.deal} currentUser={currentUser}
           onSave={saveNewContract} onClose={closeModal}
         />
       )}
@@ -1833,15 +1858,27 @@ function PopisTab({ contract, setContracts }) {
   );
 }
 
-function NewContractModal({ customers, deal, onSave, onClose }) {
+function NewContractModal({ customers, deal, currentUser, onSave, onClose }) {
   const [f, setF] = useState({
-    code: "", name: deal?.name || "", customerId: deal?.customerId || deal?.customer_id || "",
+    code: "", type: "", name: deal?.name || "", customerId: deal?.customerId || deal?.customer_id || "",
     status: "Nová", price: deal?.value || "", notes: "", address: "",
     budgetPrace: "", budgetMaterial: "", budgetDoprava: "",
     budgetVicePrace: "", budgetViceMaterial: "", budgetViceDoprava: "",
     dealId: deal?.id || null,
   });
+  const [codeAuto, setCodeAuto] = useState(true);
+  const [codeLoading, setCodeLoading] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  const onTypeChange = (type) => {
+    set("type", type);
+    if (!codeAuto || !type) return;
+    setCodeLoading(true);
+    generateContractCode(type, currentUser).then(code => {
+      if (code) set("code", code);
+      setCodeLoading(false);
+    });
+  };
 
   return (
     <div style={S.modal}>
@@ -1851,15 +1888,28 @@ function NewContractModal({ customers, deal, onSave, onClose }) {
           <button style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18 }} onClick={onClose}>✕</button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
-            <label style={S.label}>Kód zakázky</label>
-            <input style={S.input} value={f.code} onChange={e => set("code", e.target.value)} placeholder="např. ZAK-2026-001" />
+            <label style={S.label}>Typ zakázky</label>
+            <select style={S.select} value={f.type} onChange={e => onTypeChange(e.target.value)}>
+              <option value="">— vyberte —</option>
+              {TYPY_ZAKAZEK.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
           </div>
           <div>
             <label style={S.label}>Název zakázky</label>
             <input style={S.input} value={f.name} onChange={e => set("name", e.target.value)} />
           </div>
+        </div>
+
+        <div>
+          <label style={S.label}>Kód zakázky{codeLoading ? " (generuje se…)" : ""}</label>
+          <input
+            style={S.input}
+            value={f.code}
+            onChange={e => { setCodeAuto(false); set("code", e.target.value); }}
+            placeholder="vyberte typ zakázky pro automatické vygenerování"
+          />
         </div>
 
         <label style={S.label}>Zákazník</label>
@@ -2479,6 +2529,7 @@ function EditContractModal({ contract, customers, onSave, onClose }) {
     id:         contract.id,
     name:       contract.name || "",
     code:       contract.code || "",
+    type:       contract.type || "",
     customerId: contract.customer_id || "",
     price:      contract.price || "",
     address:    contract.address || "",
@@ -2504,6 +2555,12 @@ function EditContractModal({ contract, customers, onSave, onClose }) {
             <input style={S.input} value={f.name} onChange={e => set("name", e.target.value)} />
           </div>
         </div>
+
+        <label style={S.label}>Typ zakázky</label>
+        <select style={S.select} value={f.type} onChange={e => set("type", e.target.value)}>
+          <option value="">— nezadáno —</option>
+          {TYPY_ZAKAZEK.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+        </select>
 
         <label style={S.label}>Zákazník</label>
         <select style={S.select} value={f.customerId} onChange={e => set("customerId", e.target.value)}>
