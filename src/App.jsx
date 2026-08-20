@@ -1077,10 +1077,13 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
   const vacPct   = vacTotal > 0 ? Math.round((vacUsed / vacTotal) * 100) : 0;
 
   // Odpracováno tento měsíc
+  // Pozor: checkin/checkout jsou jen časy dne ("07:00"), datum záznamu je v
+  // poli date — porovnávat měsíc/týden proti checkinu byla chyba, proto se
+  // hodiny nikdy nespočítaly (žádný záznam tomu filtru neodpovídal).
   const nowM = new Date().toISOString().slice(0, 7); // "2026-06"
   const myAtt = attendance.filter(a =>
-    (a.employee_id === currentUser.employeeId || a.employee_name === myName) &&
-    a.checkin?.startsWith(nowM) && a.checkout
+    (a.employeeId === currentUser.employeeId || a.employee_id === currentUser.employeeId) &&
+    a.date?.startsWith(nowM) && a.checkout
   );
   const hoursThisMonth = myAtt.reduce((s, a) => s + Math.max(0, calcHours(a.checkin, a.checkout) - 1), 0);
 
@@ -1091,11 +1094,11 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
     d.setDate(d.getDate() - day + 1);
     return d.toISOString().slice(0, 10);
   })();
-  const hoursThisWeek = myAtt.filter(a => a.checkin >= startOfWeek)
+  const hoursThisWeek = myAtt.filter(a => a.date >= startOfWeek)
     .reduce((s, a) => s + Math.max(0, calcHours(a.checkin, a.checkout) - 1), 0);
 
   // Poslední záznamy docházky
-  const recentAtt = [...myAtt].sort((a, b) => b.checkin.localeCompare(a.checkin)).slice(0, 5);
+  const recentAtt = [...myAtt].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
 
   // Moje úkoly
   const myTasks = tasks.filter(t =>
@@ -1145,7 +1148,7 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
           <div style={{ fontSize: 38, fontWeight: 900, color: "#3b82f6", lineHeight: 1.1 }}>{Math.floor(hoursThisWeek)}</div>
           <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>hodin ({fmtH(hoursThisWeek)})</div>
           <div style={{ fontSize: 11, color: "#334155", marginTop: 8 }}>
-            {myAtt.filter(a => a.checkin >= startOfWeek).length} směn tento týden
+            {myAtt.filter(a => a.date >= startOfWeek).length} směn tento týden
           </div>
         </div>
       </div>
@@ -1212,9 +1215,9 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
               return (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 10, borderBottom: i < recentAtt.length - 1 ? "1px solid #1a2035" : "none" }}>
                   <div>
-                    <div style={{ fontSize: 13, color: "#1A1A1A" }}>{new Date(a.checkin).toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}</div>
+                    <div style={{ fontSize: 13, color: "#1A1A1A" }}>{new Date(a.date + "T00:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}</div>
                     <div style={{ fontSize: 11, color: "#475569" }}>
-                      {a.checkin?.slice(11, 16)} – {a.checkout?.slice(11, 16)}
+                      {a.checkin} – {a.checkout}
                       {a.contract_name && <span style={{ color: "#2E9BE0", marginLeft: 6 }}>· {a.contract_name}</span>}
                     </div>
                   </div>
