@@ -557,6 +557,21 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     setDeliveryNoteItems(prev => prev.filter(i => i.delivery_note_id !== id));
   }
 
+  // Plná úprava dodacího listu (dodavatel, kód/číslo, marže, poznámka) —
+  // otevírá se kliknutím na hlavičku dodacího listu, stejný formulář jako
+  // u přidání nového.
+  async function updateDeliveryNoteFull(form) {
+    const patch = {
+      supplier: form.supplier,
+      code:     form.code,
+      margin:   Number(form.margin) || 30,
+      notes:    form.notes || "",
+    };
+    await supabase.from("delivery_notes").update(patch).eq("id", form.id);
+    setDeliveryNotes(prev => prev.map(d => d.id === form.id ? { ...d, ...patch } : d));
+    closeModal();
+  }
+
   async function updateDNMargin(id, margin) {
     await supabase.from("delivery_notes").update({ margin: Number(margin) }).eq("id", id);
     setDeliveryNotes(prev => prev.map(d => d.id === id ? { ...d, margin: Number(margin) } : d));
@@ -1009,6 +1024,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                               onAddItem={() => setModal({ type: "addDNItem", deliveryNoteId: dn.id })}
                               onDeleteItem={deleteDNItem}
                               onEditItem={(item) => setModal({ type: "addDNItem", deliveryNoteId: dn.id, item })}
+                              onEditNote={() => setModal({ type: "addDeliveryNote", contractId: contract.id, dn })}
                             />
                           ))}
                         </div>
@@ -1260,7 +1276,8 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       {modal?.type === "addDeliveryNote" && (
         <AddDeliveryNoteModal
           contractId={modal.contractId}
-          onSave={saveDeliveryNote} onClose={closeModal}
+          dn={modal.dn}
+          onSave={modal.dn ? updateDeliveryNoteFull : saveDeliveryNote} onClose={closeModal}
         />
       )}
       {modal?.type === "addDNItem" && (
@@ -2315,7 +2332,7 @@ function DokumentyTab({ contractId, currentUser }) {
 }
 
 // ─── DODACÍ LIST ROW ─────────────────────────────────────────────────────────
-function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDeleteItem, onEditItem }) {
+function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDeleteItem, onEditItem, onEditNote }) {
   const [expanded, setExpanded] = useState(false);
   const [editMargin, setEditMargin] = useState(false);
   const [marginVal, setMarginVal] = useState(String(dn.margin ?? 30));
@@ -2327,9 +2344,10 @@ function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDel
     <div style={{ borderBottom: "1px solid #1a2035" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={onEditNote} title="Klikni pro úpravu dodavatele a čísla">
             <span style={{ background: "#6366f122", color: "#818cf8", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{dn.code}</span>
             <span style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{dn.supplier}</span>
+            <span style={{ fontSize: 11, color: "#334155" }}>✏️</span>
           </div>
           <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: 11, color: "#475569", flexWrap: "wrap", alignItems: "center" }}>
             <span>Náklad: <strong style={{ color: "#f87171" }}>{fmtKc(totalCost)}</strong></span>
@@ -2420,16 +2438,19 @@ function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDel
   );
 }
 
-// ─── MODAL: NOVÝ DODACÍ LIST ──────────────────────────────────────────────────
-function AddDeliveryNoteModal({ contractId, onSave, onClose }) {
-  const [f, setF] = useState({ supplier: "", code: "", margin: "30", notes: "", contractId });
+// ─── MODAL: NOVÝ / EDITACE DODACÍHO LISTU ────────────────────────────────────
+function AddDeliveryNoteModal({ contractId, dn, onSave, onClose }) {
+  const isEdit = !!dn;
+  const [f, setF] = useState(isEdit
+    ? { id: dn.id, supplier: dn.supplier || "", code: dn.code || "", margin: String(dn.margin ?? "30"), notes: dn.notes || "", contractId }
+    : { supplier: "", code: "", margin: "30", notes: "", contractId });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   return (
     <div style={S.modal}>
       <div style={S.modalBox}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 17, color: "#fff" }}>Nový dodací list</div>
+          <div style={{ fontWeight: 700, fontSize: 17, color: "#fff" }}>{isEdit ? "Upravit dodací list" : "Nový dodací list"}</div>
           <button style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18 }} onClick={onClose}>✕</button>
         </div>
 
@@ -2449,7 +2470,7 @@ function AddDeliveryNoteModal({ contractId, onSave, onClose }) {
         <textarea style={{ ...S.input, height: 56, resize: "vertical" }} value={f.notes} onChange={e => set("notes", e.target.value)} />
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button style={S.btn()} onClick={() => { if (f.supplier && f.code) onSave(f); }}>Uložit dodací list</button>
+          <button style={S.btn()} onClick={() => { if (f.supplier && f.code) onSave(f); }}>{isEdit ? "Uložit změny" : "Uložit dodací list"}</button>
           <button style={S.btnGhost} onClick={onClose}>Zrušit</button>
         </div>
       </div>
