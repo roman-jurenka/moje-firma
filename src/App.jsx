@@ -2924,6 +2924,13 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
 }
 
 // ─── HR ──────────────────────────────────────────────────────────────────────
+// Jméno zaměstnance se pořád ukládá jako jeden řetězec (sloupec name v DB —
+// na tom stojí spousta jiných míst v appce), ale ve formulářích ho ukazujeme
+// rozdělené na Jméno/Příjmení, ať je jasné, co kam patřit — split/join se
+// dělá jen na pohled.
+const firstOf = (full) => (full || "").trim().split(/\s+/)[0] || "";
+const lastOf = (full) => { const parts = (full || "").trim().split(/\s+/).filter(Boolean); return parts.length > 1 ? parts.slice(1).join(" ") : ""; };
+const joinName = (first, last) => [first, last].map(s => (s || "").trim()).filter(Boolean).join(" ");
 
 function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries, attendance, tasks, setTasks }) {
   const [newE, setNewE] = useState({ name: "", position: "", department: "", email: "", salary: "", status: "Aktivní", start: "" });
@@ -3226,8 +3233,16 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
               )}
               <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 14 }}>ZÁKLADNÍ ÚDAJE</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={S.label}>Jméno</label>
+                  <input style={S.input} value={firstOf(editField.name)} onChange={e => setEditField({ ...editField, name: joinName(e.target.value, lastOf(editField.name)) })} />
+                </div>
+                <div>
+                  <label style={S.label}>Příjmení</label>
+                  <input style={S.input} value={lastOf(editField.name)} onChange={e => setEditField({ ...editField, name: joinName(firstOf(editField.name), e.target.value) })} />
+                </div>
                 {[
-                  ["Jméno", "name"], ["Pozice", "position"], ["Oddělení", "department"],
+                  ["Pozice", "position"], ["Oddělení", "department"],
                   ["Email", "email"], ["Plat (Kč)", "salary"], ["Datum nástupu", "start"],
                   ["Sazba náklady (Kč/h)", "hourly_rate_cost"], ["Sazba fakturace (Kč/h)", "hourly_rate_client"],
                 ].map(([label, key]) => (
@@ -3371,7 +3386,11 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
       {modal?.type === "addEmployee" && (
         <div style={S.modal}><div style={S.modalBox}>
           <ModalHeader title="Nový zaměstnanec" onClose={closeModal} />
-          {[["Jméno", "name"], ["Pozice", "position"], ["Oddělení", "department"], ["Email", "email"], ["Plat (Kč)", "salary"], ["Datum nástupu", "start"]].map(([l, k]) => (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div><label style={S.label}>Jméno</label><input style={S.input} value={firstOf(newE.name)} onChange={e => setNewE({ ...newE, name: joinName(e.target.value, lastOf(newE.name)) })} /></div>
+            <div><label style={S.label}>Příjmení</label><input style={S.input} value={lastOf(newE.name)} onChange={e => setNewE({ ...newE, name: joinName(firstOf(newE.name), e.target.value) })} /></div>
+          </div>
+          {[["Pozice", "position"], ["Oddělení", "department"], ["Email", "email"], ["Plat (Kč)", "salary"], ["Datum nástupu", "start"]].map(([l, k]) => (
             <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={newE[k]} onChange={e => setNewE({ ...newE, [k]: e.target.value })} /></div>
           ))}
           <label style={S.label}>Stav</label>
