@@ -8,7 +8,7 @@ const S = {
   btn:      (c = "#2E9BE0") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
   btnGhost: { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   modal:    { position: "fixed", inset: 0, background: "#000a", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 400 },
-  modalBox: { background: "#0f1320", border: "1px solid #1a2035", borderRadius: 14, padding: 24, width: 460, maxHeight: "90vh", overflowY: "auto" },
+  modalBox: { background: "#0f1320", border: "1px solid #1a2035", borderRadius: 14, padding: 24, width: 460, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto" },
 };
 
 const STATUS_COLOR = {

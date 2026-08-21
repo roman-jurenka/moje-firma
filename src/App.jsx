@@ -378,7 +378,7 @@ const S = {
   tag: (c) => ({ background: c + "22", color: c, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700, display: "inline-block" }),
   search: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 13px", color: "#1A1A1A", fontSize: 13, outline: "none", width: 240 },
   modal: { position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 },
-  modalBox: { background: "#ffffff", borderRadius: 16, padding: 28, width: 440, border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
+  modalBox: { background: "#ffffff", borderRadius: 16, padding: 28, width: 440, maxWidth: "92vw", boxSizing: "border-box", border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
   input: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
   select: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
   label: { fontSize: 11, color: "#64748b", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
@@ -677,6 +677,23 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
           /* Inputs full width on mobile */
           .mobile-full { width: 100% !important; box-sizing: border-box; }
+
+          /* Obecná záchranná síť pro celou appku — spousta míst (Zakázky,
+             Finanční tok, Nacenění, Podpisy...) používá vlastní vícesloupcové
+             mřížky přes inline styl bez zvláštní třídy. Místo ručního
+             dolaďování každé z nich zvlášť je tu srazíme na jeden sloupec
+             podle atributového selektoru na inline "grid-template-columns"
+             (v DOM se camelCase gridTemplateColumns vždy převede na tenhle
+             tvar), aby nic nepřetékalo mimo obrazovku. */
+          /* Vyjímka: kalendáře s 7 sloupci (dny v týdnu) mají zůstat 7
+             sloupců i na mobilu, jen užší — na jeden sloupec by byly
+             nepoužitelné. */
+          [style*="grid-template-columns"]:not([style*="repeat(7"]) { grid-template-columns: 1fr !important; }
+
+          /* Tabulky bez wrapperu (téměř všechny v appce) — necháme je
+             tabulkově vykreslit, ale umožníme vodorovné posouvání, aby se
+             nerozbily rozlité přes okraj obrazovky. */
+          table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
         }
       `}</style>
       <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} style={{ display: "none", position: "fixed", top: 10, left: 10, zIndex: 300, background: "#0E3B5E", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 22, color: "#fff", alignItems: "center", justifyContent: "center" }}><i className="ti ti-menu-2" aria-hidden="true"></i></button>
@@ -4772,7 +4789,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
         const canDelete = isAdmin || detailEvent.employee_id === currentUser?.id;
         return (
           <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setDetailEvent(null)}>
-            <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 460, maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 460, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
                 <span style={{ background: wt.bg, color: wt.color, border: `1px solid ${wt.color}44`, borderRadius: 20, padding: "4px 14px", fontSize: 13, fontWeight: 700 }}>{detailEvent.work_type}</span>
                 <span style={{ fontSize: 14, color: "#64748b" }}>{fmtDateCz(detailEvent.date)}</span>
@@ -6798,7 +6815,7 @@ export default function App() {
   if (needsPassword) {
     return (
       <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
-        <div style={{ background: "#fff", borderRadius: 16, padding: 40, width: 360, boxShadow: "0 8px 40px #0000001a", border: "1px solid #e2e8f0" }}>
+        <div style={{ background: "#fff", borderRadius: 16, padding: "40px 24px", width: 360, maxWidth: "92vw", boxSizing: "border-box", boxShadow: "0 8px 40px #0000001a", border: "1px solid #e2e8f0" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <ProudOSMark size={48} />
             <div style={{ fontWeight: 800, fontSize: 22, textAlign: "center" }}>
@@ -6830,7 +6847,7 @@ export default function App() {
   if (!currentUser) {
     return (
       <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
-        <div style={{ background: "#fff", borderRadius: 16, padding: 40, width: 360, boxShadow: "0 8px 40px #0000001a", border: "1px solid #e2e8f0" }}>
+        <div style={{ background: "#fff", borderRadius: 16, padding: "40px 24px", width: 360, maxWidth: "92vw", boxSizing: "border-box", boxShadow: "0 8px 40px #0000001a", border: "1px solid #e2e8f0" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <ProudOSMark size={48} />
             <div style={{ fontWeight: 800, fontSize: 22, textAlign: "center" }}>

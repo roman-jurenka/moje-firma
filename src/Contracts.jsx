@@ -186,7 +186,7 @@ const S = {
   btn:      (c = "#6366f1") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
   btnGhost: { background: "transparent", color: "#6366f1", border: "1px solid #6366f1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   modal:    { position: "fixed", inset: 0, background: "#000c", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 },
-  modalBox: { background: "#0f1320", borderRadius: 16, padding: 28, width: 500, border: "1px solid #252d45", maxHeight: "90vh", overflowY: "auto" },
+  modalBox: { background: "#0f1320", borderRadius: 16, padding: 28, width: 500, maxWidth: "92vw", boxSizing: "border-box", border: "1px solid #252d45", maxHeight: "90vh", overflowY: "auto" },
   th:       { textAlign: "left", padding: "8px 10px", fontSize: 11, color: "#475569", borderBottom: "1px solid #1a2035", textTransform: "uppercase", letterSpacing: "0.06em" },
   td:       { padding: "10px 10px", fontSize: 13, borderBottom: "1px solid #1a2035", color: "#94a3b8" },
   tag:      (c) => ({ background: c + "22", color: c, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700, display: "inline-block" }),
