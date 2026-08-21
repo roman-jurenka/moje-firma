@@ -152,7 +152,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString("cs-CZ") : "—";
 const today = () => new Date().toISOString().slice(0, 10);
 
 const COST_TYPES = ["práce", "materiál", "doprava"];
-const UNITS = ["h", "ks", "km", "m", "m²", "m³", "t", "l", "den", "pauš."];
+const UNITS = ["h", "ks", "km", "m", "m²", "m³", "kg", "t", "l", "den", "pauš."];
 
 const STATUS_COLORS = {
   "Nová":        { bg: "#1a2035", color: "#2E9BE0", border: "#2E9BE033" },
@@ -579,11 +579,18 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     setDeliveryNoteItems(prev => prev.filter(i => i.id !== id));
   }
 
-  async function updateDNItem(id, quantity) {
-    const qty = Number(quantity);
-    if (isNaN(qty) || qty < 0) return;
-    await supabase.from("delivery_note_items").update({ quantity: qty }).eq("id", id);
-    setDeliveryNoteItems(prev => prev.map(i => i.id === id ? { ...i, quantity: qty } : i));
+  // Plná úprava položky dodacího listu (popis, množství, jednotka, cena) —
+  // otevírá se kliknutím na položku, stejný formulář jako u přidání nové.
+  async function updateDNItemFull(form) {
+    const patch = {
+      description: form.description,
+      quantity:    Number(form.quantity) || 1,
+      unit:        form.unit || "ks",
+      unit_price:  Number(form.unitPrice) || 0,
+    };
+    await supabase.from("delivery_note_items").update(patch).eq("id", form.id);
+    setDeliveryNoteItems(prev => prev.map(i => i.id === form.id ? { ...i, ...patch } : i));
+    closeModal();
   }
 
   // ── Schválit / odschválit položku (zaškrtnutí k fakturaci) ──
@@ -1001,7 +1008,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                               onUpdateMargin={(m) => updateDNMargin(dn.id, m)}
                               onAddItem={() => setModal({ type: "addDNItem", deliveryNoteId: dn.id })}
                               onDeleteItem={deleteDNItem}
-                              onUpdateItem={updateDNItem}
+                              onEditItem={(item) => setModal({ type: "addDNItem", deliveryNoteId: dn.id, item })}
                             />
                           ))}
                         </div>
@@ -1259,7 +1266,8 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       {modal?.type === "addDNItem" && (
         <AddDNItemModal
           deliveryNoteId={modal.deliveryNoteId}
-          onSave={saveDNItem} onClose={closeModal}
+          item={modal.item}
+          onSave={modal.item ? updateDNItemFull : saveDNItem} onClose={closeModal}
         />
       )}
       {modal?.type === "editContract" && (
@@ -2307,8 +2315,7 @@ function DokumentyTab({ contractId, currentUser }) {
 }
 
 // ─── DODACÍ LIST ROW ─────────────────────────────────────────────────────────
-function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDeleteItem, onUpdateItem }) {
-  const [editingQty, setEditingQty] = useState({}); // { [itemId]: value }
+function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDeleteItem, onEditItem }) {
   const [expanded, setExpanded] = useState(false);
   const [editMargin, setEditMargin] = useState(false);
   const [marginVal, setMarginVal] = useState(String(dn.margin ?? 30));
@@ -2386,43 +2393,19 @@ function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDel
                   const itemClient = itemCost * (1 + margin);
                   const clientUnit = Number(item.unit_price||0) * (1 + margin);
                   return (
-                    <tr key={item.id}>
+                    <tr key={item.id} onClick={() => onEditItem(item)} title="Klikni pro úpravu položky"
+                      style={{ cursor: "pointer" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#0f1320"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ ...S.td, color: "#e2e8f0" }}>{item.description}</td>
-                      <td style={S.td}>
-                        {editingQty[item.id] !== undefined ? (
-                          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                            <input
-                              type="number" min={0} step={0.001}
-                              style={{ width: 70, background: "#0f1117", border: "1px solid #2E9BE0", borderRadius: 6, padding: "3px 7px", color: "#fff", fontSize: 13, outline: "none" }}
-                              value={editingQty[item.id]}
-                              onChange={e => setEditingQty(prev => ({ ...prev, [item.id]: e.target.value }))}
-                              onKeyDown={e => {
-                                if (e.key === "Enter") { onUpdateItem(item.id, editingQty[item.id]); setEditingQty({}); }
-                                if (e.key === "Escape") setEditingQty({});
-                              }}
-                              autoFocus
-                            />
-                            <button onClick={() => { onUpdateItem(item.id, editingQty[item.id]); setEditingQty({}); }}
-                              style={{ background: "#2E9BE0", border: "none", borderRadius: 5, color: "#fff", cursor: "pointer", fontSize: 12, padding: "3px 7px" }}>✓</button>
-                            <button onClick={() => setEditingQty({})}
-                              style={{ background: "none", border: "1px solid #334155", borderRadius: 5, color: "#94a3b8", cursor: "pointer", fontSize: 12, padding: "3px 7px" }}>✕</button>
-                          </div>
-                        ) : (
-                          <span
-                            onClick={() => setEditingQty({ [item.id]: item.quantity })}
-                            title="Klikni pro úpravu množství"
-                            style={{ cursor: "pointer", color: "#e2e8f0", borderBottom: "1px dashed #334155", paddingBottom: 1 }}>
-                            {item.quantity}
-                          </span>
-                        )}
-                      </td>
+                      <td style={S.td}>{item.quantity}</td>
                       <td style={S.td}>{item.unit}</td>
                       <td style={{ ...S.td, color: "#f87171" }}>{fmtKc(item.unit_price)}</td>
                       <td style={{ ...S.td, color: "#34d399" }}>{fmtKc(clientUnit)}</td>
                       <td style={{ ...S.td, color: "#f87171", fontWeight: 700 }}>{fmtKc(itemCost)}</td>
                       <td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtKc(itemClient)}</td>
                       <td style={S.td}>
-                        <button onClick={() => onDeleteItem(item.id)}
+                        <button onClick={e => { e.stopPropagation(); onDeleteItem(item.id); }}
                           style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: 16 }}>×</button>
                       </td>
                     </tr>
@@ -2475,8 +2458,11 @@ function AddDeliveryNoteModal({ contractId, onSave, onClose }) {
 }
 
 // ─── MODAL: NOVÁ POLOŽKA DODACÍHO LISTU ──────────────────────────────────────
-function AddDNItemModal({ deliveryNoteId, onSave, onClose }) {
-  const [f, setF] = useState({ description: "", quantity: "1", unit: "ks", unitPrice: "", deliveryNoteId });
+function AddDNItemModal({ deliveryNoteId, item, onSave, onClose }) {
+  const isEdit = !!item;
+  const [f, setF] = useState(isEdit
+    ? { id: item.id, description: item.description || "", quantity: String(item.quantity ?? "1"), unit: item.unit || "ks", unitPrice: String(item.unit_price ?? ""), deliveryNoteId }
+    : { description: "", quantity: "1", unit: "ks", unitPrice: "", deliveryNoteId });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   const total = (Number(f.quantity) || 0) * (Number(f.unitPrice) || 0);
@@ -2485,7 +2471,7 @@ function AddDNItemModal({ deliveryNoteId, onSave, onClose }) {
     <div style={S.modal}>
       <div style={S.modalBox}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 17, color: "#fff" }}>Nová položka dodacího listu</div>
+          <div style={{ fontWeight: 700, fontSize: 17, color: "#fff" }}>{isEdit ? "Upravit položku dodacího listu" : "Nová položka dodacího listu"}</div>
           <button style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18 }} onClick={onClose}>✕</button>
         </div>
 
@@ -2515,7 +2501,7 @@ function AddDNItemModal({ deliveryNoteId, onSave, onClose }) {
         )}
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button style={S.btn()} onClick={() => { if (f.description) onSave(f); }}>Uložit položku</button>
+          <button style={S.btn()} onClick={() => { if (f.description) onSave(f); }}>{isEdit ? "Uložit změny" : "Uložit položku"}</button>
           <button style={S.btnGhost} onClick={onClose}>Zrušit</button>
         </div>
       </div>
