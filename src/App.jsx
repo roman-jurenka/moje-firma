@@ -104,7 +104,54 @@ function DatePicker({ value, onChange, placeholder = "Vyberte datum", style = {}
   );
 }
 
-
+// ─── VYHLEDÁVACÍ VÝBĚR (náhrada nativního <select>) ──────────────────────────
+// Nativní <select> u dlouhých seznamů (zakázky) umí najít položku jen podle
+// prvního napsaného písmene — pro hledání celým slovem to nestačí. Tahle
+// komponenta je textové pole s dropdownem, které filtruje podle všech
+// napsaných slov kdekoliv v názvu (ne jen na začátku).
+function SearchSelect({ options, value, onChange, placeholder = "— vyberte —", style = {}, allowClear = true }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const selected = options.find(o => String(o.id) === String(value));
+  const words = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const filtered = words.length === 0 ? options : options.filter(o => {
+    const label = (o.label || "").toLowerCase();
+    return words.every(w => label.includes(w));
+  });
+  return (
+    <div ref={ref} style={{ position: "relative", ...style }}>
+      <input
+        style={S.select}
+        value={open ? q : (selected?.label || "")}
+        placeholder={placeholder}
+        onFocus={() => { setOpen(true); setQ(""); }}
+        onChange={e => { setQ(e.target.value); if (!open) setOpen(true); }}
+      />
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 2px)", left: 0, right: 0, zIndex: 9999, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: 240, overflowY: "auto", boxShadow: "0 6px 16px #00000022" }}>
+          {allowClear && value && (
+            <div onClick={() => { onChange(""); setQ(""); setOpen(false); }}
+              style={{ padding: "8px 12px", fontSize: 13, color: "#94a3b8", cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>— zrušit výběr —</div>
+          )}
+          {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>Nic nenalezeno.</div>}
+          {filtered.map(o => (
+            <div key={o.id} onClick={() => { onChange(String(o.id)); setQ(""); setOpen(false); }}
+              style={{ padding: "8px 12px", fontSize: 13, color: "#1A1A1A", cursor: "pointer", background: String(o.id) === String(value) ? "#eff6ff" : "transparent" }}
+              onMouseDown={e => e.preventDefault()}>
+              {o.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── AUTH & USERS ────────────────────────────────────────────────────────────
 // Žádná hesla tady! Ta žijí jen v Supabase Auth (login.md v README má postup
@@ -5342,19 +5389,18 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               )}
             </div>
             <label style={S.label}>Zakázka</label>
-            <select style={S.select}
+            <SearchSelect
+              options={activeContractOpts.map(c => ({ id: c.id, label: c.name }))}
               value={todayRecord?.contract_id || ciContractId}
-              onChange={async e => {
-                const cid = e.target.value ? Number(e.target.value) : null;
-                setCiContractId(e.target.value);
+              placeholder="— bez zakázky — (piš pro hledání)"
+              onChange={async val => {
+                const cid = val ? Number(val) : null;
+                setCiContractId(val);
                 if (todayRecord) {
                   await supabase.from("attendance").update({ contract_id: cid }).eq("id", todayRecord.id);
                   setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, contract_id: cid } : a));
                 }
-              }}>
-              <option value="">— bez zakázky —</option>
-              {activeContractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+              }} />
             <label style={S.label}>Popis práce</label>
             <textarea style={{ ...S.input, minHeight: 64, resize: "vertical" }}
               placeholder="Co jsi dělal/a..."
@@ -5389,10 +5435,11 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 <label style={S.label}>Počáteční stav km</label>
                 <input type="number" style={S.input} placeholder="např. 12450" value={ciKmStart} onChange={e => setCiKmStart(e.target.value)} />
                 <label style={S.label}>Zakázka jízdy (volitelné)</label>
-                <select style={S.select} value={ciTripContractId} onChange={e => setCiTripContractId(e.target.value)}>
-                  <option value="">— bez zakázky —</option>
-                  {activeContractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <SearchSelect
+                  options={activeContractOpts.map(c => ({ id: c.id, label: c.name }))}
+                  value={ciTripContractId}
+                  placeholder="— bez zakázky — (piš pro hledání)"
+                  onChange={val => setCiTripContractId(val)} />
               </>)}
             </>)}
             <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#334155" : "#2E9BE0"), width: "100%", padding: "12px", fontWeight: 700, marginTop: 8, fontSize: 15 }}
@@ -5410,10 +5457,12 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               <div><label style={S.label}>Odchod</label><input type="time" style={S.input} value={manualOut} onChange={e => setManualOut(e.target.value)} /></div>
               <div>
                 <label style={S.label}>Zakázka</label>
-                <select style={{ ...S.select, marginBottom: 0 }} value={manualContractId} onChange={e => setManualContractId(e.target.value)}>
-                  <option value="">— bez zakázky —</option>
-                  {activeContractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <SearchSelect
+                  style={{ marginBottom: 0 }}
+                  options={activeContractOpts.map(c => ({ id: c.id, label: c.name }))}
+                  value={manualContractId}
+                  placeholder="— bez zakázky — (piš pro hledání)"
+                  onChange={val => setManualContractId(val)} />
               </div>
               <button style={{ ...S.btn(), marginBottom: 0 }} onClick={addManual}>Uložit</button>
             </div>
@@ -5496,10 +5545,12 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   <div><label style={{ ...S.label, fontSize: 11 }}>Do</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlOut} onChange={e => setTlOut(e.target.value)} /></div>
                   <div>
                     <label style={{ ...S.label, fontSize: 11 }}>Zakázka</label>
-                    <select style={{ ...S.select, marginBottom: 0, fontSize: 12 }} value={tlContractId} onChange={e => setTlContractId(e.target.value)}>
-                      <option value="">— bez zakázky —</option>
-                      {activeContractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    <SearchSelect
+                      style={{ marginBottom: 0 }}
+                      options={activeContractOpts.map(c => ({ id: c.id, label: c.name }))}
+                      value={tlContractId}
+                      placeholder="— bez zakázky —"
+                      onChange={val => setTlContractId(val)} />
                   </div>
                   <div style={{ position: "relative" }}>
                     <label style={{ ...S.label, fontSize: 11 }}>Popis činnosti</label>
@@ -5664,19 +5715,19 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                         <td style={{ ...S.td, color: "#f59e0b" }}>{rec.checkout || <span style={{ color: "#334155" }}>probíhá</span>}</td>
                         <td style={{ ...S.td, fontWeight: 700, color: "#fff" }}>{h > 0 ? fmtHours(h) : "—"}</td>
                         <td style={S.td}>
-                          <select style={{ ...S.select, marginBottom: 0, fontSize: 12, padding: "3px 6px" }}
+                          <SearchSelect
+                            style={{ marginBottom: 0, minWidth: 160 }}
+                            options={contractOpts.map(c => ({ id: c.id, label: c.name }))}
                             value={rec.contract_id || ""}
-                            onChange={async e => {
-                              const cid = e.target.value ? Number(e.target.value) : null;
+                            placeholder="—"
+                            onChange={async val => {
+                              const cid = val ? Number(val) : null;
                               if (!guardWrite(rec.date, { checkin: rec.checkin, checkout: rec.checkout, contract_id: cid, activity: rec.activity, target_attendance_id: rec.id })) return;
                               await supabase.from("attendance").update({ contract_id: cid }).eq("id", rec.id);
                               const updated = { ...rec, contract_id: cid };
                               setAttendance(attendance.map(a => a.id === rec.id ? updated : a));
                               if (cid && rec.checkout) await createCostEntryFromAttendance(updated, rec.checkout);
-                            }}>
-                            <option value="">—</option>
-                            {contractOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
+                            }} />
                         </td>
                         <td style={{ ...S.td, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rec.activity || "—"}</td>
                         <td style={S.td}>
