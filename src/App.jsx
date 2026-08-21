@@ -529,8 +529,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         supabase.from("projects").select("*, project_steps(*)").order("id"),
         supabase.from("costs").select("*").order("id"),
         supabase.rpc("get_attendance_full"),
-        supabase.from("contracts").select("id, name, status, customer_id, code, address").order("name"),
-        supabase.from("contract_cost_entries").select("id, employee_id, amount_cost, amount_client, contract_id, attendance_id").order("id"),
+        supabase.from("contracts").select("id, name, status, customer_id, code, type, address, budget_prace, budget_material, budget_doprava, budget_vice_prace, budget_vice_material, budget_vice_doprava").order("name"),
+        supabase.from("contract_cost_entries").select("id, employee_id, amount_cost, amount_client, contract_id, attendance_id, cost_type, is_extra").order("id"),
         supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50),
         supabase.from("calendar_events").select("*").order("date"),
       ]);
@@ -759,7 +759,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
               overdueRevenue={overdueRevenue} lowStock={lowStock}
               totalPayroll={totalPayroll} activeProjects={activeProjects}
               costs={costs} toggleTask={toggleTaskGlobal} setTab={setTab}
-              contracts={contracts} attendance={attendance}
+              contracts={contracts} attendance={attendance} costEntries={costEntries}
               onOpenSheet={(id, name) => { setSheetContractId(id); setSheetContractName(name); setTab("sheets"); }}
             />
         )}
@@ -1315,6 +1315,14 @@ const DASH_WIDGETS = [
   { id: "dochazka", label: "Docházka / HR", icon: "ti-users" },
   { id: "sklad", label: "Sklad / materiál", icon: "ti-package" },
   { id: "projekty", label: "Projekty", icon: "ti-building" },
+  { id: "rozpracovane", label: "Rozpracované zakázky", icon: "ti-progress" },
+];
+
+// Sekce, podle kterých se u zakázky sleduje rozpočet vs. skutečné čerpání.
+const CONTRACT_COST_SECTIONS = [
+  { key: "prace", label: "Práce", costType: "práce", budgetKey: "budget_prace", budgetExtraKey: "budget_vice_prace", color: "#2E9BE0" },
+  { key: "material", label: "Materiál", costType: "materiál", budgetKey: "budget_material", budgetExtraKey: "budget_vice_material", color: "#f59e0b" },
+  { key: "doprava", label: "Doprava", costType: "doprava", budgetKey: "budget_doprava", budgetExtraKey: "budget_vice_doprava", color: "#a78bfa" },
 ];
 
 function widgetCardHeader(icon, label, color, action) {
@@ -1329,7 +1337,7 @@ function widgetCardHeader(icon, label, color, action) {
 }
 
 function Dashboard({ customers, deals, tasks, invoices, products, employees, projects,
-  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab, contracts, attendance, onOpenSheet }) {
+  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab, contracts, attendance, onOpenSheet, costEntries }) {
   const [sheetSearch, setSheetSearch] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [hiddenWidgets, setHiddenWidgets] = useState(() => {
@@ -1351,6 +1359,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   const activeEmployees = employees.filter(e => e.status === "Aktivní");
   const presentToday = (attendance || []).filter(a => a.date === todayStr && a.checkin);
   const openInvoices = invoices.filter(i => i.status === "Čeká" || i.status === "Po splatnosti");
+  const inProgressContracts = (contracts || []).filter(c => c.status === "Probíhá");
 
   // Tržby (zaplacené faktury) za posledních 6 měsíců pro mini graf
   const monthKeys = Array.from({ length: 6 }, (_, i) => {
@@ -1498,6 +1507,51 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
       </div>
 
       <div style={S.grid2}>
+        {/* Rozpracované zakázky — finanční stav po sekcích a úkoly */}
+        {!hiddenWidgets.includes("rozpracovane") && (
+          <div style={{ ...S.card, gridColumn: "1 / -1" }}>
+            {widgetCardHeader("ti-progress", "Rozpracované zakázky — finanční stav", "#2E9BE0",
+              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("contracts")}>Vše →</span>)}
+            {inProgressContracts.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné rozpracované zakázky</div> :
+              inProgressContracts.map(c => {
+                const contractTasks = (tasks || []).filter(t => t.contract_id === c.id);
+                const doneTasks = contractTasks.filter(t => t.done).length;
+                return (
+                  <div key={c.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                      <span style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 13, cursor: "pointer" }} onClick={() => onOpenSheet(c.id, c.name)}>
+                        {c.name} {c.code && <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: 11 }}>({c.code})</span>}
+                      </span>
+                      {contractTasks.length > 0 && (
+                        <span style={{ fontSize: 11, color: "#64748b" }}>Úkoly: {doneTasks}/{contractTasks.length}</span>
+                      )}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+                      {CONTRACT_COST_SECTIONS.map(sec => {
+                        const budget = (Number(c[sec.budgetKey]) || 0) + (Number(c[sec.budgetExtraKey]) || 0);
+                        const spent = (costEntries || []).filter(e => e.contract_id === c.id && e.cost_type === sec.costType).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
+                        const pct = budget > 0 ? (spent / budget) * 100 : (spent > 0 ? 100 : 0);
+                        const over = budget > 0 && spent > budget;
+                        return (
+                          <div key={sec.key}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", marginBottom: 3 }}>
+                              <span>{sec.label}</span>
+                              <span style={{ color: over ? "#f87171" : "#64748b", fontWeight: over ? 700 : 400 }}>{fmtKc(spent)} / {fmtKc(budget)}</span>
+                            </div>
+                            <div style={{ background: "#f1f5f9", borderRadius: 6, height: 6, overflow: "hidden" }}>
+                              <div style={{ width: `${Math.min(100, pct)}%`, height: "100%", background: over ? "#f87171" : sec.color, borderRadius: 6 }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+            }
+          </div>
+        )}
+
         {/* ZAKÁZKOVÝ LIST — rychlé vyhledání */}
         <div style={{ ...S.card, gridColumn: "1 / -1", marginBottom: 0 }}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
