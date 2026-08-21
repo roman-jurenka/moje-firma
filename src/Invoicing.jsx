@@ -1,0 +1,217 @@
+import { useState, useEffect, useRef } from "react";
+import { computeInvoiceTotals, fmtKc2 } from "./invoicingUtils.js";
+
+const VAT_RATES = [0, 12, 21];
+const ITEM_UNITS = ["ks", "kpl.", "h", "m", "m²", "m³", "kg", "km", "den"];
+
+// ─── Malý vyhledávací výběr zakázky (bez závislosti na App.jsx) ─────────────
+function ContractPicker({ options, value, onChange, placeholder = "— vyberte zakázku — (piš pro hledání)" }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const selected = options.find(o => String(o.id) === String(value));
+  const words = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const filtered = words.length === 0 ? options : options.filter(o => words.every(w => (o.label || "").toLowerCase().includes(w)));
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <input style={inputStyle} value={open ? q : (selected?.label || "")} placeholder={placeholder}
+        onFocus={() => { setOpen(true); setQ(""); }} onChange={e => { setQ(e.target.value); setOpen(true); }} />
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 2px)", left: 0, right: 0, zIndex: 999, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: 220, overflowY: "auto", boxShadow: "0 6px 16px #00000022" }}>
+          {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>Nic nenalezeno.</div>}
+          {filtered.map(o => (
+            <div key={o.id} onMouseDown={e => e.preventDefault()} onClick={() => { onChange(o.id); setQ(""); setOpen(false); }}
+              style={{ padding: "8px 12px", fontSize: 13, cursor: "pointer", background: String(o.id) === String(value) ? "#eff6ff" : "transparent" }}>
+              {o.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const labelStyle = { display: "block", fontSize: 12, color: "#64748b", fontWeight: 600, margin: "10px 0 4px" };
+const inputStyle = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" };
+
+// ─── Vystavení faktury — nejdřív se zeptá ručně/ze zakázky, pak editor položek
+export default function InvoiceCreateFlow({ customers, contracts, costEntries, onSave, onClose }) {
+  const [step, setStep] = useState("choose"); // "choose" | "form"
+  const [fromContractId, setFromContractId] = useState("");
+  const [f, setF] = useState(() => ({
+    customerId: "", invoiceType: "vydaná", isDeposit: false, orderRef: "",
+    issued: new Date().toISOString().slice(0, 10),
+    due: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+    status: "Čeká", customerIco: "", customerDic: "",
+    items: [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
+  }));
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  const startManual = () => setStep("form");
+  const startFromContract = () => setStep("pickContract");
+
+  const applyContract = (cid) => {
+    setFromContractId(cid);
+    const contract = contracts.find(c => c.id === Number(cid));
+    if (!contract) return;
+    const rows = ["práce", "materiál", "doprava"].map(type => {
+      const sum = (costEntries || []).filter(e => e.contract_id === contract.id && e.cost_type === type).reduce((s, e) => s + (Number(e.amount_client) || 0), 0);
+      return sum > 0 ? { desc: `${type[0].toUpperCase() + type.slice(1)} — ${contract.name}`, qty: 1, unit: "kpl.", price: sum, vatRate: 21 } : null;
+    }).filter(Boolean);
+    setF(p => ({
+      ...p,
+      customerId: contract.customer_id ? String(contract.customer_id) : p.customerId,
+      orderRef: contract.code || p.orderRef,
+      items: rows.length ? rows : p.items,
+    }));
+    setStep("form");
+  };
+
+  const setItem = (i, patch) => setF(p => ({ ...p, items: p.items.map((it, idx) => idx === i ? { ...it, ...patch } : it) }));
+  const addItem = () => setF(p => ({ ...p, items: [...p.items, { desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }] }));
+  const removeItem = (i) => setF(p => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }));
+
+  const { lines, total, totalTax } = computeInvoiceTotals(f.items);
+
+  const submit = () => {
+    if (!f.customerId || lines.length === 0) { alert("Vyber zákazníka a přidej aspoň jednu položku."); return; }
+    onSave({
+      customerId: f.customerId, invoiceType: f.invoiceType, isDeposit: f.isDeposit,
+      orderRef: f.orderRef, issued: f.issued, due: f.due, status: f.status,
+      customerIco: f.customerIco, customerDic: f.customerDic,
+      items: lines.map(({ desc, qty, unit, price, vatRate }) => ({ desc, qty, unit, price, vatRate })),
+      amount: total - totalTax, tax: totalTax,
+      contractId: fromContractId ? Number(fromContractId) : null,
+    });
+  };
+
+  if (step === "choose") {
+    return (
+      <div style={overlayStyle}>
+        <div style={{ ...boxStyle, width: 420 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>Vystavit fakturu</div>
+          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>Odkud se mají vzít položky faktury?</div>
+          <button onClick={startManual} style={{ ...btnGhost, width: "100%", marginBottom: 10, padding: "12px 16px", textAlign: "left" }}>
+            ✍️ Ručně — přidám položky sám
+          </button>
+          <button onClick={startFromContract} style={{ ...btnGhost, width: "100%", padding: "12px 16px", textAlign: "left" }}>
+            📋 Ze zakázky — předvyplní se z nákladů zakázky
+          </button>
+          <button onClick={onClose} style={{ ...btnGhost, width: "100%", marginTop: 16, borderColor: "transparent", color: "#94a3b8" }}>Zrušit</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "pickContract") {
+    return (
+      <div style={overlayStyle}>
+        <div style={{ ...boxStyle, width: 420 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>Vyber zakázku</div>
+          <ContractPicker options={(contracts || []).map(c => ({ id: c.id, label: c.code ? `${c.name} (${c.code})` : c.name }))}
+            value={fromContractId} onChange={applyContract} />
+          <button onClick={() => setStep("choose")} style={{ ...btnGhost, width: "100%", marginTop: 16 }}>← Zpět</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={overlayStyle}>
+      <div style={{ ...boxStyle, width: 720 }}>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>Nová faktura</div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
+          <div>
+            <label style={labelStyle}>Zákazník</label>
+            <select style={inputStyle} value={f.customerId} onChange={e => set("customerId", e.target.value)}>
+              <option value="">— vyberte —</option>
+              {(customers || []).map(c => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Typ</label>
+            <select style={inputStyle} value={f.invoiceType} onChange={e => set("invoiceType", e.target.value)}>
+              <option value="vydaná">📤 Vydaná</option>
+              <option value="přijatá">📥 Přijatá</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <div><label style={labelStyle}>IČ zákazníka (volitelné)</label><input style={inputStyle} value={f.customerIco} onChange={e => set("customerIco", e.target.value)} /></div>
+          <div><label style={labelStyle}>DIČ zákazníka (volitelné)</label><input style={inputStyle} value={f.customerDic} onChange={e => set("customerDic", e.target.value)} /></div>
+          <div><label style={labelStyle}>Objednávka (volitelné)</label><input style={inputStyle} value={f.orderRef} onChange={e => set("orderRef", e.target.value)} /></div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <div><label style={labelStyle}>Datum vystavení</label><input type="date" style={inputStyle} value={f.issued} onChange={e => set("issued", e.target.value)} /></div>
+          <div><label style={labelStyle}>Datum splatnosti</label><input type="date" style={inputStyle} value={f.due} onChange={e => set("due", e.target.value)} /></div>
+          <div><label style={labelStyle}>Stav</label>
+            <select style={inputStyle} value={f.status} onChange={e => set("status", e.target.value)}>
+              {["Čeká", "Zaplacena", "Po splatnosti"].map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, cursor: "pointer" }}>
+          <input type="checkbox" checked={f.isDeposit} onChange={e => set("isDeposit", e.target.checked)} />
+          Zálohová faktura
+        </label>
+
+        <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", marginTop: 16, marginBottom: 6 }}>POLOŽKY</div>
+        <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                {["Popis", "Počet", "M.j.", "Cena/m.j.", "DPH", "Celkem", ""].map(h => <th key={h} style={{ padding: "6px 8px", fontSize: 10, color: "#64748b", textAlign: "left" }}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l, i) => (
+                <tr key={i} style={{ borderTop: "1px solid #f1f5f9" }}>
+                  <td style={{ padding: 4 }}><input style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].desc} onChange={e => setItem(i, { desc: e.target.value })} /></td>
+                  <td style={{ padding: 4, width: 60 }}><input type="number" style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].qty} onChange={e => setItem(i, { qty: e.target.value })} /></td>
+                  <td style={{ padding: 4, width: 70 }}>
+                    <select style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].unit} onChange={e => setItem(i, { unit: e.target.value })}>
+                      {ITEM_UNITS.map(u => <option key={u}>{u}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding: 4, width: 90 }}><input type="number" style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].price} onChange={e => setItem(i, { price: e.target.value })} /></td>
+                  <td style={{ padding: 4, width: 70 }}>
+                    <select style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].vatRate} onChange={e => setItem(i, { vatRate: Number(e.target.value) })}>
+                      {VAT_RATES.map(r => <option key={r} value={r}>{r} %</option>)}
+                    </select>
+                  </td>
+                  <td style={{ padding: "4px 8px", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtKc2(l.celkem)} Kč</td>
+                  <td style={{ padding: 4 }}><button onClick={() => removeItem(i)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}>×</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button onClick={addItem} style={{ ...btnGhost, marginTop: 8, padding: "6px 14px", fontSize: 12 }}>+ Přidat řádek</button>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, gap: 24, alignItems: "baseline" }}>
+          <span style={{ fontSize: 12, color: "#64748b" }}>DPH celkem: {fmtKc2(totalTax)} Kč</span>
+          <span style={{ fontSize: 18, fontWeight: 800 }}>Celkem k úhradě: {fmtKc2(total)} Kč</span>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          <button onClick={submit} style={btnPrimary}>Vystavit fakturu</button>
+          <button onClick={onClose} style={btnGhost}>Zrušit</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const overlayStyle = { position: "fixed", inset: 0, background: "#00000066", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 400 };
+const boxStyle = { background: "#fff", borderRadius: 14, padding: 24, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" };
+const btnPrimary = { background: "#F5C518", color: "#1A1A1A", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const btnGhost = { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };

@@ -7,6 +7,8 @@ import Pricing from "./Pricing.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
+import InvoiceCreateFlow from "./Invoicing.jsx";
+import { downloadInvoicePDF } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
@@ -824,6 +826,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* ── FAKTURACE ── */}
         {tab === "invoices" && <Invoices
           invoices={invoices} setInvoices={setInvoices} customers={customers}
+          contracts={contracts} costEntries={costEntries}
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
 
@@ -2482,23 +2485,34 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
 
 // ─── FAKTURACE ────────────────────────────────────────────────────────────────
 
-function Invoices({ invoices, setInvoices, customers, modal, setModal, closeModal }) {
-  const [newInv, setNewInv] = useState({ customerId: "", amount: "", status: "Čeká", issued: "", due: "", items: [{ desc: "", qty: 1, price: 0 }], invoice_type: "vydaná" });
+function Invoices({ invoices, setInvoices, customers, contracts, costEntries, modal, setModal, closeModal }) {
   const [invTab, setInvTab] = useState("vydané");
+  const [pdfBusyId, setPdfBusyId] = useState(null);
 
-  const save = async () => {
-    if (!newInv.customerId || !newInv.amount) return;
-    const amount = Number(newInv.amount);
+  const saveFromFlow = async (f) => {
     const invNum = nextInvNum(invoices);
     const { data: row } = await supabase.from("invoices").insert({
-      number: invNum, customer_id: Number(newInv.customerId), amount,
-      tax: Math.round(amount * 0.21), status: newInv.status,
-      issued: newInv.issued, due: newInv.due, items: newInv.items,
-      invoice_type: newInv.invoice_type,
+      number: invNum, customer_id: Number(f.customerId), amount: f.amount,
+      tax: f.tax, status: f.status,
+      issued: f.issued, due: f.due, items: f.items,
+      invoice_type: f.invoiceType, is_deposit: f.isDeposit, order_ref: f.orderRef,
+      variable_symbol: invNum.replace(/\D/g, ""), contract_id: f.contractId,
+      customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
     }).select().single();
     if (row) setInvoices([...invoices, { ...row, customerId: row.customer_id }]);
-    setNewInv({ customerId: "", amount: "", status: "Čeká", issued: "", due: "", items: [{ desc: "", qty: 1, price: 0 }], invoice_type: "vydaná" });
     closeModal();
+  };
+
+  const handlePdf = async (inv) => {
+    setPdfBusyId(inv.id);
+    try {
+      const cust = customers.find(c => c.id === inv.customerId);
+      await downloadInvoicePDF(inv, cust);
+    } catch (e) {
+      alert("Nepodařilo se vygenerovat PDF: " + (e?.message || e));
+    } finally {
+      setPdfBusyId(null);
+    }
   };
 
   const changeStatus = async (id, status) => {
@@ -2520,7 +2534,7 @@ function Invoices({ invoices, setInvoices, customers, modal, setModal, closeModa
             ))}
           </div>
         </div>
-        <button style={S.btn()} onClick={() => setModal({ type: "addInvoice" })}>+ Nová faktura</button>
+        <button style={S.btn()} onClick={() => setModal({ type: "newInvoiceFlow" })}>+ Nová faktura</button>
       </div>
 
       {/* Souhrn */}
@@ -2536,7 +2550,7 @@ function Invoices({ invoices, setInvoices, customers, modal, setModal, closeModa
 
       <div style={S.card}>
         <table style={S.table}>
-          <thead><tr>{["Číslo", "Zákazník", "Částka", "DPH", "Vystavena", "Splatnost", "Stav", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Číslo", "Zákazník", "Částka", "DPH", "Vystavena", "Splatnost", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {invoices.filter(i => (i.invoice_type || "vydaná") === (invTab === "vydané" ? "vydaná" : "přijatá")).map(inv => {
               const cust = customers.find(c => c.id === inv.customerId);
@@ -2555,6 +2569,12 @@ function Invoices({ invoices, setInvoices, customers, modal, setModal, closeModa
                       {["Čeká", "Zaplacena", "Po splatnosti", "Storno"].map(s => <option key={s}>{s}</option>)}
                     </select>
                   </td>
+                  <td style={S.td}>
+                    <button disabled={pdfBusyId === inv.id} onClick={() => handlePdf(inv)}
+                      style={{ ...S.btn("#475569"), padding: "5px 12px", fontSize: 12 }}>
+                      {pdfBusyId === inv.id ? "…" : "📄 PDF"}
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -2562,27 +2582,9 @@ function Invoices({ invoices, setInvoices, customers, modal, setModal, closeModa
         </table>
       </div>
 
-      {modal?.type === "addInvoice" && (
-        <div style={S.modal}><div style={S.modalBox}>
-          <ModalHeader title="Nová faktura" onClose={closeModal} />
-          <label style={S.label}>Zákazník</label>
-          <select style={S.select} value={newInv.customerId} onChange={e => setNewInv({ ...newInv, customerId: e.target.value })}>
-            <option value="">— vyberte —</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <label style={S.label}>Částka (Kč bez DPH)</label><input style={S.input} type="number" value={newInv.amount} onChange={e => setNewInv({ ...newInv, amount: e.target.value })} />
-          <label style={S.label}>Datum vystavení</label><input style={S.input} type="date" value={newInv.issued} onChange={e => setNewInv({ ...newInv, issued: e.target.value })} />
-          <label style={S.label}>Datum splatnosti</label><input style={S.input} type="date" value={newInv.due} onChange={e => setNewInv({ ...newInv, due: e.target.value })} />
-          <label style={S.label}>Typ faktury</label>
-          <select style={S.select} value={newInv.invoice_type} onChange={e => setNewInv({ ...newInv, invoice_type: e.target.value })}>
-            <option value="vydaná">📤 Vydaná (zákazníkovi)</option>
-            <option value="přijatá">📥 Přijatá (od dodavatele)</option>
-          </select>
-          <label style={S.label}>Stav</label>
-          <select style={S.select} value={newInv.status} onChange={e => setNewInv({ ...newInv, status: e.target.value })}>
-            {["Čeká", "Zaplacena", "Po splatnosti"].map(s => <option key={s}>{s}</option>)}
-          </select>
-          <ModalActions onSave={save} onClose={closeModal} />
-        </div></div>
+      {modal?.type === "newInvoiceFlow" && (
+        <InvoiceCreateFlow customers={customers} contracts={contracts} costEntries={costEntries}
+          onSave={saveFromFlow} onClose={closeModal} />
       )}
     </>
   );
