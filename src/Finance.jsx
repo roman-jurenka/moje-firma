@@ -24,35 +24,88 @@ const monthKey = (d) => (d || "").slice(0, 7);
 // Zkusí z OCR textu účtenky odhadnout částku a datum. Heuristika, ne jistota
 // — proto se výsledek jen předvyplní do formuláře a uživatel ho potvrdí.
 function guessFromOcrText(text) {
-  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
-  let amount = null;
-  const totalLine = lines.find(l => /celkem|k úhrad|suma|total/i.test(l));
+  const skipLineRe = /(ičo|dič|tel\.?:|telefon|účtenka č|doklad č|kasa|pokladna|zákaznick[áa] linka)/i;
+  const rawLines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  const lines = rawLines.filter(l => !skipLineRe.test(l));
+
   const numRe = /(\d[\d\s]{0,7}[,.]\d{2})/g;
-  if (totalLine) {
-    const m = [...totalLine.matchAll(numRe)];
-    if (m.length) amount = m[m.length - 1][1];
-  }
-  if (!amount) {
-    const all = [...text.matchAll(numRe)].map(m => m[1]);
-    if (all.length) {
-      const nums = all.map(s => Number(s.replace(/\s/g, "").replace(",", ".")));
-      amount = String(Math.max(...nums));
+  const parseNum = (s) => Number(s.replace(/\s/g, "").replace(",", "."));
+
+  // Klíčová slova pro "částku k úhradě" seřazená od nejjistějších po nejslabší
+  // — čím výš v seznamu, tím spolehlivěji jde o celkovou částku, ne mezisoučet.
+  const totalKeywordsPriority = [
+    /k\s*úhrad[ěe]/i,
+    /celkem\s*k\s*úhrad[ěe]/i,
+    /celková?\s*částka/i,
+    /^celkem\b/i,
+    /\bcelkem\b/i,
+    /\bsuma\b/i,
+    /\btotal\b/i,
+  ];
+
+  let amount = null;
+  for (const re of totalKeywordsPriority) {
+    const line = lines.find(l => re.test(l));
+    if (line) {
+      const m = [...line.matchAll(numRe)];
+      if (m.length) { amount = parseNum(m[m.length - 1][1]); break; }
     }
   }
-  if (amount) amount = amount.replace(/\s/g, "").replace(",", ".");
+  if (amount == null) {
+    // Bez rozpoznaného klíčového slova bereme největší rozumnou částku na
+    // dokladu (celková částka bývá nejvyšší číslo na účtence).
+    const all = [...text.matchAll(numRe)].map(m => parseNum(m[1])).filter(n => n > 0 && n < 500000);
+    if (all.length) amount = Math.max(...all);
+  }
 
   let date = null;
-  const dateRe = /(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})/;
-  const dm = text.match(dateRe);
-  if (dm) {
+  const dateRe = /(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})/g;
+  for (const dm of [...text.matchAll(dateRe)]) {
     let [, d, mo, y] = dm;
     if (y.length === 2) y = "20" + y;
     d = d.padStart(2, "0"); mo = mo.padStart(2, "0");
-    if (Number(mo) >= 1 && Number(mo) <= 12 && Number(d) >= 1 && Number(d) <= 31) date = `${y}-${mo}-${d}`;
+    const dn = Number(d), mn = Number(mo), yn = Number(y);
+    if (mn >= 1 && mn <= 12 && dn >= 1 && dn <= 31 && yn >= 2015 && yn <= 2035) { date = `${y}-${mo}-${d}`; break; }
   }
 
-  const vendor = lines[0] || "";
-  return { amount: amount ? Number(amount) : "", date, vendor };
+  const vendor = lines.find(l => l.length > 2 && !/^[\d\s.,-]+$/.test(l)) || "";
+  return { amount: amount != null ? amount : "", date, vendor };
+}
+
+// Předzpracování fotky před OCR — šedotón + roztažení kontrastu a případné
+// zvětšení malých fotek. Tesseract si na vyčištěném obrázku vede podstatně
+// líp než na syrové fotce z mobilu (stíny, nízký kontrast papíru).
+async function preprocessImageForOcr(file) {
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = URL.createObjectURL(file);
+  });
+  const scale = img.width < 1500 ? 1500 / img.width : 1;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  URL.revokeObjectURL(img.src);
+
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imgData.data;
+  let min = 255, max = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    d[i] = d[i + 1] = d[i + 2] = gray;
+    if (gray < min) min = gray;
+    if (gray > max) max = gray;
+  }
+  const range = Math.max(1, max - min);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = ((d[i] - min) / range) * 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas;
 }
 
 export default function FinanceModule({ currentUser, employees = [] }) {
@@ -364,9 +417,16 @@ function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false }
     // OCR přímo v prohlížeči — zkusí z fotky přečíst text a navrhnout částku/datum.
     setOcrRunning(true);
     try {
-      const { createWorker } = await import("tesseract.js");
+      const [{ createWorker }, canvas] = await Promise.all([
+        import("tesseract.js"),
+        preprocessImageForOcr(file).catch(() => null),
+      ]);
       const worker = await createWorker("ces");
-      const { data } = await worker.recognize(file);
+      // PSM 6 = "jeden jednolitý blok textu" — pro účtenky sedí líp než výchozí
+      // plně automatická segmentace, která si na úzkém papíru z tiskárny často
+      // špatně poradí s pořadím řádků.
+      await worker.setParameters({ tessedit_pageseg_mode: "6" });
+      const { data } = await worker.recognize(canvas || file);
       await worker.terminate();
       setOcrText(data.text || "");
       const guess = guessFromOcrText(data.text || "");
@@ -422,6 +482,12 @@ function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false }
             {uploading && <div style={{ fontSize: 12, color: "#94a3b8" }}>Nahrávám doklad…</div>}
             {ocrRunning && <div style={{ fontSize: 12, color: "#94a3b8" }}>Čtu doklad (OCR)… zkontroluj prosím vyplněné údaje níže.</div>}
             {photoUrl && !uploading && <div style={{ fontSize: 12, color: "#34d399" }}>✓ Doklad nahrán</div>}
+            {ocrText && !ocrRunning && (
+              <details style={{ marginTop: 6 }}>
+                <summary style={{ fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>Co OCR na dokladu přečetlo (pro kontrolu, pokud návrh sedí špatně)</summary>
+                <div style={{ fontSize: 11, color: "#64748b", background: "#f8fafc", borderRadius: 6, padding: 8, marginTop: 4, whiteSpace: "pre-wrap", maxHeight: 140, overflowY: "auto" }}>{ocrText}</div>
+              </details>
+            )}
 
             <div style={{ marginTop: 10, background: "#f8fafc", borderRadius: 8, padding: 10 }}>
               <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "#334155", cursor: "pointer" }}>
