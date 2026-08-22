@@ -2491,7 +2491,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
 
   const saveFromFlow = async (f) => {
     const invNum = nextInvNum(invoices);
-    const { data: row } = await supabase.from("invoices").insert({
+    const { data: row, error } = await supabase.from("invoices").insert({
       number: invNum, customer_id: Number(f.customerId), amount: f.amount,
       tax: f.tax, status: f.status,
       issued: f.issued, due: f.due, items: f.items,
@@ -2499,6 +2499,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
       variable_symbol: invNum.replace(/\D/g, ""), contract_id: f.contractId,
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
     }).select().single();
+    if (error) { alert("Fakturu se nepodařilo uložit: " + error.message); return; }
     if (row) setInvoices([...invoices, { ...row, customerId: row.customer_id }]);
     closeModal();
   };
