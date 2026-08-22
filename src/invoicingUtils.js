@@ -131,50 +131,71 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   const sumDph = VAT_RATES.reduce((s, r) => s + byRate[r].dph, 0);
 
   return `
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #111; padding-bottom:10px; margin-bottom:10px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
       <div>
-        <div style="font-weight:800; font-size:16px;">${COMPANY.name}</div>
-        <div style="font-size:11px; line-height:1.5;">${COMPANY.addressLine}<br/>${COMPANY.city}<br/>${COMPANY.country}</div>
+        <div style="font-weight:700; font-size:13px;">${COMPANY.name}</div>
+        <div style="font-size:11px; line-height:1.4;">${COMPANY.addressLine}<br/>${COMPANY.city}<br/>${COMPANY.country}</div>
       </div>
-      <div style="font-size:11px; text-align:right;">
-        <div>IČ: <strong>${COMPANY.ico}</strong></div>
-        <div>DIČ: <strong>${COMPANY.dic}</strong></div>
+      <div style="font-size:10px;">
+        <div>IČ : <strong>${COMPANY.ico}</strong></div>
+        <div>DIČ : <strong>${COMPANY.dic}</strong></div>
       </div>
+      <div style="font-size:9px; color:#333;">mobil:<br/>www:<br/>e-mail:</div>
+      <div style="font-size:9px; color:#333;">tel.:<br/>fax:</div>
       ${barcodeDataUrl ? `<img src="${barcodeDataUrl}" style="height:34px;" />` : ""}
     </div>
 
-    <div style="display:flex; gap:28px;">
-      <div style="flex:0 0 280px;">
-        <div style="font-size:21px; font-weight:800; margin-bottom:10px;">${title}</div>
-        <img src="${qrDataUrl}" width="140" height="140" />
-        <div style="margin-top:10px; font-size:11px;"><strong>Platba:</strong> převodem</div>
-        <div style="font-size:11px; margin-bottom:14px;"><strong>Doprava:</strong> —</div>
+    <div style="display:flex; gap:24px;">
+      <div style="flex:0 0 250px;">
+        <div style="font-size:19px; font-weight:700; margin-bottom:10px;">${title}</div>
+        <img src="${qrDataUrl}" width="130" height="130" />
 
-        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555;">Datum</div>
-        <div style="display:flex; justify-content:space-between; font-size:11px; border-bottom:1px solid #ccc; padding:3px 0;"><span>vystavení:</span><strong>${fmtDateCzPlain(invoice.issued)}</strong></div>
-        <div style="display:flex; justify-content:space-between; font-size:11px; padding:3px 0 12px;"><span>splatnosti:</span><strong>${fmtDateCzPlain(invoice.due)}</strong></div>
+        <div style="margin-top:10px; font-size:10px;"><strong>Platba:</strong></div>
+        <div style="font-size:10px; margin-bottom:10px;"><strong>Doprava:</strong></div>
 
-        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555;">Symbol</div>
-        <div style="display:flex; justify-content:space-between; font-size:11px; padding:3px 0 12px;"><span>variabilní:</span><strong>${vs}</strong></div>
+        <div style="display:flex; gap:14px;">
+          <div style="flex:1;">
+            <div style="font-size:10px; font-weight:700;">Datum</div>
+            <div style="font-size:10px; margin-top:4px;">vystavení:</div>
+            <div style="font-size:11px; font-weight:700;">${fmtDateCzPlain(invoice.issued)}</div>
+            <div style="font-size:10px; margin-top:4px;">splatnosti:</div>
+            <div style="font-size:11px; font-weight:700;">${fmtDateCzPlain(invoice.due)}</div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:10px; font-weight:700;">Symbol</div>
+            <div style="font-size:10px; margin-top:4px;">konstantní:</div>
+            <div style="font-size:11px;">&nbsp;</div>
+            <div style="font-size:10px; margin-top:4px;">variabilní:</div>
+            <div style="font-size:11px; font-weight:700;">${vs}</div>
+            <div style="font-size:10px; margin-top:4px;">specifický:</div>
+          </div>
+        </div>
 
-        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555; margin-bottom:3px;">Bankovní účet</div>
+        <div style="font-size:10px; font-weight:700; margin-top:12px; margin-bottom:3px;">Bankovní účet</div>
         <div style="display:flex; border:1px solid #111;">
-          <div style="flex:1; padding:6px 10px; font-weight:700; font-size:13px; border-right:1px solid #111;">${COMPANY.bankPrefix}-${COMPANY.bankAccount}</div>
-          <div style="padding:6px 10px; font-weight:700; font-size:13px;">${COMPANY.bankCode}</div>
+          <div style="flex:1; padding:5px 9px; font-weight:700; font-size:13px; border-right:1px solid #111;">${COMPANY.bankPrefix}-${COMPANY.bankAccount}</div>
+          <div style="padding:5px 9px; font-weight:700; font-size:13px;">${COMPANY.bankCode}</div>
         </div>
       </div>
 
       <div style="flex:1;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <div style="font-size:11px;"><strong>Objednávka:</strong> ${invoice.order_ref || ""}</div>
-          <div style="font-size:22px; font-weight:800;">${invoice.number}</div>
+          <div style="font-size:11px; font-weight:700;">Objednávka:<br/><span style="font-weight:400;">${invoice.order_ref || ""}</span></div>
+          <div style="font-size:20px; font-weight:700;">${invoice.number}</div>
         </div>
 
-        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555; margin-top:10px;">Odběratel</div>
+        <div style="font-size:11px; font-weight:700; margin-top:10px;">Odběratel</div>
         ${custBlock}
-        <div style="font-size:11px; margin-top:4px;">IČ: ${invoice.customer_ico || "—"} &nbsp;&nbsp; DIČ: ${invoice.customer_dic || "—"}</div>
 
-        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555; margin-top:20px;">Konečný příjemce</div>
+        <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:16px;">
+          <span>IČ : ${invoice.customer_ico || ""}</span>
+          <span>DIČ : ${invoice.customer_dic || ""}</span>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-top:10px;">
+          <div style="font-size:11px; font-weight:700;">Konečný příjemce</div>
+          <div style="font-size:9px; color:#333; text-align:right;">e-mail:<br/>tel.:</div>
+        </div>
         ${custBlock}
       </div>
     </div>
@@ -262,7 +283,7 @@ export async function downloadInvoicePDF(invoice, customer) {
   el.style.top = "0";
   el.style.width = "794px";
   el.style.background = "#fff";
-  el.style.fontFamily = "'DM Sans', Arial, sans-serif";
+  el.style.fontFamily = "Arial, Helvetica, sans-serif";
   el.style.color = "#111";
   el.style.padding = "36px";
   el.style.boxSizing = "border-box";
