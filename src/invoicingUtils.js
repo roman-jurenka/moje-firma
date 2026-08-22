@@ -140,14 +140,21 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
         <div>IČ : <strong>${COMPANY.ico}</strong></div>
         <div>DIČ : <strong>${COMPANY.dic}</strong></div>
       </div>
-      <div style="font-size:9px; color:#333;">mobil:<br/>www:<br/>e-mail:</div>
-      <div style="font-size:9px; color:#333;">tel.:<br/>fax:</div>
+      <div style="display:grid; grid-template-columns:auto auto; column-gap:14px; row-gap:1px; font-size:9px; color:#333;">
+        <span>mobil:</span><span>tel.:</span>
+        <span>www:</span><span>fax:</span>
+        <span>e-mail:</span><span></span>
+      </div>
       ${barcodeDataUrl ? `<img src="${barcodeDataUrl}" style="height:34px;" />` : ""}
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+      <div style="font-size:19px; font-weight:700;">${title}</div>
+      <div style="font-size:20px; font-weight:700;">${invoice.number}</div>
     </div>
 
     <div style="display:flex; gap:24px;">
       <div style="flex:0 0 250px;">
-        <div style="font-size:19px; font-weight:700; margin-bottom:10px;">${title}</div>
         <img src="${qrDataUrl}" width="130" height="130" />
 
         <div style="margin-top:10px; font-size:10px;"><strong>Platba:</strong></div>
@@ -179,10 +186,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
       </div>
 
       <div style="flex:1;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <div style="font-size:11px; font-weight:700;">Objednávka:</div>
-          <div style="font-size:20px; font-weight:700;">${invoice.number}</div>
-        </div>
+        <div style="font-size:11px; font-weight:700;">Objednávka:</div>
         <div style="background:#e6e6e6; display:inline-block; min-width:140px; padding:3px 8px; border-radius:2px; font-size:11px; margin-top:2px;">${invoice.order_ref || "&nbsp;"}</div>
 
         <div style="font-size:11px; font-weight:700; margin-top:14px;">Odběratel</div>
@@ -205,7 +209,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
     <table style="width:100%; border-collapse:collapse; font-size:11px; margin:22px 0 10px;">
       <thead>
         <tr style="border-bottom:1px solid #111;">
-          ${["Označení dodávky", "Katalog", "Počet m.j.", "Cena za m.j.", "Sazba", "Základ", "DPH", "Celkem"].map(h => `<th style="text-align:left; padding:4px 6px; font-weight:700;">${h}</th>`).join("")}
+          ${["Označení dodávky", "Katalog", "Počet m. j.", "Cena za m. j.", "Sazba", "Základ", "DPH", "Celkem"].map(h => `<th style="text-align:left; padding:4px 6px; font-weight:700;">${h}</th>`).join("")}
         </tr>
       </thead>
       <tbody>
