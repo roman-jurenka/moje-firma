@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { computeInvoiceTotals, fmtKc2, buildInvoicePreview, downloadInvoicePDF } from "./invoicingUtils.js";
+import { computeInvoiceTotals, fmtKc2, buildInvoicePreview, downloadInvoicePDF, getDiscountedTotal } from "./invoicingUtils.js";
 
 const VAT_RATES = [0, 12, 21];
 const ITEM_UNITS = ["ks", "kpl.", "h", "m", "m²", "m³", "kg", "km", "den"];
@@ -47,7 +47,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     customerId: "", invoiceType: "vydaná", isDeposit: false, orderRef: "",
     issued: new Date().toISOString().slice(0, 10),
     due: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
-    status: "Čeká", customerIco: "", customerDic: "",
+    status: "Čeká", customerIco: "", customerDic: "", discountPercent: 0,
     items: [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
   }));
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -83,7 +83,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     onSave({
       customerId: f.customerId, invoiceType: f.invoiceType, isDeposit: f.isDeposit,
       orderRef: f.orderRef, issued: f.issued, due: f.due, status: f.status,
-      customerIco: f.customerIco, customerDic: f.customerDic,
+      customerIco: f.customerIco, customerDic: f.customerDic, discountPercent: Number(f.discountPercent) || 0,
       items: lines.map(({ desc, qty, unit, price, vatRate }) => ({ desc, qty, unit, price, vatRate })),
       amount: total - totalTax, tax: totalTax,
       contractId: fromContractId ? Number(fromContractId) : null,
@@ -159,10 +159,16 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
           </div>
         </div>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, cursor: "pointer" }}>
-          <input type="checkbox" checked={f.isDeposit} onChange={e => set("isDeposit", e.target.checked)} />
-          Zálohová faktura
-        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 10 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={f.isDeposit} onChange={e => set("isDeposit", e.target.checked)} />
+            Zálohová faktura
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            Sleva v %:
+            <input type="number" min="0" max="100" style={{ ...inputStyle, width: 80 }} value={f.discountPercent} onChange={e => set("discountPercent", e.target.value)} />
+          </label>
+        </div>
 
         <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", marginTop: 16, marginBottom: 6 }}>POLOŽKY</div>
         <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
@@ -199,7 +205,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, gap: 24, alignItems: "baseline" }}>
           <span style={{ fontSize: 12, color: "#64748b" }}>DPH celkem: {fmtKc2(totalTax)} Kč</span>
-          <span style={{ fontSize: 18, fontWeight: 800 }}>Celkem k úhradě: {fmtKc2(total)} Kč</span>
+          <span style={{ fontSize: 18, fontWeight: 800 }}>Celkem k úhradě: {fmtKc2(getDiscountedTotal(total, f.discountPercent))} Kč</span>
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>

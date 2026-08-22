@@ -2499,6 +2499,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
       invoice_type: f.invoiceType, is_deposit: f.isDeposit, order_ref: f.orderRef,
       variable_symbol: invNum.replace(/\D/g, ""), contract_id: f.contractId,
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
+      discount_percent: f.discountPercent || 0,
     }).select().single();
     if (error) { alert("Fakturu se nepodařilo uložit: " + error.message); return; }
     if (row) setInvoices([...invoices, { ...row, customerId: row.customer_id }]);

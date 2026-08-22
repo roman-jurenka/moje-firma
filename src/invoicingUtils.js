@@ -76,96 +76,139 @@ async function safeImport(loader) {
   }
 }
 
+// Sleva se u faktury aplikuje jen na výsledné "Celkem k úhradě" — tabulka
+// položek a rozpis podle sazeb DPH zůstávají beze slevy (stejně jako v
+// referenčním vzoru z Money S3).
+export function getDiscountedTotal(total, discountPercent) {
+  return total * (1 - (Number(discountPercent) || 0) / 100);
+}
+
+const VAT_RATE_LABEL = { 0: "", 12: "snížená", 21: "základní" };
+
 // Vrátí QR data-url + variabilní symbol pro danou fakturu — používá se jak
-// pro PDF, tak pro živý náhled na obrazovce.
-export async function getInvoiceQr(invoice, total) {
+// pro PDF, tak pro živý náhled na obrazovce. Částka v QR kódu je už po slevě.
+export async function getInvoiceQr(invoice, amountToPay) {
   const QRCodeMod = await safeImport(() => import("qrcode"));
   const QRCode = QRCodeMod.default;
   const vs = invoice.variable_symbol || (invoice.number || "").replace(/\D/g, "");
-  const qrDataUrl = await QRCode.toDataURL(buildSpd({ amount: total, vs, msg: `FAKTURA ${invoice.number}` }), { width: 220, margin: 1 });
+  const qrDataUrl = await QRCode.toDataURL(buildSpd({ amount: amountToPay, vs, msg: `FAKTURA ${invoice.number}` }), { width: 220, margin: 1 });
   return { vs, qrDataUrl };
 }
 
 // Sestaví HTML tělo faktury (bez obalu) — sdílené pro PDF export i pro
-// živý náhled na obrazovce, aby obojí vypadalo naprosto stejně.
+// živý náhled na obrazovce, aby obojí vypadalo naprosto stejně. Rozvržení
+// kopíruje vzorovou fakturu z Money S3 (hlavička firmy + velké číslo dokladu
+// vpravo, název dokladu + QR platba + odběratel, datum/symbol/účet vlevo,
+// tabulka položek, rozpis DPH podle sazby vlevo dole, souhrn vpravo dole).
 export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs) {
   const { lines, byRate, total } = computeInvoiceTotals(invoice.items);
+  const discountPercent = Number(invoice.discount_percent) || 0;
+  const toPay = getDiscountedTotal(total, discountPercent);
+  const remaining = invoice.status === "Zaplacena" ? 0 : toPay;
+  const custName = customer?.company || customer?.name || "";
+  const custPerson = customer?.company && customer?.name ? customer.name : "";
+  const custAddress = customer?.address || "";
+  const title = invoice.is_deposit ? "Faktura - záloha" : "Faktura";
+
+  const custBlock = `
+    <div style="font-weight:700; font-size:13px; margin:3px 0 2px;">${custName}</div>
+    ${custPerson ? `<div style="font-size:12px;">${custPerson}</div>` : ""}
+    <div style="font-size:12px; white-space:pre-line;">${custAddress}</div>
+  `;
+
+  const sumZaklad = VAT_RATES.reduce((s, r) => s + byRate[r].zaklad, 0);
+  const sumDph = VAT_RATES.reduce((s, r) => s + byRate[r].dph, 0);
+
   return `
-    <div style="display:flex; justify-content:space-between; border-bottom:2px solid #111; padding-bottom:10px; margin-bottom:14px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #111; padding-bottom:10px; margin-bottom:10px;">
       <div>
         <div style="font-weight:800; font-size:16px;">${COMPANY.name}</div>
-        <div style="font-size:12px;">${COMPANY.addressLine}</div>
-        <div style="font-size:12px;">${COMPANY.city}</div>
-        <div style="font-size:12px;">${COMPANY.country}</div>
+        <div style="font-size:11px; line-height:1.5;">${COMPANY.addressLine}<br/>${COMPANY.city}<br/>${COMPANY.country}</div>
       </div>
-      <div style="font-size:12px; text-align:right;">
+      <div style="font-size:11px; text-align:right;">
         <div>IČ: <strong>${COMPANY.ico}</strong></div>
         <div>DIČ: <strong>${COMPANY.dic}</strong></div>
       </div>
     </div>
 
-    <div style="display:flex; justify-content:space-between; margin-bottom:18px;">
-      <div>
-        <div style="font-size:22px; font-weight:800;">${invoice.is_deposit ? "Faktura – záloha" : "Faktura – daňový doklad"}</div>
-        <div style="font-size:13px; color:#444; margin-top:2px;">Číslo: <strong>${invoice.number}</strong></div>
-        ${invoice.order_ref ? `<div style="font-size:12px; color:#444;">Objednávka: ${invoice.order_ref}</div>` : ""}
+    <div style="display:flex; gap:28px;">
+      <div style="flex:0 0 280px;">
+        <div style="font-size:21px; font-weight:800; margin-bottom:10px;">${title}</div>
+        <img src="${qrDataUrl}" width="140" height="140" />
+        <div style="margin-top:10px; font-size:11px;"><strong>Platba:</strong> převodem</div>
+        <div style="font-size:11px; margin-bottom:14px;"><strong>Doprava:</strong> —</div>
+
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555;">Datum</div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; border-bottom:1px solid #ccc; padding:3px 0;"><span>vystavení:</span><strong>${fmtDateCzPlain(invoice.issued)}</strong></div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; padding:3px 0 12px;"><span>splatnosti:</span><strong>${fmtDateCzPlain(invoice.due)}</strong></div>
+
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555;">Symbol</div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; padding:3px 0 12px;"><span>variabilní:</span><strong>${vs}</strong></div>
+
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555; margin-bottom:3px;">Bankovní účet</div>
+        <div style="display:flex; border:1px solid #111;">
+          <div style="flex:1; padding:6px 10px; font-weight:700; font-size:13px; border-right:1px solid #111;">${COMPANY.bankPrefix}-${COMPANY.bankAccount}</div>
+          <div style="padding:6px 10px; font-weight:700; font-size:13px;">${COMPANY.bankCode}</div>
+        </div>
       </div>
-      <img src="${qrDataUrl}" width="110" height="110" style="border:1px solid #ddd;" />
+
+      <div style="flex:1;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div style="font-size:11px;"><strong>Objednávka:</strong> ${invoice.order_ref || ""}</div>
+          <div style="font-size:22px; font-weight:800;">${invoice.number}</div>
+        </div>
+
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555; margin-top:10px;">Odběratel</div>
+        ${custBlock}
+        <div style="font-size:11px; margin-top:4px;">IČ: ${invoice.customer_ico || "—"} &nbsp;&nbsp; DIČ: ${invoice.customer_dic || "—"}</div>
+
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#555; margin-top:20px;">Konečný příjemce</div>
+        ${custBlock}
+      </div>
     </div>
 
-    <div style="display:flex; justify-content:space-between; gap:20px; margin-bottom:18px;">
-      <div style="flex:1; border:1px solid #ddd; border-radius:6px; padding:10px 14px;">
-        <div style="font-size:10px; color:#888; text-transform:uppercase; margin-bottom:4px;">Odběratel</div>
-        <div style="font-weight:700; font-size:13px;">${customer?.company || customer?.name || ""}</div>
-        ${customer?.company && customer?.name ? `<div style="font-size:12px;">${customer.name}</div>` : ""}
-        <div style="font-size:12px; white-space:pre-line;">${customer?.address || ""}</div>
-        ${invoice.customer_ico ? `<div style="font-size:12px;">IČ: ${invoice.customer_ico}</div>` : ""}
-        ${invoice.customer_dic ? `<div style="font-size:12px;">DIČ: ${invoice.customer_dic}</div>` : ""}
-      </div>
-      <div style="flex:1; border:1px solid #ddd; border-radius:6px; padding:10px 14px; font-size:12px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Datum vystavení:</span><strong>${fmtDateCzPlain(invoice.issued)}</strong></div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Datum splatnosti:</span><strong>${fmtDateCzPlain(invoice.due)}</strong></div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Variabilní symbol:</span><strong>${vs}</strong></div>
-        <div style="display:flex; justify-content:space-between;"><span>Bankovní účet:</span><strong>${COMPANY_ACCOUNT_DISPLAY}</strong></div>
-      </div>
-    </div>
-
-    <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:14px;">
+    <table style="width:100%; border-collapse:collapse; font-size:11px; margin:22px 0 10px;">
       <thead>
-        <tr style="background:#f1f5f9;">
-          ${["Označení dodávky", "Počet", "M.j.", "Cena/m.j.", "Sazba", "Základ", "DPH", "Celkem"].map(h => `<th style="text-align:left; padding:6px 8px; border-bottom:1px solid #ccc;">${h}</th>`).join("")}
+        <tr style="border-bottom:1px solid #111;">
+          ${["Označení dodávky", "Katalog", "Počet m.j.", "Cena za m.j.", "Sazba", "Základ", "DPH", "Celkem"].map(h => `<th style="text-align:left; padding:4px 6px; font-weight:700;">${h}</th>`).join("")}
         </tr>
       </thead>
       <tbody>
         ${lines.map(l => `
-          <tr>
-            <td style="padding:6px 8px; border-bottom:1px solid #eee;">${l.desc || ""}</td>
-            <td style="padding:6px 8px; border-bottom:1px solid #eee;">${l.qty}</td>
-            <td style="padding:6px 8px; border-bottom:1px solid #eee;">${l.unit || "ks"}</td>
-            <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:right;">${fmtKc2(l.price)}</td>
-            <td style="padding:6px 8px; border-bottom:1px solid #eee;">${l.vatRate} %</td>
-            <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:right;">${fmtKc2(l.zaklad)}</td>
-            <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:right;">${fmtKc2(l.dph)}</td>
-            <td style="padding:6px 8px; border-bottom:1px solid #eee; text-align:right; font-weight:700;">${fmtKc2(l.celkem)}</td>
+          <tr style="border-bottom:1px dotted #999;">
+            <td style="padding:5px 6px;">${l.desc || ""}</td>
+            <td style="padding:5px 6px;"></td>
+            <td style="padding:5px 6px;">${fmtKc2(l.qty)}</td>
+            <td style="padding:5px 6px; text-align:right;">${fmtKc2(l.price)}</td>
+            <td style="padding:5px 6px;">${l.vatRate} %</td>
+            <td style="padding:5px 6px; text-align:right;">${fmtKc2(l.zaklad)}</td>
+            <td style="padding:5px 6px; text-align:right;">${fmtKc2(l.dph)}</td>
+            <td style="padding:5px 6px; text-align:right; font-weight:700;">${fmtKc2(l.celkem)}</td>
           </tr>
         `).join("")}
       </tbody>
     </table>
 
-    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-top:18px;">
       <table style="border-collapse:collapse; font-size:11px;">
-        <thead><tr>${["Sazba", "Základ", "DPH", "Celkem"].map(h => `<th style="text-align:right; padding:3px 8px; border-bottom:1px solid #ccc;">${h}</th>`).join("")}</tr></thead>
+        <thead><tr>${["Sazba", "Základ", "DPH", "Celkem"].map(h => `<th style="text-align:right; padding:3px 10px; border-bottom:1px solid #111;">${h}</th>`).join("")}</tr></thead>
         <tbody>
-          ${VAT_RATES.map(r => `<tr><td style="padding:3px 8px;">${r} %</td><td style="padding:3px 8px; text-align:right;">${fmtKc2(byRate[r].zaklad)}</td><td style="padding:3px 8px; text-align:right;">${fmtKc2(byRate[r].dph)}</td><td style="padding:3px 8px; text-align:right;">${fmtKc2(byRate[r].celkem)}</td></tr>`).join("")}
+          ${VAT_RATES.map(r => `<tr><td style="padding:3px 10px;">${VAT_RATE_LABEL[r] ? `${VAT_RATE_LABEL[r]} ` : ""}${r} %</td><td style="padding:3px 10px; text-align:right;">${fmtKc2(byRate[r].zaklad)}</td><td style="padding:3px 10px; text-align:right;">${fmtKc2(byRate[r].dph)}</td><td style="padding:3px 10px; text-align:right;">${fmtKc2(byRate[r].celkem)}</td></tr>`).join("")}
+          <tr style="border-top:1px solid #111; font-weight:700;"><td style="padding:4px 10px;">CELKEM</td><td style="padding:4px 10px; text-align:right;">${fmtKc2(sumZaklad)}</td><td style="padding:4px 10px; text-align:right;">${fmtKc2(sumDph)}</td><td style="padding:4px 10px; text-align:right;">${fmtKc2(total)}</td></tr>
         </tbody>
       </table>
       <div style="text-align:right;">
-        <div style="font-size:12px; color:#444;">Celkem k úhradě</div>
-        <div style="font-size:26px; font-weight:800;">${fmtKc2(total)} Kč</div>
+        <div style="display:flex; justify-content:space-between; gap:24px; font-size:12px; margin-bottom:4px;"><span>Sleva v %:</span><strong>${fmtKc2(discountPercent)}</strong></div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:24px; margin-bottom:4px;">
+          <span style="font-size:14px; font-weight:700;">Celkem k úhradě:</span>
+          <span style="font-size:24px; font-weight:800;">${fmtKc2(toPay)} <span style="font-size:12px; background:#e2e8f0; padding:2px 6px; border-radius:3px;">Kč</span></span>
+        </div>
+        <div style="display:flex; justify-content:space-between; gap:24px; font-size:13px; font-weight:700;"><span>Zbývá uhradit:</span><span>${fmtKc2(remaining)}</span></div>
       </div>
     </div>
+    <div style="font-size:10px; color:#666; font-style:italic; margin-top:6px;">Pozn.: částky obsahují zaokrouhlení.</div>
 
-    <div style="margin-top:60px; display:flex; justify-content:flex-end;">
+    <div style="margin-top:50px; display:flex; justify-content:flex-end;">
       <div style="text-align:center; font-size:11px; color:#444;">
         <div style="border-top:1px solid #999; padding-top:4px; width:180px;">Razítko a podpis</div>
       </div>
@@ -176,7 +219,8 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs) {
 // Připraví data pro živý náhled faktury na obrazovce (stejný vzhled jako PDF).
 export async function buildInvoicePreview(invoice, customer) {
   const { total } = computeInvoiceTotals(invoice.items);
-  const { vs, qrDataUrl } = await getInvoiceQr(invoice, total);
+  const toPay = getDiscountedTotal(total, invoice.discount_percent);
+  const { vs, qrDataUrl } = await getInvoiceQr(invoice, toPay);
   return buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs);
 }
 
@@ -193,7 +237,8 @@ export async function downloadInvoicePDF(invoice, customer) {
   const html2canvas = html2canvasMod.default;
 
   const { total } = computeInvoiceTotals(invoice.items);
-  const { vs, qrDataUrl } = await getInvoiceQr(invoice, total);
+  const toPay = getDiscountedTotal(total, invoice.discount_percent);
+  const { vs, qrDataUrl } = await getInvoiceQr(invoice, toPay);
 
   const el = document.createElement("div");
   el.style.position = "fixed";
