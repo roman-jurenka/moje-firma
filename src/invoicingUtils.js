@@ -62,35 +62,35 @@ export function computeInvoiceTotals(items) {
   return { lines, byRate, total, totalTax };
 }
 
-// ─── Generování PDF ─────────────────────────────────────────────────────────
-// Faktura se vykreslí jako skryté HTML (skutečné písmo prohlížeče = správná
-// čeština s diakritikou), vyfotí přes html2canvas a zabalí do PDF přes jsPDF.
-// Je to obrázkové PDF (ne textové/kopírovatelné) — v tomhle prostředí je to
-// nejspolehlivější cesta ke stoprocentně správné diakritice bez ručního
-// vkládání fontů do PDF knihovny.
-export async function downloadInvoicePDF(invoice, customer) {
-  const [{ jsPDF }, html2canvasMod, QRCodeMod] = await Promise.all([
-    import("jspdf"), import("html2canvas"), import("qrcode"),
-  ]);
-  const html2canvas = html2canvasMod.default;
-  const QRCode = QRCodeMod.default;
+// Dynamické importy velkých knihoven (jspdf/html2canvas/qrcode) selžou, když
+// prohlížeč drží starou stránku z doby před posledním nasazením — Vite dá
+// nové soubory nový hash a starý (v paměti prohlížeče zapsaný) už na serveru
+// neexistuje. V tom případě prohlížeč prostě potřebuje čerstvě načíst stránku.
+async function safeImport(loader) {
+  try {
+    return await loader();
+  } catch {
+    const reload = confirm("Aplikace byla mezitím aktualizována a je potřeba načíst stránku znovu, než půjde PDF vygenerovat. Načíst teď?");
+    if (reload) window.location.reload();
+    throw new Error("Stránka potřebuje obnovit (nová verze appky) — zkus to prosím znovu po načtení.");
+  }
+}
 
-  const { lines, byRate, total } = computeInvoiceTotals(invoice.items);
+// Vrátí QR data-url + variabilní symbol pro danou fakturu — používá se jak
+// pro PDF, tak pro živý náhled na obrazovce.
+export async function getInvoiceQr(invoice, total) {
+  const QRCodeMod = await safeImport(() => import("qrcode"));
+  const QRCode = QRCodeMod.default;
   const vs = invoice.variable_symbol || (invoice.number || "").replace(/\D/g, "");
   const qrDataUrl = await QRCode.toDataURL(buildSpd({ amount: total, vs, msg: `FAKTURA ${invoice.number}` }), { width: 220, margin: 1 });
+  return { vs, qrDataUrl };
+}
 
-  const el = document.createElement("div");
-  el.style.position = "fixed";
-  el.style.left = "-9999px";
-  el.style.top = "0";
-  el.style.width = "794px";
-  el.style.background = "#fff";
-  el.style.fontFamily = "'DM Sans', Arial, sans-serif";
-  el.style.color = "#111";
-  el.style.padding = "36px";
-  el.style.boxSizing = "border-box";
-
-  el.innerHTML = `
+// Sestaví HTML tělo faktury (bez obalu) — sdílené pro PDF export i pro
+// živý náhled na obrazovce, aby obojí vypadalo naprosto stejně.
+export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs) {
+  const { lines, byRate, total } = computeInvoiceTotals(invoice.items);
+  return `
     <div style="display:flex; justify-content:space-between; border-bottom:2px solid #111; padding-bottom:10px; margin-bottom:14px;">
       <div>
         <div style="font-weight:800; font-size:16px;">${COMPANY.name}</div>
@@ -171,6 +171,41 @@ export async function downloadInvoicePDF(invoice, customer) {
       </div>
     </div>
   `;
+}
+
+// Připraví data pro živý náhled faktury na obrazovce (stejný vzhled jako PDF).
+export async function buildInvoicePreview(invoice, customer) {
+  const { total } = computeInvoiceTotals(invoice.items);
+  const { vs, qrDataUrl } = await getInvoiceQr(invoice, total);
+  return buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs);
+}
+
+// ─── Generování PDF ─────────────────────────────────────────────────────────
+// Faktura se vykreslí jako skryté HTML (skutečné písmo prohlížeče = správná
+// čeština s diakritikou), vyfotí přes html2canvas a zabalí do PDF přes jsPDF.
+// Je to obrázkové PDF (ne textové/kopírovatelné) — v tomhle prostředí je to
+// nejspolehlivější cesta ke stoprocentně správné diakritice bez ručního
+// vkládání fontů do PDF knihovny.
+export async function downloadInvoicePDF(invoice, customer) {
+  const [{ jsPDF }, html2canvasMod] = await Promise.all([
+    safeImport(() => import("jspdf")), safeImport(() => import("html2canvas")),
+  ]);
+  const html2canvas = html2canvasMod.default;
+
+  const { total } = computeInvoiceTotals(invoice.items);
+  const { vs, qrDataUrl } = await getInvoiceQr(invoice, total);
+
+  const el = document.createElement("div");
+  el.style.position = "fixed";
+  el.style.left = "-9999px";
+  el.style.top = "0";
+  el.style.width = "794px";
+  el.style.background = "#fff";
+  el.style.fontFamily = "'DM Sans', Arial, sans-serif";
+  el.style.color = "#111";
+  el.style.padding = "36px";
+  el.style.boxSizing = "border-box";
+  el.innerHTML = buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs);
 
   document.body.appendChild(el);
   try {

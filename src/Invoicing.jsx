@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { computeInvoiceTotals, fmtKc2 } from "./invoicingUtils.js";
+import { computeInvoiceTotals, fmtKc2, buildInvoicePreview, downloadInvoicePDF } from "./invoicingUtils.js";
 
 const VAT_RATES = [0, 12, 21];
 const ITEM_UNITS = ["ks", "kpl.", "h", "m", "m²", "m³", "kg", "km", "den"];
@@ -205,6 +205,50 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button onClick={submit} style={btnPrimary}>Vystavit fakturu</button>
           <button onClick={onClose} style={btnGhost}>Zrušit</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Náhled faktury — vykreslí přesně to, co jde do PDF, přímo na obrazovce
+export function InvoicePreviewModal({ invoice, customer, onClose }) {
+  const [html, setHtml] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    buildInvoicePreview(invoice, customer)
+      .then(h => { if (!cancelled) setHtml(h); })
+      .catch(e => { if (!cancelled) setError(e?.message || String(e)); });
+    return () => { cancelled = true; };
+  }, [invoice, customer]);
+
+  const handleDownload = async () => {
+    setBusy(true);
+    try { await downloadInvoicePDF(invoice, customer); }
+    catch (e) { alert("Nepodařilo se vygenerovat PDF: " + (e?.message || e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={overlayStyle}>
+      <div style={{ ...boxStyle, width: 860, padding: 0, overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ fontWeight: 700 }}>Náhled faktury {invoice.number}</div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={handleDownload} disabled={busy || !html} style={btnPrimary}>{busy ? "…" : "⬇ Stáhnout PDF"}</button>
+            <button onClick={onClose} style={btnGhost}>Zavřít</button>
+          </div>
+        </div>
+        <div style={{ maxHeight: "80vh", overflowY: "auto", background: "#94a3b8", padding: 20 }}>
+          {error && <div style={{ color: "#fff", background: "#ef4444", padding: 12, borderRadius: 8 }}>Náhled se nepodařilo vytvořit: {error}</div>}
+          {!html && !error && <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Načítám náhled…</div>}
+          {html && (
+            <div style={{ width: 794, margin: "0 auto", background: "#fff", fontFamily: "'DM Sans', Arial, sans-serif", color: "#111", padding: 36, boxSizing: "border-box", boxShadow: "0 4px 24px #00000033" }}
+              dangerouslySetInnerHTML={{ __html: html }} />
+          )}
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ import Pricing from "./Pricing.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
-import InvoiceCreateFlow from "./Invoicing.jsx";
+import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
 
@@ -2488,6 +2488,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
 function Invoices({ invoices, setInvoices, customers, contracts, costEntries, modal, setModal, closeModal }) {
   const [invTab, setInvTab] = useState("vydané");
   const [pdfBusyId, setPdfBusyId] = useState(null);
+  const [previewInv, setPreviewInv] = useState(null);
 
   const saveFromFlow = async (f) => {
     const invNum = nextInvNum(invoices);
@@ -2557,9 +2558,9 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
               const cust = customers.find(c => c.id === inv.customerId);
               return (
                 <tr key={inv.id}>
-                  <td style={{ ...S.td, color: "#fff", fontWeight: 600 }}>{inv.number}</td>
+                  <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
                   <td style={S.td}>{cust?.name || "—"}</td>
-                  <td style={{ ...S.td, color: "#fff", fontWeight: 700 }}>{fmtKc(inv.amount)}</td>
+                  <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>{fmtKc(inv.amount)}</td>
                   <td style={S.td}>{fmtKc(inv.tax)}</td>
                   <td style={S.td}>{fmtDateCz(inv.issued)}</td>
                   <td style={S.td}>{fmtDateCz(inv.due)}</td>
@@ -2570,7 +2571,11 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                       {["Čeká", "Zaplacena", "Po splatnosti", "Storno"].map(s => <option key={s}>{s}</option>)}
                     </select>
                   </td>
-                  <td style={S.td}>
+                  <td style={{ ...S.td, display: "flex", gap: 6 }}>
+                    <button onClick={() => setPreviewInv(inv)}
+                      style={{ ...S.btn("#475569"), padding: "5px 12px", fontSize: 12 }}>
+                      👁️ Náhled
+                    </button>
                     <button disabled={pdfBusyId === inv.id} onClick={() => handlePdf(inv)}
                       style={{ ...S.btn("#475569"), padding: "5px 12px", fontSize: 12 }}>
                       {pdfBusyId === inv.id ? "…" : "📄 PDF"}
@@ -2586,6 +2591,11 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
       {modal?.type === "newInvoiceFlow" && (
         <InvoiceCreateFlow customers={customers} contracts={contracts} costEntries={costEntries}
           onSave={saveFromFlow} onClose={closeModal} />
+      )}
+
+      {previewInv && (
+        <InvoicePreviewModal key={previewInv.id} invoice={previewInv} customer={customers.find(c => c.id === previewInv.customerId)}
+          onClose={() => setPreviewInv(null)} />
       )}
     </>
   );
