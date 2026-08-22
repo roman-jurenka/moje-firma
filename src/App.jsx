@@ -2500,11 +2500,37 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
       variable_symbol: invNum.replace(/\D/g, ""), contract_id: f.contractId,
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
       discount_percent: f.discountPercent || 0,
+      constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
     }).select().single();
     if (error) { alert("Fakturu se nepodařilo uložit: " + error.message); return; }
     if (row) setInvoices([...invoices, { ...row, customerId: row.customer_id }]);
     closeModal();
   };
+
+  // Úprava existující faktury — číslo a variabilní symbol se nemění, jen
+  // obsah. Stejný vzor jako úprava dodacích listů (jedna modálka pro obojí).
+  const updateFromFlow = async (f) => {
+    const { data: row, error } = await supabase.from("invoices").update({
+      customer_id: Number(f.customerId), amount: f.amount, tax: f.tax, status: f.status,
+      issued: f.issued, due: f.due, items: f.items,
+      invoice_type: f.invoiceType, is_deposit: f.isDeposit, order_ref: f.orderRef,
+      contract_id: f.contractId,
+      customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
+      discount_percent: f.discountPercent || 0,
+      constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", f.id).select().single();
+    if (error) { alert("Fakturu se nepodařilo uložit: " + error.message); return; }
+    if (row) setInvoices(invoices.map(i => i.id === row.id ? { ...row, customerId: row.customer_id } : i));
+    closeModal();
+  };
+
+  const saveOrUpdateInvoice = (f) => (f.id ? updateFromFlow(f) : saveFromFlow(f));
+
+  // Konstantní symbol se u nové faktury přednabídne z poslední vystavené
+  // faktury, ať ho uživatel nemusí pořád přepisovat ručně.
+  const lastConstantSymbol = [...invoices].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    .find(i => i.constant_symbol)?.constant_symbol || "";
 
   const handlePdf = async (inv) => {
     setPdfBusyId(inv.id);
@@ -2573,6 +2599,10 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                     </select>
                   </td>
                   <td style={{ ...S.td, display: "flex", gap: 6 }}>
+                    <button onClick={() => setModal({ type: "editInvoiceFlow", invoice: inv })}
+                      style={{ ...S.btn("#475569"), padding: "5px 12px", fontSize: 12 }}>
+                      ✏️ Upravit
+                    </button>
                     <button onClick={() => setPreviewInv(inv)}
                       style={{ ...S.btn("#475569"), padding: "5px 12px", fontSize: 12 }}>
                       👁️ Náhled
@@ -2591,7 +2621,14 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
 
       {modal?.type === "newInvoiceFlow" && (
         <InvoiceCreateFlow customers={customers} contracts={contracts} costEntries={costEntries}
-          onSave={saveFromFlow} onClose={closeModal} />
+          defaultConstantSymbol={lastConstantSymbol}
+          onSave={saveOrUpdateInvoice} onClose={closeModal} />
+      )}
+
+      {modal?.type === "editInvoiceFlow" && (
+        <InvoiceCreateFlow customers={customers} contracts={contracts} costEntries={costEntries}
+          editInvoice={modal.invoice}
+          onSave={saveOrUpdateInvoice} onClose={closeModal} />
       )}
 
       {previewInv && (

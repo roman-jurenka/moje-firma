@@ -245,12 +245,12 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   add(LINE(43.8, 158, 199.5, {}));
   add(LINE(161.5, 260.4, 199.5, {}));
   add(TL(49.1, 209.8, "vystavení:", fmtDateCzPlain(invoice.issued), { labelBold: false, valueBold: false, gapPt: 5 }));
-  add(T(163.8, 209.8, "konstantní:", { size: 7.9 }));
+  add(TL(163.8, 209.8, "konstantní:", invoice.constant_symbol || "", { labelBold: false, valueBold: false, gapPt: 5 }));
   add(TL(48.0, 221.1, "splatnosti:", fmtDateCzPlain(invoice.due), { labelBold: true, valueBold: true, gapPt: 5 }));
   add(T(167.9, 221.1, "variabilní:", { bold: true, size: 7.9 }));
   add(BOX(206.9, 290.3, 211.1, 222.4, { fill: "#e6e6e6" }));
   add(T(208.2, 221.1, vs, { bold: true, size: 7.9 }));
-  add(T(165.8, 232.5, "specifický:", { size: 7.9 }));
+  add(TL(165.8, 232.5, "specifický:", invoice.specific_symbol || "", { labelBold: false, valueBold: false, gapPt: 5 }));
 
   // ── 7.6 Bankovní účet ──
   add(BOX(43.8, 127.3, 240.8, 252.1, { fill: "#e6e6e6" }));

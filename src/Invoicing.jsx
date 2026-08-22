@@ -39,17 +39,33 @@ function ContractPicker({ options, value, onChange, placeholder = "— vyberte z
 const labelStyle = { display: "block", fontSize: 12, color: "#64748b", fontWeight: 600, margin: "10px 0 4px" };
 const inputStyle = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" };
 
-// ─── Vystavení faktury — nejdřív se zeptá ručně/ze zakázky, pak editor položek
-export default function InvoiceCreateFlow({ customers, contracts, costEntries, onSave, onClose }) {
-  const [step, setStep] = useState("choose"); // "choose" | "form"
-  const [fromContractId, setFromContractId] = useState("");
-  const [f, setF] = useState(() => ({
+// ─── Vystavení faktury — nejdřív se zeptá ručně/ze zakázky, pak editor položek.
+// Stejná komponenta se používá i pro úpravu existující faktury (editInvoice) —
+// stejný vzor jako u dodacích listů (jedna modálka pro přidání i editaci).
+export default function InvoiceCreateFlow({ customers, contracts, costEntries, onSave, onClose, editInvoice, defaultConstantSymbol }) {
+  const isEdit = !!editInvoice;
+  const [step, setStep] = useState(isEdit ? "form" : "choose"); // "choose" | "pickContract" | "form"
+  const [fromContractId, setFromContractId] = useState(editInvoice?.contract_id ? String(editInvoice.contract_id) : "");
+  const [f, setF] = useState(() => editInvoice ? {
+    customerId: editInvoice.customerId ? String(editInvoice.customerId) : "",
+    invoiceType: editInvoice.invoice_type || "vydaná",
+    isDeposit: !!editInvoice.is_deposit,
+    orderRef: editInvoice.order_ref || "",
+    issued: editInvoice.issued || new Date().toISOString().slice(0, 10),
+    due: editInvoice.due || new Date().toISOString().slice(0, 10),
+    status: editInvoice.status || "Čeká",
+    customerIco: editInvoice.customer_ico || "", customerDic: editInvoice.customer_dic || "",
+    discountPercent: editInvoice.discount_percent || 0,
+    constantSymbol: editInvoice.constant_symbol || "", specificSymbol: editInvoice.specific_symbol || "",
+    items: (editInvoice.items && editInvoice.items.length) ? editInvoice.items : [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
+  } : {
     customerId: "", invoiceType: "vydaná", isDeposit: false, orderRef: "",
     issued: new Date().toISOString().slice(0, 10),
     due: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     status: "Čeká", customerIco: "", customerDic: "", discountPercent: 0,
+    constantSymbol: defaultConstantSymbol || "", specificSymbol: "",
     items: [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
-  }));
+  });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   const startManual = () => setStep("form");
@@ -81,9 +97,11 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
   const submit = () => {
     if (!f.customerId || lines.length === 0) { alert("Vyber zákazníka a přidej aspoň jednu položku."); return; }
     onSave({
+      ...(isEdit ? { id: editInvoice.id } : {}),
       customerId: f.customerId, invoiceType: f.invoiceType, isDeposit: f.isDeposit,
       orderRef: f.orderRef, issued: f.issued, due: f.due, status: f.status,
       customerIco: f.customerIco, customerDic: f.customerDic, discountPercent: Number(f.discountPercent) || 0,
+      constantSymbol: f.constantSymbol, specificSymbol: f.specificSymbol,
       items: lines.map(({ desc, qty, unit, price, vatRate }) => ({ desc, qty, unit, price, vatRate })),
       amount: total - totalTax, tax: totalTax,
       contractId: fromContractId ? Number(fromContractId) : null,
@@ -124,7 +142,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
   return (
     <div style={overlayStyle}>
       <div style={{ ...boxStyle, width: 720 }}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>Nová faktura</div>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>{isEdit ? `Upravit fakturu ${editInvoice.number}` : "Nová faktura"}</div>
 
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
           <div>
@@ -170,6 +188,11 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
           </label>
         </div>
 
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div><label style={labelStyle}>Konstantní symbol</label><input style={inputStyle} value={f.constantSymbol} onChange={e => set("constantSymbol", e.target.value)} /></div>
+          <div><label style={labelStyle}>Specifický symbol</label><input style={inputStyle} value={f.specificSymbol} onChange={e => set("specificSymbol", e.target.value)} /></div>
+        </div>
+
         <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", marginTop: 16, marginBottom: 6 }}>POLOŽKY</div>
         <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -209,7 +232,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-          <button onClick={submit} style={btnPrimary}>Vystavit fakturu</button>
+          <button onClick={submit} style={btnPrimary}>{isEdit ? "Uložit změny" : "Vystavit fakturu"}</button>
           <button onClick={onClose} style={btnGhost}>Zrušit</button>
         </div>
       </div>
