@@ -252,7 +252,7 @@ export function InvoicePreviewModal({ invoice, customer, onClose }) {
           {error && <div style={{ color: "#fff", background: "#ef4444", padding: 12, borderRadius: 8 }}>Náhled se nepodařilo vytvořit: {error}</div>}
           {!html && !error && <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Načítám náhled…</div>}
           {html && (
-            <div style={{ width: 794, margin: "0 auto", background: "#fff", fontFamily: "Arial, Helvetica, sans-serif", color: "#111", padding: 36, boxSizing: "border-box", boxShadow: "0 4px 24px #00000033" }}
+            <div style={{ width: 595.27 * 4 / 3, margin: "0 auto", background: "#fff", boxSizing: "border-box", boxShadow: "0 4px 24px #00000033" }}
               dangerouslySetInnerHTML={{ __html: html }} />
           )}
         </div>

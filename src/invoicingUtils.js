@@ -87,8 +87,6 @@ export function getDiscountedTotal(total, discountPercent) {
   return total * (1 - (Number(discountPercent) || 0) / 100);
 }
 
-const VAT_RATE_LABEL = { 0: "", 12: "snížená", 21: "základní" };
-
 // Vrátí QR data-url + variabilní symbol pro danou fakturu — používá se jak
 // pro PDF, tak pro živý náhled na obrazovce. Částka v QR kódu je už po slevě.
 export async function getInvoiceQr(invoice, amountToPay) {
@@ -109,12 +107,70 @@ export async function getInvoiceBarcode(number) {
   return canvas.toDataURL("image/png");
 }
 
+// ─── Absolutní rozvržení podle přesné specifikace (souřadnice v bodech/pt na
+// stránce A4 595.27×841.89pt, "top" = baseline textu od horního okraje) —
+// dostali jsme přesné souřadnice změřené z referenčního vzoru (Money S3),
+// takže místo přibližného flexboxu pozicujeme každý prvek na milimetr přesně.
+const PT = 4 / 3; // 1 bod (pt) při 96dpi = 4/3 px
+const PAGE_W_PT = 595.27;
+const PAGE_H_PT = 841.89;
+const PAGE_W = PAGE_W_PT * PT;
+
+function measureWidthPx(text, fontSizePx, bold) {
+  if (typeof document !== "undefined") {
+    try {
+      measureWidthPx._c = measureWidthPx._c || document.createElement("canvas");
+      const ctx = measureWidthPx._c.getContext("2d");
+      ctx.font = `${bold ? "700" : "400"} ${fontSizePx}px Arial, Helvetica, sans-serif`;
+      return ctx.measureText(String(text)).width;
+    } catch { /* spadneme na odhad níže */ }
+  }
+  return String(text).length * fontSizePx * 0.56;
+}
+
+// Text s baseline na dané pozici (top v pt = baseline, ne horní hrana boxu).
+function T(xPt, topPt, text, opts = {}) {
+  const { size = 7.9, bold = false, italic = false, align = "left", color = "#000" } = opts;
+  if (text === undefined || text === null || text === "") return "";
+  const sizePx = size * PT;
+  const topPx = topPt * PT - sizePx * 0.76;
+  const pos = align === "right" ? `right:${(PAGE_W - xPt * PT).toFixed(2)}px;` : `left:${(xPt * PT).toFixed(2)}px;`;
+  return `<div style="position:absolute; ${pos} top:${topPx.toFixed(2)}px; font-size:${sizePx.toFixed(2)}px; font-weight:${bold ? 700 : 400}; font-style:${italic ? "italic" : "normal"}; color:${color}; white-space:nowrap; line-height:1;">${text}</div>`;
+}
+
+// Popisek + hodnota hned za sebou (přirozený inline tok nahrazuje ruční
+// měření šířky labelu ze specifikace — dělá totéž, jen automaticky).
+function TL(xPt, topPt, label, value, opts = {}) {
+  const { size = 7.9, labelBold = true, valueBold = false, gapPt = 4 } = opts;
+  const sizePx = size * PT;
+  const topPx = topPt * PT - sizePx * 0.76;
+  return `<div style="position:absolute; left:${(xPt * PT).toFixed(2)}px; top:${topPx.toFixed(2)}px; font-size:${sizePx.toFixed(2)}px; white-space:nowrap; line-height:1;"><span style="font-weight:${labelBold ? 700 : 400};">${label}</span><span style="font-weight:${valueBold ? 700 : 400}; margin-left:${(gapPt * PT).toFixed(1)}px;">${value || ""}</span></div>`;
+}
+
+function LINE(x0Pt, x1Pt, topPt, opts = {}) {
+  const { dashed = false, color = "#111" } = opts;
+  const style = dashed ? "border-top:1px dotted #999;" : `border-top:1px solid ${color};`;
+  return `<div style="position:absolute; left:${(x0Pt * PT).toFixed(2)}px; top:${(topPt * PT).toFixed(2)}px; width:${((x1Pt - x0Pt) * PT).toFixed(2)}px; ${style}"></div>`;
+}
+
+function BOX(x0Pt, x1Pt, top0Pt, top1Pt, opts = {}) {
+  const { fill, border } = opts;
+  const parts = [
+    "position:absolute",
+    `left:${(x0Pt * PT).toFixed(2)}px`,
+    `top:${(top0Pt * PT).toFixed(2)}px`,
+    `width:${((x1Pt - x0Pt) * PT).toFixed(2)}px`,
+    `height:${((top1Pt - top0Pt) * PT).toFixed(2)}px`,
+  ];
+  if (fill) parts.push(`background:${fill}`);
+  if (border) parts.push("border:1px solid #111");
+  return `<div style="${parts.join("; ")}"></div>`;
+}
+
 // Sestaví HTML tělo faktury (bez obalu) — sdílené pro PDF export i pro
-// živý náhled na obrazovce, aby obojí vypadalo naprosto stejně. Rozvržení
-// kopíruje vzorovou fakturu z Money S3 (hlavička firmy + čárový kód vpravo,
-// velké číslo dokladu, název dokladu + QR platba + odběratel, datum/symbol/
-// účet vlevo, tabulka položek, rozpis DPH podle sazby vlevo dole, souhrn
-// vpravo dole).
+// živý náhled na obrazovce, aby obojí vypadalo naprosto stejně. Souřadnice
+// odpovídají přesné specifikaci vzoru z Money S3 (viz konverzace) — každý
+// prvek je umístěný absolutně na milimetr přesně, ne přes flexbox odhad.
 export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDataUrl) {
   const { lines, byRate, total } = computeInvoiceTotals(invoice.items);
   const discountPercent = Number(invoice.discount_percent) || 0;
@@ -122,145 +178,174 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   const remaining = invoice.status === "Zaplacena" ? 0 : toPay;
   const custName = customer?.company || customer?.name || "";
   const custPerson = customer?.company && customer?.name ? customer.name : "";
-  const custAddress = customer?.address || "";
+  const addrParts = (customer?.address || "").split("\n").map(s => s.trim()).filter(Boolean);
+  const custStreet = addrParts[0] || "";
+  const custCity = addrParts.slice(1).join(", ");
   const title = invoice.is_deposit ? "Faktura - záloha" : "Faktura";
+  const els = [];
+  const add = (html) => { if (html) els.push(html); };
 
-  // Odběratel = jméno tučně ~13px; Konečný příjemce = stejný blok, ale netučně
-  // a menší (~11px) — potvrzeno z rozboru vzorového dokumentu (docx).
-  const makeCustBlock = (bold) => `
-    <div style="font-weight:${bold ? 700 : 400}; font-size:${bold ? 13 : 11}px; margin:3px 0 2px;">${custName}</div>
-    ${custPerson ? `<div style="font-size:11px;">${custPerson}</div>` : ""}
-    <div style="font-size:11px; white-space:pre-line;">${custAddress}</div>
-  `;
-  const custBlockPrimary = makeCustBlock(true);
-  const custBlockSecondary = makeCustBlock(false);
+  // ── 7.1 Hlavička dodavatele ──
+  add(T(42.5, 25.9, COMPANY.name, { bold: true, size: 10 }));
+  add(T(42.5, 37.6, COMPANY.addressLine, { size: 7.9 }));
+  add(T(42.5, 47.5, COMPANY.city, { size: 7.9 }));
+  add(T(42.5, 57.4, COMPANY.country, { size: 7.9 }));
+  add(T(221.9, 37.7, `IČ: ${COMPANY.ico}`, { bold: true, size: 7.9 }));
+  add(T(216.1, 47.5, `DIČ: ${COMPANY.dic}`, { bold: true, size: 7.9 }));
+  add(T(292.7, 35.0, "mobil:", { size: 6, color: "#333" }));
+  add(T(377.9, 35.0, "tel.:", { size: 6, color: "#333" }));
+  add(T(294.0, 42.1, "www:", { size: 6, color: "#333" }));
+  add(T(377.9, 42.1, "fax:", { size: 6, color: "#333" }));
+  add(T(290.8, 49.2, "e-mail:", { size: 6, color: "#333" }));
+  if (barcodeDataUrl) add(`<img src="${barcodeDataUrl}" style="position:absolute; right:${(PAGE_W - 539.8 * PT).toFixed(2)}px; top:${(18 * PT).toFixed(2)}px; height:${(30 * PT).toFixed(2)}px;" />`);
 
+  // ── 7.2 Název dokumentu a číslo faktury ──
+  add(T(42.5, 79.2, title, { bold: true, size: 14 }));
+  add(BOX(440.6, 539.8, 60.8, 82.0, { border: true }));
+  add(T(534.8, 79.2, invoice.number, { bold: true, size: 13.8, align: "right" }));
+  add(T(303.2, 92.1, "Objednávka:", { bold: true, size: 7.9 }));
+  add(BOX(440.6, 539.8, 82.1, 93.4, { fill: "#e6e6e6" }));
+  if (invoice.order_ref) add(T(444, 91.5, invoice.order_ref, { size: 7.5 }));
+  add(T(303.2, 104.3, "Odběratel", { bold: true, size: 7.9 }));
+  add(LINE(303.2, 539.8, 106.5, {}));
+
+  // ── 7.3 Blok odběratele ──
+  add(T(306.0, 124.4, custName, { bold: true, size: 9 }));
+  if (custPerson) add(T(306.0, 141, custPerson, { bold: true, size: 7.9 }));
+  add(T(303.2, 157.4, custStreet, { bold: true, size: 7.9 }));
+  add(T(303.2, 168.7, custCity, { bold: true, size: 7.9 }));
+  add(TL(303.2, 194.7, "IČ:", invoice.customer_ico, { gapPt: 4 }));
+  add(TL(393.0, 194.7, "DIČ:", invoice.customer_dic, { gapPt: 4 }));
+  add(LINE(303.2, 539.8, 202, {}));
+  add(T(303.2, 212.6, "Konečný příjemce", { bold: true, size: 7.9 }));
+  add(T(385.3, 209.1, "e-mail:", { size: 6, color: "#333" }));
+  add(T(395.8, 219.0, "tel.:", { size: 6, color: "#333" }));
+  add(T(305.4, 228.9, custName, { size: 7.9 }));
+  if (custPerson) add(T(305.4, 242, custPerson, { size: 7.9 }));
+  add(T(303.2, 248.7, custStreet, { size: 7.9 }));
+  add(T(303.2, 258.7, custCity, { size: 7.9 }));
+
+  // ── 7.4 QR platba ──
+  add(`<img src="${qrDataUrl}" style="position:absolute; left:${(193.84 * PT).toFixed(2)}px; top:${(86.08 * PT).toFixed(2)}px; width:${(92.44 * PT).toFixed(2)}px; height:${(92.44 * PT).toFixed(2)}px;" />`);
+  {
+    const capSizePx = 6 * PT;
+    const capTopPx = 187.7 * PT - capSizePx * 0.76;
+    const capCenterPx = ((189.84 + 290.28) / 2) * PT;
+    add(`<div style="position:absolute; left:${capCenterPx.toFixed(2)}px; top:${capTopPx.toFixed(2)}px; font-size:${capSizePx.toFixed(2)}px; color:#000; text-align:center; width:100px; margin-left:-50px;">QR Platba+F</div>`);
+  }
+
+  // ── 7.5 Platba / Doprava / Datum / Symbol ──
+  add(T(43.8, 170.8, "Platba:", { bold: true, size: 7.9 }));
+  add(T(43.8, 180.6, "Doprava:", { bold: true, size: 7.9 }));
+  add(T(43.8, 197.7, "Datum", { bold: true, size: 7.9 }));
+  add(T(161.5, 197.7, "Symbol", { bold: true, size: 7.9 }));
+  add(LINE(43.8, 158, 199.5, {}));
+  add(LINE(161.5, 260.4, 199.5, {}));
+  add(TL(49.1, 209.8, "vystavení:", fmtDateCzPlain(invoice.issued), { labelBold: false, valueBold: false, gapPt: 5 }));
+  add(T(163.8, 209.8, "konstantní:", { size: 7.9 }));
+  add(TL(48.0, 221.1, "splatnosti:", fmtDateCzPlain(invoice.due), { labelBold: true, valueBold: true, gapPt: 5 }));
+  add(T(167.9, 221.1, "variabilní:", { bold: true, size: 7.9 }));
+  add(BOX(206.9, 290.3, 211.1, 222.4, { fill: "#e6e6e6" }));
+  add(T(208.2, 221.1, vs, { bold: true, size: 7.9 }));
+  add(T(165.8, 232.5, "specifický:", { size: 7.9 }));
+
+  // ── 7.6 Bankovní účet ──
+  add(BOX(43.8, 127.3, 240.8, 252.1, { fill: "#e6e6e6" }));
+  add(T(45.2, 250.9, "Bankovní účet", { bold: true, size: 7.9 }));
+  add(BOX(43.8, 201.0, 252.2, 267.7, { border: true }));
+  add(BOX(206.9, 290.3, 252.2, 267.7, { border: true }));
+  add(T(82.4, 266.0, `${COMPANY.bankPrefix}-${COMPANY.bankAccount}`, { bold: true, size: 11 }));
+  add(T(236.9, 266.0, COMPANY.bankCode, { bold: true, size: 11 }));
+
+  // ── 7.7 Tabulka položek ──
+  const cols = [
+    ["Označení dodávky", 42.5, "left"], ["Katalog", 178.4, "left"], ["Počet m. j.", 276.2, "right"],
+    ["Cena za m. j.", 347.2, "right"], ["Sazba", 381.1, "right"], ["Základ", 435.0, "right"],
+    ["DPH", 486.0, "right"], ["Celkem", 539.9, "right"],
+  ];
+  cols.forEach(([label, x, align]) => add(T(x, 302.8, label, { bold: true, size: 7.9, align })));
+  add(LINE(42.5, 539.9, 306.8, {}));
+  const rowStart = 317.5, rowH = 15.8;
+  lines.forEach((l, i) => {
+    const rowTop = rowStart + i * rowH;
+    const sizePx = 7.9 * PT;
+    const maxDescPx = (178.4 - 42.5) * PT - 4;
+    const descWidth = measureWidthPx(l.desc || "", sizePx, false);
+    const scaleX = descWidth > maxDescPx ? Math.max(0.5, maxDescPx / descWidth) : 1;
+    const descStyle = scaleX < 1 ? `display:inline-block; transform:scaleX(${scaleX.toFixed(3)}); transform-origin:left top; white-space:nowrap;` : "white-space:nowrap;";
+    add(`<div style="position:absolute; left:${(42.5 * PT).toFixed(2)}px; top:${(rowTop * PT - sizePx * 0.76).toFixed(2)}px; font-size:${sizePx.toFixed(2)}px; ${descStyle}">${l.desc || ""}</div>`);
+    add(T(276.2, rowTop, fmtKc2(l.qty), { size: 7.9, align: "right" }));
+    add(T(347.2, rowTop, fmtKc2(l.price), { size: 7.9, align: "right" }));
+    add(T(381.1, rowTop, `${l.vatRate} %`, { size: 7.9, align: "right" }));
+    add(T(435.0, rowTop, fmtKc2(l.zaklad), { size: 7.9, align: "right" }));
+    add(T(486.0, rowTop, fmtKc2(l.dph), { size: 7.9, align: "right" }));
+    add(T(539.9, rowTop, fmtKc2(l.celkem), { size: 7.9, bold: true, align: "right" }));
+    add(LINE(42.5, 539.9, rowTop + 5.8, { dashed: true }));
+  });
+
+  // ── 7.8 Rekapitulace DPH podle sazeb (dynamická pozice dle počtu položek) ──
+  const rowY = rowStart + lines.length * rowH;
+  const recTop = rowY + 20;
   const sumZaklad = VAT_RATES.reduce((s, r) => s + byRate[r].zaklad, 0);
   const sumDph = VAT_RATES.reduce((s, r) => s + byRate[r].dph, 0);
+  add(T(81.6, recTop + 7.9, "Sazba", { bold: true, size: 7.9 }));
+  add(T(165.7, recTop + 7.9, "Základ", { bold: true, size: 7.9, align: "right" }));
+  add(T(226.7, recTop + 7.9, "DPH", { bold: true, size: 7.9, align: "right" }));
+  add(T(287.7, recTop + 7.9, "Celkem", { bold: true, size: 7.9, align: "right" }));
+  add(T(46.2, recTop + 21.6, "Zaokrouhlení", { italic: true, size: 6.6 }));
+  add(T(86.5, recTop + 21.6, "12 %", { size: 7.9 }));
+  add(T(165.8, recTop + 21.6, "0,00", { size: 7.9, align: "right" }));
+  add(T(226.7, recTop + 21.6, "0,00", { size: 7.9, align: "right" }));
+  add(T(287.7, recTop + 21.6, "0,00", { size: 7.9, align: "right" }));
+  add(T(86.5, recTop + 30.0, "21 %", { size: 7.9 }));
+  add(T(165.8, recTop + 30.0, "0,00", { size: 7.9, align: "right" }));
+  add(T(226.7, recTop + 30.0, "0,00", { size: 7.9, align: "right" }));
+  add(T(287.7, recTop + 30.0, "0,00", { size: 7.9, align: "right" }));
+  add(LINE(42.5, 287.7, recTop + 33.2, {}));
+  const r0Top = recTop + 44.4;
+  add(T(88.1, r0Top, "0 %", { size: 7.9 }));
+  add(T(165.7, r0Top, fmtKc2(byRate[0].zaklad), { size: 7.9, align: "right" }));
+  add(T(287.7, r0Top, fmtKc2(byRate[0].celkem), { size: 7.9, align: "right" }));
+  const r12Top = r0Top + 19.8;
+  add(T(51.5, r12Top, "snížená", { size: 7.9 }));
+  add(T(84.1, r12Top, "12 %", { size: 7.9 }));
+  add(T(165.8, r12Top, fmtKc2(byRate[12].zaklad), { size: 7.9, align: "right" }));
+  add(T(226.7, r12Top, fmtKc2(byRate[12].dph), { size: 7.9, align: "right" }));
+  add(T(287.7, r12Top, fmtKc2(byRate[12].celkem), { size: 7.9, align: "right" }));
+  const r21Top = r12Top + 10.0;
+  add(T(49.9, r21Top, "základní", { size: 7.9 }));
+  add(T(84.1, r21Top, "21 %", { size: 7.9 }));
+  add(T(165.8, r21Top, fmtKc2(byRate[21].zaklad), { size: 7.9, align: "right" }));
+  add(T(226.7, r21Top, fmtKc2(byRate[21].dph), { size: 7.9, align: "right" }));
+  add(T(287.7, r21Top, fmtKc2(byRate[21].celkem), { size: 7.9, align: "right" }));
+  add(LINE(42.5, 287.7, r21Top + 3.9, { dashed: true }));
+  const celkemTop = r21Top + 12.7;
+  add(T(75.4, celkemTop, "CELKEM", { bold: true, size: 7.9 }));
+  add(T(165.7, celkemTop, fmtKc2(sumZaklad), { bold: true, size: 7.9, align: "right" }));
+  add(T(226.7, celkemTop, fmtKc2(sumDph), { bold: true, size: 7.9, align: "right" }));
+  add(T(287.7, celkemTop, fmtKc2(total), { bold: true, size: 7.9, align: "right" }));
 
-  return `
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
-      <div>
-        <div style="font-weight:700; font-size:15px;">${COMPANY.name}</div>
-        <div style="font-size:11px; line-height:1.35;">${COMPANY.addressLine}<br/>${COMPANY.city}<br/>${COMPANY.country}</div>
-      </div>
-      <div style="font-size:11px; font-weight:700;">
-        <div>IČ: ${COMPANY.ico}</div>
-        <div>DIČ: ${COMPANY.dic}</div>
-      </div>
-      <div style="display:grid; grid-template-columns:auto auto; column-gap:14px; row-gap:1px; font-size:7px; font-weight:400; text-transform:none; font-style:normal; color:#333;">
-        <span style="font-weight:400; text-transform:none;">mobil:</span><span style="font-weight:400; text-transform:none;">tel.:</span>
-        <span style="font-weight:400; text-transform:none;">www:</span><span style="font-weight:400; text-transform:none;">fax:</span>
-        <span style="font-weight:400; text-transform:none;">e-mail:</span><span></span>
-      </div>
-      ${barcodeDataUrl ? `<img src="${barcodeDataUrl}" style="height:34px;" />` : ""}
-    </div>
+  // ── 7.9 Souhrn k úhradě — kotveno na recTop stejně jako rekapitulace, aby
+  // se nepřekrývalo s tabulkou položek při větším počtu řádků (offsety
+  // odpovídají rozestupům z referenčního vzoru se 2 položkami). ──
+  const slevaTop = recTop + 27.1, celkemUhrTop = recTop + 44.0, zbyvaTop = recTop + 61.0, poznTop = recTop + 76.0;
+  add(T(356.0, slevaTop, "Sleva v %:", { bold: true, size: 10.7 }));
+  add(T(506.1, slevaTop, fmtKc2(discountPercent), { bold: true, size: 10.7, align: "right" }));
+  add(T(319.4, celkemUhrTop, "Celkem k úhradě:", { bold: true, size: 10.7 }));
+  add(T(506.3, celkemUhrTop, fmtKc2(toPay), { bold: true, size: 10.7, align: "right" }));
+  add(BOX(514.4, 544.1, celkemUhrTop - 14.5, celkemUhrTop + 2.5, { fill: "#e6e6e6" }));
+  add(T(522.5, celkemUhrTop, "Kč", { bold: true, size: 10.7 }));
+  add(T(334.9, zbyvaTop, "Zbývá uhradit:", { bold: true, size: 10.7 }));
+  add(T(506.3, zbyvaTop, fmtKc2(remaining), { bold: true, size: 10.7, align: "right" }));
+  add(T(327.5, poznTop, "Pozn.: částky obsahují zaokrouhlení.", { italic: true, size: 7.9 }));
 
-    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
-      <div style="font-size:18px; font-weight:700;">${title}</div>
-      <div style="font-size:19px; font-weight:700;">${invoice.number}</div>
-    </div>
+  // ── 7.10 Patička ──
+  const footerTop = Math.max(558.9, poznTop + 40);
+  add(LINE(400, 539.8, footerTop - 12, {}));
+  add(T(446.3, footerTop, "Razítko a podpis", { size: 8 }));
 
-    <div style="display:flex; gap:20px;">
-      <div style="flex:0 0 240px;">
-        <img src="${qrDataUrl}" width="140" height="140" />
-
-        <div style="margin-top:8px; font-size:10px;"><strong>Platba:</strong></div>
-        <div style="font-size:10px; margin-bottom:8px;"><strong>Doprava:</strong></div>
-
-        <div style="display:flex; gap:12px;">
-          <div style="flex:1;">
-            <div style="font-size:10px; font-weight:700;">Datum</div>
-            <div style="font-size:10px; margin-top:3px;">vystavení:</div>
-            <div style="font-size:11px; font-weight:700;">${fmtDateCzPlain(invoice.issued)}</div>
-            <div style="font-size:10px; margin-top:3px;">splatnosti:</div>
-            <div style="font-size:11px; font-weight:700;">${fmtDateCzPlain(invoice.due)}</div>
-          </div>
-          <div style="flex:1;">
-            <div style="font-size:10px; font-weight:700;">Symbol</div>
-            <div style="font-size:10px; margin-top:3px;">konstantní:</div>
-            <div style="font-size:11px;">&nbsp;</div>
-            <div style="font-size:10px; margin-top:3px;">variabilní:</div>
-            <div style="font-size:11px; font-weight:700; background:#e6e6e6; display:inline-block; padding:1px 6px; border-radius:2px;">${vs}</div>
-            <div style="font-size:10px; margin-top:3px;">specifický:</div>
-          </div>
-        </div>
-
-        <div style="font-size:10px; font-weight:700; margin-top:10px; margin-bottom:3px;">Bankovní účet</div>
-        <div style="display:flex; border:1px solid #111;">
-          <div style="flex:1; padding:4px 9px; font-weight:700; font-size:14px; border-right:1px solid #111;">${COMPANY.bankPrefix}-${COMPANY.bankAccount}</div>
-          <div style="padding:4px 9px; font-weight:700; font-size:14px;">${COMPANY.bankCode}</div>
-        </div>
-      </div>
-
-      <div style="flex:1;">
-        <div style="font-size:11px; font-weight:700;">Objednávka:</div>
-        <div style="background:#e6e6e6; display:inline-block; min-width:140px; padding:2px 8px; border-radius:2px; font-size:11px; margin-top:2px;">${invoice.order_ref || "&nbsp;"}</div>
-
-        <div style="font-size:11px; font-weight:700; margin-top:10px;">Odběratel</div>
-        <div style="background:#e6e6e6; display:inline-block; min-width:140px; padding:2px 8px; border-radius:2px; margin-top:2px;">&nbsp;</div>
-        ${custBlockPrimary}
-
-        <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:12px;">
-          <span>IČ: ${invoice.customer_ico || ""}</span>
-          <span>DIČ: ${invoice.customer_dic || ""}</span>
-        </div>
-
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-top:8px;">
-          <div style="font-size:11px; font-weight:700;">Konečný příjemce</div>
-          <div style="font-size:7px; color:#333; text-align:right;">e-mail:<br/>tel.:</div>
-        </div>
-        ${custBlockSecondary}
-      </div>
-    </div>
-
-    <table style="width:100%; border-collapse:collapse; font-size:11px; margin:16px 0 8px;">
-      <thead>
-        <tr style="border-bottom:1px solid #111;">
-          ${["Označení dodávky", "Katalog", "Počet m. j.", "Cena za m. j.", "Sazba", "Základ", "DPH", "Celkem"].map(h => `<th style="text-align:left; padding:4px 6px; font-weight:700;">${h}</th>`).join("")}
-        </tr>
-      </thead>
-      <tbody>
-        ${lines.map(l => `
-          <tr style="border-bottom:1px dotted #999;">
-            <td style="padding:5px 6px;">${l.desc || ""}</td>
-            <td style="padding:5px 6px;"></td>
-            <td style="padding:5px 6px;">${fmtKc2(l.qty)}</td>
-            <td style="padding:5px 6px; text-align:right;">${fmtKc2(l.price)}</td>
-            <td style="padding:5px 6px;">${l.vatRate} %</td>
-            <td style="padding:5px 6px; text-align:right;">${fmtKc2(l.zaklad)}</td>
-            <td style="padding:5px 6px; text-align:right;">${fmtKc2(l.dph)}</td>
-            <td style="padding:5px 6px; text-align:right; font-weight:700;">${fmtKc2(l.celkem)}</td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
-
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-top:18px;">
-      <table style="border-collapse:collapse; font-size:11px;">
-        <thead><tr>${["Sazba", "Základ", "DPH", "Celkem"].map(h => `<th style="text-align:right; padding:3px 10px; border-bottom:1px solid #111;">${h}</th>`).join("")}</tr></thead>
-        <tbody>
-          ${VAT_RATES.map(r => `<tr><td style="padding:3px 10px;">${VAT_RATE_LABEL[r] ? `${VAT_RATE_LABEL[r]} ` : ""}${r} %</td><td style="padding:3px 10px; text-align:right;">${fmtKc2(byRate[r].zaklad)}</td><td style="padding:3px 10px; text-align:right;">${fmtKc2(byRate[r].dph)}</td><td style="padding:3px 10px; text-align:right;">${fmtKc2(byRate[r].celkem)}</td></tr>`).join("")}
-          <tr style="border-top:1px solid #111; font-weight:700;"><td style="padding:4px 10px;">CELKEM</td><td style="padding:4px 10px; text-align:right;">${fmtKc2(sumZaklad)}</td><td style="padding:4px 10px; text-align:right;">${fmtKc2(sumDph)}</td><td style="padding:4px 10px; text-align:right;">${fmtKc2(total)}</td></tr>
-        </tbody>
-      </table>
-      <div style="text-align:right; font-size:14px; font-weight:700; white-space:nowrap; flex:0 0 auto;">
-        <div style="display:flex; justify-content:flex-end; margin-bottom:4px;"><span>Sleva v %:</span><span style="margin-left:24px;">${fmtKc2(discountPercent)}</span></div>
-        <div style="display:flex; justify-content:flex-end; align-items:baseline; margin-bottom:4px;">
-          <span>Celkem k úhradě:</span>
-          <span style="margin-left:24px;">${fmtKc2(toPay)} <span style="background:#e2e8f0; padding:2px 6px; border-radius:3px;">Kč</span></span>
-        </div>
-        <div style="display:flex; justify-content:flex-end;"><span>Zbývá uhradit:</span><span style="margin-left:24px;">${fmtKc2(remaining)}</span></div>
-      </div>
-    </div>
-    <div style="font-size:9px; color:#666; font-style:italic; margin-top:6px;">Pozn.: částky obsahují zaokrouhlení.</div>
-
-    <div style="margin-top:50px; display:flex; justify-content:flex-end;">
-      <div style="text-align:center; font-size:11px; color:#444;">
-        <div style="border-top:1px solid #999; padding-top:4px; width:180px;">Razítko a podpis</div>
-      </div>
-    </div>
-  `;
+  const containerHeightPt = Math.max(PAGE_H_PT, footerTop + 30);
+  return `<div style="position:relative; width:${PAGE_W.toFixed(2)}px; height:${(containerHeightPt * PT).toFixed(2)}px; font-family:Arial, Helvetica, sans-serif; color:#111;">${els.join("")}</div>`;
 }
 
 // Připraví data pro živý náhled faktury na obrazovce (stejný vzhled jako PDF).
@@ -291,15 +376,15 @@ export async function downloadInvoicePDF(invoice, customer) {
     getInvoiceQr(invoice, toPay), getInvoiceBarcode(invoice.number),
   ]);
 
+  // Šablona teď pozicuje vše absolutně na body (pt) přesně podle vzoru, včetně
+  // vlastních okrajů — žádné dodatečné padding už není potřeba (a rozhodilo by
+  // to souřadnice o 36px).
   const el = document.createElement("div");
   el.style.position = "fixed";
   el.style.left = "-9999px";
   el.style.top = "0";
-  el.style.width = "794px";
+  el.style.width = `${(595.27 * 4 / 3).toFixed(2)}px`;
   el.style.background = "#fff";
-  el.style.fontFamily = "Arial, Helvetica, sans-serif";
-  el.style.color = "#111";
-  el.style.padding = "36px";
   el.style.boxSizing = "border-box";
   el.innerHTML = buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDataUrl);
 
