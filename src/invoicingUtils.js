@@ -166,7 +166,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
             <div style="font-size:10px; margin-top:4px;">konstantní:</div>
             <div style="font-size:11px;">&nbsp;</div>
             <div style="font-size:10px; margin-top:4px;">variabilní:</div>
-            <div style="font-size:11px; font-weight:700;">${vs}</div>
+            <div style="font-size:11px; font-weight:700; background:#e6e6e6; display:inline-block; padding:1px 6px; border-radius:2px;">${vs}</div>
             <div style="font-size:10px; margin-top:4px;">specifický:</div>
           </div>
         </div>
@@ -180,11 +180,13 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
 
       <div style="flex:1;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <div style="font-size:11px; font-weight:700;">Objednávka:<br/><span style="font-weight:400;">${invoice.order_ref || ""}</span></div>
+          <div style="font-size:11px; font-weight:700;">Objednávka:</div>
           <div style="font-size:20px; font-weight:700;">${invoice.number}</div>
         </div>
+        <div style="background:#e6e6e6; display:inline-block; min-width:140px; padding:3px 8px; border-radius:2px; font-size:11px; margin-top:2px;">${invoice.order_ref || "&nbsp;"}</div>
 
-        <div style="font-size:11px; font-weight:700; margin-top:10px;">Odběratel</div>
+        <div style="font-size:11px; font-weight:700; margin-top:14px;">Odběratel</div>
+        <div style="background:#e6e6e6; display:inline-block; min-width:140px; padding:3px 8px; border-radius:2px; margin-top:2px;">&nbsp;</div>
         ${custBlock}
 
         <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:16px;">
