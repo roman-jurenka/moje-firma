@@ -197,7 +197,10 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   add(T(294.0, 42.1, "www:", { size: 6, color: "#333" }));
   add(T(377.9, 42.1, "fax:", { size: 6, color: "#333" }));
   add(T(290.8, 49.2, "e-mail:", { size: 6, color: "#333" }));
-  if (barcodeDataUrl) add(`<img src="${barcodeDataUrl}" style="position:absolute; right:${(PAGE_W - 539.8 * PT).toFixed(2)}px; top:${(18 * PT).toFixed(2)}px; height:${(30 * PT).toFixed(2)}px;" />`);
+  if (barcodeDataUrl) add(`<img src="${barcodeDataUrl}" style="position:absolute; right:${(PAGE_W - 539.8 * PT).toFixed(2)}px; top:${(18 * PT).toFixed(2)}px; width:${(115 * PT).toFixed(2)}px; height:${(30 * PT).toFixed(2)}px;" />`);
+
+  // Dělicí čára pod hlavičkou dodavatele, nad nadpisem "Faktura".
+  add(LINE(42.5, 539.8, 60.5, {}));
 
   // ── 7.2 Název dokumentu a číslo faktury ──
   add(T(42.5, 79.2, title, { bold: true, size: 14 }));
