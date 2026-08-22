@@ -95,12 +95,23 @@ export async function getInvoiceQr(invoice, amountToPay) {
   return { vs, qrDataUrl };
 }
 
+// Čárový kód s číslem dokladu (stejně jako v pravém horním rohu vzorové
+// faktury) — vykreslí se na offscreen canvas a vrátí se jako data-url.
+export async function getInvoiceBarcode(number) {
+  const mod = await safeImport(() => import("jsbarcode"));
+  const JsBarcode = mod.default;
+  const canvas = document.createElement("canvas");
+  JsBarcode(canvas, number || "0", { format: "CODE128", displayValue: false, height: 34, margin: 0 });
+  return canvas.toDataURL("image/png");
+}
+
 // Sestaví HTML tělo faktury (bez obalu) — sdílené pro PDF export i pro
 // živý náhled na obrazovce, aby obojí vypadalo naprosto stejně. Rozvržení
-// kopíruje vzorovou fakturu z Money S3 (hlavička firmy + velké číslo dokladu
-// vpravo, název dokladu + QR platba + odběratel, datum/symbol/účet vlevo,
-// tabulka položek, rozpis DPH podle sazby vlevo dole, souhrn vpravo dole).
-export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs) {
+// kopíruje vzorovou fakturu z Money S3 (hlavička firmy + čárový kód vpravo,
+// velké číslo dokladu, název dokladu + QR platba + odběratel, datum/symbol/
+// účet vlevo, tabulka položek, rozpis DPH podle sazby vlevo dole, souhrn
+// vpravo dole).
+export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDataUrl) {
   const { lines, byRate, total } = computeInvoiceTotals(invoice.items);
   const discountPercent = Number(invoice.discount_percent) || 0;
   const toPay = getDiscountedTotal(total, discountPercent);
@@ -129,6 +140,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs) {
         <div>IČ: <strong>${COMPANY.ico}</strong></div>
         <div>DIČ: <strong>${COMPANY.dic}</strong></div>
       </div>
+      ${barcodeDataUrl ? `<img src="${barcodeDataUrl}" style="height:34px;" />` : ""}
     </div>
 
     <div style="display:flex; gap:28px;">
@@ -220,8 +232,10 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs) {
 export async function buildInvoicePreview(invoice, customer) {
   const { total } = computeInvoiceTotals(invoice.items);
   const toPay = getDiscountedTotal(total, invoice.discount_percent);
-  const { vs, qrDataUrl } = await getInvoiceQr(invoice, toPay);
-  return buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs);
+  const [{ vs, qrDataUrl }, barcodeDataUrl] = await Promise.all([
+    getInvoiceQr(invoice, toPay), getInvoiceBarcode(invoice.number),
+  ]);
+  return buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDataUrl);
 }
 
 // ─── Generování PDF ─────────────────────────────────────────────────────────
@@ -238,7 +252,9 @@ export async function downloadInvoicePDF(invoice, customer) {
 
   const { total } = computeInvoiceTotals(invoice.items);
   const toPay = getDiscountedTotal(total, invoice.discount_percent);
-  const { vs, qrDataUrl } = await getInvoiceQr(invoice, toPay);
+  const [{ vs, qrDataUrl }, barcodeDataUrl] = await Promise.all([
+    getInvoiceQr(invoice, toPay), getInvoiceBarcode(invoice.number),
+  ]);
 
   const el = document.createElement("div");
   el.style.position = "fixed";
@@ -250,7 +266,7 @@ export async function downloadInvoicePDF(invoice, customer) {
   el.style.color = "#111";
   el.style.padding = "36px";
   el.style.boxSizing = "border-box";
-  el.innerHTML = buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs);
+  el.innerHTML = buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDataUrl);
 
   document.body.appendChild(el);
   try {
