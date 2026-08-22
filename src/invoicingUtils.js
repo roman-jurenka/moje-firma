@@ -244,13 +244,13 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
           <tr style="border-top:1px solid #111; font-weight:700;"><td style="padding:4px 10px;">CELKEM</td><td style="padding:4px 10px; text-align:right;">${fmtKc2(sumZaklad)}</td><td style="padding:4px 10px; text-align:right;">${fmtKc2(sumDph)}</td><td style="padding:4px 10px; text-align:right;">${fmtKc2(total)}</td></tr>
         </tbody>
       </table>
-      <div style="text-align:right; font-size:14px; font-weight:700;">
-        <div style="display:flex; justify-content:space-between; gap:24px; margin-bottom:4px;"><span>Sleva v %:</span><span>${fmtKc2(discountPercent)}</span></div>
-        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:24px; margin-bottom:4px;">
+      <div style="text-align:right; font-size:14px; font-weight:700; white-space:nowrap; flex:0 0 auto;">
+        <div style="display:flex; justify-content:flex-end; margin-bottom:4px;"><span>Sleva v %:</span><span style="margin-left:24px;">${fmtKc2(discountPercent)}</span></div>
+        <div style="display:flex; justify-content:flex-end; align-items:baseline; margin-bottom:4px;">
           <span>Celkem k úhradě:</span>
-          <span>${fmtKc2(toPay)} <span style="background:#e2e8f0; padding:2px 6px; border-radius:3px;">Kč</span></span>
+          <span style="margin-left:24px;">${fmtKc2(toPay)} <span style="background:#e2e8f0; padding:2px 6px; border-radius:3px;">Kč</span></span>
         </div>
-        <div style="display:flex; justify-content:space-between; gap:24px;"><span>Zbývá uhradit:</span><span>${fmtKc2(remaining)}</span></div>
+        <div style="display:flex; justify-content:flex-end;"><span>Zbývá uhradit:</span><span style="margin-left:24px;">${fmtKc2(remaining)}</span></div>
       </div>
     </div>
     <div style="font-size:9px; color:#666; font-style:italic; margin-top:6px;">Pozn.: částky obsahují zaokrouhlení.</div>
