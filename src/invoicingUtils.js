@@ -38,11 +38,15 @@ function buildSpd({ amount, vs, msg }) {
 }
 
 export const fmtKc2 = (v) => Number(v || 0).toLocaleString("cs-CZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Vzor (Money S3) má datum vždy jako DD.MM.RRRR se nulami a bez mezer
+// (např. "21.07.2026") — toLocaleDateString dává "21. 7. 2026", proto ručně.
 function fmtDateCzPlain(v) {
   if (!v) return "";
   const d = new Date(v.length === 10 ? v + "T00:00:00" : v);
   if (isNaN(d.getTime())) return v;
-  return d.toLocaleDateString("cs-CZ");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}.${mm}.${d.getFullYear()}`;
 }
 
 // Spočítá základ/DPH/celkem za řádek i souhrn podle sazby — používá se jak
