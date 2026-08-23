@@ -17,6 +17,7 @@ const EVENT_LABELS = {
   upominka_1: { icon: "🔔", label: "1. upomínka vygenerována" },
   upominka_2: { icon: "🔔", label: "2. upomínka vygenerována" },
   upominka_3: { icon: "🔔", label: "3. upomínka vygenerována" },
+  poznamka: { icon: "💬", label: "Poznámka" },
 };
 const fmtEventDate = (v) => { try { return new Date(v).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return v; } };
 
@@ -24,6 +25,7 @@ const fmtEventDate = (v) => { try { return new Date(v).toLocaleString("cs-CZ", {
 function InvoiceHistoryPanel({ invoiceId }) {
   const [events, setEvents] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
 
   const load = () => {
     supabase.from("invoice_events").select("*").eq("invoice_id", invoiceId).order("created_at", { ascending: false })
@@ -41,6 +43,20 @@ function InvoiceHistoryPanel({ invoiceId }) {
     }
   };
 
+  // Poznámka — reakce zákazníka na urgenci/upomínku (např. "slíbil platbu
+  // do 15.9."), zapíše se do historie s časovým razítkem.
+  const addNote = async () => {
+    if (!note.trim()) return;
+    setBusy(true);
+    try {
+      await supabase.from("invoice_events").insert({ invoice_id: invoiceId, type: "poznamka", note: note.trim() });
+      setNote("");
+      load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -52,18 +68,29 @@ function InvoiceHistoryPanel({ invoiceId }) {
       {events === null && <div style={{ fontSize: 12, color: "#94a3b8" }}>Načítám…</div>}
       {events && events.length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Zatím žádné události.</div>}
       {events && events.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
           {events.map(ev => {
             const meta = EVENT_LABELS[ev.type] || { icon: "•", label: ev.type };
             return (
               <div key={ev.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#475569" }}>
-                <span>{meta.icon} {meta.label}{ev.type === "platba" ? ` — ${fmtKc2(ev.amount)} Kč` : ""}</span>
-                <span style={{ color: "#94a3b8" }}>{fmtEventDate(ev.created_at)}</span>
+                <span>
+                  {meta.icon} {ev.type === "poznamka" ? ev.note : meta.label}
+                  {ev.type === "platba" ? ` — ${fmtKc2(ev.amount)} Kč` : ""}
+                </span>
+                <span style={{ color: "#94a3b8", whiteSpace: "nowrap", marginLeft: 8 }}>{fmtEventDate(ev.created_at)}</span>
               </div>
             );
           })}
         </div>
       )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input style={{ ...inputStyle, flex: 1, padding: "6px 10px", fontSize: 12 }} value={note}
+          placeholder="Reakce zákazníka, příslib platby…"
+          onChange={e => setNote(e.target.value)} onKeyDown={e => e.key === "Enter" && addNote()} />
+        <button onClick={addNote} disabled={busy || !note.trim()} style={{ ...btnGhost, padding: "6px 12px", fontSize: 11 }}>
+          + Zapsat
+        </button>
+      </div>
     </div>
   );
 }
