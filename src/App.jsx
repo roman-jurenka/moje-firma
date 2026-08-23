@@ -2619,7 +2619,10 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
     }
   };
 
+  // Pohledávky (upomínky) dávají smysl jen u vydaných faktur — přijaté faktury
+  // jsou naše závazky vůči dodavatelům, ne peníze, co nám dluží zákazník.
   const unpaidInvoices = invoices
+    .filter(inv => (inv.invoice_type || "vydaná") === "vydaná")
     .map(inv => ({ inv, info: getInvoicePaymentInfo(inv) }))
     .filter(({ info }) => !info.isPaid && !info.isCancelled && (info.outstanding > 0.01))
     .sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
