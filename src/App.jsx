@@ -525,6 +525,19 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [theme, setTheme] = useState(() => localStorage.getItem("proudos-theme") || "light");
   useEffect(() => { localStorage.setItem("proudos-theme", theme); }, [theme]);
 
+  // Věci, co čekají na pozornost (faktury po splatnosti, sklad pod minimem,
+  // žádosti o úpravu docházky ke schválení) — zobrazují se v "Oznámení"
+  // vedle ručně vkládaných notifikací, ať se to nemusí hledat po appce.
+  // Počet žádostí se nedá spočítat z dat, co MainApp už má načtená, proto se
+  // dotahuje samostatně jen jako count.
+  const [pendingReqCount, setPendingReqCount] = useState(0);
+  const loadPendingReqCount = () => {
+    supabase.from("attendance_change_requests").select("id", { count: "exact", head: true })
+      .eq("status", "čeká na schválení")
+      .then(({ count }) => setPendingReqCount(count || 0));
+  };
+  useEffect(loadPendingReqCount, []);
+
   const closeModal = () => setModal(null);
 
   // ── Load all data from Supabase ──
@@ -610,6 +623,12 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const pendingRevenue = invoices.filter(i => i.status === "Čeká").reduce((s, i) => s + i.amount, 0);
   const overdueRevenue = invoices.filter(i => i.status === "Po splatnosti").reduce((s, i) => s + i.amount, 0);
   const lowStock = products.filter(p => p.stock <= p.minStock);
+  const overdueBellInvoices = invoices
+    .filter(i => (i.invoice_type || "vydaná") === "vydaná")
+    .map(i => ({ inv: i, info: getInvoicePaymentInfo(i) }))
+    .filter(({ info }) => info.isOverdue)
+    .sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
+  const bellCount = overdueBellInvoices.length + lowStock.length + pendingReqCount;
   const totalPayroll = employees.filter(e => e.status === "Aktivní").reduce((s, e) => s + e.salary, 0);
   const activeProjects = projects.filter(p => p.status === "Probíhá").length;
 
@@ -770,9 +789,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         <div style={{ marginTop: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
           <button onClick={() => setTab("notifications")} style={{ ...S.btnGhost, width: "100%", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span><i className="ti ti-bell" aria-hidden="true" style={{ marginRight: 6 }}></i>Oznámení</span>
-            {notifications.filter(n => !n.read && n.user_name === currentUser?.name).length > 0 && (
+            {(notifications.filter(n => !n.read && n.user_name === currentUser?.name).length + bellCount) > 0 && (
               <span style={{ background: "#f87171", borderRadius: 10, padding: "1px 7px", color: "#fff", fontSize: 10, fontWeight: 700 }}>
-                {notifications.filter(n => !n.read && n.user_name === currentUser?.name).length}
+                {notifications.filter(n => !n.read && n.user_name === currentUser?.name).length + bellCount}
               </span>
             )}
           </button>
@@ -933,6 +952,34 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
                 setNotifications(notifications.map(n => n.user_name === myName ? { ...n, read: true } : n));
               }}>Označit vše jako přečtené</button>
             </div>
+            {bellCount > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#334155", marginBottom: 8 }}>Vyžaduje pozornost</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {overdueBellInvoices.map(({ inv, info }) => (
+                    <div key={`inv-${inv.id}`} onClick={() => setTab("invoices")}
+                      style={{ ...S.card, borderLeft: "3px solid #f87171", padding: "10px 16px", cursor: "pointer", fontSize: 13 }}>
+                      <i className="ti ti-alert-triangle" aria-hidden="true" style={{ color: "#f87171", marginRight: 8 }}></i>
+                      Faktura {inv.number} — {info.daysOverdue} dní po splatnosti ({fmtKc(info.outstanding)})
+                    </div>
+                  ))}
+                  {lowStock.map(p => (
+                    <div key={`stock-${p.id}`} onClick={() => setTab("warehouse")}
+                      style={{ ...S.card, borderLeft: "3px solid #f59e0b", padding: "10px 16px", cursor: "pointer", fontSize: 13 }}>
+                      <i className="ti ti-package" aria-hidden="true" style={{ color: "#f59e0b", marginRight: 8 }}></i>
+                      Sklad — {p.name} pod minimem ({p.stock}/{p.minStock})
+                    </div>
+                  ))}
+                  {pendingReqCount > 0 && (
+                    <div onClick={() => setTab("attendance")}
+                      style={{ ...S.card, borderLeft: "3px solid #2E9BE0", padding: "10px 16px", cursor: "pointer", fontSize: 13 }}>
+                      <i className="ti ti-calendar-check" aria-hidden="true" style={{ color: "#2E9BE0", marginRight: 8 }}></i>
+                      {pendingReqCount} {pendingReqCount === 1 ? "žádost čeká" : "žádostí čeká"} na schválení v docházce
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {notifications.filter(n => !n.user_name || n.user_name === currentUser?.name).map(n => (
                 <div key={n.id} style={{ ...S.card, borderLeft: `3px solid ${n.read ? "#cbd5e1" : "#2E9BE0"}`, padding: "14px 18px" }}>
