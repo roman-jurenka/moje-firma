@@ -188,6 +188,15 @@ const fmtDateCz = (v) => {
   if (isNaN(d.getTime())) return v; // neplatné/textové hodnoty necháme beze změny
   return `${DNY_ZKR[d.getDay()]} ${d.getDate()}. ${MESICE_2P[d.getMonth()]} ${d.getFullYear()}`;
 };
+// Slíbený termín platby, který už proběhl a faktura pořád není zaplacená
+// ("zlomený slib") — použito k výraznému odlišení v seznamu pohledávek.
+const isPromiseBroken = (v) => {
+  if (!v) return false;
+  const d = new Date(v.length === 10 ? v + "T00:00:00" : v);
+  if (isNaN(d.getTime())) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return d < today;
+};
 const initialAttendance = [
   // Markéta (emp 1)
   { id: 1, employeeId: 1, date: "2026-04-07", checkin: "08:02", checkout: "16:45" },
@@ -2713,7 +2722,12 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                     <td style={S.td}>{fmtDateCz(inv.due)}</td>
                     <td style={S.td}>
                       {inv.promised_payment_date
-                        ? <span style={{ color: "#0369a1", fontWeight: 600 }}>🤝 {fmtDateCz(inv.promised_payment_date)}</span>
+                        ? (isPromiseBroken(inv.promised_payment_date)
+                          ? <span style={{ color: "#dc2626", fontWeight: 700 }}>
+                              ⚠️ {fmtDateCz(inv.promised_payment_date)}
+                              <span style={{ display: "block", fontWeight: 400, fontSize: 11 }}>termín proběhl, nezaplaceno</span>
+                            </span>
+                          : <span style={{ color: "#0369a1", fontWeight: 600 }}>🤝 {fmtDateCz(inv.promised_payment_date)}</span>)
                         : <span style={{ color: "#cbd5e1" }}>—</span>}
                     </td>
                     <td style={{ ...S.td, color: info.isOverdue ? "#ef4444" : "#94a3b8", fontWeight: info.isOverdue ? 700 : 400 }}>
