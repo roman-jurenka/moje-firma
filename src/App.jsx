@@ -408,7 +408,19 @@ const S = {
 
 const getInitial = (name) => name?.charAt(0).toUpperCase() || "?";
 const fmtKc = (v) => `${Number(v).toLocaleString("cs-CZ")} Kč`;
-const nextInvNum = (invoices) => `FAK-2026-${String(invoices.length + 1).padStart(3, "0")}`;
+// Formát čísla faktury: RRRR + 5místné pořadové číslo (např. 202600001).
+// Pořadové číslo se počítá z nejvyššího dosud použitého v daném roce, ne
+// jen z počtu faktur — díky tomu nekolidují čísla ani po smazání faktury.
+const nextInvNum = (invoices) => {
+  const prefix = String(new Date().getFullYear());
+  const maxSeq = invoices.reduce((max, inv) => {
+    const num = String(inv.number || "");
+    if (!num.startsWith(prefix)) return max;
+    const seq = parseInt(num.slice(prefix.length), 10);
+    return isNaN(seq) ? max : Math.max(max, seq);
+  }, 0);
+  return `${prefix}${String(maxSeq + 1).padStart(5, "0")}`;
+};
 
 // ─── CONTRACT PHOTO PICKER ────────────────────────────────────────────────────
 function ContractPhotoPicker({ onSelect, onClose }) {
