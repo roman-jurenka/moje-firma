@@ -18,14 +18,20 @@ const EVENT_LABELS = {
   upominka_2: { icon: "🔔", label: "2. upomínka vygenerována" },
   upominka_3: { icon: "🔔", label: "3. upomínka vygenerována" },
   poznamka: { icon: "💬", label: "Poznámka" },
+  prislib_platby: { icon: "🤝", label: "Smluvený příchod platby" },
 };
 const fmtEventDate = (v) => { try { return new Date(v).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return v; } };
+const fmtDatePlain = (v) => { if (!v) return ""; try { return new Date(v + "T00:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric" }); } catch { return v; } };
 
 // ─── Historie faktury — vystavení, odeslání, platby, upomínky ─────────────
-function InvoiceHistoryPanel({ invoiceId }) {
+// Rozlišuje "termín daný fakturou" (invoice.due — smluvní splatnost) od
+// "smluveného příchodu peněz" (invoice.promised_payment_date — co zákazník
+// reálně slíbil po urgenci), protože se často liší.
+function InvoiceHistoryPanel({ invoiceId, onUpdated }) {
   const [events, setEvents] = useState(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [promiseDate, setPromiseDate] = useState("");
 
   const load = () => {
     supabase.from("invoice_events").select("*").eq("invoice_id", invoiceId).order("created_at", { ascending: false })
@@ -44,13 +50,22 @@ function InvoiceHistoryPanel({ invoiceId }) {
   };
 
   // Poznámka — reakce zákazníka na urgenci/upomínku (např. "slíbil platbu
-  // do 15.9."), zapíše se do historie s časovým razítkem.
+  // do 15.9."). Pokud je vyplněné i datum, zapíše se navíc jako "smluvený
+  // příchod platby" a promítne se do invoices.promised_payment_date, aby to
+  // bylo vidět i v seznamu nezaplacených faktur (odlišené od splatnosti
+  // dané fakturou).
   const addNote = async () => {
-    if (!note.trim()) return;
+    if (!note.trim() && !promiseDate) return;
     setBusy(true);
     try {
-      await supabase.from("invoice_events").insert({ invoice_id: invoiceId, type: "poznamka", note: note.trim() });
-      setNote("");
+      if (promiseDate) {
+        await supabase.from("invoice_events").insert({ invoice_id: invoiceId, type: "prislib_platby", note: note.trim() || null, promised_date: promiseDate });
+        await supabase.from("invoices").update({ promised_payment_date: promiseDate }).eq("id", invoiceId);
+        onUpdated?.(invoiceId, { promised_payment_date: promiseDate });
+      } else {
+        await supabase.from("invoice_events").insert({ invoice_id: invoiceId, type: "poznamka", note: note.trim() });
+      }
+      setNote(""); setPromiseDate("");
       load();
     } finally {
       setBusy(false);
@@ -74,7 +89,10 @@ function InvoiceHistoryPanel({ invoiceId }) {
             return (
               <div key={ev.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#475569" }}>
                 <span>
-                  {meta.icon} {ev.type === "poznamka" ? ev.note : meta.label}
+                  {meta.icon}{" "}
+                  {ev.type === "poznamka" && ev.note}
+                  {ev.type === "prislib_platby" && <>Slíbená platba do <strong style={{ color: "#0369a1" }}>{fmtDatePlain(ev.promised_date)}</strong>{ev.note ? ` — ${ev.note}` : ""}</>}
+                  {ev.type !== "poznamka" && ev.type !== "prislib_platby" && meta.label}
                   {ev.type === "platba" ? ` — ${fmtKc2(ev.amount)} Kč` : ""}
                 </span>
                 <span style={{ color: "#94a3b8", whiteSpace: "nowrap", marginLeft: 8 }}>{fmtEventDate(ev.created_at)}</span>
@@ -83,11 +101,16 @@ function InvoiceHistoryPanel({ invoiceId }) {
           })}
         </div>
       )}
-      <div style={{ display: "flex", gap: 8 }}>
-        <input style={{ ...inputStyle, flex: 1, padding: "6px 10px", fontSize: 12 }} value={note}
-          placeholder="Reakce zákazníka, příslib platby…"
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input style={{ ...inputStyle, flex: 1, minWidth: 180, padding: "6px 10px", fontSize: 12 }} value={note}
+          placeholder="Reakce zákazníka…"
           onChange={e => setNote(e.target.value)} onKeyDown={e => e.key === "Enter" && addNote()} />
-        <button onClick={addNote} disabled={busy || !note.trim()} style={{ ...btnGhost, padding: "6px 12px", fontSize: 11 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap" }}>Slíbeno do:</span>
+          <input type="date" style={{ ...inputStyle, padding: "6px 8px", fontSize: 12 }} value={promiseDate}
+            onChange={e => setPromiseDate(e.target.value)} />
+        </div>
+        <button onClick={addNote} disabled={busy || (!note.trim() && !promiseDate)} style={{ ...btnGhost, padding: "6px 12px", fontSize: 11 }}>
           + Zapsat
         </button>
       </div>
@@ -133,7 +156,7 @@ const inputStyle = { width: "100%", padding: "9px 11px", borderRadius: 8, border
 // ─── Vystavení faktury — nejdřív se zeptá ručně/ze zakázky, pak editor položek.
 // Stejná komponenta se používá i pro úpravu existující faktury (editInvoice) —
 // stejný vzor jako u dodacích listů (jedna modálka pro přidání i editaci).
-export default function InvoiceCreateFlow({ customers, contracts, costEntries, onSave, onClose, editInvoice, defaultConstantSymbol }) {
+export default function InvoiceCreateFlow({ customers, contracts, costEntries, onSave, onClose, editInvoice, defaultConstantSymbol, onInvoiceUpdated }) {
   const isEdit = !!editInvoice;
   const [step, setStep] = useState(isEdit ? "form" : "choose"); // "choose" | "pickContract" | "form"
   const [formTab, setFormTab] = useState("zaklad"); // "zaklad" | "polozky" | "historie"
@@ -353,7 +376,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
           </>
         )}
 
-        {formTab === "historie" && isEdit && <InvoiceHistoryPanel invoiceId={editInvoice.id} />}
+        {formTab === "historie" && isEdit && <InvoiceHistoryPanel invoiceId={editInvoice.id} onUpdated={onInvoiceUpdated} />}
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button onClick={submit} style={btnPrimary}>{isEdit ? "Uložit změny" : "Vystavit fakturu"}</button>

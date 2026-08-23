@@ -2702,7 +2702,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
         <div style={{ ...S.card, marginTop: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>💸 Nezaplacené a částečně zaplacené faktury</div>
           <table style={S.table}>
-            <thead><tr>{["Číslo", "Zákazník", "Splatnost", "Dní po splatnosti", "Dluží", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+            <thead><tr>{["Číslo", "Zákazník", "Splatnost (faktura)", "Slíbený příchod (zákazník)", "Dní po splatnosti", "Dluží", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
             <tbody>
               {unpaidInvoices.map(({ inv, info }) => {
                 const cust = customers.find(c => c.id === inv.customerId);
@@ -2711,6 +2711,11 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                     <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
                     <td style={S.td}>{cust?.name || "—"}</td>
                     <td style={S.td}>{fmtDateCz(inv.due)}</td>
+                    <td style={S.td}>
+                      {inv.promised_payment_date
+                        ? <span style={{ color: "#0369a1", fontWeight: 600 }}>🤝 {fmtDateCz(inv.promised_payment_date)}</span>
+                        : <span style={{ color: "#cbd5e1" }}>—</span>}
+                    </td>
                     <td style={{ ...S.td, color: info.isOverdue ? "#ef4444" : "#94a3b8", fontWeight: info.isOverdue ? 700 : 400 }}>
                       {info.isOverdue ? info.daysOverdue : "—"}
                     </td>
@@ -2742,6 +2747,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
       {modal?.type === "editInvoiceFlow" && (
         <InvoiceCreateFlow customers={customers} contracts={contracts} costEntries={costEntries}
           editInvoice={modal.invoice}
+          onInvoiceUpdated={(id, patch) => setInvoices(invoices.map(i => i.id === id ? { ...i, ...patch } : i))}
           onSave={saveOrUpdateInvoice} onClose={closeModal} />
       )}
 
