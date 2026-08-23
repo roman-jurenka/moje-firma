@@ -57,13 +57,14 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     customerIco: editInvoice.customer_ico || "", customerDic: editInvoice.customer_dic || "",
     discountPercent: editInvoice.discount_percent || 0,
     constantSymbol: editInvoice.constant_symbol || "", specificSymbol: editInvoice.specific_symbol || "",
+    variableSymbol: editInvoice.variable_symbol || (editInvoice.number || "").replace(/\D/g, ""),
     items: (editInvoice.items && editInvoice.items.length) ? editInvoice.items : [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
   } : {
     customerId: "", invoiceType: "vydaná", isDeposit: false, orderRef: "",
     issued: new Date().toISOString().slice(0, 10),
     due: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     status: "Čeká", customerIco: "", customerDic: "", discountPercent: 0,
-    constantSymbol: defaultConstantSymbol || "", specificSymbol: "",
+    constantSymbol: defaultConstantSymbol || "", specificSymbol: "", variableSymbol: "",
     items: [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -101,7 +102,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
       customerId: f.customerId, invoiceType: f.invoiceType, isDeposit: f.isDeposit,
       orderRef: f.orderRef, issued: f.issued, due: f.due, status: f.status,
       customerIco: f.customerIco, customerDic: f.customerDic, discountPercent: Number(f.discountPercent) || 0,
-      constantSymbol: f.constantSymbol, specificSymbol: f.specificSymbol,
+      constantSymbol: f.constantSymbol, specificSymbol: f.specificSymbol, variableSymbol: f.variableSymbol,
       items: lines.map(({ desc, qty, unit, price, vatRate }) => ({ desc, qty, unit, price, vatRate })),
       amount: total - totalTax, tax: totalTax,
       contractId: fromContractId ? Number(fromContractId) : null,
@@ -188,7 +189,12 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
           </label>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={labelStyle}>Variabilní symbol{isEdit ? "" : " (nepovinné — jinak číslo faktury)"}</label>
+            <input style={inputStyle} value={f.variableSymbol} onChange={e => set("variableSymbol", e.target.value)}
+              placeholder={isEdit ? "" : "doplní se automaticky"} />
+          </div>
           <div><label style={labelStyle}>Konstantní symbol</label><input style={inputStyle} value={f.constantSymbol} onChange={e => set("constantSymbol", e.target.value)} /></div>
           <div><label style={labelStyle}>Specifický symbol</label><input style={inputStyle} value={f.specificSymbol} onChange={e => set("specificSymbol", e.target.value)} /></div>
         </div>

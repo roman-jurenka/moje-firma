@@ -2520,7 +2520,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
       tax: f.tax, status: f.status,
       issued: f.issued, due: f.due, items: f.items,
       invoice_type: f.invoiceType, is_deposit: f.isDeposit, order_ref: f.orderRef,
-      variable_symbol: invNum.replace(/\D/g, ""), contract_id: f.contractId,
+      variable_symbol: (f.variableSymbol && f.variableSymbol.trim()) || invNum.replace(/\D/g, ""), contract_id: f.contractId,
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
       discount_percent: f.discountPercent || 0,
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
@@ -2530,14 +2530,16 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
     closeModal();
   };
 
-  // Úprava existující faktury — číslo a variabilní symbol se nemění, jen
-  // obsah. Stejný vzor jako úprava dodacích listů (jedna modálka pro obojí).
+  // Úprava existující faktury — číslo dokladu se nemění, variabilní symbol
+  // ano (uživatel ho může přepsat ve formuláři). Stejný vzor jako úprava
+  // dodacích listů (jedna modálka pro přidání i editaci).
   const updateFromFlow = async (f) => {
     const { data: row, error } = await supabase.from("invoices").update({
       customer_id: Number(f.customerId), amount: f.amount, tax: f.tax, status: f.status,
       issued: f.issued, due: f.due, items: f.items,
       invoice_type: f.invoiceType, is_deposit: f.isDeposit, order_ref: f.orderRef,
       contract_id: f.contractId,
+      variable_symbol: (f.variableSymbol && f.variableSymbol.trim()) || null,
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
       discount_percent: f.discountPercent || 0,
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
