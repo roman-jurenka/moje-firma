@@ -136,6 +136,7 @@ const inputStyle = { width: "100%", padding: "9px 11px", borderRadius: 8, border
 export default function InvoiceCreateFlow({ customers, contracts, costEntries, onSave, onClose, editInvoice, defaultConstantSymbol }) {
   const isEdit = !!editInvoice;
   const [step, setStep] = useState(isEdit ? "form" : "choose"); // "choose" | "pickContract" | "form"
+  const [formTab, setFormTab] = useState("zaklad"); // "zaklad" | "polozky" | "historie"
   const [fromContractId, setFromContractId] = useState(editInvoice?.contract_id ? String(editInvoice.contract_id) : "");
   const [f, setF] = useState(() => editInvoice ? {
     customerId: editInvoice.customerId ? String(editInvoice.customerId) : "",
@@ -236,99 +237,123 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
       <div style={{ ...boxStyle, width: 720 }}>
         <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>{isEdit ? `Upravit fakturu ${editInvoice.number}` : "Nová faktura"}</div>
 
-        {isEdit && <InvoiceHistoryPanel invoiceId={editInvoice.id} />}
-
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
-          <div>
-            <label style={labelStyle}>Zákazník</label>
-            <select style={inputStyle} value={f.customerId} onChange={e => set("customerId", e.target.value)}>
-              <option value="">— vyberte —</option>
-              {(customers || []).map(c => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>Typ</label>
-            <select style={inputStyle} value={f.invoiceType} onChange={e => set("invoiceType", e.target.value)}>
-              <option value="vydaná">📤 Vydaná</option>
-              <option value="přijatá">📥 Přijatá</option>
-            </select>
-          </div>
+        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e2e8f0", marginBottom: 18 }}>
+          {[
+            { id: "zaklad", label: "Základní údaje" },
+            { id: "polozky", label: "Položky a částka" },
+            ...(isEdit ? [{ id: "historie", label: "Historie" }] : []),
+          ].map(t => (
+            <button key={t.id} onClick={() => setFormTab(t.id)}
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: "8px 14px", fontSize: 13,
+                fontWeight: formTab === t.id ? 700 : 400, color: formTab === t.id ? "#1e293b" : "#64748b",
+                borderBottom: formTab === t.id ? "2px solid #2E9BE0" : "2px solid transparent", marginBottom: -1,
+              }}>
+              {t.label}
+            </button>
+          ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-          <div><label style={labelStyle}>IČ zákazníka (volitelné)</label><input style={inputStyle} value={f.customerIco} onChange={e => set("customerIco", e.target.value)} /></div>
-          <div><label style={labelStyle}>DIČ zákazníka (volitelné)</label><input style={inputStyle} value={f.customerDic} onChange={e => set("customerDic", e.target.value)} /></div>
-          <div><label style={labelStyle}>Objednávka (volitelné)</label><input style={inputStyle} value={f.orderRef} onChange={e => set("orderRef", e.target.value)} /></div>
-        </div>
+        {formTab === "zaklad" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
+              <div>
+                <label style={labelStyle}>Zákazník</label>
+                <select style={inputStyle} value={f.customerId} onChange={e => set("customerId", e.target.value)}>
+                  <option value="">— vyberte —</option>
+                  {(customers || []).map(c => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Typ</label>
+                <select style={inputStyle} value={f.invoiceType} onChange={e => set("invoiceType", e.target.value)}>
+                  <option value="vydaná">📤 Vydaná</option>
+                  <option value="přijatá">📥 Přijatá</option>
+                </select>
+              </div>
+            </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-          <div><label style={labelStyle}>Datum vystavení</label><input type="date" style={inputStyle} value={f.issued} onChange={e => set("issued", e.target.value)} /></div>
-          <div><label style={labelStyle}>Datum splatnosti</label><input type="date" style={inputStyle} value={f.due} onChange={e => set("due", e.target.value)} /></div>
-          <div><label style={labelStyle}>Stav</label>
-            <select style={inputStyle} value={f.status} onChange={e => set("status", e.target.value)}>
-              {["Čeká", "Zaplacena", "Po splatnosti"].map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div><label style={labelStyle}>IČ zákazníka (volitelné)</label><input style={inputStyle} value={f.customerIco} onChange={e => set("customerIco", e.target.value)} /></div>
+              <div><label style={labelStyle}>DIČ zákazníka (volitelné)</label><input style={inputStyle} value={f.customerDic} onChange={e => set("customerDic", e.target.value)} /></div>
+              <div><label style={labelStyle}>Objednávka (volitelné)</label><input style={inputStyle} value={f.orderRef} onChange={e => set("orderRef", e.target.value)} /></div>
+            </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 10 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-            <input type="checkbox" checked={f.isDeposit} onChange={e => set("isDeposit", e.target.checked)} />
-            Zálohová faktura
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-            Sleva v %:
-            <input type="number" min="0" max="100" style={{ ...inputStyle, width: 80 }} value={f.discountPercent} onChange={e => set("discountPercent", e.target.value)} />
-          </label>
-        </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div><label style={labelStyle}>Datum vystavení</label><input type="date" style={inputStyle} value={f.issued} onChange={e => set("issued", e.target.value)} /></div>
+              <div><label style={labelStyle}>Datum splatnosti</label><input type="date" style={inputStyle} value={f.due} onChange={e => set("due", e.target.value)} /></div>
+              <div><label style={labelStyle}>Stav</label>
+                <select style={inputStyle} value={f.status} onChange={e => set("status", e.target.value)}>
+                  {["Čeká", "Zaplacena", "Po splatnosti"].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={labelStyle}>Variabilní symbol{isEdit ? "" : " (nepovinné — jinak číslo faktury)"}</label>
-            <input style={inputStyle} value={f.variableSymbol} onChange={e => set("variableSymbol", e.target.value)}
-              placeholder={isEdit ? "" : "doplní se automaticky"} />
-          </div>
-          <div><label style={labelStyle}>Konstantní symbol</label><input style={inputStyle} value={f.constantSymbol} onChange={e => set("constantSymbol", e.target.value)} /></div>
-          <div><label style={labelStyle}>Specifický symbol</label><input style={inputStyle} value={f.specificSymbol} onChange={e => set("specificSymbol", e.target.value)} /></div>
-        </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 10 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                <input type="checkbox" checked={f.isDeposit} onChange={e => set("isDeposit", e.target.checked)} />
+                Zálohová faktura
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                Sleva v %:
+                <input type="number" min="0" max="100" style={{ ...inputStyle, width: 80 }} value={f.discountPercent} onChange={e => set("discountPercent", e.target.value)} />
+              </label>
+            </div>
 
-        <div style={{ fontWeight: 700, fontSize: 12, color: "#64748b", marginTop: 16, marginBottom: 6 }}>POLOŽKY</div>
-        <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: "#f8fafc" }}>
-                {["Popis", "Počet", "M.j.", "Cena/m.j.", "DPH", "Celkem", ""].map(h => <th key={h} style={{ padding: "6px 8px", fontSize: 10, color: "#64748b", textAlign: "left" }}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((l, i) => (
-                <tr key={i} style={{ borderTop: "1px solid #f1f5f9" }}>
-                  <td style={{ padding: 4 }}><input style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].desc} onChange={e => setItem(i, { desc: e.target.value })} /></td>
-                  <td style={{ padding: 4, width: 60 }}><input type="number" style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].qty} onChange={e => setItem(i, { qty: e.target.value })} /></td>
-                  <td style={{ padding: 4, width: 70 }}>
-                    <select style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].unit} onChange={e => setItem(i, { unit: e.target.value })}>
-                      {ITEM_UNITS.map(u => <option key={u}>{u}</option>)}
-                    </select>
-                  </td>
-                  <td style={{ padding: 4, width: 90 }}><input type="number" style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].price} onChange={e => setItem(i, { price: e.target.value })} /></td>
-                  <td style={{ padding: 4, width: 70 }}>
-                    <select style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].vatRate} onChange={e => setItem(i, { vatRate: Number(e.target.value) })}>
-                      {VAT_RATES.map(r => <option key={r} value={r}>{r} %</option>)}
-                    </select>
-                  </td>
-                  <td style={{ padding: "4px 8px", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtKc2(l.celkem)} Kč</td>
-                  <td style={{ padding: 4 }}><button onClick={() => removeItem(i)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}>×</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <button onClick={addItem} style={{ ...btnGhost, marginTop: 8, padding: "6px 14px", fontSize: 12 }}>+ Přidat řádek</button>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div>
+                <label style={labelStyle}>Variabilní symbol{isEdit ? "" : " (nepovinné — jinak číslo faktury)"}</label>
+                <input style={inputStyle} value={f.variableSymbol} onChange={e => set("variableSymbol", e.target.value)}
+                  placeholder={isEdit ? "" : "doplní se automaticky"} />
+              </div>
+              <div><label style={labelStyle}>Konstantní symbol</label><input style={inputStyle} value={f.constantSymbol} onChange={e => set("constantSymbol", e.target.value)} /></div>
+              <div><label style={labelStyle}>Specifický symbol</label><input style={inputStyle} value={f.specificSymbol} onChange={e => set("specificSymbol", e.target.value)} /></div>
+            </div>
+          </>
+        )}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, gap: 24, alignItems: "baseline" }}>
-          <span style={{ fontSize: 12, color: "#64748b" }}>DPH celkem: {fmtKc2(totalTax)} Kč</span>
-          <span style={{ fontSize: 18, fontWeight: 800 }}>Celkem k úhradě: {fmtKc2(getDiscountedTotal(total, f.discountPercent))} Kč</span>
-        </div>
+        {formTab === "polozky" && (
+          <>
+            <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc" }}>
+                    {["Popis", "Počet", "M.j.", "Cena/m.j.", "DPH", "Celkem", ""].map(h => <th key={h} style={{ padding: "6px 8px", fontSize: 10, color: "#64748b", textAlign: "left" }}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l, i) => (
+                    <tr key={i} style={{ borderTop: "1px solid #f1f5f9" }}>
+                      <td style={{ padding: 4 }}><input style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].desc} onChange={e => setItem(i, { desc: e.target.value })} /></td>
+                      <td style={{ padding: 4, width: 60 }}><input type="number" style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].qty} onChange={e => setItem(i, { qty: e.target.value })} /></td>
+                      <td style={{ padding: 4, width: 70 }}>
+                        <select style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].unit} onChange={e => setItem(i, { unit: e.target.value })}>
+                          {ITEM_UNITS.map(u => <option key={u}>{u}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding: 4, width: 90 }}><input type="number" style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].price} onChange={e => setItem(i, { price: e.target.value })} /></td>
+                      <td style={{ padding: 4, width: 70 }}>
+                        <select style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].vatRate} onChange={e => setItem(i, { vatRate: Number(e.target.value) })}>
+                          {VAT_RATES.map(r => <option key={r} value={r}>{r} %</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding: "4px 8px", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtKc2(l.celkem)} Kč</td>
+                      <td style={{ padding: 4 }}><button onClick={() => removeItem(i)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}>×</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button onClick={addItem} style={{ ...btnGhost, marginTop: 8, padding: "6px 14px", fontSize: 12 }}>+ Přidat řádek</button>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, gap: 24, alignItems: "baseline" }}>
+              <span style={{ fontSize: 12, color: "#64748b" }}>DPH celkem: {fmtKc2(totalTax)} Kč</span>
+              <span style={{ fontSize: 18, fontWeight: 800 }}>Celkem k úhradě: {fmtKc2(getDiscountedTotal(total, f.discountPercent))} Kč</span>
+            </div>
+          </>
+        )}
+
+        {formTab === "historie" && isEdit && <InvoiceHistoryPanel invoiceId={editInvoice.id} />}
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button onClick={submit} style={btnPrimary}>{isEdit ? "Uložit změny" : "Vystavit fakturu"}</button>
