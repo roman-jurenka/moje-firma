@@ -110,6 +110,37 @@ export function getInvoicePaymentInfo(invoice) {
   return { toPay, paid, outstanding, isPaid, isPartial, isCancelled, daysOverdue, isOverdue: daysOverdue > 0 };
 }
 
+// Export seznamu faktur (přesně toho, co je zrovna vidět v tabulce — po
+// filtru/hledání) do .xlsx pro účetní. Knihovna xlsx se natahuje dynamicky,
+// ať nezatěžuje hlavní balíček appky pro uživatele, co export nikdy nepoužijí.
+export async function exportInvoicesToExcel(invoiceList, customers, invType) {
+  const XLSX = await safeImport(() => import("xlsx"));
+  const partyLabel = invType === "vydané" ? "Zákazník" : "Dodavatel";
+  const rows = invoiceList.map(inv => {
+    const cust = customers.find(c => c.id === inv.customerId);
+    const info = getInvoicePaymentInfo(inv);
+    return {
+      "Číslo": inv.number,
+      [partyLabel]: cust?.name || "",
+      "Částka bez DPH": Number(inv.amount) || 0,
+      "DPH": Number(inv.tax) || 0,
+      "Celkem s DPH": info.toPay,
+      "Vystaveno": inv.issued || "",
+      "Splatnost": inv.due || "",
+      "Uhrazeno": Number(inv.paid_amount) || 0,
+      "Datum úhrady": inv.paid_date || "",
+      "Dluží": info.outstanding,
+      "Stav": inv.status || "",
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = [{ wch: 12 }, { wch: 26 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, invType === "vydané" ? "Vydané faktury" : "Přijaté faktury");
+  const today = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `Faktury-${invType === "vydané" ? "vydane" : "prijate"}-${today}.xlsx`);
+}
+
 // Vrátí QR data-url + variabilní symbol pro danou fakturu — používá se jak
 // pro PDF, tak pro živý náhled na obrazovce. Částka v QR kódu je už po slevě.
 export async function getInvoiceQr(invoice, amountToPay) {

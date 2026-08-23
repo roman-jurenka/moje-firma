@@ -8,7 +8,7 @@ import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
-import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo } from "./invoicingUtils.js";
+import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
@@ -1403,10 +1403,19 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   const inProgressContracts = (contracts || []).filter(c => c.status === "Probíhá");
 
   // Automatické hlídání splatnosti — počítá se z data splatnosti, ne jen z
-  // ručně nastaveného stavu, takže se na nic nezapomene.
-  const overdueList = invoices.map(i => ({ inv: i, info: getInvoicePaymentInfo(i) }))
+  // ručně nastaveného stavu, takže se na nic nezapomene. Pohledávky (vydané
+  // faktury, co nám dluží zákazníci) a závazky (přijaté, co dlužíme
+  // dodavatelům) se počítají zvlášť, ať se v souhrnu nemíchají dohromady.
+  const overdueReceivables = invoices
+    .filter(i => (i.invoice_type || "vydaná") === "vydaná")
+    .map(i => ({ inv: i, info: getInvoicePaymentInfo(i) }))
     .filter(({ info }) => info.isOverdue).sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
-  const overdueSum = overdueList.reduce((s, { info }) => s + info.outstanding, 0);
+  const overdueReceivablesSum = overdueReceivables.reduce((s, { info }) => s + info.outstanding, 0);
+  const overduePayables = invoices
+    .filter(i => (i.invoice_type || "vydaná") === "přijatá")
+    .map(i => ({ inv: i, info: getInvoicePaymentInfo(i) }))
+    .filter(({ info }) => info.isOverdue).sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
+  const overduePayablesSum = overduePayables.reduce((s, { info }) => s + info.outstanding, 0);
 
   // Tržby (zaplacené faktury) za posledních 6 měsíců pro mini graf
   const monthKeys = Array.from({ length: 6 }, (_, i) => {
@@ -1430,7 +1439,8 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
     { label: "Aktivní projekty", value: activeProjects, color: "#34d399" },
     { label: "Mzdové náklady", value: fmtKc(totalPayroll), color: "#f59e0b" },
     { label: "Na pracovišti dnes", value: `${presentToday.length} / ${activeEmployees.length}`, color: "#2E9BE0" },
-    { label: "Faktury po splatnosti", value: `${overdueList.length} (${fmtKc(overdueSum)})`, color: "#f87171" },
+    { label: "Pohledávky po splatnosti", value: `${overdueReceivables.length} (${fmtKc(overdueReceivablesSum)})`, color: "#f87171" },
+    { label: "Závazky po splatnosti", value: `${overduePayables.length} (${fmtKc(overduePayablesSum)})`, color: "#fb923c" },
   ];
 
   return (
@@ -1451,10 +1461,10 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         ))}
       </div>
 
-      {overdueList.length > 0 && (
+      {overdueReceivables.length > 0 && (
         <div style={{ ...S.card, marginBottom: 24, cursor: "pointer" }} onClick={() => setTab("invoices")}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: "#f87171" }}>⚠️ Nejvíc po splatnosti</div>
-          {overdueList.slice(0, 5).map(({ inv, info }) => {
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: "#f87171" }}>⚠️ Nejvíc po splatnosti — dluží nám (pohledávky)</div>
+          {overdueReceivables.slice(0, 5).map(({ inv, info }) => {
             const cust = customers.find(c => c.id === inv.customerId);
             return (
               <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
@@ -1463,7 +1473,23 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
               </div>
             );
           })}
-          {overdueList.length > 5 && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>… a dalších {overdueList.length - 5}</div>}
+          {overdueReceivables.length > 5 && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>… a dalších {overdueReceivables.length - 5}</div>}
+        </div>
+      )}
+
+      {overduePayables.length > 0 && (
+        <div style={{ ...S.card, marginBottom: 24, cursor: "pointer" }} onClick={() => setTab("invoices")}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: "#fb923c" }}>⚠️ Nejvíc po splatnosti — dlužíme (závazky)</div>
+          {overduePayables.slice(0, 5).map(({ inv, info }) => {
+            const cust = customers.find(c => c.id === inv.customerId);
+            return (
+              <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
+                <span>{inv.number} — {cust?.name || "—"}</span>
+                <span><strong style={{ color: "#f59e0b" }}>{info.daysOverdue} dní</strong> · {fmtKc(info.outstanding)}</span>
+              </div>
+            );
+          })}
+          {overduePayables.length > 5 && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>… a dalších {overduePayables.length - 5}</div>}
         </div>
       )}
 
@@ -2531,8 +2557,11 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
 
 function Invoices({ invoices, setInvoices, customers, contracts, costEntries, modal, setModal, closeModal }) {
   const [invTab, setInvTab] = useState("vydané");
+  const [invSearch, setInvSearch] = useState("");
+  const [invStatusFilter, setInvStatusFilter] = useState("Vše");
   const [pdfBusyId, setPdfBusyId] = useState(null);
   const [previewInv, setPreviewInv] = useState(null);
+  const [exportBusy, setExportBusy] = useState(false);
 
   // Historie faktury (vystavení, odeslání, platby, upomínky) — zobrazuje se
   // nahoře ve formuláři úpravy faktury.
@@ -2598,6 +2627,17 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
     }
   };
 
+  const handleExport = async (list) => {
+    setExportBusy(true);
+    try {
+      await exportInvoicesToExcel(list, customers, invTab);
+    } catch (e) {
+      alert("Export se nepodařil: " + (e?.message || e));
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   const changeStatus = async (id, status) => {
     await supabase.from("invoices").update({ status }).eq("id", id);
     setInvoices(invoices.map(i => i.id === id ? { ...i, status } : i));
@@ -2627,6 +2667,42 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
   };
 
   const [remindBusy, setRemindBusy] = useState(null); // `${invoiceId}-${level}`
+
+  // Kdy byla naposledy odeslána která upomínka — pro doporučení dalšího
+  // kroku (viz getRecommendedReminder níže). Nahrává se jednou při otevření
+  // Fakturace a po každém vygenerování nové upomínky.
+  const [reminderLog, setReminderLog] = useState({}); // invoiceId -> {1: dateStr, 2: dateStr, 3: dateStr}
+  const loadReminderLog = () => {
+    supabase.from("invoice_events").select("invoice_id,type,created_at")
+      .in("type", ["upominka_1", "upominka_2", "upominka_3"])
+      .then(({ data }) => {
+        const map = {};
+        (data || []).forEach(ev => {
+          const level = ev.type.split("_")[1];
+          if (!map[ev.invoice_id]) map[ev.invoice_id] = {};
+          const prev = map[ev.invoice_id][level];
+          if (!prev || new Date(ev.created_at) > new Date(prev)) map[ev.invoice_id][level] = ev.created_at;
+        });
+        setReminderLog(map);
+      });
+  };
+  useEffect(loadReminderLog, []);
+
+  // Doporučí, kterou upomínku dál poslat: 1. jakmile je po splatnosti, 2. a
+  // 3. až po REMINDER_WAIT_DAYS dnech od té předchozí bez reakce/platby.
+  // Vrací null, pokud se nemá nic posílat (buď ještě čeká, nebo už byly
+  // odeslány všechny tři).
+  const REMINDER_WAIT_DAYS = 7;
+  const getRecommendedReminder = (inv, info) => {
+    if (!info.isOverdue) return null;
+    const log = reminderLog[inv.id] || {};
+    const daysSince = (d) => Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+    if (!log[1]) return 1;
+    if (!log[2]) return daysSince(log[1]) >= REMINDER_WAIT_DAYS ? 2 : null;
+    if (!log[3]) return daysSince(log[2]) >= REMINDER_WAIT_DAYS ? 3 : null;
+    return null;
+  };
+
   const handleReminder = async (inv, level) => {
     const key = `${inv.id}-${level}`;
     setRemindBusy(key);
@@ -2634,6 +2710,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
       const cust = customers.find(c => c.id === inv.customerId);
       await downloadReminderPDF(inv, cust, level);
       await logInvoiceEvent(inv.id, `upominka_${level}`);
+      loadReminderLog();
     } catch (e) {
       alert("Nepodařilo se vygenerovat upomínku: " + (e?.message || e));
     } finally {
@@ -2658,6 +2735,21 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
     .map(inv => ({ inv, info: getInvoicePaymentInfo(inv) }))
     .filter(({ info }) => !info.isPaid && !info.isCancelled && (info.outstanding > 0.01))
     .sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
+  const overdueReceivedTotal = unpaidReceivedInvoices.filter(({ info }) => info.isOverdue).reduce((s, { info }) => s + info.outstanding, 0);
+  const currentTypeInvoices = invoices.filter(i => (i.invoice_type || "vydaná") === (invTab === "vydané" ? "vydaná" : "přijatá"));
+
+  // Hledání (číslo faktury / zákazník-dodavatel) + filtr podle stavu nad
+  // hlavní tabulkou faktur. Souhrnné karty výše se filtrem neřídí, ať
+  // zůstanou stabilním přehledem celé záložky.
+  const visibleInvoices = currentTypeInvoices.filter(inv => {
+    if (invStatusFilter !== "Vše" && inv.status !== invStatusFilter) return false;
+    if (invSearch.trim()) {
+      const q = invSearch.trim().toLowerCase();
+      const cust = customers.find(c => c.id === inv.customerId);
+      if (!`${inv.number} ${cust?.name || ""}`.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
   return (
     <>
@@ -2676,22 +2768,48 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
         <button style={S.btn()} onClick={() => setModal({ type: "newInvoiceFlow" })}>+ Nová faktura</button>
       </div>
 
-      {/* Souhrn */}
-      <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 22 }}>
+      {/* Souhrn — Zaplaceno/Čeká se vztahují k právě zobrazené záložce (vydané
+          nebo přijaté), pohledávky/závazky po splatnosti jsou vidět vždy obě,
+          ať uživatel nemusí přepínat záložky kvůli přehledu o dluzích. */}
+      <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { label: "Zaplaceno", value: fmtKc(invoices.filter(i => i.status === "Zaplacena").reduce((s, i) => s + i.amount, 0)), color: "#34d399" },
-          { label: "Čeká na platbu", value: fmtKc(invoices.filter(i => i.status === "Čeká").reduce((s, i) => s + i.amount, 0)), color: "#f59e0b" },
-          { label: "Po splatnosti (dluh)", value: fmtKc(overdueTotal), color: "#f87171" },
+          { label: invTab === "vydané" ? "Zaplaceno zákazníky" : "Zaplaceno dodavatelům", value: fmtKc(currentTypeInvoices.filter(i => i.status === "Zaplacena").reduce((s, i) => s + i.amount, 0)), color: "#34d399" },
+          { label: "Čeká na platbu", value: fmtKc(currentTypeInvoices.filter(i => i.status === "Čeká").reduce((s, i) => s + i.amount, 0)), color: "#f59e0b" },
+          { label: "Pohledávky po splatnosti", value: fmtKc(overdueTotal), color: "#f87171" },
+          { label: "Závazky po splatnosti", value: fmtKc(overdueReceivedTotal), color: "#fb923c" },
         ].map(s => (
           <div key={s.label} style={S.statCard(s.color)}><div style={S.statLabel}>{s.label}</div><div style={S.statValue(s.color)}>{s.value}</div></div>
         ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={invSearch} onChange={e => setInvSearch(e.target.value)}
+          placeholder={invTab === "vydané" ? "Hledat podle čísla nebo zákazníka…" : "Hledat podle čísla nebo dodavatele…"}
+          style={{ ...S.select, marginBottom: 0, flex: 1, minWidth: 220, padding: "8px 12px" }} />
+        <select value={invStatusFilter} onChange={e => setInvStatusFilter(e.target.value)}
+          style={{ ...S.select, marginBottom: 0, width: 160, padding: "8px 12px" }}>
+          {["Vše", "Čeká", "Zaplacena", "Po splatnosti", "Storno"].map(s => <option key={s}>{s}</option>)}
+        </select>
+        {(invSearch || invStatusFilter !== "Vše") && (
+          <button onClick={() => { setInvSearch(""); setInvStatusFilter("Vše"); }} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
+            ✕ Zrušit filtr
+          </button>
+        )}
+        <button disabled={exportBusy || visibleInvoices.length === 0} onClick={() => handleExport(visibleInvoices)}
+          style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
+          {exportBusy ? "…" : "📊 Export do Excelu"}
+        </button>
+        <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>{visibleInvoices.length} z {currentTypeInvoices.length}</span>
       </div>
 
       <div style={S.card}>
         <table style={S.table}>
           <thead><tr>{["Číslo", "Zákazník", "Částka", "DPH", "Vystavena", "Splatnost", "Uhrazeno", "Datum úhrady", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
-            {invoices.filter(i => (i.invoice_type || "vydaná") === (invTab === "vydané" ? "vydaná" : "přijatá")).map(inv => {
+            {visibleInvoices.length === 0 && (
+              <tr><td colSpan={11} style={{ ...S.td, textAlign: "center", color: "#94a3b8", padding: "24px 0" }}>Žádné faktury neodpovídají filtru.</td></tr>
+            )}
+            {visibleInvoices.map(inv => {
               const cust = customers.find(c => c.id === inv.customerId);
               const info = getInvoicePaymentInfo(inv);
               return (
@@ -2774,13 +2892,29 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                     <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>
                       {fmtKc(info.outstanding)}{info.isPartial && <span style={{ color: "#94a3b8", fontWeight: 400, fontSize: 11 }}> (částečně uhrazeno)</span>}
                     </td>
-                    <td style={{ ...S.td, display: "flex", gap: 6 }}>
-                      {[1, 2, 3].map(level => (
-                        <button key={level} disabled={remindBusy === `${inv.id}-${level}`} onClick={() => handleReminder(inv, level)}
-                          style={{ ...S.btn("#475569"), padding: "5px 10px", fontSize: 11 }}>
-                          {remindBusy === `${inv.id}-${level}` ? "…" : `${level}. upomínka`}
-                        </button>
-                      ))}
+                    <td style={{ ...S.td }}>
+                      {(() => {
+                        const rec = getRecommendedReminder(inv, info);
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              {[1, 2, 3].map(level => {
+                                const sentAt = reminderLog[inv.id]?.[level];
+                                const isRec = rec === level;
+                                return (
+                                  <button key={level} disabled={remindBusy === `${inv.id}-${level}`} onClick={() => handleReminder(inv, level)}
+                                    title={sentAt ? `Odesláno ${fmtDateCz(sentAt)}` : undefined}
+                                    style={{ ...S.btn(isRec ? "#f59e0b" : sentAt ? "#94a3b8" : "#475569"), padding: "5px 10px", fontSize: 11,
+                                      boxShadow: isRec ? "0 0 0 2px #fde68a" : "none" }}>
+                                    {remindBusy === `${inv.id}-${level}` ? "…" : `${level}. upomínka${sentAt ? " ✓" : ""}`}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {rec && <span style={{ fontSize: 10, color: "#b45309", fontWeight: 600 }}>→ doporučeno poslat {rec}. upomínku</span>}
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 );

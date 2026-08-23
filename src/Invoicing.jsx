@@ -27,7 +27,7 @@ const fmtDatePlain = (v) => { if (!v) return ""; try { return new Date(v + "T00:
 // Rozlišuje "termín daný fakturou" (invoice.due — smluvní splatnost) od
 // "smluveného příchodu peněz" (invoice.promised_payment_date — co zákazník
 // reálně slíbil po urgenci), protože se často liší.
-function InvoiceHistoryPanel({ invoiceId, onUpdated }) {
+function InvoiceHistoryPanel({ invoiceId, onUpdated, sentAt }) {
   const [events, setEvents] = useState(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -39,10 +39,16 @@ function InvoiceHistoryPanel({ invoiceId, onUpdated }) {
   };
   useEffect(load, [invoiceId]);
 
+  // Označením jako odeslané se faktura zároveň uzamkne proti úpravě obsahu
+  // (položky, částky, zákazník) — viz invoices.sent_at a "locked" v
+  // InvoiceCreateFlow níže. Platby, poznámky a stav jdou upravovat dál.
   const markSent = async () => {
     setBusy(true);
     try {
+      const sentAt = new Date().toISOString();
       await supabase.from("invoice_events").insert({ invoice_id: invoiceId, type: "odeslana" });
+      await supabase.from("invoices").update({ sent_at: sentAt }).eq("id", invoiceId);
+      onUpdated?.(invoiceId, { sent_at: sentAt });
       load();
     } finally {
       setBusy(false);
@@ -76,9 +82,11 @@ function InvoiceHistoryPanel({ invoiceId, onUpdated }) {
     <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontWeight: 700, fontSize: 13, color: "#334155" }}>Historie faktury</div>
-        <button onClick={markSent} disabled={busy} style={{ ...btnGhost, padding: "4px 10px", fontSize: 11 }}>
-          {busy ? "…" : "✉️ Označit jako odesláno"}
-        </button>
+        {sentAt
+          ? <span style={{ fontSize: 11, color: "#94a3b8" }}>✉️ Odesláno {fmtEventDate(sentAt)}</span>
+          : <button onClick={markSent} disabled={busy} style={{ ...btnGhost, padding: "4px 10px", fontSize: 11 }}>
+              {busy ? "…" : "✉️ Označit jako odesláno"}
+            </button>}
       </div>
       {events === null && <div style={{ fontSize: 12, color: "#94a3b8" }}>Načítám…</div>}
       {events && events.length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Zatím žádné události.</div>}
@@ -160,6 +168,21 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
   const isEdit = !!editInvoice;
   const [step, setStep] = useState(isEdit ? "form" : "choose"); // "choose" | "pickContract" | "form"
   const [formTab, setFormTab] = useState("zaklad"); // "zaklad" | "polozky" | "historie"
+
+  // Jakmile je faktura označená jako odeslaná (editInvoice.sent_at), obsah
+  // (položky, částky, zákazník) se zamkne — už jde měnit jen stav a platby.
+  // Jde to výjimečně ručně odemknout, kdyby bylo potřeba opravit překlep.
+  // localPatch drží změny z historie (např. právě kliknuté "Označit jako
+  // odesláno"), ať se zámek projeví hned i v téhle otevřené modálce, ne až
+  // po jejím zavření a znovuotevření.
+  const [unlocked, setUnlocked] = useState(false);
+  const [localPatch, setLocalPatch] = useState({});
+  const effectiveSentAt = localPatch.sent_at !== undefined ? localPatch.sent_at : editInvoice?.sent_at;
+  const locked = isEdit && !!effectiveSentAt && !unlocked;
+  const handleHistoryUpdate = (id, patch) => {
+    setLocalPatch(p => ({ ...p, ...patch }));
+    onInvoiceUpdated?.(id, patch);
+  };
   const [fromContractId, setFromContractId] = useState(editInvoice?.contract_id ? String(editInvoice.contract_id) : "");
   const [f, setF] = useState(() => editInvoice ? {
     customerId: editInvoice.customerId ? String(editInvoice.customerId) : "",
@@ -277,19 +300,39 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
           ))}
         </div>
 
+        {isEdit && !!effectiveSentAt && (
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+            background: locked ? "#fffbeb" : "#f0fdf4", border: `1px solid ${locked ? "#fde68a" : "#bbf7d0"}`,
+            borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 12, color: locked ? "#92400e" : "#166534",
+          }}>
+            <span>
+              {locked
+                ? <>🔒 Faktura byla odeslána — obsah je uzamčen. Jde upravit stav, platby a poznámky v historii.</>
+                : <>🔓 Odemčeno pro opravu — nezapomeň uložit správné údaje.</>}
+            </span>
+            <button onClick={() => setUnlocked(u => {
+              if (!u && !confirm("Faktura už byla odeslána zákazníkovi. Opravdu chceš odemknout úpravu obsahu (položky, částky, zákazník)?")) return u;
+              return !u;
+            })} style={{ ...btnGhost, padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}>
+              {locked ? "🔓 Odemknout pro opravu" : "🔒 Zamknout zpět"}
+            </button>
+          </div>
+        )}
+
         {formTab === "zaklad" && (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
               <div>
                 <label style={labelStyle}>Zákazník</label>
-                <select style={inputStyle} value={f.customerId} onChange={e => set("customerId", e.target.value)}>
+                <select disabled={locked} style={inputStyle} value={f.customerId} onChange={e => set("customerId", e.target.value)}>
                   <option value="">— vyberte —</option>
                   {(customers || []).map(c => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label style={labelStyle}>Typ</label>
-                <select style={inputStyle} value={f.invoiceType} onChange={e => set("invoiceType", e.target.value)}>
+                <select disabled={locked} style={inputStyle} value={f.invoiceType} onChange={e => set("invoiceType", e.target.value)}>
                   <option value="vydaná">📤 Vydaná</option>
                   <option value="přijatá">📥 Přijatá</option>
                 </select>
@@ -297,14 +340,14 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <div><label style={labelStyle}>IČ zákazníka (volitelné)</label><input style={inputStyle} value={f.customerIco} onChange={e => set("customerIco", e.target.value)} /></div>
-              <div><label style={labelStyle}>DIČ zákazníka (volitelné)</label><input style={inputStyle} value={f.customerDic} onChange={e => set("customerDic", e.target.value)} /></div>
-              <div><label style={labelStyle}>Objednávka (volitelné)</label><input style={inputStyle} value={f.orderRef} onChange={e => set("orderRef", e.target.value)} /></div>
+              <div><label style={labelStyle}>IČ zákazníka (volitelné)</label><input disabled={locked} style={inputStyle} value={f.customerIco} onChange={e => set("customerIco", e.target.value)} /></div>
+              <div><label style={labelStyle}>DIČ zákazníka (volitelné)</label><input disabled={locked} style={inputStyle} value={f.customerDic} onChange={e => set("customerDic", e.target.value)} /></div>
+              <div><label style={labelStyle}>Objednávka (volitelné)</label><input disabled={locked} style={inputStyle} value={f.orderRef} onChange={e => set("orderRef", e.target.value)} /></div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <div><label style={labelStyle}>Datum vystavení</label><input type="date" style={inputStyle} value={f.issued} onChange={e => set("issued", e.target.value)} /></div>
-              <div><label style={labelStyle}>Datum splatnosti</label><input type="date" style={inputStyle} value={f.due} onChange={e => set("due", e.target.value)} /></div>
+              <div><label style={labelStyle}>Datum vystavení</label><input disabled={locked} type="date" style={inputStyle} value={f.issued} onChange={e => set("issued", e.target.value)} /></div>
+              <div><label style={labelStyle}>Datum splatnosti</label><input disabled={locked} type="date" style={inputStyle} value={f.due} onChange={e => set("due", e.target.value)} /></div>
               <div><label style={labelStyle}>Stav</label>
                 <select style={inputStyle} value={f.status} onChange={e => set("status", e.target.value)}>
                   {["Čeká", "Zaplacena", "Po splatnosti"].map(s => <option key={s}>{s}</option>)}
@@ -313,24 +356,24 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 10 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-                <input type="checkbox" checked={f.isDeposit} onChange={e => set("isDeposit", e.target.checked)} />
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: locked ? "default" : "pointer" }}>
+                <input type="checkbox" disabled={locked} checked={f.isDeposit} onChange={e => set("isDeposit", e.target.checked)} />
                 Zálohová faktura
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                 Sleva v %:
-                <input type="number" min="0" max="100" style={{ ...inputStyle, width: 80 }} value={f.discountPercent} onChange={e => set("discountPercent", e.target.value)} />
+                <input type="number" min="0" max="100" disabled={locked} style={{ ...inputStyle, width: 80 }} value={f.discountPercent} onChange={e => set("discountPercent", e.target.value)} />
               </label>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
               <div>
                 <label style={labelStyle}>Variabilní symbol{isEdit ? "" : " (nepovinné — jinak číslo faktury)"}</label>
-                <input style={inputStyle} value={f.variableSymbol} onChange={e => set("variableSymbol", e.target.value)}
+                <input disabled={locked} style={inputStyle} value={f.variableSymbol} onChange={e => set("variableSymbol", e.target.value)}
                   placeholder={isEdit ? "" : "doplní se automaticky"} />
               </div>
-              <div><label style={labelStyle}>Konstantní symbol</label><input style={inputStyle} value={f.constantSymbol} onChange={e => set("constantSymbol", e.target.value)} /></div>
-              <div><label style={labelStyle}>Specifický symbol</label><input style={inputStyle} value={f.specificSymbol} onChange={e => set("specificSymbol", e.target.value)} /></div>
+              <div><label style={labelStyle}>Konstantní symbol</label><input disabled={locked} style={inputStyle} value={f.constantSymbol} onChange={e => set("constantSymbol", e.target.value)} /></div>
+              <div><label style={labelStyle}>Specifický symbol</label><input disabled={locked} style={inputStyle} value={f.specificSymbol} onChange={e => set("specificSymbol", e.target.value)} /></div>
             </div>
           </>
         )}
@@ -347,27 +390,29 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
                 <tbody>
                   {lines.map((l, i) => (
                     <tr key={i} style={{ borderTop: "1px solid #f1f5f9" }}>
-                      <td style={{ padding: 4 }}><input style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].desc} onChange={e => setItem(i, { desc: e.target.value })} /></td>
-                      <td style={{ padding: 4, width: 60 }}><input type="number" style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].qty} onChange={e => setItem(i, { qty: e.target.value })} /></td>
+                      <td style={{ padding: 4 }}><input disabled={locked} style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].desc} onChange={e => setItem(i, { desc: e.target.value })} /></td>
+                      <td style={{ padding: 4, width: 60 }}><input type="number" disabled={locked} style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].qty} onChange={e => setItem(i, { qty: e.target.value })} /></td>
                       <td style={{ padding: 4, width: 70 }}>
-                        <select style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].unit} onChange={e => setItem(i, { unit: e.target.value })}>
+                        <select disabled={locked} style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].unit} onChange={e => setItem(i, { unit: e.target.value })}>
                           {ITEM_UNITS.map(u => <option key={u}>{u}</option>)}
                         </select>
                       </td>
-                      <td style={{ padding: 4, width: 90 }}><input type="number" style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].price} onChange={e => setItem(i, { price: e.target.value })} /></td>
+                      <td style={{ padding: 4, width: 90 }}><input type="number" disabled={locked} style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].price} onChange={e => setItem(i, { price: e.target.value })} /></td>
                       <td style={{ padding: 4, width: 70 }}>
-                        <select style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].vatRate} onChange={e => setItem(i, { vatRate: Number(e.target.value) })}>
+                        <select disabled={locked} style={{ ...inputStyle, padding: "5px 8px" }} value={f.items[i].vatRate} onChange={e => setItem(i, { vatRate: Number(e.target.value) })}>
                           {VAT_RATES.map(r => <option key={r} value={r}>{r} %</option>)}
                         </select>
                       </td>
                       <td style={{ padding: "4px 8px", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtKc2(l.celkem)} Kč</td>
-                      <td style={{ padding: 4 }}><button onClick={() => removeItem(i)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}>×</button></td>
+                      <td style={{ padding: 4 }}>
+                        {!locked && <button onClick={() => removeItem(i)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}>×</button>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <button onClick={addItem} style={{ ...btnGhost, marginTop: 8, padding: "6px 14px", fontSize: 12 }}>+ Přidat řádek</button>
+            {!locked && <button onClick={addItem} style={{ ...btnGhost, marginTop: 8, padding: "6px 14px", fontSize: 12 }}>+ Přidat řádek</button>}
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, gap: 24, alignItems: "baseline" }}>
               <span style={{ fontSize: 12, color: "#64748b" }}>DPH celkem: {fmtKc2(totalTax)} Kč</span>
@@ -376,7 +421,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
           </>
         )}
 
-        {formTab === "historie" && isEdit && <InvoiceHistoryPanel invoiceId={editInvoice.id} onUpdated={onInvoiceUpdated} />}
+        {formTab === "historie" && isEdit && <InvoiceHistoryPanel invoiceId={editInvoice.id} onUpdated={handleHistoryUpdate} sentAt={effectiveSentAt} />}
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button onClick={submit} style={btnPrimary}>{isEdit ? "Uložit změny" : "Vystavit fakturu"}</button>
