@@ -2598,10 +2598,20 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
     const paid_amount = Number(value) || 0;
     const prev = invoices.find(i => i.id === id);
     const delta = paid_amount - (Number(prev?.paid_amount) || 0);
-    await supabase.from("invoices").update({ paid_amount }).eq("id", id);
-    setInvoices(invoices.map(i => i.id === id ? { ...i, paid_amount } : i));
+    // Při první úhradě rovnou nabídneme dnešní datum jako datum úhrady —
+    // uživatel ho pak může v poli "Datum úhrady" ručně opravit.
+    const patch = { paid_amount };
+    if (paid_amount > 0.01 && !prev?.paid_date) patch.paid_date = new Date().toISOString().slice(0, 10);
+    await supabase.from("invoices").update(patch).eq("id", id);
+    setInvoices(invoices.map(i => i.id === id ? { ...i, ...patch } : i));
     setPaidDraft(d => { const rest = { ...d }; delete rest[id]; return rest; });
     if (Math.abs(delta) > 0.01) logInvoiceEvent(id, "platba", { amount: delta });
+  };
+
+  const savePaidDate = async (id, value) => {
+    const paid_date = value || null;
+    await supabase.from("invoices").update({ paid_date }).eq("id", id);
+    setInvoices(invoices.map(i => i.id === id ? { ...i, paid_date } : i));
   };
 
   const [remindBusy, setRemindBusy] = useState(null); // `${invoiceId}-${level}`
@@ -2627,6 +2637,15 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
     .filter(({ info }) => !info.isPaid && !info.isCancelled && (info.outstanding > 0.01))
     .sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
   const overdueTotal = unpaidInvoices.filter(({ info }) => info.isOverdue).reduce((s, { info }) => s + info.outstanding, 0);
+
+  // Totéž pro přijaté faktury — co my dlužíme dodavatelům. Bez upomínek
+  // (ty dávají smysl jen směrem k zákazníkovi), ale s možností rovnou
+  // zapsat úhradu/datum úhrady přímo v přehledu nezaplacených.
+  const unpaidReceivedInvoices = invoices
+    .filter(inv => (inv.invoice_type || "vydaná") === "přijatá")
+    .map(inv => ({ inv, info: getInvoicePaymentInfo(inv) }))
+    .filter(({ info }) => !info.isPaid && !info.isCancelled && (info.outstanding > 0.01))
+    .sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
 
   return (
     <>
@@ -2658,7 +2677,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
 
       <div style={S.card}>
         <table style={S.table}>
-          <thead><tr>{["Číslo", "Zákazník", "Částka", "DPH", "Vystavena", "Splatnost", "Uhrazeno", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Číslo", "Zákazník", "Částka", "DPH", "Vystavena", "Splatnost", "Uhrazeno", "Datum úhrady", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {invoices.filter(i => (i.invoice_type || "vydaná") === (invTab === "vydané" ? "vydaná" : "přijatá")).map(inv => {
               const cust = customers.find(c => c.id === inv.customerId);
@@ -2679,6 +2698,10 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                       value={paidDraft[inv.id] ?? inv.paid_amount ?? 0}
                       onChange={e => setPaidDraft(d => ({ ...d, [inv.id]: e.target.value }))}
                       onBlur={e => savePaidAmount(inv.id, e.target.value)} />
+                  </td>
+                  <td style={S.td}>
+                    <input type="date" style={{ ...S.select, marginBottom: 0, width: 130, padding: "5px 8px", fontSize: 12 }}
+                      value={inv.paid_date || ""} onChange={e => savePaidDate(inv.id, e.target.value)} />
                   </td>
                   <td style={S.td}><span style={S.tag(INV_COLORS[inv.status])}>{inv.status}</span></td>
                   <td style={S.td}>
@@ -2746,6 +2769,46 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                           {remindBusy === `${inv.id}-${level}` ? "…" : `${level}. upomínka`}
                         </button>
                       ))}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Závazky — nezaplacené a částečně zaplacené přijaté faktury (co my
+          dlužíme dodavatelům). Bez upomínek, ale s rovnou editovatelnou
+          úhradou a datem úhrady, ať se to nemusí hledat v hlavní tabulce. */}
+      {unpaidReceivedInvoices.length > 0 && (
+        <div style={{ ...S.card, marginTop: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>📥 Nezaplacené a částečně zaplacené přijaté faktury</div>
+          <table style={S.table}>
+            <thead><tr>{["Číslo", "Dodavatel", "Splatnost", "Dní po splatnosti", "Uhrazeno", "Datum úhrady", "Dluží"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {unpaidReceivedInvoices.map(({ inv, info }) => {
+                const cust = customers.find(c => c.id === inv.customerId);
+                return (
+                  <tr key={inv.id}>
+                    <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
+                    <td style={S.td}>{cust?.name || "—"}</td>
+                    <td style={S.td}>{fmtDateCz(inv.due)}</td>
+                    <td style={{ ...S.td, color: info.isOverdue ? "#ef4444" : "#94a3b8", fontWeight: info.isOverdue ? 700 : 400 }}>
+                      {info.isOverdue ? info.daysOverdue : "—"}
+                    </td>
+                    <td style={S.td}>
+                      <input type="number" style={{ ...S.select, marginBottom: 0, width: 90, padding: "5px 8px", fontSize: 12 }}
+                        value={paidDraft[inv.id] ?? inv.paid_amount ?? 0}
+                        onChange={e => setPaidDraft(d => ({ ...d, [inv.id]: e.target.value }))}
+                        onBlur={e => savePaidAmount(inv.id, e.target.value)} />
+                    </td>
+                    <td style={S.td}>
+                      <input type="date" style={{ ...S.select, marginBottom: 0, width: 130, padding: "5px 8px", fontSize: 12 }}
+                        value={inv.paid_date || ""} onChange={e => savePaidDate(inv.id, e.target.value)} />
+                    </td>
+                    <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>
+                      {fmtKc(info.outstanding)}{info.isPartial && <span style={{ color: "#94a3b8", fontWeight: 400, fontSize: 11 }}> (částečně uhrazeno)</span>}
                     </td>
                   </tr>
                 );
