@@ -531,6 +531,13 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // Počet žádostí se nedá spočítat z dat, co MainApp už má načtená, proto se
   // dotahuje samostatně jen jako count.
   const [pendingReqCount, setPendingReqCount] = useState(0);
+
+  // Globální vyhledávání — jedno pole prohledávající zákazníky, zakázky,
+  // faktury a sklad najednou, ať se nemusí pokaždé přepínat záložka a hledat
+  // znovu lokálně. Výsledky jen odkážou na správnou záložku (bez hlubokého
+  // linkování na konkrétní záznam — to je case pro příště).
+  const [gSearchOpen, setGSearchOpen] = useState(false);
+  const [gQuery, setGQuery] = useState("");
   const loadPendingReqCount = () => {
     supabase.from("attendance_change_requests").select("id", { count: "exact", head: true })
       .eq("status", "čeká na schválení")
@@ -629,6 +636,15 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     .filter(({ info }) => info.isOverdue)
     .sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
   const bellCount = overdueBellInvoices.length + lowStock.length + pendingReqCount;
+
+  const gq = gQuery.trim().toLowerCase();
+  const gResults = gq.length < 2 ? null : {
+    customers: customers.filter(c => (c.name || "").toLowerCase().includes(gq) || (c.company || "").toLowerCase().includes(gq)).slice(0, 5),
+    contracts: (contracts || []).filter(c => (c.name || "").toLowerCase().includes(gq) || (c.code || "").toLowerCase().includes(gq)).slice(0, 5),
+    invoices: invoices.filter(i => (i.number || "").toLowerCase().includes(gq)).slice(0, 5),
+    products: products.filter(p => (p.name || "").toLowerCase().includes(gq) || (p.sku || "").toLowerCase().includes(gq)).slice(0, 5),
+  };
+  const gTotal = gResults ? gResults.customers.length + gResults.contracts.length + gResults.invoices.length + gResults.products.length : 0;
   const totalPayroll = employees.filter(e => e.status === "Aktivní").reduce((s, e) => s + e.salary, 0);
   const activeProjects = projects.filter(p => p.status === "Probíhá").length;
 
@@ -669,6 +685,92 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       >
         <i className={`ti ${theme === "light" ? "ti-moon" : "ti-sun"}`} aria-hidden="true"></i>
       </button>
+      <button
+        onClick={() => setGSearchOpen(o => !o)}
+        title="Hledat" aria-label="Hledat napříč appkou"
+        style={{
+          position: "fixed", top: 14, right: 62, zIndex: 500,
+          width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
+          background: "#fff", color: "#0E3B5E", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
+          boxShadow: "0 2px 8px #0002",
+        }}
+      >
+        <i className="ti ti-search" aria-hidden="true"></i>
+      </button>
+      {gSearchOpen && (
+        <>
+          <div onClick={() => { setGSearchOpen(false); setGQuery(""); }} style={{ position: "fixed", inset: 0, zIndex: 490 }} />
+          <div style={{ position: "fixed", top: 56, right: 16, zIndex: 500, width: 340, maxWidth: "92vw", maxHeight: "72vh", overflowY: "auto", background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 12px 32px #0003", padding: 14 }}>
+            <input autoFocus value={gQuery} onChange={e => setGQuery(e.target.value)}
+              placeholder="Hledat zákazníka, zakázku, fakturu, produkt…"
+              style={{ ...S.input, marginBottom: gResults ? 10 : 0 }} />
+            {gQuery.trim().length > 0 && gQuery.trim().length < 2 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Piš aspoň 2 znaky.</div>}
+            {gResults && gTotal === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Nic nenalezeno.</div>}
+            {gResults && gResults.customers.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Zákazníci</div>
+                {gResults.customers.map(c => (
+                  <div key={`c-${c.id}`} onClick={() => { setTab("customers"); setGSearchOpen(false); setGQuery(""); }}
+                    style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
+                    <i className="ti ti-user" aria-hidden="true" style={{ marginRight: 6, color: "#2E9BE0" }}></i>{c.name}{c.company ? ` — ${c.company}` : ""}
+                  </div>
+                ))}
+              </div>
+            )}
+            {gResults && gResults.contracts.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Zakázky</div>
+                {gResults.contracts.map(c => (
+                  <div key={`co-${c.id}`} onClick={() => { setTab("contracts"); setGSearchOpen(false); setGQuery(""); }}
+                    style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
+                    <i className="ti ti-briefcase" aria-hidden="true" style={{ marginRight: 6, color: "#a78bfa" }}></i>{c.name}{c.code ? ` (${c.code})` : ""}
+                  </div>
+                ))}
+              </div>
+            )}
+            {gResults && gResults.invoices.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Faktury</div>
+                {gResults.invoices.map(i => (
+                  <div key={`i-${i.id}`} onClick={() => { setTab("invoices"); setGSearchOpen(false); setGQuery(""); }}
+                    style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
+                    <i className="ti ti-file-invoice" aria-hidden="true" style={{ marginRight: 6, color: "#34d399" }}></i>{i.number}
+                  </div>
+                ))}
+              </div>
+            )}
+            {gResults && gResults.products.length > 0 && (
+              <div>
+                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Sklad</div>
+                {gResults.products.map(p => (
+                  <div key={`p-${p.id}`} onClick={() => { setTab("warehouse"); setGSearchOpen(false); setGQuery(""); }}
+                    style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
+                    <i className="ti ti-package" aria-hidden="true" style={{ marginRight: 6, color: "#f59e0b" }}></i>{p.name}{p.sku ? ` (${p.sku})` : ""}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      {/* Rychlý check-in/check-out — na mobilu je postranní panel schovaný za
+          hamburgerem, takže bez tohohle by ho terénní pracovník musel nejdřív
+          otevřít. Palcem dosažitelné tlačítko vpravo dole, viditelné jen na
+          mobilu (viz .mobile-checkin-fab v <style> níže). */}
+      {myEmpId && (
+        <button className="mobile-checkin-fab" onClick={checkin}
+          style={{
+            display: "none", position: "fixed", bottom: 18, right: 18, zIndex: 480,
+            background: todayRecord?.checkout ? "#34d399" : todayRecord?.checkin ? "#f59e0b" : "#2E9BE0",
+            color: "#fff", border: "none", borderRadius: 28, padding: "14px 20px",
+            fontSize: 14, fontWeight: 700, boxShadow: "0 4px 16px #0004", alignItems: "center", gap: 8,
+          }}
+        >
+          <i className={`ti ${todayRecord?.checkout ? "ti-check" : todayRecord?.checkin ? "ti-player-stop" : "ti-player-play"}`} aria-hidden="true"></i>
+          {todayRecord?.checkout ? `Odchod ${todayRecord.checkout}` : todayRecord?.checkin ? `Zapsat odchod` : "Zapsat příchod"}
+        </button>
+      )}
     <div data-app-theme={theme} style={{ ...S.app, ...(theme === "dark" ? { filter: "invert(1) hue-rotate(180deg)" } : {}) }}>
       <style>{`
         /* Boční menu je na obou velikostech schované mimo obrazovku, dokud na něj
@@ -688,6 +790,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         }
         @media (max-width: 768px) {
           .hamburger-btn { display: flex !important; }
+          .mobile-checkin-fab { display: flex !important; }
           .sidebar-close { display: flex !important; }
           .main-content { padding: 60px 12px 24px !important; }
           .sidebar-hover-zone { display: none !important; }
