@@ -87,6 +87,29 @@ export function getDiscountedTotal(total, discountPercent) {
   return total * (1 - (Number(discountPercent) || 0) / 100);
 }
 
+// ─── Hlídání plateb ─────────────────────────────────────────────────────────
+// Spočítá, kolik má faktura být k úhradě po slevě, kolik už je uhrazeno
+// (buď ručně zadané paid_amount, nebo celá částka pokud je stav "Zaplacena"),
+// a kolik dní je po splatnosti — nezávisle na tom, jestli si na to někdo
+// vzpomněl a přepnul stav ručně. "Storno" a plně uhrazené faktury se nikdy
+// nepočítají jako po splatnosti.
+export function getInvoicePaymentInfo(invoice) {
+  const toPay = getDiscountedTotal((Number(invoice.amount) || 0) + (Number(invoice.tax) || 0), invoice.discount_percent);
+  const isCancelled = invoice.status === "Storno";
+  const paid = invoice.status === "Zaplacena" ? toPay : Math.min(toPay, Number(invoice.paid_amount) || 0);
+  const outstanding = isCancelled ? 0 : Math.max(0, toPay - paid);
+  const isPaid = !isCancelled && outstanding <= 0.01;
+  const isPartial = !isCancelled && paid > 0.01 && outstanding > 0.01;
+  let daysOverdue = 0;
+  if (!isCancelled && !isPaid && invoice.due) {
+    const due = new Date(invoice.due.length === 10 ? invoice.due + "T00:00:00" : invoice.due);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.floor((today - due) / 86400000);
+    if (diff > 0) daysOverdue = diff;
+  }
+  return { toPay, paid, outstanding, isPaid, isPartial, isCancelled, daysOverdue, isOverdue: daysOverdue > 0 };
+}
+
 // Vrátí QR data-url + variabilní symbol pro danou fakturu — používá se jak
 // pro PDF, tak pro živý náhled na obrazovce. Částka v QR kódu je už po slevě.
 export async function getInvoiceQr(invoice, amountToPay) {
@@ -399,6 +422,116 @@ export async function downloadInvoicePDF(invoice, customer) {
     const imgHeight = (canvas.height / canvas.width) * pageWidth;
     doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, pageWidth, imgHeight);
     doc.save(`Faktura-${invoice.number}.pdf`);
+  } finally {
+    document.body.removeChild(el);
+  }
+}
+
+// ─── Upomínky (1.–3.) ───────────────────────────────────────────────────────
+// Jednoduchý formální dopis (ne přesná Money S3 šablona jako u faktury —
+// pro upomínky žádný vzor nemáme, jde o běžný obchodní dopis). Generuje se
+// stejnou cestou jako faktura (offscreen HTML → html2canvas → jsPDF), takže
+// diakritika je zaručeně v pořádku a stažené PDF si uživatel sám pošle mailem.
+const REMINDER_TEXT = {
+  1: {
+    title: "1. upomínka",
+    body: (n) => `Dovolujeme si Vás upozornit, že podle našich záznamů nebyla faktura č. ${n} dosud uhrazena, přestože již uplynula doba splatnosti. Předpokládáme, že se jedná o opomenutí, a žádáme Vás o úhradu dlužné částky v nejbližším možném termínu.`,
+    closing: "Pokud jste platbu již odeslali, považujte prosím tuto upomínku za bezpředmětnou.",
+  },
+  2: {
+    title: "2. upomínka",
+    body: (n) => `Dne jsme Vás již jednou upozornili na neuhrazenou fakturu č. ${n}. Dlužná částka dosud nebyla připsána na náš účet. Žádáme Vás proto o její bezodkladnou úhradu.`,
+    closing: "V případě, že úhrada byla mezitím provedena, děkujeme a tuto upomínku berte jako bezpředmětnou.",
+  },
+  3: {
+    title: "3. a poslední upomínka",
+    body: (n) => `Přes naše dvě předchozí upomínky nebyla faktura č. ${n} dosud uhrazena. Toto je poslední upomínka před tím, než budeme nuceni přistoupit k dalším krokům k vymožení dlužné částky, včetně případného vymáhání prostřednictvím třetí strany.`,
+    closing: "Žádáme Vás proto o okamžitou úhradu dlužné částky.",
+  },
+};
+
+function buildReminderHtmlBody(invoice, customer, level, qrDataUrl) {
+  const info = getInvoicePaymentInfo(invoice);
+  const t = REMINDER_TEXT[level] || REMINDER_TEXT[1];
+  const custName = customer?.company || customer?.name || "";
+  const custPerson = customer?.company && customer?.name ? customer.name : "";
+  const custAddress = customer?.address || "";
+  const todayStr = fmtDateCzPlain(new Date().toISOString().slice(0, 10));
+  return `
+    <div style="font-family:Arial, Helvetica, sans-serif; color:#111; font-size:13px; line-height:1.5;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:36px;">
+        <div>
+          <div style="font-weight:700; font-size:15px;">${COMPANY.name}</div>
+          <div style="font-size:12px; color:#333;">${COMPANY.addressLine}<br/>${COMPANY.city}<br/>${COMPANY.country}</div>
+          <div style="font-size:12px; color:#333; margin-top:4px;">IČ: ${COMPANY.ico} · DIČ: ${COMPANY.dic}</div>
+        </div>
+        <div style="font-size:12px; color:#333; text-align:right;">${todayStr}</div>
+      </div>
+
+      <div style="margin-bottom:36px;">
+        <div style="font-weight:700;">${custName}</div>
+        ${custPerson ? `<div>${custPerson}</div>` : ""}
+        <div style="white-space:pre-line;">${custAddress}</div>
+      </div>
+
+      <div style="font-size:20px; font-weight:700; margin-bottom:6px; color:${level >= 3 ? "#b91c1c" : "#111"};">${t.title} k faktuře č. ${invoice.number}</div>
+      <div style="margin-bottom:16px;">${t.body(invoice.number)}</div>
+
+      <table style="border-collapse:collapse; font-size:13px; margin-bottom:20px;">
+        <tbody>
+          <tr><td style="padding:4px 16px 4px 0; color:#555;">Faktura č.</td><td style="padding:4px 0; font-weight:700;">${invoice.number}</td></tr>
+          <tr><td style="padding:4px 16px 4px 0; color:#555;">Datum vystavení</td><td style="padding:4px 0;">${fmtDateCzPlain(invoice.issued)}</td></tr>
+          <tr><td style="padding:4px 16px 4px 0; color:#555;">Datum splatnosti</td><td style="padding:4px 0;">${fmtDateCzPlain(invoice.due)}</td></tr>
+          <tr><td style="padding:4px 16px 4px 0; color:#555;">Dní po splatnosti</td><td style="padding:4px 0; font-weight:700; color:#b91c1c;">${info.daysOverdue}</td></tr>
+          ${info.isPartial ? `<tr><td style="padding:4px 16px 4px 0; color:#555;">Již uhrazeno</td><td style="padding:4px 0;">${fmtKc2(info.paid)} Kč</td></tr>` : ""}
+          <tr><td style="padding:4px 16px 4px 0; color:#555;">Dlužná částka</td><td style="padding:4px 0; font-weight:700; font-size:16px;">${fmtKc2(info.outstanding)} Kč</td></tr>
+        </tbody>
+      </table>
+
+      <div style="margin-bottom:20px;">${t.closing}</div>
+
+      <div style="display:flex; align-items:flex-start; gap:24px; padding:16px; background:#f8fafc; border-radius:8px;">
+        ${qrDataUrl ? `<img src="${qrDataUrl}" width="110" height="110" style="width:110px; height:110px;" />` : ""}
+        <div style="font-size:13px;">
+          <div style="font-weight:700; margin-bottom:6px;">Platební údaje</div>
+          <div>Účet: <strong>${COMPANY_ACCOUNT_DISPLAY}</strong></div>
+          <div>Variabilní symbol: <strong>${invoice.variable_symbol || invoice.number.replace(/\D/g, "")}</strong></div>
+          <div>Částka: <strong>${fmtKc2(info.outstanding)} Kč</strong></div>
+        </div>
+      </div>
+
+      <div style="margin-top:40px;">S pozdravem,<br/><strong>${COMPANY.name}</strong></div>
+    </div>
+  `;
+}
+
+export async function downloadReminderPDF(invoice, customer, level) {
+  const [{ jsPDF }, html2canvasMod] = await Promise.all([
+    safeImport(() => import("jspdf")), safeImport(() => import("html2canvas")),
+  ]);
+  const html2canvas = html2canvasMod.default;
+
+  const info = getInvoicePaymentInfo(invoice);
+  const { qrDataUrl } = await getInvoiceQr(invoice, info.outstanding);
+
+  const el = document.createElement("div");
+  el.style.position = "fixed";
+  el.style.left = "-9999px";
+  el.style.top = "0";
+  el.style.width = `${(595.27 * 4 / 3).toFixed(2)}px`;
+  el.style.background = "#fff";
+  el.style.padding = "56px";
+  el.style.boxSizing = "border-box";
+  el.innerHTML = buildReminderHtmlBody(invoice, customer, level, qrDataUrl);
+
+  document.body.appendChild(el);
+  try {
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const pageWidth = 210;
+    const imgHeight = (canvas.height / canvas.width) * pageWidth;
+    doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, pageWidth, imgHeight);
+    doc.save(`Upominka-${level}-${invoice.number}.pdf`);
   } finally {
     document.body.removeChild(el);
   }

@@ -8,7 +8,7 @@ import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
-import { downloadInvoicePDF } from "./invoicingUtils.js";
+import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
@@ -1381,6 +1381,12 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   const openInvoices = invoices.filter(i => i.status === "Čeká" || i.status === "Po splatnosti");
   const inProgressContracts = (contracts || []).filter(c => c.status === "Probíhá");
 
+  // Automatické hlídání splatnosti — počítá se z data splatnosti, ne jen z
+  // ručně nastaveného stavu, takže se na nic nezapomene.
+  const overdueList = invoices.map(i => ({ inv: i, info: getInvoicePaymentInfo(i) }))
+    .filter(({ info }) => info.isOverdue).sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
+  const overdueSum = overdueList.reduce((s, { info }) => s + info.outstanding, 0);
+
   // Tržby (zaplacené faktury) za posledních 6 měsíců pro mini graf
   const monthKeys = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(todayStr + "T00:00:00");
@@ -1403,6 +1409,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
     { label: "Aktivní projekty", value: activeProjects, color: "#34d399" },
     { label: "Mzdové náklady", value: fmtKc(totalPayroll), color: "#f59e0b" },
     { label: "Na pracovišti dnes", value: `${presentToday.length} / ${activeEmployees.length}`, color: "#2E9BE0" },
+    { label: "Faktury po splatnosti", value: `${overdueList.length} (${fmtKc(overdueSum)})`, color: "#f87171" },
   ];
 
   return (
@@ -1422,6 +1429,22 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
           </div>
         ))}
       </div>
+
+      {overdueList.length > 0 && (
+        <div style={{ ...S.card, marginBottom: 24, cursor: "pointer" }} onClick={() => setTab("invoices")}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: "#f87171" }}>⚠️ Nejvíc po splatnosti</div>
+          {overdueList.slice(0, 5).map(({ inv, info }) => {
+            const cust = customers.find(c => c.id === inv.customerId);
+            return (
+              <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
+                <span>{inv.number} — {cust?.name || "—"}</span>
+                <span><strong style={{ color: "#ef4444" }}>{info.daysOverdue} dní</strong> · {fmtKc(info.outstanding)}</span>
+              </div>
+            );
+          })}
+          {overdueList.length > 5 && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>… a dalších {overdueList.length - 5}</div>}
+        </div>
+      )}
 
       {/* Přizpůsobitelné widgety */}
       {editMode && (
@@ -2549,6 +2572,34 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
     setInvoices(invoices.map(i => i.id === id ? { ...i, status } : i));
   };
 
+  const [paidDraft, setPaidDraft] = useState({});
+  const savePaidAmount = async (id, value) => {
+    const paid_amount = Number(value) || 0;
+    await supabase.from("invoices").update({ paid_amount }).eq("id", id);
+    setInvoices(invoices.map(i => i.id === id ? { ...i, paid_amount } : i));
+    setPaidDraft(d => { const rest = { ...d }; delete rest[id]; return rest; });
+  };
+
+  const [remindBusy, setRemindBusy] = useState(null); // `${invoiceId}-${level}`
+  const handleReminder = async (inv, level) => {
+    const key = `${inv.id}-${level}`;
+    setRemindBusy(key);
+    try {
+      const cust = customers.find(c => c.id === inv.customerId);
+      await downloadReminderPDF(inv, cust, level);
+    } catch (e) {
+      alert("Nepodařilo se vygenerovat upomínku: " + (e?.message || e));
+    } finally {
+      setRemindBusy(null);
+    }
+  };
+
+  const unpaidInvoices = invoices
+    .map(inv => ({ inv, info: getInvoicePaymentInfo(inv) }))
+    .filter(({ info }) => !info.isPaid && !info.isCancelled && (info.outstanding > 0.01))
+    .sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
+  const overdueTotal = unpaidInvoices.filter(({ info }) => info.isOverdue).reduce((s, { info }) => s + info.outstanding, 0);
+
   return (
     <>
       <div style={S.header}>
@@ -2571,7 +2622,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
         {[
           { label: "Zaplaceno", value: fmtKc(invoices.filter(i => i.status === "Zaplacena").reduce((s, i) => s + i.amount, 0)), color: "#34d399" },
           { label: "Čeká na platbu", value: fmtKc(invoices.filter(i => i.status === "Čeká").reduce((s, i) => s + i.amount, 0)), color: "#f59e0b" },
-          { label: "Po splatnosti", value: fmtKc(invoices.filter(i => i.status === "Po splatnosti").reduce((s, i) => s + i.amount, 0)), color: "#f87171" },
+          { label: "Po splatnosti (dluh)", value: fmtKc(overdueTotal), color: "#f87171" },
         ].map(s => (
           <div key={s.label} style={S.statCard(s.color)}><div style={S.statLabel}>{s.label}</div><div style={S.statValue(s.color)}>{s.value}</div></div>
         ))}
@@ -2579,10 +2630,11 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
 
       <div style={S.card}>
         <table style={S.table}>
-          <thead><tr>{["Číslo", "Zákazník", "Částka", "DPH", "Vystavena", "Splatnost", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Číslo", "Zákazník", "Částka", "DPH", "Vystavena", "Splatnost", "Uhrazeno", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {invoices.filter(i => (i.invoice_type || "vydaná") === (invTab === "vydané" ? "vydaná" : "přijatá")).map(inv => {
               const cust = customers.find(c => c.id === inv.customerId);
+              const info = getInvoicePaymentInfo(inv);
               return (
                 <tr key={inv.id}>
                   <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
@@ -2590,7 +2642,16 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                   <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>{fmtKc(inv.amount)}</td>
                   <td style={S.td}>{fmtKc(inv.tax)}</td>
                   <td style={S.td}>{fmtDateCz(inv.issued)}</td>
-                  <td style={S.td}>{fmtDateCz(inv.due)}</td>
+                  <td style={S.td}>
+                    {fmtDateCz(inv.due)}
+                    {info.isOverdue && <div style={{ color: "#ef4444", fontWeight: 700, fontSize: 11 }}>{info.daysOverdue} dní po splatnosti</div>}
+                  </td>
+                  <td style={S.td}>
+                    <input type="number" style={{ ...S.select, marginBottom: 0, width: 90, padding: "5px 8px", fontSize: 12 }}
+                      value={paidDraft[inv.id] ?? inv.paid_amount ?? 0}
+                      onChange={e => setPaidDraft(d => ({ ...d, [inv.id]: e.target.value }))}
+                      onBlur={e => savePaidAmount(inv.id, e.target.value)} />
+                  </td>
                   <td style={S.td}><span style={S.tag(INV_COLORS[inv.status])}>{inv.status}</span></td>
                   <td style={S.td}>
                     <select style={{ ...S.select, marginBottom: 0, width: 130, padding: "5px 8px", fontSize: 12 }}
@@ -2618,6 +2679,43 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
           </tbody>
         </table>
       </div>
+
+      {/* Pohledávky — nezaplacené a částečně zaplacené faktury s možností
+          stažení upomínky (1.–3.), kterou si uživatel sám pošle mailem. */}
+      {unpaidInvoices.length > 0 && (
+        <div style={{ ...S.card, marginTop: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>💸 Nezaplacené a částečně zaplacené faktury</div>
+          <table style={S.table}>
+            <thead><tr>{["Číslo", "Zákazník", "Splatnost", "Dní po splatnosti", "Dluží", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {unpaidInvoices.map(({ inv, info }) => {
+                const cust = customers.find(c => c.id === inv.customerId);
+                return (
+                  <tr key={inv.id}>
+                    <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
+                    <td style={S.td}>{cust?.name || "—"}</td>
+                    <td style={S.td}>{fmtDateCz(inv.due)}</td>
+                    <td style={{ ...S.td, color: info.isOverdue ? "#ef4444" : "#94a3b8", fontWeight: info.isOverdue ? 700 : 400 }}>
+                      {info.isOverdue ? info.daysOverdue : "—"}
+                    </td>
+                    <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>
+                      {fmtKc(info.outstanding)}{info.isPartial && <span style={{ color: "#94a3b8", fontWeight: 400, fontSize: 11 }}> (částečně uhrazeno)</span>}
+                    </td>
+                    <td style={{ ...S.td, display: "flex", gap: 6 }}>
+                      {[1, 2, 3].map(level => (
+                        <button key={level} disabled={remindBusy === `${inv.id}-${level}`} onClick={() => handleReminder(inv, level)}
+                          style={{ ...S.btn("#475569"), padding: "5px 10px", fontSize: 11 }}>
+                          {remindBusy === `${inv.id}-${level}` ? "…" : `${level}. upomínka`}
+                        </button>
+                      ))}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {modal?.type === "newInvoiceFlow" && (
         <InvoiceCreateFlow customers={customers} contracts={contracts} costEntries={costEntries}
