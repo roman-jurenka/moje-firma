@@ -1,8 +1,72 @@
 import { useState, useEffect, useRef } from "react";
+import { supabase } from "./supabase.js";
 import { computeInvoiceTotals, fmtKc2, buildInvoicePreview, downloadInvoicePDF, getDiscountedTotal } from "./invoicingUtils.js";
 
 const VAT_RATES = [0, 12, 21];
 const ITEM_UNITS = ["ks", "kpl.", "h", "m", "m²", "m³", "kg", "km", "den"];
+
+// Historie faktury (vystavení, odeslání, platby, upomínky) — zobrazuje se
+// nahoře ve formuláři úpravy. Popisky + ikony pro typy událostí v tabulce
+// invoice_events.
+const EVENT_LABELS = {
+  vystavena: { icon: "🧾", label: "Faktura vystavena" },
+  odeslana: { icon: "✉️", label: "Faktura odeslána" },
+  platba: { icon: "💰", label: "Přijata platba" },
+  zaplacena: { icon: "✅", label: "Označena jako zaplacená" },
+  stornovana: { icon: "🚫", label: "Stornována" },
+  upominka_1: { icon: "🔔", label: "1. upomínka vygenerována" },
+  upominka_2: { icon: "🔔", label: "2. upomínka vygenerována" },
+  upominka_3: { icon: "🔔", label: "3. upomínka vygenerována" },
+};
+const fmtEventDate = (v) => { try { return new Date(v).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return v; } };
+
+// ─── Historie faktury — vystavení, odeslání, platby, upomínky ─────────────
+function InvoiceHistoryPanel({ invoiceId }) {
+  const [events, setEvents] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    supabase.from("invoice_events").select("*").eq("invoice_id", invoiceId).order("created_at", { ascending: false })
+      .then(({ data }) => setEvents(data || []));
+  };
+  useEffect(load, [invoiceId]);
+
+  const markSent = async () => {
+    setBusy(true);
+    try {
+      await supabase.from("invoice_events").insert({ invoice_id: invoiceId, type: "odeslana" });
+      load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: "#334155" }}>Historie faktury</div>
+        <button onClick={markSent} disabled={busy} style={{ ...btnGhost, padding: "4px 10px", fontSize: 11 }}>
+          {busy ? "…" : "✉️ Označit jako odesláno"}
+        </button>
+      </div>
+      {events === null && <div style={{ fontSize: 12, color: "#94a3b8" }}>Načítám…</div>}
+      {events && events.length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Zatím žádné události.</div>}
+      {events && events.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {events.map(ev => {
+            const meta = EVENT_LABELS[ev.type] || { icon: "•", label: ev.type };
+            return (
+              <div key={ev.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#475569" }}>
+                <span>{meta.icon} {meta.label}{ev.type === "platba" ? ` — ${fmtKc2(ev.amount)} Kč` : ""}</span>
+                <span style={{ color: "#94a3b8" }}>{fmtEventDate(ev.created_at)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Malý vyhledávací výběr zakázky (bez závislosti na App.jsx) ─────────────
 function ContractPicker({ options, value, onChange, placeholder = "— vyberte zakázku — (piš pro hledání)" }) {
@@ -144,6 +208,8 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     <div style={overlayStyle}>
       <div style={{ ...boxStyle, width: 720 }}>
         <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>{isEdit ? `Upravit fakturu ${editInvoice.number}` : "Nová faktura"}</div>
+
+        {isEdit && <InvoiceHistoryPanel invoiceId={editInvoice.id} />}
 
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
           <div>

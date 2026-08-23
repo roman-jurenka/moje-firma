@@ -2513,6 +2513,11 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
   const [pdfBusyId, setPdfBusyId] = useState(null);
   const [previewInv, setPreviewInv] = useState(null);
 
+  // Historie faktury (vystavení, odeslání, platby, upomínky) — zobrazuje se
+  // nahoře ve formuláři úpravy faktury.
+  const logInvoiceEvent = (invoiceId, type, extra = {}) =>
+    supabase.from("invoice_events").insert({ invoice_id: invoiceId, type, ...extra });
+
   const saveFromFlow = async (f) => {
     const invNum = nextInvNum(invoices);
     const { data: row, error } = await supabase.from("invoices").insert({
@@ -2526,7 +2531,10 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
     }).select().single();
     if (error) { alert("Fakturu se nepodařilo uložit: " + error.message); return; }
-    if (row) setInvoices([...invoices, { ...row, customerId: row.customer_id }]);
+    if (row) {
+      setInvoices([...invoices, { ...row, customerId: row.customer_id }]);
+      logInvoiceEvent(row.id, "vystavena");
+    }
     closeModal();
   };
 
@@ -2572,14 +2580,19 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
   const changeStatus = async (id, status) => {
     await supabase.from("invoices").update({ status }).eq("id", id);
     setInvoices(invoices.map(i => i.id === id ? { ...i, status } : i));
+    if (status === "Zaplacena") logInvoiceEvent(id, "zaplacena");
+    if (status === "Storno") logInvoiceEvent(id, "stornovana");
   };
 
   const [paidDraft, setPaidDraft] = useState({});
   const savePaidAmount = async (id, value) => {
     const paid_amount = Number(value) || 0;
+    const prev = invoices.find(i => i.id === id);
+    const delta = paid_amount - (Number(prev?.paid_amount) || 0);
     await supabase.from("invoices").update({ paid_amount }).eq("id", id);
     setInvoices(invoices.map(i => i.id === id ? { ...i, paid_amount } : i));
     setPaidDraft(d => { const rest = { ...d }; delete rest[id]; return rest; });
+    if (Math.abs(delta) > 0.01) logInvoiceEvent(id, "platba", { amount: delta });
   };
 
   const [remindBusy, setRemindBusy] = useState(null); // `${invoiceId}-${level}`
@@ -2589,6 +2602,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
     try {
       const cust = customers.find(c => c.id === inv.customerId);
       await downloadReminderPDF(inv, cust, level);
+      await logInvoiceEvent(inv.id, `upominka_${level}`);
     } catch (e) {
       alert("Nepodařilo se vygenerovat upomínku: " + (e?.message || e));
     } finally {
