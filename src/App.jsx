@@ -197,6 +197,35 @@ const isPromiseBroken = (v) => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   return d < today;
 };
+
+// ─── Opakující se úkoly ─────────────────────────────────────────────────────
+const RECURRENCE_LABELS = { denne: "Denně", tydne: "Týdně", mesicne: "Měsíčně" };
+function nextRecurrenceDate(dueStr, recurrence) {
+  if (!dueStr) return null;
+  const d = new Date(dueStr.length === 10 ? dueStr + "T00:00:00" : dueStr);
+  if (isNaN(d.getTime())) return null;
+  if (recurrence === "denne") d.setDate(d.getDate() + 1);
+  else if (recurrence === "tydne") d.setDate(d.getDate() + 7);
+  else if (recurrence === "mesicne") d.setMonth(d.getMonth() + 1);
+  else return null;
+  return d.toISOString().slice(0, 10);
+}
+// Při dokončení opakujícího se úkolu rovnou založí další instanci s posunutým
+// termínem — dokud nepřekročí recurrence_until (pokud je nastaveno).
+async function spawnNextRecurrence(task, setTasks) {
+  if (!task.recurrence) return;
+  const nextDue = nextRecurrenceDate(task.due, task.recurrence);
+  if (!nextDue) return;
+  if (task.recurrence_until && nextDue > task.recurrence_until) return;
+  const { data: row } = await supabase.from("tasks").insert({
+    title: task.title, due: nextDue, priority: task.priority, done: false,
+    customer_id: task.customer_id || null, contract_id: task.contract_id || null, deal_id: task.deal_id || null,
+    created_by: task.created_by || "", assigned_to: task.assigned_to || "",
+    visible_to: task.visible_to || [], recurrence: task.recurrence, recurrence_until: task.recurrence_until || null,
+  }).select().single();
+  if (row && setTasks) setTasks(prev => [...prev, { ...row, customerId: row.customer_id }]);
+}
+
 const initialAttendance = [
   // Markéta (emp 1)
   { id: 1, employeeId: 1, date: "2026-04-07", checkin: "08:02", checkout: "16:45" },
@@ -641,7 +670,15 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     .map(i => ({ inv: i, info: getInvoicePaymentInfo(i) }))
     .filter(({ info }) => info.isOverdue)
     .sort((a, b) => b.info.daysOverdue - a.info.daysOverdue);
-  const bellCount = overdueBellInvoices.length + lowStock.length + pendingReqCount;
+  // Úkoly s termínem dnes nebo zítra (nedokončené) — patří do "Vyžaduje pozornost",
+  // ať se blížící termín neztratí jen v seznamu úkolů.
+  const dueSoonTasks = (() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const todayStr = fmt(today), tomorrowStr = fmt(tomorrow);
+    return tasks.filter(t => !t.done && t.due && (t.due === todayStr || t.due === tomorrowStr));
+  })();
+  const bellCount = overdueBellInvoices.length + lowStock.length + pendingReqCount + dueSoonTasks.length;
 
   const gq = gQuery.trim().toLowerCase();
   const gResults = gq.length < 2 ? null : {
@@ -658,8 +695,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const toggleTaskGlobal = async (id) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
-    await supabase.from("tasks").update({ done: !task.done }).eq("id", id);
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+    const willBeDone = !task.done;
+    await supabase.from("tasks").update({ done: willBeDone }).eq("id", id);
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, done: willBeDone } : t));
+    if (willBeDone) spawnNextRecurrence(task, setTasks);
   };
 
   const checkin = async () => {
@@ -1033,8 +1072,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {tab === "calendar" && <CalendarModule
           currentUser={currentUser} employees={employees} contracts={contracts}
-          customers={customers}
+          customers={customers} tasks={tasks} invoices={invoices}
           calendarEvents={calendarEvents} setCalendarEvents={setCalendarEvents}
+          setTab={setTab}
         />}
 
         {tab === "knjiga" && <KnihaJizd
@@ -1087,6 +1127,13 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
                       {pendingReqCount} {pendingReqCount === 1 ? "žádost čeká" : "žádostí čeká"} na schválení v docházce
                     </div>
                   )}
+                  {dueSoonTasks.map(t => (
+                    <div key={`task-${t.id}`} onClick={() => setTab("tasks")}
+                      style={{ ...S.card, borderLeft: "3px solid #f59e0b", padding: "10px 16px", cursor: "pointer", fontSize: 13 }}>
+                      <i className="ti ti-checkbox" aria-hidden="true" style={{ color: "#f59e0b", marginRight: 8 }}></i>
+                      Úkol „{t.title}" — termín {fmtDateCz(t.due)}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -2607,7 +2654,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
 // ─── ÚKOLY ───────────────────────────────────────────────────────────────────
 
 function Tasks({ tasks, setTasks, customers, employees, deals, contracts, currentUser, notifications, setNotifications, modal, setModal, closeModal }) {
-  const [newT, setNewT] = useState({ title: "", due: "", priority: "Střední", customerId: "", contractId: "", dealId: "", assignedTo: "", visibleTo: [], photo_url: "", created_by: "" });
+  const [newT, setNewT] = useState({ title: "", due: "", priority: "Střední", customerId: "", contractId: "", dealId: "", assignedTo: "", visibleTo: [], photo_url: "", created_by: "", recurrence: "", recurrenceUntil: "" });
   const [showTaskPhotoPicker, setShowTaskPhotoPicker] = useState(false);
   const [taskUploading, setTaskUploading] = useState(false);
   const [taskPhotoPanel, setTaskPhotoPanel] = useState(false);
@@ -2665,6 +2712,8 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
       photo_url: newT.photo_url || (taskPhotos.length > 0 ? taskPhotos[0].url : ""),
       photos: taskPhotos.length > 0 ? taskPhotos : null,
       visible_to: newT.visibleTo || [],
+      recurrence: newT.recurrence || null,
+      recurrence_until: newT.recurrence && newT.recurrenceUntil ? newT.recurrenceUntil : null,
     };
     const { data: row } = await supabase.from("tasks").insert(row_data).select().single();
     if (row) {
@@ -2676,7 +2725,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
         if (n && setNotifications) setNotifications(prev => [n, ...prev]);
       }
     }
-    setNewT({ title: "", due: "", priority: "Střední", customerId: "", contractId: "", dealId: "", assignedTo: "", visibleTo: [], photo_url: "", created_by: "" });
+    setNewT({ title: "", due: "", priority: "Střední", customerId: "", contractId: "", dealId: "", assignedTo: "", visibleTo: [], photo_url: "", created_by: "", recurrence: "", recurrenceUntil: "" });
     setTaskPhotos([]);
     setTaskPhotoPanel(false);
     closeModal();
@@ -2685,8 +2734,10 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
   const toggle = async (id) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
-    await supabase.from("tasks").update({ done: !task.done }).eq("id", id);
-    setTasks(tasks.map(t => t.id === id ? { ...t, done: !t.done } : t));
+    const willBeDone = !task.done;
+    await supabase.from("tasks").update({ done: willBeDone }).eq("id", id);
+    setTasks(tasks.map(t => t.id === id ? { ...t, done: willBeDone } : t));
+    if (willBeDone) spawnNextRecurrence(task, setTasks);
   };
 
   const myName = currentUser?.name || "";
@@ -2725,6 +2776,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                   <td style={S.td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} style={{ accentColor: "#2E9BE0" }} /></td>
                   <td style={{ ...S.td, textDecoration: t.done ? "line-through" : "none", color: "#fff", fontWeight: 500 }}>
                     {t.title}
+                    {t.recurrence && <span title={`Opakuje se: ${RECURRENCE_LABELS[t.recurrence] || t.recurrence}`} style={{ fontSize: 10, color: "#f59e0b", marginLeft: 6 }}>🔁 {RECURRENCE_LABELS[t.recurrence] || t.recurrence}</span>}
                     {t.visible_to?.length > 0 && <span style={{ fontSize: 10, color: "#2E9BE0", marginLeft: 6 }}>👁 {t.visible_to.join(", ")}</span>}
                   </td>
                   <td style={S.td}>{cust?.name || "—"}</td>
@@ -2764,6 +2816,9 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               <div><div style={S.statLabel}>Priorita</div><span style={S.tag(PRIO_COLORS[detailTask.priority] || "#64748b")}>{detailTask.priority}</span></div>
               <div><div style={S.statLabel}>Zadal</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.created_by || "—"}</div></div>
               <div><div style={S.statLabel}>Přiřazeno</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.assigned_to || "—"}</div></div>
+              {detailTask.recurrence && (
+                <div><div style={S.statLabel}>Opakování</div><div style={{ color: "#f59e0b", fontSize: 13 }}>🔁 {RECURRENCE_LABELS[detailTask.recurrence] || detailTask.recurrence}{detailTask.recurrence_until ? ` do ${fmtDateCz(detailTask.recurrence_until)}` : ""}</div></div>
+              )}
             </div>
             {detailTask.description && (
               <div style={{ background: "#0E3B5E", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#cbd5e1", fontSize: 14, lineHeight: 1.6 }}>
@@ -2807,6 +2862,17 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
           <select style={S.select} value={newT.priority} onChange={e => setNewT({ ...newT, priority: e.target.value })}>
             {["Vysoká", "Střední", "Nízká"].map(p => <option key={p}>{p}</option>)}
           </select>
+          <label style={S.label}>Opakování</label>
+          <select style={S.select} value={newT.recurrence} onChange={e => setNewT({ ...newT, recurrence: e.target.value })}>
+            <option value="">— jednorázový úkol —</option>
+            {Object.entries(RECURRENCE_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+          {newT.recurrence && (
+            <>
+              <label style={S.label}>Opakovat do (volitelné)</label>
+              <DatePicker value={newT.recurrenceUntil} onChange={v => setNewT({ ...newT, recurrenceUntil: v })} />
+            </>
+          )}
           <label style={S.label}>Zákazník</label>
           <select style={S.select} value={newT.customerId} onChange={e => setNewT({ ...newT, customerId: e.target.value })}>
             <option value="">— volitelné —</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -5322,7 +5388,7 @@ const WORK_TYPES = {
   "Reklamace":   { color: "#7c3aed", bg: "#ede9fe" },
 };
 
-function CalendarModule({ currentUser, employees, contracts, customers, calendarEvents, setCalendarEvents }) {
+function CalendarModule({ currentUser, employees, contracts, customers, tasks, invoices, calendarEvents, setCalendarEvents, setTab }) {
   const isAdmin = currentUser?.role === "admin" || currentUser?.role === "manager";
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -5351,6 +5417,15 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
   });
 
   const eventsOnDay = (dateStr) => visibleEvents.filter(e => e.date === dateStr);
+
+  // Úkoly s termínem daný den (nedokončené) a vydané faktury po splatnosti se
+  // stejným datem splatnosti — zobrazí se v mřížce vedle kalendářních událostí,
+  // ať uživatel vidí všechny termíny na jednom místě bez nutnosti přepínat modul.
+  const tasksOnDay = (dateStr) => (tasks || []).filter(t => t.due === dateStr && !t.done);
+  const overdueInvoicesOnDay = (dateStr) => (invoices || []).filter(inv => {
+    if (inv.invoice_type !== "vydaná" || inv.due !== dateStr) return false;
+    return getInvoicePaymentInfo(inv).isOverdue;
+  });
 
   const saveEvent = async () => {
     const empId = isAdmin ? (form.employee_id || currentUser.id) : currentUser.id;
@@ -5405,6 +5480,8 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
         {Object.entries(WORK_TYPES).map(([k, v]) => (
           <span key={k} style={{ background: v.bg, color: v.color, border: `1px solid ${v.color}44`, borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>{k}</span>
         ))}
+        <span style={{ background: "#f59e0b18", color: "#b45309", border: "1px solid #f59e0b44", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>✓ Úkoly</span>
+        <span style={{ background: "#ef444418", color: "#b91c1c", border: "1px solid #ef444444", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>⚠️ Faktury po splatnosti</span>
       </div>
 
       {/* Grid */}
@@ -5424,6 +5501,9 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
             const todayStr = fmt2(today);
             const isToday = dateStr === todayStr;
             const dayEvents = eventsOnDay(dateStr);
+            const dayTasks = tasksOnDay(dateStr);
+            const dayOverdueInvoices = overdueInvoicesOnDay(dateStr);
+            const extraCount = Math.max(0, dayEvents.length - 3) + Math.max(0, dayTasks.length - 3) + Math.max(0, dayOverdueInvoices.length - 3);
             return (
               <div key={i} style={{ minHeight: 90, borderRight: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9", padding: 6, position: "relative", background: isToday ? "#eff6ff" : "#fff" }}>
                 <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 500, color: isToday ? "#2E9BE0" : "#374151",
@@ -5440,7 +5520,19 @@ function CalendarModule({ currentUser, employees, contracts, customers, calendar
                     </div>
                   );
                 })}
-                {dayEvents.length > 3 && <div style={{ fontSize: 10, color: "#94a3b8" }}>+{dayEvents.length-3} další</div>}
+                {dayTasks.slice(0, 3).map(t => (
+                  <div key={"t" + t.id} onClick={() => setTab && setTab("tasks")} title={t.title}
+                    style={{ background: "#f59e0b18", color: "#b45309", borderLeft: "3px solid #f59e0b", borderRadius: 4, padding: "2px 5px", fontSize: 11, fontWeight: 600, marginBottom: 2, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    ✓ {t.title}
+                  </div>
+                ))}
+                {dayOverdueInvoices.slice(0, 3).map(inv => (
+                  <div key={"i" + inv.id} onClick={() => setTab && setTab("invoices")} title={`Faktura ${inv.number} po splatnosti`}
+                    style={{ background: "#ef444418", color: "#b91c1c", borderLeft: "3px solid #ef4444", borderRadius: 4, padding: "2px 5px", fontSize: 11, fontWeight: 600, marginBottom: 2, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    ⚠️ {inv.number}
+                  </div>
+                ))}
+                {extraCount > 0 && <div style={{ fontSize: 10, color: "#94a3b8" }}>+{extraCount} další</div>}
               </div>
             );
           })}
