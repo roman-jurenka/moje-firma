@@ -505,6 +505,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [customers, setCustomers] = useState([]);
   const [deals, setDeals] = useState([]);
   const [communication, setCommunication] = useState([]);
+  const [dealMsgs, setDealMsgs] = useState([]);
+  const [contractMsgs, setContractMsgs] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [products, setProducts] = useState([]);
@@ -561,7 +563,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
     const load = async () => {
       setLoading(true);
-      const [c, d, cm, t, inv, p, e, pr, co, att, ct, ce, notif, cal] = await Promise.all([
+      const [c, d, cm, t, inv, p, e, pr, co, att, ct, ce, notif, cal, dm, cmsg] = await Promise.all([
         supabase.from("customers").select("*").order("id"),
         supabase.from("deals").select("*").order("id"),
         supabase.from("communication").select("*").order("id"),
@@ -576,6 +578,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         supabase.from("contract_cost_entries").select("id, employee_id, amount_cost, amount_client, contract_id, attendance_id, cost_type, is_extra").order("id"),
         supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50),
         supabase.from("calendar_events").select("*").order("date"),
+        supabase.from("deal_messages").select("*").order("created_at", { ascending: false }),
+        supabase.from("contract_messages").select("*").order("created_at", { ascending: false }),
       ]);
       setCustomers((c.data || []).map(x => ({ ...x, customerId: x.customer_id })));
       setDeals((d.data || []).map(x => ({ ...x, customerId: x.customer_id })));
@@ -591,8 +595,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       setCostEntries(ce.data || []);
       setNotifications(notif.data || []);
       setCalendarEvents(cal.data || []);
+      setDealMsgs(dm.data || []);
+      setContractMsgs(cmsg.data || []);
       // Log errors
-      [c,d,cm,t,inv,p,e,pr,co,att,ct,ce,notif,cal].forEach((res, i) => {
+      [c,d,cm,t,inv,p,e,pr,co,att,ct,ce,notif,cal,dm,cmsg].forEach((res, i) => {
         if (res.error) console.error("Load error table", i, res.error.message);
       });
       setLoading(false);
@@ -929,8 +935,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* ── ZÁKAZNÍCI ── */}
         {tab === "customers" && <Customers
           customers={customers} setCustomers={setCustomers}
-          invoices={invoices} deals={deals} communication={communication}
-          contracts={contracts} tasks={tasks}
+          invoices={invoices} deals={deals} communication={communication} setCommunication={setCommunication}
+          contracts={contracts} tasks={tasks} dealMsgs={dealMsgs} contractMsgs={contractMsgs}
           search={search} setSearch={setSearch}
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
@@ -953,6 +959,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "communication" && <Communication
           communication={communication} setCommunication={setCommunication}
           customers={customers} deals={deals} contracts={contracts}
+          dealMsgs={dealMsgs} setDealMsgs={setDealMsgs} contractMsgs={contractMsgs} setContractMsgs={setContractMsgs}
           currentUser={currentUser}
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
@@ -1898,7 +1905,34 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
 
 // ─── ZÁKAZNÍCI ────────────────────────────────────────────────────────────────
 
-function Customers({ customers, setCustomers, invoices, deals, communication, contracts, tasks, search, setSearch, modal, setModal, closeModal }) {
+// Sjednotí tři oddělené zdroje komunikace — starý komunikační log (tabulka
+// communication), zprávy k obchodním případům (deal_messages) a zprávy k
+// zakázkám (contract_messages) — do jedné časové osy. Bez customerId vrátí
+// vše (pro souhrnný pohled "Vše" v modulu Komunikace), s customerId jen
+// záznamy daného zákazníka (pro detail v modulu Zákazníci).
+function getCustomerCommunication({ communication, dealMsgs, contractMsgs, deals, contracts }, customerId = null) {
+  const items = [];
+  (communication || []).forEach(c => {
+    if (customerId != null && c.customerId !== customerId) return;
+    items.push({ id: "log-" + c.id, kind: "log", label: c.type, text: c.note, customerId: c.customerId, date: c.date, ts: c.date ? new Date(c.date).getTime() : 0 });
+  });
+  (dealMsgs || []).forEach(m => {
+    const deal = (deals || []).find(d => d.id === m.deal_id);
+    if (!deal) return;
+    const dCustomerId = deal.customerId ?? deal.customer_id;
+    if (customerId != null && dCustomerId !== customerId) return;
+    items.push({ id: "deal-" + m.id, kind: "deal", label: "💼 " + deal.name, text: m.message, author: m.user_name, customerId: dCustomerId, date: m.created_at, ts: m.created_at ? new Date(m.created_at).getTime() : 0 });
+  });
+  (contractMsgs || []).forEach(m => {
+    const contract = (contracts || []).find(c => c.id === m.contract_id);
+    if (!contract) return;
+    if (customerId != null && contract.customer_id !== customerId) return;
+    items.push({ id: "contract-" + m.id, kind: "contract", label: "🔧 " + contract.name, text: m.message, author: m.user_name, customerId: contract.customer_id, date: m.created_at, ts: m.created_at ? new Date(m.created_at).getTime() : 0 });
+  });
+  return items.sort((a, b) => b.ts - a.ts);
+}
+
+function Customers({ customers, setCustomers, invoices, deals, communication, setCommunication, contracts, tasks, dealMsgs, contractMsgs, search, setSearch, modal, setModal, closeModal }) {
   const [newC, setNewC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový" });
   const [editC, setEditC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový" });
   const [showArchived, setShowArchived] = useState(false);
@@ -1933,6 +1967,17 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
     }).eq("id", editC.id);
     setCustomers(customers.map(c => c.id === editC.id ? { ...c, ...editC } : c));
     closeModal();
+  };
+
+  const [quickMsg, setQuickMsg] = useState("");
+  const sendQuickComm = async (customerId) => {
+    if (!quickMsg.trim()) return;
+    const { data: row } = await supabase.from("communication").insert({
+      type: "Poznámka", date: new Date().toISOString().slice(0, 10), note: quickMsg.trim(),
+      customer_id: customerId,
+    }).select().single();
+    if (row) setCommunication([...communication, { ...row, customerId: row.customer_id }]);
+    setQuickMsg("");
   };
 
   // Zákazník se nikdy fyzicky nemaže — jen se archivuje, aby zůstaly zachované
@@ -2040,8 +2085,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
         const custInv = invoices.filter(i => i.customerId === c.id);
         const custDeals = deals.filter(d => d.customerId === c.id);
         const custContracts = (contracts || []).filter(z => z.customer_id === c.id);
-        const custComm = (communication || []).filter(m => m.customerId === c.id)
-          .slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        const custComm = getCustomerCommunication({ communication, dealMsgs, contractMsgs, deals, contracts }, c.id);
         const custTasks = (tasks || []).filter(t => t.customerId === c.id);
         const custOpenTasks = custTasks.filter(t => !t.done);
         const CONTRACT_STATUS_COLOR = { "Příprava": "#f59e0b", "Probíhá": "#2E9BE0", "Dokončeno": "#34d399", "Pozastaveno": "#ef4444" };
@@ -2067,13 +2111,18 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
               </div>
 
               <SectionTitle>💬 Poslední komunikace ({custComm.length})</SectionTitle>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <input style={{ ...S.input, marginBottom: 0, flex: 1 }} placeholder="Rychlá zpráva / poznámka ke kontaktu..." value={quickMsg}
+                  onChange={e => setQuickMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && sendQuickComm(c.id)} />
+                <button style={{ ...S.btn(), padding: "0 14px" }} onClick={() => sendQuickComm(c.id)}>Odeslat</button>
+              </div>
               {custComm.length === 0 ? <Empty /> : custComm.slice(0, 5).map(m => (
                 <div key={m.id} style={{ padding: "8px 0", borderBottom: "1px solid #1a2035" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#94a3b8" }}>
-                    <span>{m.type}</span>
-                    <span>{fmtDateCz ? fmtDateCz(m.date) : m.date}</span>
+                    <span>{m.label}{m.author ? " · " + m.author : ""}</span>
+                    <span>{m.kind === "log" ? (fmtDateCz ? fmtDateCz(m.date) : m.date) : new Date(m.date).toLocaleString("cs")}</span>
                   </div>
-                  <div style={{ color: "#e2e8f0", fontSize: 13 }}>{m.note}</div>
+                  <div style={{ color: "#e2e8f0", fontSize: 13 }}>{m.text}</div>
                 </div>
               ))}
 
@@ -2346,26 +2395,12 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
 
 // ─── KOMUNIKACE ───────────────────────────────────────────────────────────────
 
-function Communication({ communication, setCommunication, customers, deals, contracts, currentUser, modal, setModal, closeModal }) {
+function Communication({ communication, setCommunication, customers, deals, contracts, dealMsgs, setDealMsgs, contractMsgs, setContractMsgs, currentUser, modal, setModal, closeModal }) {
   const [tab, setTab] = useState("all");
-  const [dealMsgs, setDealMsgs] = useState([]);
-  const [contractMsgs, setContractMsgs] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [newC, setNewC] = useState({ type: "Email", date: "", note: "", customerId: "" });
   const [threadDeal, setThreadDeal] = useState(null);
   const [threadContract, setThreadContract] = useState(null);
   const [newMsg, setNewMsg] = useState("");
-
-  useEffect(() => {
-    Promise.all([
-      supabase.from("deal_messages").select("*").order("created_at", { ascending: false }),
-      supabase.from("contract_messages").select("*").order("created_at", { ascending: false }),
-    ]).then(([d, c]) => {
-      setDealMsgs(d.data || []);
-      setContractMsgs(c.data || []);
-      setLoading(false);
-    });
-  }, []);
 
   const save = async () => {
     if (!newC.note) return;
@@ -2501,8 +2536,35 @@ function Communication({ communication, setCommunication, customers, deals, cont
         </div>
       )}
 
-      {/* TAB: komunikační log */}
-      {(tab === "all" || tab === "log") && (
+      {/* TAB: Vše — sjednocená časová osa (log + zprávy k dealům + zprávy k zakázkám) */}
+      {tab === "all" && (() => {
+        const unified = getCustomerCommunication({ communication, dealMsgs, contractMsgs, deals, contracts });
+        return (
+          <div style={S.card}>
+            {unified.slice(0, 100).map(m => {
+              const cust = customers.find(cu => cu.id === m.customerId);
+              const dotColor = m.kind === "deal" ? "#2E9BE0" : m.kind === "contract" ? "#34d399" : (m.label === "Email" ? "#2E9BE0" : m.label === "Hovor" ? "#34d399" : "#f59e0b");
+              return (
+                <div key={m.id} style={S.commItem}>
+                  <div style={{ width: 9, height: 9, borderRadius: "50%", background: dotColor, marginTop: 4, flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
+                      <span style={{ fontWeight: 600, color: "#fff", fontSize: 13 }}>{cust?.name || "—"}</span>
+                      <span style={S.tag(dotColor)}>{m.label}{m.author ? " · " + m.author : ""}</span>
+                      <span style={{ color: "#475569", fontSize: 11, marginLeft: "auto" }}>{m.kind === "log" ? fmtDateCz(m.date) : new Date(m.date).toLocaleString("cs")}</span>
+                    </div>
+                    <div style={{ color: "#475569", fontSize: 13 }}>{m.text}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {unified.length === 0 && <Empty />}
+          </div>
+        );
+      })()}
+
+      {/* TAB: komunikační log — jen starý ruční log (bez zpráv k dealům/zakázkám) */}
+      {tab === "log" && (
         <div style={S.card}>
           {communication.map(c => {
             const cust = customers.find(cu => cu.id === c.customerId);
