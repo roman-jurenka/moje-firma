@@ -137,6 +137,207 @@ function SekceHeader({ sekce, stav, onStav }) {
   );
 }
 
+// ─── Export do PDF (jen stažení, bez odesílání e-mailem) ───────────────────
+// Stejná cesta jako u faktur — offscreen HTML → html2canvas → jsPDF, kvůli
+// spolehlivé české diakritice. Dlouhý dokument (14 sekcí) se rozdělí na víc
+// stran A4 podle výšky vykresleného obrázku.
+async function safeImportSheet(loader) {
+  try {
+    return await loader();
+  } catch {
+    const reload = confirm("Aplikace byla mezitím aktualizována a je potřeba načíst stránku znovu, než půjde PDF vygenerovat. Načíst teď?");
+    if (reload) window.location.reload();
+    throw new Error("Stránka potřebuje obnovit (nová verze appky) — zkus to prosím znovu po načtení.");
+  }
+}
+
+function escHtml(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function pdfField(label, value) {
+  return `<div style="display:flex;gap:10px;padding:3px 0;border-bottom:1px solid #f1f5f9;font-size:11px;">
+    <div style="width:190px;flex-shrink:0;color:#64748b;font-weight:600;">${escHtml(label)}</div>
+    <div style="flex:1;color:#0f172a;white-space:pre-wrap;">${escHtml(value) || "—"}</div>
+  </div>`;
+}
+
+function pdfSection(sekce, innerHtml) {
+  return `<div style="margin-bottom:20px;">
+    <div style="background:${sekce.barva}18;border-left:4px solid ${sekce.barva};padding:7px 12px;font-weight:800;font-size:13px;color:#0f172a;margin-bottom:6px;">${sekce.icon} ${escHtml(sekce.label)}</div>
+    ${innerHtml}
+  </div>`;
+}
+
+const TYP_ZAKAZKY_LABEL = { fve: "FVE Systém", ohrev: "FVE Ohřev vody", elektro: "Elektroinstalace", hromosvod: "Hromosvod" };
+
+const FIELD_LABELS = {
+  zakaznik: { jmeno: "Jméno a příjmení", adresa: "Adresa", telefon: "Telefon", email: "E-mail", datumNarozeni: "Datum narození", ean: "EAN odběrného místa", distributor: "Distributor", pocetVlastniku: "Počet vlastníků", poznamka: "Poznámka" },
+  nabidka: { cisloOP: "Číslo OP", sestava: "Sestava", oz: "Obchodní zástupce", datumNabidky: "Datum nabídky", platnostDo: "Platnost do", cenaSDph: "Cena s DPH (orientační)", dotace: "Dotace NMP", cenaPoOdecteni: "Cena po dotaci", poznamka: "Poznámka" },
+  smlouva: { datumPodpisu: "Datum podpisu", zaloha: "Záloha (Kč)", datumZalohy: "Datum úhrady zálohy", terminRealizace: "Termín realizace", poznamka: "Poznámka" },
+  system: { panelTyp: "Typ panelu", panelPocet: "Počet panelů (ks)", panelKwp: "Výkon (kWp)", stridacTyp: "Typ střídače", stridacSN: "SN střídače", stridacFirmware: "Firmware", baterieTyp: "Typ baterie", bateriePocet: "Počet baterií (ks)", baterieKwh: "Kapacita (kWh)", baterieSN: "SN baterií", bms: "BMS", backup: "Back-up", regulace: "Regulace", elmr: "ELMR úprava", rozvadecDC: "Rozvaděč DC", bojlerTyp: "Typ bojleru", bojlerObjem: "Objem (l)", bojlerKw: "Výkon topného tělesa", bojlerSN: "SN bojleru", rozvadecTyp: "Typ rozvaděče", rozvadecOkruhy: "Počet okruhů", rozvadecProud: "Jmenovitý proud", hromoJimac: "Typ jímací soustavy", hromoSvody: "Počet svodů", hromoUzemneni: "Typ uzemnění", poznamka: "Poznámka" },
+  montaz: { datumMontaze: "Datum montáže", technici: "Technici", elektroHodiny: "Elektro (dny)", strechaHodiny: "Střecha (dny)", instalater: "Instalatér (dny)", doprava: "Doprava (km)", prubezhPoznamky: "Průběžné poznámky", poznamka: "Poznámka" },
+  predani: { datumPredani: "Datum předání", technik: "Technik", protokolCislo: "Číslo protokolu", stavElektrarny: "Stav elektrárny", vadyBraniciUzivani: "Vady bránící užívání", vadyNebraniciUzivani: "Vady nebránící užívání", poznamka: "Poznámka" },
+  dotace: { typ: "Typ dotace", kraj: "Kraj", datumPodani: "Datum podání", stav: "Stav žádosti", datumSchvaleni: "Datum schválení", datumVyplaceni: "Datum vyplacení", poznamka: "Poznámka" },
+  fakturace: { zalohaFaktura: "Č. faktury (záloha)", zalohaKc: "Částka zálohy (Kč)", zalohaDatum: "Datum splatnosti zálohy", zalohaUhrazena: "Záloha uhrazena", doplatekFaktura: "Č. faktury (doplatek)", doplatekKc: "Částka doplatku (Kč)", doplatekDatum: "Datum splatnosti doplatku", doplatekUhrazen: "Doplatek uhrazen", poznamka: "Poznámka" },
+};
+
+function buildSheetHtmlBody(data, contractPhotos) {
+  const parts = [];
+
+  parts.push(`<div style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:2px;">${escHtml(data._nazev || "Zakázka")}</div>
+    <div style="font-size:11px;color:#64748b;margin-bottom:18px;">Zakázkový list — export ${new Date().toLocaleDateString("cs-CZ")}</div>`);
+
+  const simple = (id) => {
+    const vals = data[id] || {};
+    const labels = FIELD_LABELS[id];
+    const html = Object.entries(labels).map(([k, l]) => pdfField(l, vals[k])).join("");
+    return pdfSection(SEKCE.find(s => s.id === id), html);
+  };
+
+  parts.push(simple("zakaznik"));
+  parts.push(simple("nabidka"));
+  parts.push(simple("smlouva"));
+
+  {
+    const sys = data.system || {};
+    let html = pdfField("Typ zakázky", TYP_ZAKAZKY_LABEL[sys.typZakazky] || sys.typZakazky);
+    html += Object.entries(FIELD_LABELS.system).filter(([k]) => sys[k]).map(([k, l]) => pdfField(l, sys[k])).join("");
+    if ((sys.elektroPolozky || []).length > 0) {
+      html += `<div style="margin-top:8px;font-weight:700;font-size:11px;color:#475569;">Instalované technologie</div>`;
+      html += sys.elektroPolozky.map((p, i) => pdfField(`#${i + 1} ${p.nazev || ""}`, p.popis)).join("");
+    }
+    if ((sys.hromoPolozky || []).length > 0) {
+      html += `<div style="margin-top:8px;font-weight:700;font-size:11px;color:#475569;">Instalované komponenty</div>`;
+      html += sys.hromoPolozky.map((p, i) => pdfField(`#${i + 1} ${p.nazev || ""}`, p.popis)).join("");
+    }
+    parts.push(pdfSection(SEKCE.find(s => s.id === "system"), html));
+  }
+
+  {
+    const zaruky = data.zaruky || [];
+    const html = zaruky.length === 0 ? `<div style="color:#94a3b8;font-size:11px;">Žádné záruky</div>` : zaruky.map(z => {
+      const instalace = z.datumInstalace ? new Date(z.datumInstalace.split(".").reverse().join("-")) : null;
+      const vyprseni = instalace ? new Date(instalace.getFullYear() + Number(z.delkaLet || 0), instalace.getMonth(), instalace.getDate()) : null;
+      return `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
+        <div style="font-weight:700;font-size:12px;color:#0f172a;">${escHtml(z.nazev || "Záruka")}</div>
+        ${pdfField("Datum instalace", z.datumInstalace)}
+        ${pdfField("Délka záruky", z.delkaLet ? z.delkaLet + " let" : "")}
+        ${pdfField("Vyprší", vyprseni ? vyprseni.toLocaleDateString("cs-CZ") : "")}
+        ${pdfField("Poznámka", z.poznamka)}
+      </div>`;
+    }).join("");
+    parts.push(pdfSection(SEKCE.find(s => s.id === "zaruky"), html));
+  }
+
+  parts.push(simple("montaz"));
+  parts.push(simple("predani"));
+  parts.push(simple("dotace"));
+  parts.push(simple("fakturace"));
+
+  {
+    const b = data.bilance || {};
+    const rows = [["Materiál", "planMaterialNaklad", "skutMaterialNaklad"], ["Práce", "planPraceNaklad", "skutPraceNaklad"], ["Doprava", "planDopravaNaklad", "skutDopravaNaklad"], ["Celkem náklad", "planCelkemNaklad", "skutCelkemNaklad"], ["Prodejní cena (bez DPH)", "planProdejBezDph", "skutProdejBezDph"]];
+    let html = `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
+      <tr><th style="text-align:left;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#64748b;">Položka</th><th style="text-align:right;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#2E9BE0;">Plán</th><th style="text-align:right;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#10b981;">Skutečnost</th></tr>
+      ${rows.map(([l, pk, sk]) => `<tr><td style="padding:4px 6px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:4px 6px;text-align:right;border-bottom:1px solid #f1f5f9;">${fmtKc(b[pk])}</td><td style="padding:4px 6px;text-align:right;border-bottom:1px solid #f1f5f9;">${fmtKc(b[sk])}</td></tr>`).join("")}
+    </table>`;
+    html += pdfField("Marže plán", (b.planMarzePct || "—") + " % / " + fmtKc(b.planMarzeKc));
+    html += pdfField("Marže skutečnost", (b.skutMarzePct || "—") + " % / " + fmtKc(b.skutMarzeKc));
+    html += pdfField("Poznámky k odchylkám", b.odchylkaPoznamka);
+    parts.push(pdfSection(SEKCE.find(s => s.id === "bilance"), html));
+  }
+
+  {
+    const items = data.rozsireni || [];
+    const html = items.length === 0 ? `<div style="color:#94a3b8;font-size:11px;">Žádná rozšíření</div>` : items.map((r, i) => `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
+      <div style="font-weight:700;font-size:12px;color:#0f172a;">Rozšíření #${i + 1}</div>
+      ${pdfField("Datum", r.datum)}${pdfField("Technik", r.technik)}${pdfField("Popis", r.popis)}${pdfField("SN nového dílu", r.sn)}${pdfField("Cena", r.cena ? fmtKc(r.cena) : "")}
+    </div>`).join("");
+    parts.push(pdfSection(SEKCE.find(s => s.id === "rozsireni"), html));
+  }
+
+  {
+    const fotky = data.fotky || {};
+    let html = pdfField("Odkaz na OneDrive", fotky.onedrive);
+    if ((contractPhotos || []).length > 0) html += pdfField("Nahráno v Zakázkách", contractPhotos.length + " fotek");
+    FOTO_KATEGORIE.forEach(kat => {
+      const fc = (fotky.nahrane || []).filter(f => f.kategorie === kat);
+      if (fc.length > 0) html += pdfField(kat, fc.map(f => f.name).join(", "));
+    });
+    html += pdfField("Poznámka", fotky.poznamka);
+    parts.push(pdfSection(SEKCE.find(s => s.id === "fotky"), html));
+  }
+
+  {
+    const dok = data.dokumenty || {};
+    const list = [
+      { key: "smlouva", label: "Smlouva o dodání FVE" },
+      { key: "plnaMoc", label: "Plná moc" },
+      { key: "predavaci", label: "Předávací protokol FVE" },
+      { key: "protokolOchr", label: "Protokol nastavení ochran" },
+      { key: "instalacniVM", label: "Instalační dokument VM A1" },
+      { key: "zadostPripojeni", label: "Žádost o připojení k DS" },
+      { key: "revize", label: "Revizní zpráva" },
+    ];
+    let html = list.map(doc => {
+      const d2 = dok[doc.key] || { stav: "ceka", datum: "" };
+      const stav = STAV_DOC[d2.stav]?.label || "Čeká";
+      return pdfField(doc.label, `${stav}${d2.datum ? " · " + d2.datum : ""}${d2.soubor ? " · soubor: " + d2.soubor.name : ""}`);
+    }).join("");
+    (dok.extra || []).forEach(doc => { html += pdfField(doc.nazev || "Dokument", `${doc.poznamka || ""}${doc.soubor ? " · soubor: " + doc.soubor.name : ""}`); });
+    parts.push(pdfSection(SEKCE.find(s => s.id === "dokumenty"), html));
+  }
+
+  {
+    const items = data.servis || [];
+    const html = items.length === 0 ? `<div style="color:#94a3b8;font-size:11px;">Žádné servisní zásahy</div>` : items.map((z, i) => `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
+      <div style="font-weight:700;font-size:12px;color:#0f172a;">Zásah #${i + 1}</div>
+      ${pdfField("Datum", z.datum)}${pdfField("Technik", z.technik)}${pdfField("Popis problému", z.problem)}${pdfField("Řešení", z.reseni)}${pdfField("Vyměněné díly", z.vymeneneDily)}${pdfField("SN nového dílu", z.snNovehoDilu)}
+    </div>`).join("");
+    parts.push(pdfSection(SEKCE.find(s => s.id === "servis"), html));
+  }
+
+  return `<div style="font-family:'DM Sans',Arial,sans-serif;padding:28px;background:#fff;color:#0f172a;">${parts.join("")}</div>`;
+}
+
+async function exportSheetPdf(data, contractPhotos) {
+  const [{ jsPDF }, html2canvasMod] = await Promise.all([
+    safeImportSheet(() => import("jspdf")), safeImportSheet(() => import("html2canvas")),
+  ]);
+  const html2canvas = html2canvasMod.default;
+
+  const el = document.createElement("div");
+  el.style.position = "fixed";
+  el.style.left = "-9999px";
+  el.style.top = "0";
+  el.style.width = `${(595.27 * 4 / 3).toFixed(2)}px`;
+  el.style.background = "#fff";
+  el.innerHTML = buildSheetHtmlBody(data, contractPhotos);
+
+  document.body.appendChild(el);
+  try {
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const pageWidth = 210, pageHeight = 297;
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height / canvas.width) * imgWidth;
+    const imgData = canvas.toDataURL("image/png");
+    let heightLeft = imgHeight, position = 0;
+    doc.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      doc.addPage();
+      doc.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+    doc.save(`Zakazkovy-list-${(data._nazev || "zakazka").replace(/[^\w-]+/g, "_")}.pdf`);
+  } finally {
+    document.body.removeChild(el);
+  }
+}
+
 export default function ZakazkaSheet({ customers, currentUser, initialContractId, initialContractName, onClearInitial }) {
   const [sheets, setSheets] = useState([]);
   const [search, setSearch] = useState("");
@@ -150,6 +351,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const [contractPhotos, setContractPhotos] = useState([]); // fotky nahrané přímo u zakázky (záložka Zakázky)
   const [savedSnapshot, setSavedSnapshot] = useState(null); // poslední uložený stav — pro varování při odchodu s neuloženými změnami
   const [linkedCustomer, setLinkedCustomer] = useState(null); // zákazník napojený na zakázku (z modulu Zákazníci)
+  const [pdfExporting, setPdfExporting] = useState(false);
 
   const isDirty = () => data && savedSnapshot !== null && JSON.stringify(data) !== savedSnapshot;
   const confirmLeave = () => !isDirty() || confirm("V zakázkovém listu máš neuložené změny. Opravdu odejít bez uložení?");
@@ -240,6 +442,28 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const updArr = (sekce, id, key, val) => setData(d => ({ ...d, [sekce]: d[sekce].map(r => r.id === id ? { ...r, [key]: val } : r) }));
   const delArr = (sekce, id) => setData(d => ({ ...d, [sekce]: d[sekce].filter(r => r.id !== id) }));
   const addArr = (sekce, item) => setData(d => ({ ...d, [sekce]: [...(d[sekce] || []), { id: Date.now(), ...item }] }));
+
+  // Datum montáže automaticky předvyplní počátek záruční doby u záruk, které
+  // ještě žádné datum instalace nemají (aby se nemuselo zadávat dvakrát).
+  const handleDatumMontaze = (v) => {
+    setData(d => ({
+      ...d,
+      montaz: { ...d.montaz, datumMontaze: v },
+      zaruky: (d.zaruky || []).map(z => (!z.datumInstalace && v) ? { ...z, datumInstalace: v } : z),
+    }));
+  };
+
+  const handleExportPdf = async () => {
+    if (!data) return;
+    setPdfExporting(true);
+    try {
+      await exportSheetPdf(data, contractPhotos);
+    } catch (e) {
+      alert("Export PDF selhal: " + e.message);
+    } finally {
+      setPdfExporting(false);
+    }
+  };
 
   // ─── Upload fotek na OneDrive (FirmaCRM/Zakázky/[název]/Fotky) ─────────────
   const handleFotoUpload = async (kategorie, files) => {
@@ -409,6 +633,9 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
               {s.icon} {s.label}
             </div>
           ))}
+          <button onClick={handleExportPdf} disabled={pdfExporting} style={{...S.btn(pdfExporting?"#334155":"#2E9BE0"),padding:"7px 16px",flexShrink:0,cursor:pdfExporting?"default":"pointer",opacity:pdfExporting?0.7:1}}>
+            {pdfExporting?"⏳ Generuji...":"📄 Exportovat PDF"}
+          </button>
           <button onClick={save} disabled={saving} style={{...S.btn(saving?"#334155":"#16a34a"),padding:"7px 18px",flexShrink:0,cursor:saving?"default":"pointer",opacity:saving?0.7:1}}>
             {saving?"⏳ Ukládám...":"💾 Uložit"}
           </button>
@@ -700,7 +927,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         <div id="s-montaz" style={S.card(false,"#ef4444")}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="montaz")} stav={st.montaz||"Čeká"} onStav={v=>updStav("montaz",v)}/>
           <div style={S.body}>
-            <EF label="Datum montáže" value={data.montaz.datumMontaze}    onChange={v=>upd("montaz","datumMontaze",v)}/>
+            <EF label="Datum montáže" value={data.montaz.datumMontaze}    onChange={handleDatumMontaze}/>
             <EF label="Technici"      value={data.montaz.technici}         onChange={v=>upd("montaz","technici",v)}/>
             <div style={S.div}/>
             <div style={{display:"flex",gap:10}}>
