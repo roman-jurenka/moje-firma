@@ -2131,6 +2131,9 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
   const [newD, setNewD] = useState({ name: "", value: "", stage: "Nový", customerId: "", assigned_to: "" });
   const [dragId, setDragId] = useState(null);
   const [selectedDeal, setSelectedDeal] = useState(null);
+  const [editingDeal, setEditingDeal] = useState(false);
+  const [editVals, setEditVals] = useState({ name: "", value: "" });
+  const [lostReasonDraft, setLostReasonDraft] = useState("");
 
   const save = async () => {
     if (!newD.name) return;
@@ -2143,10 +2146,36 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
     closeModal();
   };
 
+  const startEditDeal = () => {
+    setEditVals({ name: selectedDeal.name || "", value: selectedDeal.value || "" });
+    setEditingDeal(true);
+  };
+
+  const saveEditDeal = async () => {
+    if (!editVals.name) return;
+    const patch = { name: editVals.name, value: Number(editVals.value) || 0 };
+    await supabase.from("deals").update(patch).eq("id", selectedDeal.id);
+    setDeals(deals.map(d => d.id === selectedDeal.id ? { ...d, ...patch } : d));
+    setSelectedDeal({ ...selectedDeal, ...patch });
+    setEditingDeal(false);
+  };
+
   const moveStage = async (deal, newStage) => {
     await supabase.from("deals").update({ stage: newStage }).eq("id", deal.id);
     setDeals(deals.map(d => d.id === deal.id ? { ...d, stage: newStage } : d));
     if (selectedDeal?.id === deal.id) setSelectedDeal({ ...selectedDeal, stage: newStage });
+    if (newStage === "Prohráno") {
+      setLostReasonDraft(deal.lost_reason || "");
+      setModal({ type: "dealLostReason", data: { ...deal, stage: newStage } });
+    }
+  };
+
+  const saveLostReason = async () => {
+    const id = modal.data.id;
+    await supabase.from("deals").update({ lost_reason: lostReasonDraft }).eq("id", id);
+    setDeals(deals.map(d => d.id === id ? { ...d, lost_reason: lostReasonDraft } : d));
+    if (selectedDeal?.id === id) setSelectedDeal({ ...selectedDeal, lost_reason: lostReasonDraft });
+    closeModal();
   };
 
   const deleteDeal = async (id) => {
@@ -2212,8 +2241,20 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
         return (
           <div style={{ ...S.card, marginTop: 8, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#2E9BE0") }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-              <div>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 16 }}>{selectedDeal.name}</div>
+              <div style={{ flex: 1 }}>
+                {editingDeal ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <input style={{ ...S.input, width: 220, marginBottom: 0 }} value={editVals.name} onChange={e => setEditVals({ ...editVals, name: e.target.value })} placeholder="Název" />
+                    <input style={{ ...S.input, width: 130, marginBottom: 0 }} type="number" value={editVals.value} onChange={e => setEditVals({ ...editVals, value: e.target.value })} placeholder="Hodnota (Kč)" />
+                    <button style={{ ...S.btn("#34d399"), padding: "7px 14px", fontSize: 12 }} onClick={saveEditDeal}>✓ Uložit</button>
+                    <button style={{ ...S.btn("#334155"), padding: "7px 14px", fontSize: 12 }} onClick={() => setEditingDeal(false)}>Zrušit</button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ fontWeight: 700, color: "#fff", fontSize: 16 }}>{selectedDeal.name}</div>
+                    <button title="Upravit" onClick={startEditDeal} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#94a3b8" }}>✏️</button>
+                  </div>
+                )}
                 {cust && <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>🏢 {cust.name}{cust.phone ? " · " + cust.phone : ""}</div>}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -2234,6 +2275,13 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
               <div><div style={{ fontSize: 11, color: "#64748b" }}>Vede případ</div><div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.assigned_to || "—"}</div></div>
               <div><div style={{ fontSize: 11, color: "#64748b" }}>Fáze</div><span style={S.tag(STAGE_COLORS[selectedDeal.stage])}>{selectedDeal.stage}</span></div>
             </div>
+
+            {selectedDeal.stage === "Prohráno" && selectedDeal.lost_reason && (
+              <div style={{ background: "#ef444422", border: "1px solid #ef4444", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: "#f87171", fontWeight: 700, marginBottom: 3 }}>DŮVOD PROHRY</div>
+                <div style={{ color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.lost_reason}</div>
+              </div>
+            )}
 
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Přesunout do fáze:</div>
@@ -2280,6 +2328,16 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
             <option value="">— vyberte —</option>{(employees || []).map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
           </select>
           <ModalActions onSave={save} onClose={closeModal} />
+        </div></div>
+      )}
+
+      {modal?.type === "dealLostReason" && (
+        <div style={S.modal}><div style={S.modalBox}>
+          <ModalHeader title="Důvod prohry" onClose={closeModal} />
+          <div style={{ color: "#64748b", fontSize: 13, marginBottom: 10 }}>{modal.data.name}</div>
+          <label style={S.label}>Proč jsme obchodní případ prohráli?</label>
+          <textarea style={{ ...S.input, minHeight: 80, resize: "vertical" }} value={lostReasonDraft} onChange={e => setLostReasonDraft(e.target.value)} placeholder="např. cena, termín, konkurence..." />
+          <ModalActions onSave={saveLostReason} onClose={closeModal} />
         </div></div>
       )}
     </>
