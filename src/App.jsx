@@ -930,7 +930,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "customers" && <Customers
           customers={customers} setCustomers={setCustomers}
           invoices={invoices} deals={deals} communication={communication}
-          contracts={contracts}
+          contracts={contracts} tasks={tasks}
           search={search} setSearch={setSearch}
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
@@ -1898,8 +1898,9 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
 
 // ─── ZÁKAZNÍCI ────────────────────────────────────────────────────────────────
 
-function Customers({ customers, setCustomers, invoices, deals, communication, contracts, search, setSearch, modal, setModal, closeModal }) {
+function Customers({ customers, setCustomers, invoices, deals, communication, contracts, tasks, search, setSearch, modal, setModal, closeModal }) {
   const [newC, setNewC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový" });
+  const [editC, setEditC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový" });
   const [showArchived, setShowArchived] = useState(false);
   const archivedCount = customers.filter(c => c.archived).length;
   const filtered = customers.filter(c =>
@@ -1916,6 +1917,21 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
     }).select().single();
     if (row) setCustomers([...customers, row]);
     setNewC({ name: "", company: "", email: "", phone: "", tag: "Nový" });
+    closeModal();
+  };
+
+  const openEdit = (c) => {
+    setEditC({ id: c.id, name: c.name || "", company: c.company || "", email: c.email || "", phone: c.phone || "", tag: c.tag || "Nový" });
+    setModal({ type: "editCustomer", data: c });
+  };
+
+  const saveEdit = async () => {
+    if (!editC.name) return;
+    await supabase.from("customers").update({
+      name: editC.name, company: editC.company, email: editC.email,
+      phone: editC.phone, tag: editC.tag,
+    }).eq("id", editC.id);
+    setCustomers(customers.map(c => c.id === editC.id ? { ...c, ...editC } : c));
     closeModal();
   };
 
@@ -1969,11 +1985,16 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
                   <td style={S.td}>{custInvoices.length} faktur</td>
                   <td style={S.td}><span style={S.tag(TAG_COLORS[c.tag] || "#2E9BE0")}>{c.tag}</span></td>
                   <td style={S.td}>
-                    {c.archived ? (
-                      <button onClick={e => { e.stopPropagation(); restoreCustomer(c.id); }} style={{ ...S.btn("#34d399"), padding: "4px 10px", fontSize: 11 }}>↺ Obnovit</button>
-                    ) : (
-                      <button onClick={e => { e.stopPropagation(); archiveCustomer(c.id); }} style={{ ...S.btn("#ef4444"), padding: "4px 10px", fontSize: 11 }}>🗑️ Smazat</button>
-                    )}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {!c.archived && (
+                        <button onClick={e => { e.stopPropagation(); openEdit(c); }} style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 11 }}>✏️ Upravit</button>
+                      )}
+                      {c.archived ? (
+                        <button onClick={e => { e.stopPropagation(); restoreCustomer(c.id); }} style={{ ...S.btn("#34d399"), padding: "4px 10px", fontSize: 11 }}>↺ Obnovit</button>
+                      ) : (
+                        <button onClick={e => { e.stopPropagation(); archiveCustomer(c.id); }} style={{ ...S.btn("#ef4444"), padding: "4px 10px", fontSize: 11 }}>🗑️ Smazat</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -1998,11 +2019,31 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
         </div>
       )}
 
+      {modal?.type === "editCustomer" && (
+        <div style={S.modal}>
+          <div style={S.modalBox}>
+            <ModalHeader title="Upravit zákazníka" onClose={closeModal} />
+            {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"]].map(([l, k]) => (
+              <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={editC[k]} onChange={e => setEditC({ ...editC, [k]: e.target.value })} /></div>
+            ))}
+            <label style={S.label}>Štítek</label>
+            <select style={S.select} value={editC.tag} onChange={e => setEditC({ ...editC, tag: e.target.value })}>
+              {["Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
+            </select>
+            <ModalActions onSave={saveEdit} onClose={closeModal} />
+          </div>
+        </div>
+      )}
+
       {modal?.type === "customerDetail" && (() => {
         const c = modal.data;
         const custInv = invoices.filter(i => i.customerId === c.id);
         const custDeals = deals.filter(d => d.customerId === c.id);
         const custContracts = (contracts || []).filter(z => z.customer_id === c.id);
+        const custComm = (communication || []).filter(m => m.customerId === c.id)
+          .slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        const custTasks = (tasks || []).filter(t => t.customerId === c.id);
+        const custOpenTasks = custTasks.filter(t => !t.done);
         const CONTRACT_STATUS_COLOR = { "Příprava": "#f59e0b", "Probíhá": "#2E9BE0", "Dokončeno": "#34d399", "Pozastaveno": "#ef4444" };
         return (
           <div style={S.modal} onClick={closeModal}>
@@ -2014,7 +2055,10 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
                 {c.phone && <span> · <a href={`tel:${c.phone}`} style={{ color: "#16a34a" }}>📞 {c.phone}</a></span>}
                 {c.email_contact && c.email_contact !== c.email && <span> · <a href={`mailto:${c.email_contact}`} style={{ color: "#a78bfa" }}>✉️ {c.email_contact}</a></span>}
               </div>
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 16, display: "flex", gap: 8 }}>
+                {!c.archived && (
+                  <button onClick={() => openEdit(c)} style={{ ...S.btnGhost, padding: "6px 14px", fontSize: 12 }}>✏️ Upravit zákazníka</button>
+                )}
                 {c.archived ? (
                   <button onClick={() => restoreCustomer(c.id)} style={{ ...S.btn("#34d399"), padding: "6px 14px", fontSize: 12 }}>↺ Obnovit zákazníka</button>
                 ) : (
@@ -2022,7 +2066,29 @@ function Customers({ customers, setCustomers, invoices, deals, communication, co
                 )}
               </div>
 
-              <SectionTitle>🔧 Zakázky ({custContracts.length})</SectionTitle>
+              <SectionTitle>💬 Poslední komunikace ({custComm.length})</SectionTitle>
+              {custComm.length === 0 ? <Empty /> : custComm.slice(0, 5).map(m => (
+                <div key={m.id} style={{ padding: "8px 0", borderBottom: "1px solid #1a2035" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#94a3b8" }}>
+                    <span>{m.type}</span>
+                    <span>{fmtDateCz ? fmtDateCz(m.date) : m.date}</span>
+                  </div>
+                  <div style={{ color: "#e2e8f0", fontSize: 13 }}>{m.note}</div>
+                </div>
+              ))}
+
+              <SectionTitle style={{ marginTop: 16 }}>✅ Otevřené úkoly ({custOpenTasks.length})</SectionTitle>
+              {custOpenTasks.length === 0 ? <Empty /> : custOpenTasks.map(t => (
+                <div key={t.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1a2035" }}>
+                  <span style={{ color: "#e2e8f0", fontSize: 13 }}>{t.title}</span>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <span style={{ color: "#94a3b8", fontSize: 12 }}>{t.due ? (fmtDateCz ? fmtDateCz(t.due) : t.due) : "—"}</span>
+                    <span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span>
+                  </div>
+                </div>
+              ))}
+
+              <SectionTitle style={{ marginTop: 16 }}>🔧 Zakázky ({custContracts.length})</SectionTitle>
               {custContracts.length === 0 ? <Empty /> : custContracts.map(z => (
                 <div key={z.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: "1px solid #1a2035" }}>
                   <div>
@@ -6796,6 +6862,16 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         </div>
       )}
     </>
+  );
+}
+
+// ─── SECTION TITLE ─────────────────────────────────────────────────────────────
+
+function SectionTitle({ children, style }) {
+  return (
+    <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, ...style }}>
+      {children}
+    </div>
   );
 }
 
