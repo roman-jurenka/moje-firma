@@ -1037,9 +1037,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* ── PROJEKTY ── */}
         {tab === "projects" && <Projects
           projects={projects} setProjects={setProjects}
-          customers={customers} employees={employees}
+          customers={customers} employees={employees} contracts={contracts}
           templates={templates} setTemplates={setTemplates}
           modal={modal} setModal={setModal} closeModal={closeModal}
+          setTab={setTab}
         />}
 
         {/* ── NÁKLADY ── */}
@@ -4205,7 +4206,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
 
 // ─── PROJEKTY ─────────────────────────────────────────────────────────────────
 
-function Projects({ projects, setProjects, customers, employees, templates, setTemplates, modal, setModal, closeModal }) {
+function Projects({ projects, setProjects, customers, employees, contracts, templates, setTemplates, modal, setModal, closeModal, setTab }) {
   const [newP, setNewP] = useState({ name: "", customerId: "", status: "Plánováno", progress: 0, budget: "", spent: 0, deadline: "", assignees: [], steps: [] });
   const [expandedId, setExpandedId] = useState(null);
   const [newStep, setNewStep] = useState({});
@@ -4214,13 +4215,27 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
   const [newTemplate, setNewTemplate] = useState({ name: "", icon: "📋", steps: [""] });
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [projectTab, setProjectTab] = useState({}); // { [projectId]: "kroky" | "material" }
-  const [deliveryItems, setDeliveryItems] = useState({}); // { [projectId]: [...items] }
+  const [deliveryItems, setDeliveryItems] = useState({}); // { [projectId]: [...items] } — jen pro projekty BEZ napojené zakázky (starší/samostatné)
   const [newDeliveryItem, setNewDeliveryItem] = useState({}); // { [projectId]: {name, quantity, unit} }
   const [editingItem, setEditingItem] = useState({}); // { [itemId]: quantity }
+  const [contractDN, setContractDN] = useState({}); // { [contractId]: [...delivery_notes] } — soupis práce ze Zakázek, jen náhled
+  const [contractDNItems, setContractDNItems] = useState({}); // { [contractId]: [...delivery_note_items napříč všemi listy dané zakázky] }
 
   const loadDeliveryItems = async (projectId) => {
     const { data } = await supabase.from("delivery_items").select("*").eq("project_id", projectId).order("created_at");
     setDeliveryItems(prev => ({ ...prev, [projectId]: data || [] }));
+  };
+
+  // Projekty vzniklé ze zakázky mají bohatší Soupis práce přímo v Zakázkách
+  // (dodavatel, marže, položky) — tady se jen zobrazí, úprava zůstává tam,
+  // aby v appce neexistovaly dvě nezávislé evidence materiálu pro totéž.
+  const loadContractDeliveryNotes = async (contractId) => {
+    const { data: notes } = await supabase.from("delivery_notes").select("*").eq("contract_id", contractId).order("created_at");
+    setContractDN(prev => ({ ...prev, [contractId]: notes || [] }));
+    const noteIds = (notes || []).map(n => n.id);
+    if (noteIds.length === 0) { setContractDNItems(prev => ({ ...prev, [contractId]: [] })); return; }
+    const { data: items } = await supabase.from("delivery_note_items").select("*").in("delivery_note_id", noteIds);
+    setContractDNItems(prev => ({ ...prev, [contractId]: items || [] }));
   };
 
   const addDeliveryItem = async (projectId) => {
@@ -4441,7 +4456,10 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                   <button onClick={() => {
                     const newExpanded = isExpanded ? null : p.id;
                     setExpandedId(newExpanded);
-                    if (newExpanded && !deliveryItems[newExpanded]) loadDeliveryItems(newExpanded);
+                    if (newExpanded) {
+                      if (p.contract_id && !contractDN[p.contract_id]) loadContractDeliveryNotes(p.contract_id);
+                      else if (!p.contract_id && !deliveryItems[newExpanded]) loadDeliveryItems(newExpanded);
+                    }
                   }}
                     style={{ background: "#e2e8f0", border: "1px solid #252d45", borderRadius: 8, padding: "5px 12px", color: "#475569", cursor: "pointer", fontSize: 12 }}>
                     {isExpanded ? "▲ Sbalit" : "▼ Detail"}
@@ -4544,10 +4562,10 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                         const isEditingNote = editingNote[step.id] !== undefined;
                         return (
                           <div key={step.id} style={{ display: "flex", gap: 12, padding: "10px 0", borderBottom: "1px solid #1a2035", alignItems: "flex-start" }}>
-                            {/* Číslo a checkbox */}
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 2 }}>
-                              <div style={{ width: 22, height: 22, borderRadius: "50%", background: step.done ? "#2E9BE0" : "#e2e8f0", border: step.done ? "none" : "1px solid #252d45", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: step.done ? "#fff" : "#334155", flexShrink: 0, cursor: "pointer", fontWeight: 700 }}
-                                onClick={() => toggleStep(p.id, step.id)}>
+                            {/* Číslo a checkbox — dotyková plocha 44×44px kvůli pohodlnému ovládání na mobilu */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, marginTop: -9, marginBottom: -9, marginLeft: -11, flexShrink: 0, cursor: "pointer", touchAction: "manipulation" }}
+                              onClick={() => toggleStep(p.id, step.id)}>
+                              <div style={{ width: 24, height: 24, borderRadius: "50%", background: step.done ? "#2E9BE0" : "#e2e8f0", border: step.done ? "none" : "1px solid #252d45", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: step.done ? "#fff" : "#334155", flexShrink: 0, fontWeight: 700 }}>
                                 {step.done ? "✓" : idx + 1}
                               </div>
                             </div>
@@ -4607,8 +4625,49 @@ function Projects({ projects, setProjects, customers, employees, templates, setT
                     </div>
                   )}
 
-                  {/* ZÁLOŽKA MATERIÁL */}
-                  {(projectTab[p.id] || "kroky") === "material" && (
+                  {/* ZÁLOŽKA MATERIÁL — projekt napojený na zakázku: jen náhled Soupisu práce ze Zakázek (tam je i editace) */}
+                  {(projectTab[p.id] || "kroky") === "material" && p.contract_id && (() => {
+                    const notes = contractDN[p.contract_id] || [];
+                    const items = contractDNItems[p.contract_id] || [];
+                    return (
+                      <div>
+                        <div style={{ background: "#2E9BE018", border: "1px solid #2E9BE044", borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 12, color: "#93c5fd", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <span>📦 Soupis práce z navázané zakázky — náhled, úprava se dělá v Zakázkách.</span>
+                          {setTab && <button onClick={() => setTab("contracts")} style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 11, flexShrink: 0 }}>→ Otevřít v Zakázkách</button>}
+                        </div>
+                        {notes.length === 0 && <Empty />}
+                        {notes.map(dn => {
+                          const dnItems = items.filter(i => i.delivery_note_id === dn.id);
+                          return (
+                            <div key={dn.id} style={{ background: "#0a0d14", borderRadius: 10, padding: 14, marginBottom: 10 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                                <span style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{dn.supplier || "Dodavatel neuveden"}</span>
+                                {dn.code && <span style={{ fontSize: 11, color: "#475569" }}>{dn.code}</span>}
+                              </div>
+                              {dnItems.length === 0 ? (
+                                <div style={{ fontSize: 12, color: "#334155" }}>Žádné položky.</div>
+                              ) : (
+                                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                  <tbody>
+                                    {dnItems.map(item => (
+                                      <tr key={item.id} style={{ borderBottom: "1px solid #1a2035" }}>
+                                        <td style={{ padding: "6px 4px", color: "#e2e8f0", fontSize: 12 }}>{item.description}</td>
+                                        <td style={{ padding: "6px 4px", color: "#94a3b8", fontSize: 12, textAlign: "right" }}>{item.quantity} {item.unit}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                              {dn.notes && <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>📝 {dn.notes}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ZÁLOŽKA MATERIÁL — projekt bez napojené zakázky: starší vlastní dodací list */}
+                  {(projectTab[p.id] || "kroky") === "material" && !p.contract_id && (
                     <div>
                       <div style={{ fontWeight: 700, color: "#fff", fontSize: 13, marginBottom: 14 }}>📦 Dodací list — položky materiálu</div>
 
