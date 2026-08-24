@@ -1045,17 +1045,18 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {/* ── NÁKLADY ── */}
         {tab === "costs" && <Costs
-          costs={costs} setCosts={setCosts}
+          costs={costs} setCosts={setCosts} contracts={contracts}
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
 
-        {tab === "finance" && <FinanceModule currentUser={currentUser} employees={employees} />}
+        {tab === "finance" && <FinanceModule currentUser={currentUser} employees={employees} contracts={contracts} />}
 
         {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} />}
 
         {tab === "reports" && <Reports
           customers={customers} deals={deals} invoices={invoices}
           costs={costs} employees={employees} projects={projects}
+          contracts={contracts} costEntries={costEntries}
         />}
 
         {tab === "ai" && <AIAssistant
@@ -4857,8 +4858,8 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
 
 // ─── NÁKLADY ─────────────────────────────────────────────────────────────────
 
-function Costs({ costs, setCosts, modal, setModal, closeModal }) {
-  const [newC, setNewC] = useState({ date: "", category: "Mzdy", description: "", amount: "", recurring: false });
+function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
+  const [newC, setNewC] = useState({ date: "", category: "Mzdy", description: "", amount: "", recurring: false, contractId: "" });
   const [filterCat, setFilterCat] = useState("Vše");
   const [selectedYear] = useState(2026);
 
@@ -4867,9 +4868,10 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
     const { data: row } = await supabase.from("costs").insert({
       date: newC.date, category: newC.category, description: newC.description,
       amount: Number(newC.amount), recurring: newC.recurring,
+      contract_id: newC.contractId ? Number(newC.contractId) : null,
     }).select().single();
     if (row) setCosts([...costs, row]);
-    setNewC({ date: "", category: "Mzdy", description: "", amount: "", recurring: false });
+    setNewC({ date: "", category: "Mzdy", description: "", amount: "", recurring: false, contractId: "" });
     closeModal();
   };
 
@@ -5034,21 +5036,25 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
           </div>
         </div>
         <table style={S.table}>
-          <thead><tr>{["Datum", "Kategorie", "Popis", "Částka", "Typ", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Datum", "Kategorie", "Popis", "Zakázka", "Částka", "Typ", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
-            {filtered.sort((a, b) => b.date.localeCompare(a.date)).map(c => (
-              <tr key={c.id}>
-                <td style={S.td}>{fmtDateCz(c.date)}</td>
-                <td style={S.td}><span style={S.tag(CAT_COLORS[c.category] || "#2E9BE0")}>{c.category}</span></td>
-                <td style={{ ...S.td, color: "#1A1A1A" }}>{c.description}</td>
-                <td style={{ ...S.td, color: "#fff", fontWeight: 700 }}>{fmtKc(c.amount)}</td>
-                <td style={S.td}><span style={S.tag(c.recurring ? "#2E9BE0" : "#f59e0b")}>{c.recurring ? "Pravidelný" : "Jednorázový"}</span></td>
-                <td style={S.td}>
-                  <button onClick={() => deleteCost(c.id)}
-                    style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 16 }}>×</button>
-                </td>
-              </tr>
-            ))}
+            {filtered.sort((a, b) => b.date.localeCompare(a.date)).map(c => {
+              const contr = (contracts || []).find(k => k.id === c.contract_id);
+              return (
+                <tr key={c.id}>
+                  <td style={S.td}>{fmtDateCz(c.date)}</td>
+                  <td style={S.td}><span style={S.tag(CAT_COLORS[c.category] || "#2E9BE0")}>{c.category}</span></td>
+                  <td style={{ ...S.td, color: "#1A1A1A" }}>{c.description}</td>
+                  <td style={S.td}>{contr ? <span style={S.tag("#34d399")}>🔧 {contr.name}</span> : "—"}</td>
+                  <td style={{ ...S.td, color: "#fff", fontWeight: 700 }}>{fmtKc(c.amount)}</td>
+                  <td style={S.td}><span style={S.tag(c.recurring ? "#2E9BE0" : "#f59e0b")}>{c.recurring ? "Pravidelný" : "Jednorázový"}</span></td>
+                  <td style={S.td}>
+                    <button onClick={() => deleteCost(c.id)}
+                      style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 16 }}>×</button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -5066,6 +5072,10 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
           <input style={S.input} value={newC.description} onChange={e => setNewC({ ...newC, description: e.target.value })} />
           <label style={S.label}>Částka (Kč)</label>
           <input style={S.input} type="number" value={newC.amount} onChange={e => setNewC({ ...newC, amount: e.target.value })} />
+          <label style={S.label}>Zakázka (volitelné)</label>
+          <select style={S.select} value={newC.contractId} onChange={e => setNewC({ ...newC, contractId: e.target.value })}>
+            <option value="">— nepřiřazeno —</option>{(contracts || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
           <label style={{ ...S.label, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
             <input type="checkbox" checked={newC.recurring} onChange={e => setNewC({ ...newC, recurring: e.target.checked })} style={{ accentColor: "#2E9BE0" }} />
             Pravidelný náklad
@@ -5079,8 +5089,18 @@ function Costs({ costs, setCosts, modal, setModal, closeModal }) {
 
 // ─── REPORTY ──────────────────────────────────────────────────────────────────
 
-function Reports({ customers, deals, invoices, costs, employees, projects }) {
+function Reports({ customers, deals, invoices, costs, employees, projects, contracts, costEntries }) {
   const [period, setPeriod] = useState("2026");
+  const [cashflowEntries, setCashflowEntries] = useState([]);
+
+  // Náklady se dnes vedou na třech nezávislých místech (Náklady, náklady
+  // zakázky v Zakázkách, Finanční tok) — fáze 1 propojení: souhrn napříč
+  // všemi třemi zdroji podle zakázky, jen pro čtení, žádné sloučení dat.
+  useEffect(() => {
+    supabase.from("cashflow_entries").select("id, amount, direction, contract_id")
+      .eq("direction", "vydaj").not("contract_id", "is", null)
+      .then(({ data }) => setCashflowEntries(data || []));
+  }, []);
 
   const totalRevenue = invoices.filter(i => i.status === "Zaplacena").reduce((s, i) => s + i.amount, 0);
   const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
@@ -5120,6 +5140,18 @@ function Reports({ customers, deals, invoices, costs, employees, projects }) {
   // Projekty – rozpočet vs. utraceno
   const projectBudget = projects.reduce((s, p) => s + p.budget, 0);
   const projectSpent = projects.reduce((s, p) => s + p.spent, 0);
+
+  // Náklady podle zakázky napříč třemi evidencemi (Náklady / náklady zakázky / Finanční tok)
+  const costOf = (e) => e.amount_cost != null ? Number(e.amount_cost) : Number(e.quantity || 1) * Number(e.unit_price_cost || 0);
+  const contractsWithCosts = (contracts || [])
+    .map(c => {
+      const gen = costs.filter(x => x.contract_id === c.id).reduce((s, x) => s + Number(x.amount || 0), 0);
+      const entry = (costEntries || []).filter(x => x.contract_id === c.id).reduce((s, x) => s + costOf(x), 0);
+      const cash = cashflowEntries.filter(x => x.contract_id === c.id).reduce((s, x) => s + Number(x.amount || 0), 0);
+      return { contract: c, gen, entry, cash, total: gen + entry + cash };
+    })
+    .filter(r => r.total > 0)
+    .sort((a, b) => b.total - a.total);
 
   return (
     <>
@@ -5248,6 +5280,26 @@ function Reports({ customers, deals, invoices, costs, employees, projects }) {
             <span style={{ fontSize: 12, color: "#475569" }}>Celkem utraceno / rozpočet</span>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{fmtKc(projectSpent)} / {fmtKc(projectBudget)}</span>
           </div>
+        </div>
+
+        {/* Náklady podle zakázky — napříč Náklady / náklady zakázky / Finanční tok */}
+        <div style={S.card}>
+          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4, fontSize: 14 }}>🔧 Náklady podle zakázky (napříč evidencemi)</div>
+          <div style={{ fontSize: 11, color: "#475569", marginBottom: 16 }}>Součet z modulu Náklady, nákladů zakázky a Finančního toku — jen zakázky, kde je alespoň jedna položka přiřazená.</div>
+          {contractsWithCosts.length === 0 && <div style={{ fontSize: 12, color: "#334155" }}>Zatím žádné náklady přiřazené k zakázce. Přiřaď zakázku při zápisu v Nákladech nebo Finančním toku.</div>}
+          {contractsWithCosts.map(r => (
+            <div key={r.contract.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #1a2035" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 600 }}>{r.contract.name}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{fmtKc(r.total)}</span>
+              </div>
+              <div style={{ display: "flex", gap: 10, fontSize: 11, color: "#475569" }}>
+                {r.gen > 0 && <span>Náklady: {fmtKc(r.gen)}</span>}
+                {r.entry > 0 && <span>Náklady zakázky: {fmtKc(r.entry)}</span>}
+                {r.cash > 0 && <span>Finanční tok: {fmtKc(r.cash)}</span>}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* HR přehled */}

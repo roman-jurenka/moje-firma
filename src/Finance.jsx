@@ -108,7 +108,7 @@ async function preprocessImageForOcr(file) {
   return canvas;
 }
 
-export default function FinanceModule({ currentUser, employees = [] }) {
+export default function FinanceModule({ currentUser, employees = [], contracts = [] }) {
   const [settings, setSettings] = useState({ starting_balance: 0, starting_date: todayStr() });
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -229,14 +229,14 @@ export default function FinanceModule({ currentUser, employees = [] }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-              {["Datum", "Typ", "Popis", "Protistrana", "Nahrál", "Částka", "Doklad", "Stav", ""].map(h => (
+              {["Datum", "Typ", "Popis", "Zakázka", "Protistrana", "Nahrál", "Částka", "Doklad", "Stav", ""].map(h => (
                 <th key={h} style={{ padding: "10px 14px", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {monthEntries.length === 0 && (
-              <tr><td colSpan={9} style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>Žádné záznamy v tomto měsíci.</td></tr>
+              <tr><td colSpan={10} style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>Žádné záznamy v tomto měsíci.</td></tr>
             )}
             {monthEntries.map(e => (
               <tr key={e.id} style={{ borderTop: "1px solid #f1f5f9" }}>
@@ -247,6 +247,7 @@ export default function FinanceModule({ currentUser, employees = [] }) {
                   </span>
                 </td>
                 <td style={{ padding: "9px 14px" }}>{e.description || "—"}</td>
+                <td style={{ padding: "9px 14px" }}>{contracts.find(c => c.id === e.contract_id)?.name || "—"}</td>
                 <td style={{ padding: "9px 14px" }}>{e.counterparty || "—"}</td>
                 <td style={{ padding: "9px 14px" }}>{e.created_by || "—"}</td>
                 <td style={{ padding: "9px 14px", fontWeight: 700, color: e.direction === "prijem" ? "#065f46" : "#991b1b" }}>
@@ -275,7 +276,7 @@ export default function FinanceModule({ currentUser, employees = [] }) {
         <SettingsModal settings={settings} onSave={saveSettings} onClose={() => setModal(null)} />
       )}
       {modal === "entry" && (
-        <EntryModal onSave={addEntry} onClose={() => setModal(null)} currentUser={currentUser} />
+        <EntryModal onSave={addEntry} onClose={() => setModal(null)} currentUser={currentUser} contracts={contracts} />
       )}
     </div>
   );
@@ -377,13 +378,14 @@ function SettingsModal({ settings, onSave, onClose }) {
   );
 }
 
-function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false }) {
+function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false, contracts = [] }) {
   const [type, setType] = useState("uctenka");
   const [direction, setDirection] = useState(TYPY.uctenka.direction);
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayStr());
   const [description, setDescription] = useState("");
   const [counterparty, setCounterparty] = useState("");
+  const [contractId, setContractId] = useState("");
   const [photoUrl, setPhotoUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [ocrRunning, setOcrRunning] = useState(false);
@@ -448,6 +450,7 @@ function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false }
       description, counterparty, photo_url: photoUrl, ocr_raw_text: ocrText || null,
       paid_by_employee: type === "uctenka" ? paidByEmployee : false,
       employee_id: type === "uctenka" && paidByEmployee ? (currentUser?.employeeId || null) : null,
+      contract_id: contractId ? Number(contractId) : null,
     });
   };
 
@@ -508,6 +511,16 @@ function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false }
 
         <label style={label}>Popis</label>
         <textarea value={description} onChange={e => setDescription(e.target.value)} style={{ ...input, height: 60, resize: "vertical" }} />
+
+        {contracts.length > 0 && (
+          <>
+            <label style={label}>Zakázka (volitelné)</label>
+            <select value={contractId} onChange={e => setContractId(e.target.value)} style={input}>
+              <option value="">— nepřiřazeno —</option>
+              {contracts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </>
+        )}
 
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           <button onClick={submit} style={btnPrimary}>Uložit záznam</button>
