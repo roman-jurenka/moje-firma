@@ -662,15 +662,51 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   }
 
   // ── Smazat zakázku ──
+  // Náklady, úkoly, fotky a soupisy práce se v DB mažou automaticky (CASCADE
+  // na contract_id). Zakázky s navázanou fakturou, projektem, podepsaným
+  // dokumentem nebo skladovým pohybem se ale smazat nedají (DB to odmítne) —
+  // dřív se to tiše ignorovalo a zakázka zmizela jen z obrazovky, i když v DB
+  // zůstala. Teď se chyba zkontroluje a zobrazí se srozumitelná hláška.
   async function deleteContract(id) {
     if (!window.confirm("Smazat zakázku včetně všech nákladů, úkolů a fotek? Tato akce je nevratná.")) return;
-    await supabase.from("contracts").delete().eq("id", id);
+    const { error } = await supabase.from("contracts").delete().eq("id", id);
+    if (error) {
+      alert("Zakázku nejde smazat — má navázané záznamy (např. fakturu, projekt, podepsaný dokument nebo pohyb ve skladu), které je potřeba nejdřív odstranit nebo přeřadit jinam.\n\nDetail: " + error.message);
+      return;
+    }
     setContracts(prev => prev.filter(c => c.id !== id));
     setEntries(prev => prev.filter(e => e.contract_id !== id));
     setPhotos(prev => prev.filter(p => p.contract_id !== id));
     setCtasks(prev => prev.filter(t => t.contract_id !== id));
     setDeliveryNotes(prev => prev.filter(d => d.contract_id !== id));
     if (expandedId === id) setExpandedId(null);
+  }
+
+  // ── Duplikovat zakázku ──
+  // Rychlé založení podobné zakázky (např. druhá etapa, sousední dům se
+  // stejnou sestavou) — zkopíruje jen základní a rozpočtové údaje, ne náklady,
+  // fotky ani historii. Nová zakázka dostane vlastní vygenerovaný kód a stav "Nová".
+  async function duplicateContract(contract) {
+    if (!window.confirm(`Vytvořit kopii zakázky "${contract.name}"? Zkopíruje se zákazník, typ a rozpočet — bez nákladů, fotek a historie.`)) return;
+    const code = await generateContractCode(contract.type, currentUser);
+    const { data: row, error } = await supabase.from("contracts").insert({
+      customer_id: contract.customer_id,
+      code: code || "",
+      type: contract.type || null,
+      name: (contract.name || "Zakázka") + " (kopie)",
+      status: "Nová",
+      price: 0,
+      notes: "",
+      address: "",
+      budget_prace: Number(contract.budget_prace) || 0,
+      budget_material: Number(contract.budget_material) || 0,
+      budget_doprava: Number(contract.budget_doprava) || 0,
+      budget_vice_prace: Number(contract.budget_vice_prace) || 0,
+      budget_vice_material: Number(contract.budget_vice_material) || 0,
+      budget_vice_doprava: Number(contract.budget_vice_doprava) || 0,
+    }).select().single();
+    if (error) { alert("Chyba při duplikaci zakázky: " + error.message); return; }
+    if (row) setContracts(prev => [...prev, row]);
   }
 
   // ── Editovat zakázku (název, kód, zákazník, cena, adresa, poznámky) ──
@@ -879,6 +915,12 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 title="Zakázkový list"
                 style={{ background: "#2E9BE022", border: "1px solid #2E9BE044", borderRadius: 8, padding: "6px 10px", color: "#2E9BE0", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
                 📋
+              </button>
+              <button
+                onClick={() => duplicateContract(contract)}
+                title="Duplikovat zakázku"
+                style={{ background: "#1a2035", border: "1px solid #252d45", borderRadius: 8, padding: "6px 10px", color: "#94a3b8", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
+                📑
               </button>
               <button
                 onClick={() => deleteContract(contract.id)}
