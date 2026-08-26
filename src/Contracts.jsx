@@ -400,8 +400,17 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       setDayPlan(dp.data || []);
       setProjects(proj.data || []);
       setLoading(false);
-      // Pokud přicházíme z Dealu — rovnou otevřeme modal pro novou zakázku
-      if (initialDeal) setModal({ type: "newContract", deal: initialDeal });
+      // Pokud přicházíme z Dealu — rovnou otevřeme modal pro novou zakázku,
+      // ale jen když z něj ještě žádná zakázka nevznikla (jeden deal = max.
+      // jedna zakázka; v DB je na to navíc unikátní index jako pojistka).
+      if (initialDeal) {
+        const already = (c.data || []).some(row => row.deal_id === initialDeal.id);
+        if (already) {
+          alert("Z téhle poptávky už zakázka byla založena. Nová se z ní znovu vytvořit nedá.");
+        } else {
+          setModal({ type: "newContract", deal: initialDeal });
+        }
+      }
     };
     load();
   }, []);
@@ -465,6 +474,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
 
   // ── Nová zakázka ──
   async function saveNewContract(form) {
+    // Jeden obchodní případ smí mít jen jednu zakázku — kontrola tady navíc
+    // ke skryté nabídce v Dealech, pro jistotu (otevřená druhá karta apod.).
+    // Poslední pojistka je unikátní index přímo v DB (viz catch níže).
+    if (form.dealId && contracts.some(c => c.deal_id === form.dealId)) {
+      alert("Z téhle poptávky už zakázka byla založena. Nová se z ní znovu vytvořit nedá.");
+      return;
+    }
     const { data: row, error } = await supabase.from("contracts").insert({
       deal_id:     form.dealId || null,
       customer_id: Number(form.customerId) || null,
@@ -482,7 +498,14 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       budget_vice_material: Number(form.budgetViceMaterial) || 0,
       budget_vice_doprava:  Number(form.budgetViceDoprava) || 0,
     }).select().single();
-    if (error) { alert("Chyba při ukládání zakázky: " + error.message); return; }
+    if (error) {
+      if (error.code === "23505") {
+        alert("Z téhle poptávky už zakázka byla založena. Nová se z ní znovu vytvořit nedá.");
+      } else {
+        alert("Chyba při ukládání zakázky: " + error.message);
+      }
+      return;
+    }
     if (row) setContracts([...contracts, row]);
 
     // Pokud zakázka vznikla z obchodního případu, který má napojenou nabídku

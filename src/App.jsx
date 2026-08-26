@@ -759,7 +759,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         supabase.from("projects").select("*, project_steps(*)").order("id"),
         supabase.from("costs").select("*").order("id"),
         supabase.rpc("get_attendance_full"),
-        supabase.from("contracts").select("id, name, status, customer_id, code, type, address, budget_prace, budget_material, budget_doprava, budget_vice_prace, budget_vice_material, budget_vice_doprava").order("name"),
+        supabase.from("contracts").select("id, name, status, customer_id, code, type, address, deal_id, budget_prace, budget_material, budget_doprava, budget_vice_prace, budget_vice_material, budget_vice_doprava").order("name"),
         supabase.from("contract_cost_entries").select("id, employee_id, amount_cost, amount_client, contract_id, attendance_id, cost_type, is_extra").order("id"),
         supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50),
         supabase.from("calendar_events").select("*").order("date"),
@@ -1145,7 +1145,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* ── DEALY ── */}
         {tab === "deals" && <Deals
           deals={deals} setDeals={setDeals} customers={customers} setCustomers={setCustomers}
-          employees={employees} tasks={tasks} currentUser={currentUser}
+          employees={employees} tasks={tasks} currentUser={currentUser} contracts={contracts}
           modal={modal} setModal={setModal} closeModal={closeModal}
           onConvertToContract={(deal) => { setContractInitialDeal(deal); setTab("contracts"); }}
         />}
@@ -2396,11 +2396,16 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
 
 // ─── DEALS ────────────────────────────────────────────────────────────────────
 
-function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, modal, setModal, closeModal, onConvertToContract, currentUser }) {
+function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, modal, setModal, closeModal, onConvertToContract, currentUser, contracts }) {
   const [newD, setNewD] = useState({ name: "", value: "", stage: "Nový", customerId: "", assigned_to: "" });
   const [dragId, setDragId] = useState(null);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [lostReasonDraft, setLostReasonDraft] = useState("");
+  // Poptávka smí mít nanejvýš jednu zakázku — tenhle set drží ID poptávek,
+  // které už zakázku mají (i v DB je na to unikátní index jako pojistka),
+  // ať jde tlačítko "Převést na zakázku" schovat a jde filtrovat seznam.
+  const convertedDealIds = new Set((contracts || []).map(c => c.deal_id).filter(Boolean));
+  const [convertedFilter, setConvertedFilter] = useState("vse");
 
   // Detail poptávky má dvě záložky: Aktuální stav (fáze, úkoly, převod na
   // zakázku) a Úprava informací (doplnění/oprava poptávky i zákazníka na
@@ -2564,16 +2569,36 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
         <CustomerCompleteModal customer={completingCustomer} onClose={() => setCompletingCustomer(null)} onSaved={handleCustomerCompleted} />
       )}
 
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {[["vse", "Vše"], ["neprevedeno", "Nepřevedeno na zakázku"], ["prevedeno", "Převedeno na zakázku"]].map(([k, l]) => (
+          <button key={k} onClick={() => setConvertedFilter(k)}
+            style={{
+              background: convertedFilter === k ? "#2E9BE0" : "#fff", color: convertedFilter === k ? "#fff" : "#475569",
+              border: "1px solid " + (convertedFilter === k ? "#2E9BE0" : "#e2e8f0"), borderRadius: 8,
+              padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
       <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 16 }}>
-        {STAGES.map(stage => (
+        {STAGES.map(stage => {
+          const stageDeals = deals.filter(d => d.stage === stage).filter(d => {
+            if (convertedFilter === "prevedeno") return convertedDealIds.has(d.id);
+            if (convertedFilter === "neprevedeno") return !convertedDealIds.has(d.id);
+            return true;
+          });
+          return (
           <div key={stage} style={{ ...S.kanbanCol, minHeight: 300 }}
             onDragOver={e => e.preventDefault()}
             onDrop={e => onDrop(e, stage)}>
             <div style={{ fontWeight: 700, color: STAGE_COLORS[stage], marginBottom: 12, fontSize: 11, letterSpacing: "0.08em" }}>
-              {stage.toUpperCase()} <span style={{ color: "#475569" }}>({deals.filter(d => d.stage === stage).length})</span>
+              {stage.toUpperCase()} <span style={{ color: "#475569" }}>({stageDeals.length})</span>
             </div>
-            {deals.filter(d => d.stage === stage).map(d => {
+            {stageDeals.map(d => {
               const cust = customers.find(c => c.id === d.customerId || c.id === d.customer_id);
+              const isConverted = convertedDealIds.has(d.id);
               return (
                 <div key={d.id}
                   style={{ ...S.kanbanCard, opacity: dragId === d.id ? 0.4 : 1, cursor: "grab", outline: selectedDeal?.id === d.id ? "2px solid #2E9BE0" : "none" }}
@@ -2582,27 +2607,37 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                   <div style={{ fontWeight: 600, color: "#fff", fontSize: 13, marginBottom: 3 }}>{d.name}</div>
                   {cust && <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3 }}>{cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}</div>}
                   {d.is_repeat && <div style={{ fontSize: 10, color: "#0d9488", fontWeight: 700, marginBottom: 3 }}>🔁 Další zakázka</div>}
+                  {isConverted && <div style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, marginBottom: 3 }}>✅ Zakázka založena</div>}
                   {d.assigned_to && <div style={{ fontSize: 11, color: "#2E9BE0", marginBottom: 4 }}>👤 {d.assigned_to}</div>}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ color: STAGE_COLORS[stage], fontWeight: 800, fontSize: 14 }}>{d.value ? fmtKc(d.value) : "—"}</div>
                     {stage === "Vyhráno" && onConvertToContract && (
-                      <button title="Převést na zakázku" onClick={e => { e.stopPropagation(); onConvertToContract(d); }}
-                        style={{ background: "#0d948822", border: "1px solid #0d9488", borderRadius: 6, color: "#2dd4bf", fontSize: 11, padding: "4px 10px", cursor: "pointer", fontWeight: 700 }}>
-                        🔧 → Zakázka
-                      </button>
+                      isConverted ? (
+                        <span title="Zakázka už byla založena, další jde vytvořit jen ze zakázek modulu"
+                          style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 6, color: "#64748b", fontSize: 11, padding: "4px 10px", fontWeight: 700 }}>
+                          ✅ Založeno
+                        </span>
+                      ) : (
+                        <button title="Převést na zakázku" onClick={e => { e.stopPropagation(); onConvertToContract(d); }}
+                          style={{ background: "#0d948822", border: "1px solid #0d9488", borderRadius: 6, color: "#2dd4bf", fontSize: 11, padding: "4px 10px", cursor: "pointer", fontWeight: 700 }}>
+                          🔧 → Zakázka
+                        </button>
+                      )
                     )}
                   </div>
                 </div>
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Detail poptávky — vyskakovací formulář (modal) */}
       {selectedDeal && (() => {
         const cust = customers.find(c => c.id === selectedDeal.customerId || c.id === selectedDeal.customer_id);
         const dealTasks = (tasks || []).filter(t => t.deal_id === selectedDeal.id);
+        const dealIsConverted = convertedDealIds.has(selectedDeal.id);
         return (
           <div style={{ position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16 }}
             onClick={() => setSelectedDeal(null)}>
@@ -2619,10 +2654,17 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {selectedDeal.stage === "Vyhráno" && onConvertToContract && (
-                  <button style={{ ...S.btn("#0d9488"), padding: "7px 16px", fontWeight: 700 }}
-                    onClick={() => { onConvertToContract(selectedDeal); setSelectedDeal(null); }}>
-                    🔧 Převést na zakázku
-                  </button>
+                  dealIsConverted ? (
+                    <span title="Zakázka z téhle poptávky už byla založena"
+                      style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 8, color: "#64748b", padding: "7px 16px", fontWeight: 700, fontSize: 13 }}>
+                      ✅ Zakázka založena
+                    </span>
+                  ) : (
+                    <button style={{ ...S.btn("#0d9488"), padding: "7px 16px", fontWeight: 700 }}
+                      onClick={() => { onConvertToContract(selectedDeal); setSelectedDeal(null); }}>
+                      🔧 Převést na zakázku
+                    </button>
+                  )
                 )}
                 <button style={{ ...S.btn("#ef4444"), padding: "6px 12px", fontSize: 12 }}
                   onClick={() => deleteDeal(selectedDeal.id)}>✕ Smazat</button>
