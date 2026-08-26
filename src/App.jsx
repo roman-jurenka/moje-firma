@@ -357,6 +357,15 @@ const initialCosts = [
 
 const STAGES = ["Nový", "Jednání", "Nabídka", "Vyhráno", "Prohráno"];
 const STAGE_COLORS = { Nový: "#2E9BE0", Jednání: "#f59e0b", Nabídka: "#a78bfa", Vyhráno: "#34d399", Prohráno: "#f87171" };
+// Stejné typy jako TYPY_ZAKAZEK v Contracts.jsx (kód zakázky se generuje z
+// tohohle ID) — poptávka může typ nastavit rovnou, ať se při převodu na
+// zakázku nezadává znovu.
+const JOB_TYPES = [
+  { id: "FVE", label: "FVE — Fotovoltaika" },
+  { id: "HRM", label: "HRM — Hromosvody" },
+  { id: "ELK", label: "ELK — Elektroinstalace" },
+  { id: "SRV", label: "SRV — Servis" },
+];
 const TAG_COLORS = { VIP: "#f59e0b", Aktivní: "#34d399", Nový: "#2E9BE0" };
 const PRIO_COLORS = { Vysoká: "#f87171", Střední: "#f59e0b", Nízká: "#34d399" };
 const INV_COLORS = { Zaplacena: "#34d399", Čeká: "#f59e0b", "Po splatnosti": "#f87171", Storno: "#64748b" };
@@ -2411,7 +2420,10 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
   // zakázku) a Úprava informací (doplnění/oprava poptávky i zákazníka na
   // jednom místě, ne přes samostatné okno).
   const [detailTab, setDetailTab] = useState("stav");
-  const [infoEditVals, setInfoEditVals] = useState({ name: "", value: "", assigned_to: "" });
+  const [infoEditVals, setInfoEditVals] = useState({
+    name: "", value: "", assigned_to: "",
+    type: "", site_address: "", site_contact_name: "", site_contact_phone: "",
+  });
   const [custInfoVals, setCustInfoVals] = useState({ name: "", contactFirst: "", contactLast: "", company: "", email: "", phone: "", address: "", customer_type: "Koncový zákazník" });
   const [savingInfo, setSavingInfo] = useState(false);
 
@@ -2420,7 +2432,11 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
     setDetailTab("stav");
     const c = customers.find(x => x.id === (d.customerId || d.customer_id));
     const split = splitContactName(c?.name);
-    setInfoEditVals({ name: d.name || "", value: d.value || "", assigned_to: d.assigned_to || "" });
+    setInfoEditVals({
+      name: d.name || "", value: d.value || "", assigned_to: d.assigned_to || "",
+      type: d.type || "", site_address: d.site_address || "",
+      site_contact_name: d.site_contact_name || "", site_contact_phone: d.site_contact_phone || "",
+    });
     setCustInfoVals({
       name: c?.name || "", contactFirst: split.first, contactLast: split.last, company: c?.company || "", email: c?.email || "",
       phone: c?.phone || "", address: c?.address || "", customer_type: c?.customer_type || "Koncový zákazník",
@@ -2428,7 +2444,11 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
   };
 
   const saveDealInfo = async () => {
-    const patch = { name: infoEditVals.name, value: Number(infoEditVals.value) || 0, assigned_to: infoEditVals.assigned_to };
+    const patch = {
+      name: infoEditVals.name, value: Number(infoEditVals.value) || 0, assigned_to: infoEditVals.assigned_to,
+      type: infoEditVals.type || null, site_address: infoEditVals.site_address || null,
+      site_contact_name: infoEditVals.site_contact_name || null, site_contact_phone: infoEditVals.site_contact_phone || null,
+    };
     const { error } = await supabase.from("deals").update(patch).eq("id", selectedDeal.id);
     if (error) { alert("Nepodařilo se uložit: " + error.message); return; }
     setDeals(prev => prev.map(d => d.id === selectedDeal.id ? { ...d, ...patch } : d));
@@ -2743,11 +2763,10 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                     </select>
                   </div>
                 </div>
-                <button style={{ ...S.btn(), marginTop: 6, marginBottom: 20 }} onClick={saveDealInfo}>Uložit poptávku</button>
 
                 {cust && (
-                  <>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 8, borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>ZÁKAZNÍK</div>
+                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginTop: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 8 }}>ZÁKAZNÍK</div>
                     <label style={S.label}>Typ zákazníka</label>
                     <select style={S.select} value={custInfoVals.customer_type} onChange={e => setCustInfoVals({ ...custInfoVals, customer_type: e.target.value })}>
                       <option value="Koncový zákazník">👤 Koncový zákazník</option>
@@ -2816,8 +2835,33 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                     <input style={S.input} value={custInfoVals.address} onChange={e => setCustInfoVals({ ...custInfoVals, address: e.target.value })} />
 
                     <button style={{ ...S.btn(), marginTop: 6 }} onClick={() => saveCustomerInfo(cust.id)} disabled={savingInfo}>{savingInfo ? "Ukládám…" : "Uložit zákazníka"}</button>
-                  </>
+                  </div>
                 )}
+
+                <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginTop: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 8 }}>INFORMACE O ZAKÁZCE</div>
+                  <label style={S.label}>Typ zakázky</label>
+                  <select style={S.select} value={infoEditVals.type} onChange={e => setInfoEditVals({ ...infoEditVals, type: e.target.value })}>
+                    <option value="">— nezadáno —</option>
+                    {JOB_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                  <label style={S.label}>Adresa místa výkonu</label>
+                  <input style={S.input} value={infoEditVals.site_address} onChange={e => setInfoEditVals({ ...infoEditVals, site_address: e.target.value })} placeholder="Může se lišit od adresy zákazníka" />
+
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", margin: "10px 0 4px" }}>Kontakt na místě</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div>
+                      <label style={S.label}>Jméno</label>
+                      <input style={S.input} value={infoEditVals.site_contact_name} onChange={e => setInfoEditVals({ ...infoEditVals, site_contact_name: e.target.value })} placeholder="Např. nájemník, správce" />
+                    </div>
+                    <div>
+                      <label style={S.label}>Telefon</label>
+                      <input style={S.input} value={infoEditVals.site_contact_phone} onChange={e => setInfoEditVals({ ...infoEditVals, site_contact_phone: e.target.value })} />
+                    </div>
+                  </div>
+
+                  <button style={{ ...S.btn(), marginTop: 6 }} onClick={saveDealInfo}>Uložit poptávku</button>
+                </div>
               </>
             )}
           </div>

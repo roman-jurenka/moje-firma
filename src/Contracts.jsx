@@ -481,6 +481,12 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       alert("Z téhle poptávky už zakázka byla založena. Nová se z ní znovu vytvořit nedá.");
       return;
     }
+    // Kontakt na místě zadaný u poptávky (Deals → Úprava informací) se
+    // rovnou přenese do popisu zakázky, ať se nezadává znovu (contacts_info
+    // se čte/píše jako JSON string — stejná konvence jako v PopisTab níže).
+    const siteContacts = form.siteContactName
+      ? [{ name: form.siteContactName, role: "Kontakt na místě", phone: form.siteContactPhone || "" }]
+      : [];
     const { data: row, error } = await supabase.from("contracts").insert({
       deal_id:     form.dealId || null,
       customer_id: Number(form.customerId) || null,
@@ -491,6 +497,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       price:       Number(form.price) || 0,
       notes:       form.notes,
       address:     form.address || "",
+      contacts_info: JSON.stringify(siteContacts),
       budget_prace:    Number(form.budgetPrace) || 0,
       budget_material: Number(form.budgetMaterial) || 0,
       budget_doprava:  Number(form.budgetDoprava) || 0,
@@ -1957,11 +1964,16 @@ function PopisTab({ contract, setContracts }) {
 
 function NewContractModal({ customers, deal, currentUser, onSave, onClose }) {
   const [f, setF] = useState({
-    code: "", type: "", name: deal?.name || "", customerId: deal?.customerId || deal?.customer_id || "",
-    status: "Nová", price: deal?.value || "", notes: "", address: "",
+    code: "", type: deal?.type || "", name: deal?.name || "", customerId: deal?.customerId || deal?.customer_id || "",
+    status: "Nová", price: deal?.value || "", notes: "", address: deal?.site_address || "",
     budgetPrace: "", budgetMaterial: "", budgetDoprava: "",
     budgetVicePrace: "", budgetViceMaterial: "", budgetViceDoprava: "",
     dealId: deal?.id || null,
+    // Kontakt na místě z poptávky se jen tiše veze dál — do zakázky se uloží
+    // rovnou při vytvoření (contacts_info), ve formuláři se nezobrazuje,
+    // upravuje se pak už jen v popisu zakázky.
+    siteContactName: deal?.site_contact_name || "",
+    siteContactPhone: deal?.site_contact_phone || "",
   });
   const [codeAuto, setCodeAuto] = useState(true);
   const [codeLoading, setCodeLoading] = useState(false);
@@ -1976,6 +1988,17 @@ function NewContractModal({ customers, deal, currentUser, onSave, onClose }) {
       .catch(e => console.warn("Generování kódu selhalo:", e))
       .finally(() => setCodeLoading(false));
   };
+
+  // Když poptávka měla typ už vyplněný, kód se rovnou vygeneruje i bez
+  // ručního sáhnutí na select — ať to ve formuláři není prázdné zbytečně.
+  // (Type je už v initial state, tady se řeší jen navazující generování kódu.)
+  useEffect(() => {
+    if (!deal?.type || !codeAuto) return;
+    generateContractCode(deal.type, currentUser)
+      .then(code => { if (code) set("code", code); })
+      .catch(e => console.warn("Generování kódu selhalo:", e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div style={S.modal}>
