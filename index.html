@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="cs" translate="no" class="notranslate">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -12,6 +12,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ProudOS" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Stránka byla mylně označená jako anglická (lang="en"), i když je celá
+         v češtině — Chrome pak nabízel/spouštěl automatický překlad, který
+         přepisuje DOM stejně jako překladatelská rozšíření (DeepL apod.) a
+         to kolidovalo s Reactem (chyba "removeChild... není potomkem tohoto
+         uzlu"). notranslate + lang="cs" překladu úplně zabrání. -->
+    <meta name="google" content="notranslate" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
     <title>ProudOS</title>
   </head>
