@@ -5640,6 +5640,25 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
     }
   };
 
+  // Odebíraný kalendář (ICS odkaz) — funguje bez OAuth/hesla pro jakoukoli
+  // appku, co umí "Přidat odebíraný kalendář" (iPhone, Outlook, Google).
+  // Token je uložený v RLS chráněné tabulce ics_feed_tokens (jen vlastník ho
+  // smí číst/založit), takže odkaz nikdo cizí neuhodne ani nevytáhne z appky.
+  const [icsLink, setIcsLink] = useState(null);
+  const [showIcsLink, setShowIcsLink] = useState(false);
+  const revealIcsLink = async () => {
+    const authId = currentUser?.authId;
+    if (!authId) return;
+    let { data } = await supabase.from("ics_feed_tokens").select("token").eq("profile_id", authId).maybeSingle();
+    if (!data) {
+      const { data: inserted, error } = await supabase.from("ics_feed_tokens").insert({ profile_id: authId }).select("token").single();
+      if (error) { alert("Nepodařilo se vytvořit odkaz: " + error.message); return; }
+      data = inserted;
+    }
+    setIcsLink(`${window.location.origin}/api/calendar-feed?token=${data.token}`);
+    setShowIcsLink(true);
+  };
+
   const fmt2 = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
   const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
@@ -5743,7 +5762,22 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
         ) : (
           <button onClick={connectOutlook} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 10px" }}>🔗 Připojit svůj Outlook kalendář</button>
         )}
+        <button onClick={revealIcsLink} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 10px" }}>📱 Odebíraný kalendář (iPhone/jiné)</button>
       </div>
+
+      {showIcsLink && icsLink && (
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, color: "#1A1A1A" }}>📱 Odebíraný kalendář</div>
+          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 10 }}>
+            Na iPhonu: Nastavení → Kalendář → Účty → Přidat účet → Jiný → Přidat odebíraný kalendář, a vlož tenhle odkaz. Aktualizuje se sám, obvykle do pár hodin. Funguje i v Outlooku nebo Google Kalendáři (Přidat kalendář → Z URL).
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input readOnly value={icsLink} onFocus={e => e.target.select()} style={{ ...S.input, marginBottom: 0, flex: 1, minWidth: 240, fontSize: 12 }} />
+            <button onClick={() => { navigator.clipboard.writeText(icsLink); alert("Odkaz zkopírován."); }} style={{ ...S.btnGhost, fontSize: 12, padding: "6px 12px" }}>Kopírovat</button>
+            <a href={icsLink.replace(/^https?:\/\//, "webcal://")} style={{ ...S.btn(), fontSize: 12, padding: "6px 12px", textDecoration: "none", display: "inline-block" }}>Přidat na iPhonu</a>
+          </div>
+        </div>
+      )}
 
       {/* Legenda */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
