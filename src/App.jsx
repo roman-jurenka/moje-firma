@@ -528,23 +528,41 @@ function customerNeedsCompletion(customer) {
 // Formulář "Doplnit údaje zákazníka" — použitý po Rychlém zadání v Kalendáři
 // i po Rychlé poptávce. Umí založit i úplně nového zákazníka (customer.id
 // chybí → INSERT) i doplnit staršího (customer.id je → UPDATE).
+// Jméno se v DB ukládá jako jedno pole (name). U firem ho ale ve formuláři
+// zobrazujeme rozdělené na Jméno/Příjmení kontaktní osoby — rozdělí/spojí
+// se tu, aby zbytek appky (kanban, rychlé zadání, ICS feed…) nemusel řešit
+// dvě pole.
+function splitContactName(fullName) {
+  const parts = String(fullName || "").trim().split(/\s+/);
+  if (parts.length <= 1) return { first: parts[0] || "", last: "" };
+  return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
+}
+function joinContactName(first, last) {
+  return [first.trim(), last.trim()].filter(Boolean).join(" ");
+}
+
 function CustomerCompleteModal({ customer, onClose, onSaved }) {
+  const initialType = customer?.customer_type || (customer?.company ? "Firma" : "Koncový zákazník");
+  const initialSplit = splitContactName(customer?.name);
   const [vals, setVals] = useState({
     name: customer?.name || "",
+    contactFirst: initialSplit.first,
+    contactLast: initialSplit.last,
     company: customer?.company || "",
     email: customer?.email || "",
     phone: customer?.phone || "",
     address: customer?.address || "",
     tag: customer?.tag || "Nový",
-    customer_type: customer?.customer_type || (customer?.company ? "Firma" : "Koncový zákazník"),
+    customer_type: initialType,
   });
   const [saving, setSaving] = useState(false);
-  const fields = [["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"], ["Adresa", "address"]];
+  const isFirma = vals.customer_type === "Firma";
 
   const save = async () => {
-    if (!vals.name.trim()) { alert("Jméno je potřeba vyplnit."); return; }
+    const name = isFirma ? joinContactName(vals.contactFirst, vals.contactLast) : vals.name;
+    if (!name.trim()) { alert("Jméno je potřeba vyplnit."); return; }
     setSaving(true);
-    const payload = { name: vals.name, company: vals.company, email: vals.email, phone: vals.phone, address: vals.address, tag: vals.tag, customer_type: vals.customer_type };
+    const payload = { name, company: vals.company, email: vals.email, phone: vals.phone, address: vals.address, tag: vals.tag, customer_type: vals.customer_type };
     let result;
     if (customer?.id) {
       const { data, error } = await supabase.from("customers").update(payload).eq("id", customer.id).select().single();
@@ -571,18 +589,68 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
           <option value="Koncový zákazník">👤 Koncový zákazník</option>
           <option value="Firma">🏢 Firma</option>
         </select>
-        {fields.map(([label, key]) => {
-          const known = !!customer[key];
-          return (
-            <div key={key}>
-              <label style={S.label}>
-                {label}
-                {!known && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
-              </label>
-              <input style={S.input} value={vals[key]} onChange={e => setVals({ ...vals, [key]: e.target.value })} />
+
+        {isFirma && (
+          <div>
+            <label style={S.label}>
+              Firma
+              {!customer.company && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+            </label>
+            <input style={S.input} value={vals.company} onChange={e => setVals({ ...vals, company: e.target.value })} />
+          </div>
+        )}
+
+        {isFirma ? (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", margin: "10px 0 4px" }}>Kontaktní osoba</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label style={S.label}>
+                  Jméno
+                  {!initialSplit.first && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                </label>
+                <input style={S.input} value={vals.contactFirst} onChange={e => setVals({ ...vals, contactFirst: e.target.value })} />
+              </div>
+              <div>
+                <label style={S.label}>
+                  Příjmení
+                  {!initialSplit.last && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                </label>
+                <input style={S.input} value={vals.contactLast} onChange={e => setVals({ ...vals, contactLast: e.target.value })} />
+              </div>
             </div>
-          );
-        })}
+            <label style={S.label}>
+              Telefon
+              {!customer.phone && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+            </label>
+            <input style={S.input} value={vals.phone} onChange={e => setVals({ ...vals, phone: e.target.value })} />
+          </>
+        ) : (
+          <>
+            <label style={S.label}>
+              Jméno
+              {!customer.name && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+            </label>
+            <input style={S.input} value={vals.name} onChange={e => setVals({ ...vals, name: e.target.value })} />
+            <label style={S.label}>
+              Telefon
+              {!customer.phone && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+            </label>
+            <input style={S.input} value={vals.phone} onChange={e => setVals({ ...vals, phone: e.target.value })} />
+          </>
+        )}
+
+        <label style={S.label}>
+          Email
+          {!customer.email && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+        </label>
+        <input style={S.input} value={vals.email} onChange={e => setVals({ ...vals, email: e.target.value })} />
+        <label style={S.label}>
+          Adresa
+          {!customer.address && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+        </label>
+        <input style={S.input} value={vals.address} onChange={e => setVals({ ...vals, address: e.target.value })} />
+
         <label style={S.label}>Štítek</label>
         <select style={S.select} value={vals.tag} onChange={e => setVals({ ...vals, tag: e.target.value })}>
           {["Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
@@ -2339,16 +2407,17 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
   // jednom místě, ne přes samostatné okno).
   const [detailTab, setDetailTab] = useState("stav");
   const [infoEditVals, setInfoEditVals] = useState({ name: "", value: "", assigned_to: "" });
-  const [custInfoVals, setCustInfoVals] = useState({ name: "", company: "", email: "", phone: "", address: "", customer_type: "Koncový zákazník" });
+  const [custInfoVals, setCustInfoVals] = useState({ name: "", contactFirst: "", contactLast: "", company: "", email: "", phone: "", address: "", customer_type: "Koncový zákazník" });
   const [savingInfo, setSavingInfo] = useState(false);
 
   const openDealDetail = (d) => {
     setSelectedDeal(prev => (prev?.id === d.id ? null : d));
     setDetailTab("stav");
     const c = customers.find(x => x.id === (d.customerId || d.customer_id));
+    const split = splitContactName(c?.name);
     setInfoEditVals({ name: d.name || "", value: d.value || "", assigned_to: d.assigned_to || "" });
     setCustInfoVals({
-      name: c?.name || "", company: c?.company || "", email: c?.email || "",
+      name: c?.name || "", contactFirst: split.first, contactLast: split.last, company: c?.company || "", email: c?.email || "",
       phone: c?.phone || "", address: c?.address || "", customer_type: c?.customer_type || "Koncový zákazník",
     });
   };
@@ -2362,9 +2431,12 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
   };
 
   const saveCustomerInfo = async (custId) => {
-    if (!custInfoVals.name.trim()) { alert("Jméno zákazníka je potřeba vyplnit."); return; }
+    const isFirma = custInfoVals.customer_type === "Firma";
+    const name = isFirma ? joinContactName(custInfoVals.contactFirst, custInfoVals.contactLast) : custInfoVals.name;
+    if (!name.trim()) { alert("Jméno zákazníka je potřeba vyplnit."); return; }
     setSavingInfo(true);
-    const { data, error } = await supabase.from("customers").update(custInfoVals).eq("id", custId).select().single();
+    const payload = { name, company: custInfoVals.company, email: custInfoVals.email, phone: custInfoVals.phone, address: custInfoVals.address, customer_type: custInfoVals.customer_type };
+    const { data, error } = await supabase.from("customers").update(payload).eq("id", custId).select().single();
     setSavingInfo(false);
     if (error) { alert("Nepodařilo se uložit: " + error.message); return; }
     setCustomers(prev => prev.map(c => c.id === custId ? data : c));
@@ -2639,16 +2711,69 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                       <option value="Koncový zákazník">👤 Koncový zákazník</option>
                       <option value="Firma">🏢 Firma</option>
                     </select>
-                    {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"], ["Adresa", "address"]].map(([l, k]) => (
-                      <div key={k}>
+
+                    {custInfoVals.customer_type === "Firma" && (
+                      <div>
                         <label style={S.label}>
-                          {l}
-                          {!custInfoVals[k] && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                          Firma
+                          {!custInfoVals.company && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
                         </label>
-                        <input style={S.input} value={custInfoVals[k]} onChange={e => setCustInfoVals({ ...custInfoVals, [k]: e.target.value })} />
+                        <input style={S.input} value={custInfoVals.company} onChange={e => setCustInfoVals({ ...custInfoVals, company: e.target.value })} />
                       </div>
-                    ))}
-                    <button style={S.btn()} onClick={() => saveCustomerInfo(cust.id)} disabled={savingInfo}>{savingInfo ? "Ukládám…" : "Uložit zákazníka"}</button>
+                    )}
+
+                    {custInfoVals.customer_type === "Firma" ? (
+                      <>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", margin: "10px 0 4px" }}>Kontaktní osoba</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div>
+                            <label style={S.label}>
+                              Jméno
+                              {!custInfoVals.contactFirst && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                            </label>
+                            <input style={S.input} value={custInfoVals.contactFirst} onChange={e => setCustInfoVals({ ...custInfoVals, contactFirst: e.target.value })} />
+                          </div>
+                          <div>
+                            <label style={S.label}>
+                              Příjmení
+                              {!custInfoVals.contactLast && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                            </label>
+                            <input style={S.input} value={custInfoVals.contactLast} onChange={e => setCustInfoVals({ ...custInfoVals, contactLast: e.target.value })} />
+                          </div>
+                        </div>
+                        <label style={S.label}>
+                          Telefon
+                          {!custInfoVals.phone && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                        </label>
+                        <input style={S.input} value={custInfoVals.phone} onChange={e => setCustInfoVals({ ...custInfoVals, phone: e.target.value })} />
+                      </>
+                    ) : (
+                      <>
+                        <label style={S.label}>
+                          Jméno
+                          {!custInfoVals.name && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                        </label>
+                        <input style={S.input} value={custInfoVals.name} onChange={e => setCustInfoVals({ ...custInfoVals, name: e.target.value })} />
+                        <label style={S.label}>
+                          Telefon
+                          {!custInfoVals.phone && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                        </label>
+                        <input style={S.input} value={custInfoVals.phone} onChange={e => setCustInfoVals({ ...custInfoVals, phone: e.target.value })} />
+                      </>
+                    )}
+
+                    <label style={S.label}>
+                      Email
+                      {!custInfoVals.email && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                    </label>
+                    <input style={S.input} value={custInfoVals.email} onChange={e => setCustInfoVals({ ...custInfoVals, email: e.target.value })} />
+                    <label style={S.label}>
+                      Adresa
+                      {!custInfoVals.address && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                    </label>
+                    <input style={S.input} value={custInfoVals.address} onChange={e => setCustInfoVals({ ...custInfoVals, address: e.target.value })} />
+
+                    <button style={{ ...S.btn(), marginTop: 6 }} onClick={() => saveCustomerInfo(cust.id)} disabled={savingInfo}>{savingInfo ? "Ukládám…" : "Uložit zákazníka"}</button>
                   </>
                 )}
               </>
