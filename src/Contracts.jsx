@@ -26,13 +26,20 @@ const initialsFromName = (name) => (name || "").trim().split(/\s+/).filter(Boole
 
 async function generateContractCode(type, currentUser) {
   if (!type) return "";
-  const now = new Date();
-  const year = now.getFullYear() % 100;
-  const month = now.getMonth() + 1;
-  const { data: counter, error } = await supabase.rpc("next_contract_code_number", { p_type: type, p_year: year, p_month: month });
-  if (error || counter == null) return "";
-  const initials = initialsFromName(currentUser?.name) || "XX";
-  return `${type}-${year}${month}-${initials}-${String(counter).padStart(4, "0")}`;
+  try {
+    const now = new Date();
+    const year = now.getFullYear() % 100;
+    const month = now.getMonth() + 1;
+    const { data: counter, error } = await supabase.rpc("next_contract_code_number", { p_type: type, p_year: year, p_month: month });
+    if (error || counter == null) return "";
+    const initials = initialsFromName(currentUser?.name) || "XX";
+    return `${type}-${year}${month}-${initials}-${String(counter).padStart(4, "0")}`;
+  } catch (e) {
+    // Generování kódu je jen pomůcka — když selže (výpadek sítě apod.),
+    // zbytek formuláře musí jít vyplnit dál, kód si uživatel doplní ručně.
+    console.warn("Nepodařilo se vygenerovat kód zakázky:", e);
+    return "";
+  }
 }
 
 // Spočítá celkový počet MD z interního nacenění uložené nabídky (stejná
@@ -1941,10 +1948,10 @@ function NewContractModal({ customers, deal, currentUser, onSave, onClose }) {
     set("type", type);
     if (!codeAuto || !type) return;
     setCodeLoading(true);
-    generateContractCode(type, currentUser).then(code => {
-      if (code) set("code", code);
-      setCodeLoading(false);
-    });
+    generateContractCode(type, currentUser)
+      .then(code => { if (code) set("code", code); })
+      .catch(e => console.warn("Generování kódu selhalo:", e))
+      .finally(() => setCodeLoading(false));
   };
 
   return (
