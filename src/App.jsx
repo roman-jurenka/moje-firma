@@ -536,6 +536,7 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
     phone: customer?.phone || "",
     address: customer?.address || "",
     tag: customer?.tag || "Nový",
+    customer_type: customer?.customer_type || (customer?.company ? "Firma" : "Koncový zákazník"),
   });
   const [saving, setSaving] = useState(false);
   const fields = [["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"], ["Adresa", "address"]];
@@ -543,7 +544,7 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
   const save = async () => {
     if (!vals.name.trim()) { alert("Jméno je potřeba vyplnit."); return; }
     setSaving(true);
-    const payload = { name: vals.name, company: vals.company, email: vals.email, phone: vals.phone, address: vals.address, tag: vals.tag };
+    const payload = { name: vals.name, company: vals.company, email: vals.email, phone: vals.phone, address: vals.address, tag: vals.tag, customer_type: vals.customer_type };
     let result;
     if (customer?.id) {
       const { data, error } = await supabase.from("customers").update(payload).eq("id", customer.id).select().single();
@@ -565,6 +566,11 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
         <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
           Co appka zná, je vyplněné. Zbytek doplň, nebo zavři a udělej to později v Zákaznících.
         </div>
+        <label style={S.label}>Typ zákazníka</label>
+        <select style={S.select} value={vals.customer_type} onChange={e => setVals({ ...vals, customer_type: e.target.value })}>
+          <option value="Koncový zákazník">👤 Koncový zákazník</option>
+          <option value="Firma">🏢 Firma</option>
+        </select>
         {fields.map(([label, key]) => {
           const known = !!customer[key];
           return (
@@ -2064,8 +2070,8 @@ function getCustomerCommunication({ communication, dealMsgs, contractMsgs, deals
 }
 
 function Customers({ customers, setCustomers, invoices, deals, communication, setCommunication, contracts, tasks, dealMsgs, contractMsgs, search, setSearch, modal, setModal, closeModal }) {
-  const [newC, setNewC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový" });
-  const [editC, setEditC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový" });
+  const [newC, setNewC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník" });
+  const [editC, setEditC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník" });
   const [showArchived, setShowArchived] = useState(false);
   const archivedCount = customers.filter(c => c.archived).length;
   const filtered = customers.filter(c =>
@@ -2078,15 +2084,15 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
     if (!newC.name) return;
     const { data: row } = await supabase.from("customers").insert({
       name: newC.name, company: newC.company, email: newC.email,
-      phone: newC.phone, tag: newC.tag,
+      phone: newC.phone, tag: newC.tag, customer_type: newC.customer_type,
     }).select().single();
     if (row) setCustomers([...customers, row]);
-    setNewC({ name: "", company: "", email: "", phone: "", tag: "Nový" });
+    setNewC({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník" });
     closeModal();
   };
 
   const openEdit = (c) => {
-    setEditC({ id: c.id, name: c.name || "", company: c.company || "", email: c.email || "", phone: c.phone || "", tag: c.tag || "Nový" });
+    setEditC({ id: c.id, name: c.name || "", company: c.company || "", email: c.email || "", phone: c.phone || "", tag: c.tag || "Nový", customer_type: c.customer_type || "Koncový zákazník" });
     setModal({ type: "editCustomer", data: c });
   };
 
@@ -2094,7 +2100,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
     if (!editC.name) return;
     await supabase.from("customers").update({
       name: editC.name, company: editC.company, email: editC.email,
-      phone: editC.phone, tag: editC.tag,
+      phone: editC.phone, tag: editC.tag, customer_type: editC.customer_type,
     }).eq("id", editC.id);
     setCustomers(customers.map(c => c.id === editC.id ? { ...c, ...editC } : c));
     closeModal();
@@ -2140,10 +2146,10 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
       </div>
       <div style={S.card}>
         <table style={S.table}>
-          <thead><tr>{["Jméno", "Firma", "Email", "Telefon", "Faktury", "Štítek", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Jméno", "Typ", "Firma", "Email", "Telefon", "Faktury", "Štítek", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={7} style={{ ...S.td, color: "#334155", textAlign: "center", padding: 20 }}>{showArchived ? "Žádní smazaní zákazníci." : "Žádní zákazníci."}</td></tr>
+              <tr><td colSpan={8} style={{ ...S.td, color: "#334155", textAlign: "center", padding: 20 }}>{showArchived ? "Žádní smazaní zákazníci." : "Žádní zákazníci."}</td></tr>
             )}
             {filtered.map((c, i) => {
               const custInvoices = invoices.filter(inv => inv.customerId === c.id);
@@ -2154,6 +2160,11 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
                       <div style={S.avatar(avatarColors[i % 6])}>{getInitial(c.name)}</div>
                       <span style={{ color: "#fff", fontWeight: 600 }}>{c.name}</span>
                     </div>
+                  </td>
+                  <td style={S.td}>
+                    <span style={S.tag(c.customer_type === "Firma" ? "#0d9488" : "#64748b")}>
+                      {c.customer_type === "Firma" ? "🏢 Firma" : "👤 Koncový"}
+                    </span>
                   </td>
                   <td style={S.td}>{c.company}</td>
                   <td style={S.td}>{c.email}</td>
@@ -2183,6 +2194,11 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
         <div style={S.modal}>
           <div style={S.modalBox}>
             <ModalHeader title="Nový zákazník" onClose={closeModal} />
+            <label style={S.label}>Typ zákazníka</label>
+            <select style={S.select} value={newC.customer_type} onChange={e => setNewC({ ...newC, customer_type: e.target.value })}>
+              <option value="Koncový zákazník">👤 Koncový zákazník</option>
+              <option value="Firma">🏢 Firma</option>
+            </select>
             {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"]].map(([l, k]) => (
               <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={newC[k]} onChange={e => setNewC({ ...newC, [k]: e.target.value })} /></div>
             ))}
@@ -2199,6 +2215,11 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
         <div style={S.modal}>
           <div style={S.modalBox}>
             <ModalHeader title="Upravit zákazníka" onClose={closeModal} />
+            <label style={S.label}>Typ zákazníka</label>
+            <select style={S.select} value={editC.customer_type} onChange={e => setEditC({ ...editC, customer_type: e.target.value })}>
+              <option value="Koncový zákazník">👤 Koncový zákazník</option>
+              <option value="Firma">🏢 Firma</option>
+            </select>
             {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"]].map(([l, k]) => (
               <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={editC[k]} onChange={e => setEditC({ ...editC, [k]: e.target.value })} /></div>
             ))}
@@ -2345,14 +2366,18 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
       customerLabel = newCust.name + " (nový)";
       resolvedCustomer = newCust;
     }
+    // Spárovaná firma, která už u nás nějakou poptávku/zakázku má = další
+    // zakázka od firmy, kterou už známe — appka to rovnou označí.
+    const isRepeat = !!(parsed.customer?.id && parsed.customer?.customer_type === "Firma"
+      && deals.some(d => (d.customerId || d.customer_id) === parsed.customer.id));
     const { data: deal, error: dealErr } = await supabase.from("deals").insert({
       name: parsed.description || text, value: parsed.value, stage: "Nový",
-      customer_id: customerId, assigned_to: currentUser?.name || "",
+      customer_id: customerId, assigned_to: currentUser?.name || "", is_repeat: isRepeat,
     }).select().single();
     if (dealErr) { alert("Nepodařilo se uložit poptávku: " + dealErr.message); return; }
     setDeals(prev => [...prev, { ...deal, customerId: deal.customer_id }]);
     setQuickDealText("");
-    setQuickDealToast(`✅ Uloženo: ${customerLabel}${parsed.phone ? " · " + parsed.phone : ""}`);
+    setQuickDealToast(`✅ Uloženo: ${customerLabel}${parsed.phone ? " · " + parsed.phone : ""}${isRepeat ? " · 🔁 další zakázka" : ""}`);
     setTimeout(() => setQuickDealToast(""), 5000);
 
     if (customerNeedsCompletion(resolvedCustomer)) setCompletingCustomer(resolvedCustomer);
@@ -2360,9 +2385,11 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
 
   const save = async () => {
     if (!newD.name) return;
+    const selCust = customers.find(c => c.id === Number(newD.customerId));
+    const isRepeat = !!(selCust?.customer_type === "Firma" && deals.some(d => (d.customerId || d.customer_id) === selCust.id));
     const { data: row } = await supabase.from("deals").insert({
       name: newD.name, value: Number(newD.value), stage: newD.stage,
-      customer_id: Number(newD.customerId), assigned_to: newD.assigned_to,
+      customer_id: Number(newD.customerId), assigned_to: newD.assigned_to, is_repeat: isRepeat,
     }).select().single();
     if (row) setDeals([...deals, { ...row, customerId: row.customer_id }]);
     setNewD({ name: "", value: "", stage: "Nový", customerId: "", assigned_to: "" });
@@ -2461,7 +2488,8 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                   draggable onDragStart={e => onDragStart(e, d.id)}
                   onClick={() => setSelectedDeal(selectedDeal?.id === d.id ? null : d)}>
                   <div style={{ fontWeight: 600, color: "#fff", fontSize: 13, marginBottom: 3 }}>{d.name}</div>
-                  {cust && <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3 }}>🏢 {cust.name}</div>}
+                  {cust && <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3 }}>{cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}</div>}
+                  {d.is_repeat && <div style={{ fontSize: 10, color: "#0d9488", fontWeight: 700, marginBottom: 3 }}>🔁 Další zakázka</div>}
                   {d.assigned_to && <div style={{ fontSize: 11, color: "#2E9BE0", marginBottom: 4 }}>👤 {d.assigned_to}</div>}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ color: STAGE_COLORS[stage], fontWeight: 800, fontSize: 14 }}>{d.value ? fmtKc(d.value) : "—"}</div>
@@ -2500,7 +2528,12 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                     <button title="Upravit" onClick={startEditDeal} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#94a3b8" }}>✏️</button>
                   </div>
                 )}
-                {cust && <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>🏢 {cust.name}{cust.phone ? " · " + cust.phone : ""}</div>}
+                {cust && (
+                  <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>
+                    {cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}{cust.phone ? " · " + cust.phone : ""}
+                    {selectedDeal.is_repeat && <span style={{ color: "#0d9488", fontWeight: 700, marginLeft: 8 }}>🔁 Další zakázka</span>}
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {selectedDeal.stage === "Vyhráno" && onConvertToContract && (
