@@ -998,7 +998,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {/* ── DEALY ── */}
         {tab === "deals" && <Deals
-          deals={deals} setDeals={setDeals} customers={customers}
+          deals={deals} setDeals={setDeals} customers={customers} setCustomers={setCustomers}
           employees={employees} tasks={tasks} currentUser={currentUser}
           modal={modal} setModal={setModal} closeModal={closeModal}
           onConvertToContract={(deal) => { setContractInitialDeal(deal); setTab("contracts"); }}
@@ -2235,13 +2235,42 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
 
 // ─── DEALS ────────────────────────────────────────────────────────────────────
 
-function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, closeModal, onConvertToContract, currentUser }) {
+function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, modal, setModal, closeModal, onConvertToContract, currentUser }) {
   const [newD, setNewD] = useState({ name: "", value: "", stage: "Nový", customerId: "", assigned_to: "" });
   const [dragId, setDragId] = useState(null);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [editingDeal, setEditingDeal] = useState(false);
   const [editVals, setEditVals] = useState({ name: "", value: "" });
   const [lostReasonDraft, setLostReasonDraft] = useState("");
+
+  // Rychlá poptávka — pro telefonát: napíšu pár slov, appka rovnou založí
+  // poptávku a pokud volajícího nezná, založí i nový kontakt do Zákazníků.
+  const [quickDealText, setQuickDealText] = useState("");
+  const [quickDealToast, setQuickDealToast] = useState("");
+  const quickAddDeal = async () => {
+    const text = quickDealText.trim();
+    if (!text) return;
+    const parsed = parseShorthandDeal(text, { customers });
+    let customerId = parsed.customer?.id;
+    let customerLabel = parsed.customer?.name || parsed.customer?.company || "";
+    if (!customerId) {
+      const { data: newCust, error } = await supabase.from("customers")
+        .insert({ name: parsed.newCustomerName, phone: parsed.phone || null }).select().single();
+      if (error) { alert("Nepodařilo se založit zákazníka: " + error.message); return; }
+      setCustomers(prev => [...prev, newCust]);
+      customerId = newCust.id;
+      customerLabel = newCust.name + " (nový)";
+    }
+    const { data: deal, error: dealErr } = await supabase.from("deals").insert({
+      name: parsed.description || text, value: parsed.value, stage: "Nový",
+      customer_id: customerId, assigned_to: currentUser?.name || "",
+    }).select().single();
+    if (dealErr) { alert("Nepodařilo se uložit poptávku: " + dealErr.message); return; }
+    setDeals(prev => [...prev, { ...deal, customerId: deal.customer_id }]);
+    setQuickDealText("");
+    setQuickDealToast(`✅ Uloženo: ${customerLabel}${parsed.phone ? " · " + parsed.phone : ""}`);
+    setTimeout(() => setQuickDealToast(""), 5000);
+  };
 
   const save = async () => {
     if (!newD.name) return;
@@ -2306,6 +2335,24 @@ function Deals({ deals, setDeals, customers, employees, tasks, modal, setModal, 
       <div style={S.header}>
         <h1 style={S.h1}>Obchodní příležitosti</h1>
         <button style={S.btn()} onClick={() => setModal({ type: "addDeal" })}>+ Přidat poptávku</button>
+      </div>
+
+      {/* Rychlá poptávka — pro zápis telefonátu za pár vteřin */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            value={quickDealText}
+            onChange={e => setQuickDealText(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && quickAddDeal()}
+            placeholder="⚡ Rychlá poptávka: např. „Novák, 604123456, elektroinstalace RD Zábřeh, 150 tis Kč“"
+            style={{ ...S.input, marginBottom: 0, flex: 1, minWidth: 220 }}
+          />
+          <button onClick={quickAddDeal} style={S.btn()}>Uložit</button>
+        </div>
+        <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+          Zákazníka appka pozná podle jména/firmy z evidence; pokud ho nezná, rovnou založí nový kontakt.
+        </div>
+        {quickDealToast && <div style={{ marginTop: 6, fontSize: 12, color: "#15803d", fontWeight: 600 }}>{quickDealToast}</div>}
       </div>
 
       <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 16 }}>
@@ -5669,6 +5716,51 @@ function parseShorthandEvent(rawText, { customers, todayDate }) {
     work_description: rawText + (timeRange ? `\nČas: ${timeRange}` : ""),
     contract_id: "",
   };
+}
+
+// ─── Rychlá poptávka — pro rychlý zápis telefonátu. Na rozdíl od kalendářní
+// zkratky tady může jít o úplně NOVÉHO zákazníka (kdo volá poprvé), takže
+// když appka nikoho nenajde v evidenci, založí nový kontakt rovnou z toho,
+// co poznala (jméno, telefon) — ať se neztratí kontakt, i když ho ještě
+// nemáme v databázi.
+function parseShorthandDeal(rawText, { customers }) {
+  const phoneMatch = rawText.match(/(?:\+420\s?)?\b\d{3}\s?\d{3}\s?\d{3}\b/);
+  const phone = phoneMatch ? phoneMatch[0] : "";
+
+  // Odhadovaná hodnota — počítá se, jen když je u čísla jasné klíčové slovo
+  // (Kč/tis), ať si to appka nesplete s telefonem nebo jiným číslem v textu.
+  // Zkusí nejdřív "150 tis Kč" / "150000 Kč" (aby se z popisu odstranilo
+  // celé i s "Kč"), a jen když to nesedí, samotné "150 tis" bez Kč.
+  let valueMatch = rawText.match(/\d[\d\s]{1,9}\s*(?:tis(?:íc)?\.?\s*)?kč\.?/i);
+  let isThousands = valueMatch ? /tis/i.test(valueMatch[0]) : false;
+  if (!valueMatch) {
+    valueMatch = rawText.match(/\d[\d\s]{1,9}\s*tis(?:íc)?\.?/i);
+    isThousands = !!valueMatch;
+  }
+  let value = 0;
+  if (valueMatch) {
+    const numPart = valueMatch[0].match(/\d[\d\s]*/)[0];
+    let num = Number(numPart.replace(/\s/g, ""));
+    if (isThousands) num *= 1000;
+    value = num;
+  }
+
+  const customer = findShorthandCustomer(rawText, customers);
+
+  let description = rawText;
+  if (phoneMatch) description = description.replace(phoneMatch[0], "");
+  if (valueMatch) description = description.replace(valueMatch[0], "");
+  description = description.replace(/,\s*,/g, ",").replace(/\s{2,}/g, " ").replace(/^[,\s]+|[,\s]+$/g, "").trim();
+
+  let newCustomerName = "";
+  if (!customer) {
+    const firstChunk = rawText.split(",")[0].replace(phone, "").trim();
+    newCustomerName = firstChunk || "Nový kontakt";
+    // jméno nového zákazníka se v popisu neopakuje
+    if (description.startsWith(firstChunk)) description = description.slice(firstChunk.length).replace(/^[,\s]+/, "").trim();
+  }
+
+  return { phone, value, customer, newCustomerName, description: description || rawText };
 }
 
 function CalendarModule({ currentUser, employees, contracts, customers, tasks, invoices, calendarEvents, setCalendarEvents, setTab }) {
