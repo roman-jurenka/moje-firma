@@ -5587,6 +5587,27 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
   const [outlookBusy, setOutlookBusy] = useState(false);
   useEffect(() => { outlookCal.getConnection().then(setOutlookConn); }, []);
 
+  // Tiché automatické dotažení: jakmile mám Outlook připojený, při otevření
+  // Kalendáře se samy (bez klikání a bez hlášky) pošlou moje vlastní události,
+  // které tam ještě nejsou — typicky např. denní Kontrolní hlášení firmy
+  // založené naplánovanou úlohou na pozadí.
+  useEffect(() => {
+    if (!outlookConn || !currentUser?.id) return;
+    const cutoff = fmt(new Date(Date.now() - 7 * 86400000));
+    const pending = calendarEvents.filter(e => String(e.employee_id) === String(currentUser.id) && e.date >= cutoff && !e.outlook_event_id);
+    if (pending.length === 0) return;
+    (async () => {
+      for (const ev of pending) {
+        try {
+          const outlookId = await outlookCal.pushCalendarEvent(ev);
+          await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", ev.id);
+          setCalendarEvents(prev => prev.map(e => e.id === ev.id ? { ...e, outlook_event_id: outlookId } : e));
+        } catch (e) { console.error("Tichá synchronizace do Outlooku selhala:", e); }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outlookConn, calendarEvents.length]);
+
   const connectOutlook = () => outlookCal.login();
   const disconnectOutlook = async () => {
     if (!confirm("Odpojit Outlook kalendář? Už vytvořené události v Outlooku zůstanou, jen se přestanou dál synchronizovat.")) return;
