@@ -10,6 +10,7 @@ import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
+import * as outlookCal from "./outlookCalendar.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -586,6 +587,15 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         if (ok) {
           console.log("✅ OneDrive připojeno");
           setTab("onedrive"); // přepni na OneDrive záložku po přihlášení
+        }
+      });
+      // Osobní připojení Outlook kalendáře/úkolů — nezávislý OAuth flow na
+      // stejné redirect_uri (rozpozná se podle vlastního uloženého PKCE state,
+      // takže se s tím výše nepřebíjí).
+      outlookCal.handleOAuthCallback().then(ok => {
+        if (ok) {
+          console.log("✅ Outlook kalendář připojen");
+          setTab("calendar");
         }
       });
     }
@@ -2665,6 +2675,33 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
   const [detailTask, setDetailTask] = useState(null);
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
+  // Osobní Outlook připojení (stejné jako v kalendáři) — úkoly přiřazené mně
+  // se posílají do Microsoft To Do, jednosměrně z appky ven.
+  const [outlookConn, setOutlookConn] = useState(null);
+  const [outlookBusy, setOutlookBusy] = useState(false);
+  useEffect(() => { outlookCal.getConnection().then(setOutlookConn); }, []);
+
+  const syncMyTasksToOutlook = async () => {
+    const myName = currentUser?.name || "";
+    if (!outlookConn || !myName) return;
+    setOutlookBusy(true);
+    const mine = tasks.filter(t => t.assigned_to === myName && !t.done);
+    try {
+      for (const t of mine) {
+        const outlookId = await outlookCal.pushTask(t);
+        if (outlookId !== t.outlook_task_id) {
+          await supabase.from("tasks").update({ outlook_task_id: outlookId }).eq("id", t.id);
+          setTasks(prev => prev.map(x => x.id === t.id ? { ...x, outlook_task_id: outlookId } : x));
+        }
+      }
+      alert(`Hotovo — synchronizováno ${mine.length} úkolů do Outlooku.`);
+    } catch (e) {
+      alert("Synchronizace s Outlookem selhala: " + e.message);
+    } finally {
+      setOutlookBusy(false);
+    }
+  };
+
   const loadHeic2any = () => new Promise((resolve) => {
     if (window.heic2any) return resolve(window.heic2any);
     const s = document.createElement("script");
@@ -2726,6 +2763,14 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
         const { data: n } = await supabase.from("notifications").insert(notif).select().single();
         if (n && setNotifications) setNotifications(prev => [n, ...prev]);
       }
+      // Vlastní úkol (zadal jsem ho sám sobě) rovnou pošli do Outlooku
+      if (outlookConn && row.assigned_to === (currentUser?.name || "")) {
+        try {
+          const outlookId = await outlookCal.pushTask(row);
+          await supabase.from("tasks").update({ outlook_task_id: outlookId }).eq("id", row.id);
+          setTasks(prev => prev.map(t => t.id === row.id ? { ...t, outlook_task_id: outlookId } : t));
+        } catch (e) { console.error("Outlook push selhal:", e); }
+      }
     }
     setNewT({ title: "", due: "", priority: "Střední", customerId: "", contractId: "", dealId: "", assignedTo: "", visibleTo: [], photo_url: "", created_by: "", recurrence: "", recurrenceUntil: "" });
     setTaskPhotos([]);
@@ -2740,6 +2785,15 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
     await supabase.from("tasks").update({ done: willBeDone }).eq("id", id);
     setTasks(tasks.map(t => t.id === id ? { ...t, done: willBeDone } : t));
     if (willBeDone) spawnNextRecurrence(task, setTasks);
+    if (outlookConn && task.assigned_to === (currentUser?.name || "")) {
+      try {
+        const outlookId = await outlookCal.pushTask({ ...task, done: willBeDone });
+        if (outlookId !== task.outlook_task_id) {
+          await supabase.from("tasks").update({ outlook_task_id: outlookId }).eq("id", id);
+          setTasks(prev => prev.map(t => t.id === id ? { ...t, outlook_task_id: outlookId } : t));
+        }
+      } catch (e) { console.error("Outlook push selhal:", e); }
+    }
   };
 
   const myName = currentUser?.name || "";
@@ -2758,11 +2812,25 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
     <>
       <div style={S.header}><h1 style={S.h1}>Úkoly & připomínky</h1><button style={S.btn()} onClick={() => setModal({ type: "addTask" })}>+ Přidat</button></div>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
         {[["all", "Vše"], ["open", "Otevřené"], ["mine", "Moje"], ["done", "Hotové"]].map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)}
             style={{ ...S.btn(filter === k ? "#2E9BE0" : "#0E3B5E"), padding: "6px 14px", fontSize: 12 }}>{l}</button>
         ))}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {outlookConn ? (
+            <>
+              <span style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 600 }}>
+                ✓ Outlook: {outlookConn.connected_email}
+              </span>
+              <button onClick={syncMyTasksToOutlook} disabled={outlookBusy} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 10px" }}>
+                {outlookBusy ? "Synchronizuji…" : "🔄 Synchronizovat"}
+              </button>
+            </>
+          ) : (
+            <button onClick={() => outlookCal.login()} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 10px" }}>🔗 Připojit Outlook</button>
+          )}
+        </div>
       </div>
 
       <div style={S.card}>
@@ -5514,6 +5582,43 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
     contract_id: "", employee_id: currentUser?.id || "",
   });
 
+  // Osobní Outlook připojení — každý zaměstnanec svoje, jednosměrně (appka → Outlook).
+  const [outlookConn, setOutlookConn] = useState(null);
+  const [outlookBusy, setOutlookBusy] = useState(false);
+  useEffect(() => { outlookCal.getConnection().then(setOutlookConn); }, []);
+
+  const connectOutlook = () => outlookCal.login();
+  const disconnectOutlook = async () => {
+    if (!confirm("Odpojit Outlook kalendář? Už vytvořené události v Outlooku zůstanou, jen se přestanou dál synchronizovat.")) return;
+    await outlookCal.disconnect();
+    setOutlookConn(null);
+  };
+
+  // Ručně dotáhne moje vlastní akce (za posledních 7 dní + do budoucna) do
+  // Outlooku — potřeba hlavně pro akce, které mi založil někdo jiný (manažer),
+  // protože ty se automaticky pošlou až teď, ne v okamžiku vzniku (na to by
+  // byl potřeba přístup k mému tokenu odjinud, což si appka schválně nedovolí).
+  const syncMyEventsToOutlook = async () => {
+    if (!outlookConn || !currentUser?.id) return;
+    setOutlookBusy(true);
+    const cutoff = fmt(new Date(Date.now() - 7 * 86400000));
+    const mine = calendarEvents.filter(e => String(e.employee_id) === String(currentUser.id) && e.date >= cutoff);
+    try {
+      for (const ev of mine) {
+        const outlookId = await outlookCal.pushCalendarEvent(ev);
+        if (outlookId !== ev.outlook_event_id) {
+          await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", ev.id);
+          setCalendarEvents(prev => prev.map(e => e.id === ev.id ? { ...e, outlook_event_id: outlookId } : e));
+        }
+      }
+      alert(`Hotovo — synchronizováno ${mine.length} událostí do Outlooku.`);
+    } catch (e) {
+      alert("Synchronizace s Outlookem selhala: " + e.message);
+    } finally {
+      setOutlookBusy(false);
+    }
+  };
+
   const fmt2 = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
   const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
@@ -5548,13 +5653,29 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
       contract_id: form.contract_id ? Number(form.contract_id) : null,
     };
     const { data } = await supabase.from("calendar_events").insert(payload).select().single();
-    if (data) setCalendarEvents(prev => [...prev, data]);
+    if (data) {
+      setCalendarEvents(prev => [...prev, data]);
+      // Vlastní akce (přihlášený uživatel = přiřazený zaměstnanec) se rovnou
+      // pošle do jeho Outlooku, pokud má připojení — cizí přiřazení se dotáhnou
+      // až přes tlačítko Synchronizovat na straně toho, komu patří.
+      if (outlookConn && String(payload.employee_id) === String(currentUser.id)) {
+        try {
+          const outlookId = await outlookCal.pushCalendarEvent(data);
+          await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", data.id);
+          setCalendarEvents(prev => prev.map(e => e.id === data.id ? { ...e, outlook_event_id: outlookId } : e));
+        } catch (e) { console.error("Outlook push selhal:", e); }
+      }
+    }
     setShowAdd(false);
     setForm({ date: fmt(today), work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", employee_id: currentUser?.id || "" });
   };
 
   const deleteEvent = async (id) => {
+    const ev = calendarEvents.find(e => e.id === id);
     await supabase.from("calendar_events").delete().eq("id", id);
+    if (ev?.outlook_event_id && outlookConn && String(ev.employee_id) === String(currentUser.id)) {
+      outlookCal.deleteCalendarEvent(ev.outlook_event_id).catch(() => {});
+    }
     setCalendarEvents(prev => prev.filter(e => e.id !== id));
     setDetailEvent(null);
   };
@@ -5584,6 +5705,23 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
           </div>
           <button onClick={() => { setShowAdd(true); }} style={S.btn()}>+ Přidat událost</button>
         </div>
+      </div>
+
+      {/* Osobní Outlook připojení */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        {outlookConn ? (
+          <>
+            <span style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>
+              ✓ Outlook připojen: {outlookConn.connected_email}
+            </span>
+            <button onClick={syncMyEventsToOutlook} disabled={outlookBusy} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 10px" }}>
+              {outlookBusy ? "Synchronizuji…" : "🔄 Synchronizovat"}
+            </button>
+            <button onClick={disconnectOutlook} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 10px", color: "#b91c1c" }}>Odpojit</button>
+          </>
+        ) : (
+          <button onClick={connectOutlook} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 10px" }}>🔗 Připojit svůj Outlook kalendář</button>
+        )}
       </div>
 
       {/* Legenda */}
