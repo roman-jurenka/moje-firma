@@ -515,6 +515,78 @@ function ModalActions({ onSave, onClose, saveLabel = "Uložit" }) {
   );
 }
 
+// Pole, u kterých se ukazuje "doplnit" štítek, když jsou u zákazníka prázdná —
+// sdílené mezi kontrolou (má se formulář vůbec zobrazit?) a samotným
+// formulářem (co zvýraznit).
+const CUSTOMER_COMPLETION_FIELDS = ["company", "email", "phone", "address"];
+function customerNeedsCompletion(customer) {
+  if (!customer) return false;
+  if (!customer.id) return true; // nový zákazník — vždy má co doplnit
+  return CUSTOMER_COMPLETION_FIELDS.some(k => !customer[k]);
+}
+
+// Formulář "Doplnit údaje zákazníka" — použitý po Rychlém zadání v Kalendáři
+// i po Rychlé poptávce. Umí založit i úplně nového zákazníka (customer.id
+// chybí → INSERT) i doplnit staršího (customer.id je → UPDATE).
+function CustomerCompleteModal({ customer, onClose, onSaved }) {
+  const [vals, setVals] = useState({
+    name: customer?.name || "",
+    company: customer?.company || "",
+    email: customer?.email || "",
+    phone: customer?.phone || "",
+    address: customer?.address || "",
+    tag: customer?.tag || "Nový",
+  });
+  const [saving, setSaving] = useState(false);
+  const fields = [["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"], ["Adresa", "address"]];
+
+  const save = async () => {
+    if (!vals.name.trim()) { alert("Jméno je potřeba vyplnit."); return; }
+    setSaving(true);
+    const payload = { name: vals.name, company: vals.company, email: vals.email, phone: vals.phone, address: vals.address, tag: vals.tag };
+    let result;
+    if (customer?.id) {
+      const { data, error } = await supabase.from("customers").update(payload).eq("id", customer.id).select().single();
+      result = { data, error };
+    } else {
+      const { data, error } = await supabase.from("customers").insert(payload).select().single();
+      result = { data, error };
+    }
+    setSaving(false);
+    if (result.error) { alert("Nepodařilo se uložit: " + result.error.message); return; }
+    onSaved(result.data);
+  };
+
+  if (!customer) return null;
+  return (
+    <div style={S.modal}>
+      <div style={S.modalBox}>
+        <ModalHeader title="Doplnit údaje zákazníka" onClose={onClose} />
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+          Co appka zná, je vyplněné. Zbytek doplň, nebo zavři a udělej to později v Zákaznících.
+        </div>
+        {fields.map(([label, key]) => {
+          const known = !!customer[key];
+          return (
+            <div key={key}>
+              <label style={S.label}>
+                {label}
+                {!known && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+              </label>
+              <input style={S.input} value={vals[key]} onChange={e => setVals({ ...vals, [key]: e.target.value })} />
+            </div>
+          );
+        })}
+        <label style={S.label}>Štítek</label>
+        <select style={S.select} value={vals.tag} onChange={e => setVals({ ...vals, tag: e.target.value })}>
+          {["Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
+        </select>
+        <ModalActions onSave={save} onClose={onClose} saveLabel={saving ? "Ukládám…" : "Uložit"} />
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 
 function MainApp({ currentUser, setCurrentUser, onLogout }) {
@@ -1084,7 +1156,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {tab === "calendar" && <CalendarModule
           currentUser={currentUser} employees={employees} contracts={contracts}
-          customers={customers} tasks={tasks} invoices={invoices}
+          customers={customers} setCustomers={setCustomers} tasks={tasks} invoices={invoices}
           calendarEvents={calendarEvents} setCalendarEvents={setCalendarEvents}
           setTab={setTab}
         />}
@@ -2247,12 +2319,23 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
   // poptávku a pokud volajícího nezná, založí i nový kontakt do Zákazníků.
   const [quickDealText, setQuickDealText] = useState("");
   const [quickDealToast, setQuickDealToast] = useState("");
+  // Po Rychlé poptávce appka nabídne doplnění údajů zákazníka (nový, nebo
+  // starší s mezerami v profilu) — jen zavolej setCompletingCustomer.
+  const [completingCustomer, setCompletingCustomer] = useState(null);
+  const handleCustomerCompleted = (savedCustomer) => {
+    setCustomers(prev => prev.some(c => c.id === savedCustomer.id)
+      ? prev.map(c => c.id === savedCustomer.id ? savedCustomer : c)
+      : [...prev, savedCustomer]);
+    setCompletingCustomer(null);
+  };
+
   const quickAddDeal = async () => {
     const text = quickDealText.trim();
     if (!text) return;
     const parsed = parseShorthandDeal(text, { customers });
     let customerId = parsed.customer?.id;
     let customerLabel = parsed.customer?.name || parsed.customer?.company || "";
+    let resolvedCustomer = parsed.customer || null;
     if (!customerId) {
       const { data: newCust, error } = await supabase.from("customers")
         .insert({ name: parsed.newCustomerName, phone: parsed.phone || null }).select().single();
@@ -2260,6 +2343,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
       setCustomers(prev => [...prev, newCust]);
       customerId = newCust.id;
       customerLabel = newCust.name + " (nový)";
+      resolvedCustomer = newCust;
     }
     const { data: deal, error: dealErr } = await supabase.from("deals").insert({
       name: parsed.description || text, value: parsed.value, stage: "Nový",
@@ -2270,6 +2354,8 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
     setQuickDealText("");
     setQuickDealToast(`✅ Uloženo: ${customerLabel}${parsed.phone ? " · " + parsed.phone : ""}`);
     setTimeout(() => setQuickDealToast(""), 5000);
+
+    if (customerNeedsCompletion(resolvedCustomer)) setCompletingCustomer(resolvedCustomer);
   };
 
   const save = async () => {
@@ -2354,6 +2440,10 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
         </div>
         {quickDealToast && <div style={{ marginTop: 6, fontSize: 12, color: "#15803d", fontWeight: 600 }}>{quickDealToast}</div>}
       </div>
+
+      {completingCustomer && (
+        <CustomerCompleteModal customer={completingCustomer} onClose={() => setCompletingCustomer(null)} onSaved={handleCustomerCompleted} />
+      )}
 
       <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 16 }}>
         {STAGES.map(stage => (
@@ -5715,6 +5805,9 @@ function parseShorthandEvent(rawText, { customers, todayDate }) {
     contact_phone: phone || customer?.phone || "",
     work_description: rawText + (timeRange ? `\nČas: ${timeRange}` : ""),
     contract_id: "",
+    customer,
+    unmatchedNameGuess: !customer ? rawText.split(/[,\n]/)[0].trim() : "",
+    unmatchedPhoneGuess: phone,
   };
 }
 
@@ -5763,7 +5856,7 @@ function parseShorthandDeal(rawText, { customers }) {
   return { phone, value, customer, newCustomerName, description: description || rawText };
 }
 
-function CalendarModule({ currentUser, employees, contracts, customers, tasks, invoices, calendarEvents, setCalendarEvents, setTab }) {
+function CalendarModule({ currentUser, employees, contracts, customers, setCustomers, tasks, invoices, calendarEvents, setCalendarEvents, setTab }) {
   const isAdmin = currentUser?.role === "admin" || currentUser?.role === "manager";
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -5860,13 +5953,18 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
   // dotáhne i do mého Outlooku/iPhone kalendáře.
   const [quickText, setQuickText] = useState("");
   const [quickToast, setQuickToast] = useState("");
+  // { customer, linkedEventId } — po Rychlém zadání appka nabídne doplnění
+  // údajů zákazníka (nový, nebo starší s mezerami v profilu).
+  const [completingCustomer, setCompletingCustomer] = useState(null);
+
   const quickAddSave = async () => {
     const text = quickText.trim();
     if (!text || !currentUser?.id) return;
     const parsed = parseShorthandEvent(text, { customers, todayDate: new Date() });
     const emp = employees.find(e => e.id === Number(currentUser.id));
+    const { customer, unmatchedNameGuess, unmatchedPhoneGuess, ...eventFields } = parsed;
     const payload = {
-      ...parsed,
+      ...eventFields,
       employee_id: Number(currentUser.id),
       employee_name: emp ? emp.name : currentUser.name,
       contract_id: null,
@@ -5877,6 +5975,30 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
     setQuickText("");
     setQuickToast(`✅ Uloženo: ${parsed.date} · ${parsed.work_type}${parsed.customer_name ? " · " + parsed.customer_name : ""}`);
     setTimeout(() => setQuickToast(""), 5000);
+
+    let candidate = customer;
+    if (!candidate && unmatchedNameGuess) {
+      candidate = { name: unmatchedNameGuess, phone: unmatchedPhoneGuess, company: "", email: "", address: "" };
+    }
+    if (customerNeedsCompletion(candidate)) {
+      setCompletingCustomer({ customer: candidate, linkedEventId: data.id });
+    }
+  };
+
+  const handleCustomerCompleted = async (savedCustomer) => {
+    setCustomers(prev => prev.some(c => c.id === savedCustomer.id)
+      ? prev.map(c => c.id === savedCustomer.id ? savedCustomer : c)
+      : [...prev, savedCustomer]);
+    const linkedEventId = completingCustomer?.linkedEventId;
+    if (linkedEventId) {
+      const patch = {
+        customer_name: savedCustomer.name || "", customer_company: savedCustomer.company || "",
+        address: savedCustomer.address || "", contact_name: savedCustomer.name || "", contact_phone: savedCustomer.phone || "",
+      };
+      await supabase.from("calendar_events").update(patch).eq("id", linkedEventId);
+      setCalendarEvents(prev => prev.map(e => e.id === linkedEventId ? { ...e, ...patch } : e));
+    }
+    setCompletingCustomer(null);
   };
 
   const fmt2 = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -5960,6 +6082,10 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
         </div>
         {quickToast && <div style={{ marginTop: 8, fontSize: 12, color: "#15803d", fontWeight: 600 }}>{quickToast}</div>}
       </div>
+
+      {completingCustomer && (
+        <CustomerCompleteModal customer={completingCustomer.customer} onClose={() => setCompletingCustomer(null)} onSaved={handleCustomerCompleted} />
+      )}
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1A1A1A" }}>📅 Kalendář</h2>
