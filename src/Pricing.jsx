@@ -17,6 +17,15 @@ const fmtKc = (n) => (Number(n) || 0).toLocaleString("cs-CZ") + " Kč";
 const uid = () => Date.now() + Math.random();
 const RATE_PER_KM = 6.5; // Kč/km — stejný paušál jako v Knize jízd
 
+// Stejné typy jako u poptávek/zakázek (App.jsx JOB_TYPES, Contracts.jsx
+// TYPY_ZAKAZEK) — typ se řetězí celou cestou Nabídka → Poptávka → Zakázka.
+const JOB_TYPES = [
+  { id: "FVE", label: "FVE — Fotovoltaika" },
+  { id: "HRM", label: "HRM — Hromosvody" },
+  { id: "ELK", label: "ELK — Elektroinstalace" },
+  { id: "SRV", label: "SRV — Servis" },
+];
+
 const PRAZDNA_NABIDKA = () => ({
   interni: {
     sazbaMd: 3200,   // Kč / MD (člověko-den) — jednotná sazba pro celou nabídku
@@ -196,8 +205,10 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const [name, setName] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [status, setStatus] = useState("Návrh");
+  const [type, setType] = useState("");
   const [data, setData] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [typeFilter, setTypeFilter] = useState("vse");
 
   useEffect(() => {
     supabase.from("quotes").select("*").order("updated_at", { ascending: false }).then(({ data: d }) => setQuotes(d || []));
@@ -218,6 +229,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     setName(q.name);
     setCustomerId(q.customer_id ? String(q.customer_id) : "");
     setStatus(q.status || "Návrh");
+    setType(q.type || "");
     setData(normalize(q.data));
   };
 
@@ -226,6 +238,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     setName("");
     setCustomerId("");
     setStatus("Návrh");
+    setType("");
     setData(PRAZDNA_NABIDKA());
   };
 
@@ -261,6 +274,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       name: name.trim(),
       customer_id: customerId ? Number(customerId) : null,
       status,
+      type: type || null,
       data,
       updated_at: new Date().toISOString(),
     };
@@ -289,6 +303,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       name, value: Math.round(cilovaCena), stage: "Nový",
       customer_id: customerId ? Number(customerId) : null,
       assigned_to: currentUser?.name || "",
+      type: type || null,
     }).select().single();
     if (dealRow) {
       await supabase.from("quotes").update({ deal_id: dealRow.id, status: "Odesláno" }).eq("id", activeId);
@@ -338,7 +353,11 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     w.document.close();
   };
 
-  const filtered = quotes.filter(q => !search || (q.name || "").toLowerCase().includes(search.toLowerCase()));
+  const filtered = quotes
+    .filter(q => !search || (q.name || "").toLowerCase().includes(search.toLowerCase()))
+    .filter(q => typeFilter === "vse" || q.type === typeFilter || (typeFilter === "bez" && !q.type));
+
+  const typeBadgeColor = (id) => ({ FVE: "#f59e0b", HRM: "#a78bfa", ELK: "#2E9BE0", SRV: "#34d399" }[id] || "#64748b");
 
   // ─── SEZNAM NABÍDEK ──────────────────────────────────────────────────────
   if (!data) {
@@ -350,6 +369,20 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         </div>
         <p style={{ color: "#64748b", fontSize: 13, marginBottom: 18 }}>Interní nacenění po MD (člověko-dnech) + rozvrh po dnech + volné sekce pro zákazníka. Následně překlop na obchodní případ.</p>
         <input style={{ ...S.input, marginBottom: 16, maxWidth: 340 }} placeholder="Hledat nabídku..." value={search} onChange={e => setSearch(e.target.value)} />
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+          {[["vse", "Vše"], ...JOB_TYPES.map(t => [t.id, t.label]), ["bez", "Bez typu"]].map(([k, l]) => (
+            <button key={k} onClick={() => setTypeFilter(k)}
+              style={{
+                background: typeFilter === k ? "#2E9BE0" : "#0f1320", color: typeFilter === k ? "#fff" : "#94a3b8",
+                border: "1px solid " + (typeFilter === k ? "#2E9BE0" : "#252d45"), borderRadius: 8,
+                padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              }}>
+              {l}
+            </button>
+          ))}
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {filtered.length === 0 && <div style={{ color: "#334155", fontSize: 13 }}>Zatím žádné nabídky.</div>}
           {filtered.map(q => {
@@ -358,7 +391,14 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
               <div key={q.id} onClick={() => openQuote(q)}
                 style={{ ...S.card, marginBottom: 0, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{q.name}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{q.name}</div>
+                    {q.type && (
+                      <span style={{ background: typeBadgeColor(q.type) + "22", color: typeBadgeColor(q.type), border: "1px solid " + typeBadgeColor(q.type), borderRadius: 6, padding: "1px 8px", fontSize: 10, fontWeight: 700 }}>
+                        {q.type}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{cust ? cust.name : "bez zákazníka"} · {q.status}</div>
                 </div>
                 <button onClick={e => { e.stopPropagation(); deleteQuote(q.id); }} style={{ ...S.btn("#ef4444"), padding: "5px 12px", fontSize: 11 }}>✕</button>
@@ -375,8 +415,15 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     <div style={S.app}>
       <button onClick={closeQuote} style={{ ...S.btnGhost, padding: "6px 14px", marginBottom: 14 }}>← Zpět na seznam</button>
 
-      <div style={{ ...S.card, display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12 }}>
+      <div style={{ ...S.card, display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
         <div><label style={S.label}>Název nabídky</label><input style={S.input} value={name} onChange={e => setName(e.target.value)} placeholder="např. FVE Novák 9kWp" /></div>
+        <div>
+          <label style={S.label}>Typ zakázky</label>
+          <select style={S.select} value={type} onChange={e => setType(e.target.value)}>
+            <option value="">— nezadáno —</option>
+            {JOB_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </div>
         <div>
           <label style={S.label}>Zákazník</label>
           <select style={S.select} value={customerId} onChange={e => setCustomerId(e.target.value)}>
