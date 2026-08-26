@@ -5567,6 +5567,110 @@ const WORK_TYPES = {
   "Reklamace":   { color: "#7c3aed", bg: "#ede9fe" },
 };
 
+// ─── Rychlé zadání — chytré (pravidlové, bez AI) rozpoznání zkratkovitého
+// textu do pořádné kalendářní události. Zvládá: dnes/zítra/pozítří, název
+// dne v týdnu, datum "15.9." nebo "15.9.2026", typ práce podle klíčových
+// slov, telefonní číslo, časový rozsah ("9-13") a spárování zákazníka podle
+// existující evidence (jméno/firma). Cokoli nerozpozná, dá do popisu, ať se
+// žádná informace neztratí.
+const CZ_WEEKDAYS_FULL = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
+const WORK_TYPE_KEYWORDS = [
+  ["reklamace", "Reklamace"], ["reklamaci", "Reklamace"], ["reklamaci", "Reklamace"],
+  ["servis", "Servis"], ["servisní", "Servis"], ["servisku", "Servis"],
+  ["hrubé práce", "Hrubé práce"], ["hrubé", "Hrubé práce"], ["hrubka", "Hrubé práce"], ["hrubku", "Hrubé práce"],
+  ["nedodělek", "Nedodělek"], ["nedodelek", "Nedodělek"],
+  ["zakázka", "Zakázka"], ["zakázku", "Zakázka"],
+];
+
+function stripDiacritics(s) {
+  return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+function parseShorthandDate(rawLowerNoDia, todayDate) {
+  const today = new Date(todayDate); today.setHours(0, 0, 0, 0);
+  if (/\bdnes\b/.test(rawLowerNoDia)) return fmt(today);
+  if (/\bpozitri\b/.test(rawLowerNoDia)) { const d = new Date(today); d.setDate(d.getDate() + 2); return fmt(d); }
+  if (/\bzitra\b/.test(rawLowerNoDia)) { const d = new Date(today); d.setDate(d.getDate() + 1); return fmt(d); }
+  for (let i = 0; i < 7; i++) {
+    const wd = stripDiacritics(CZ_WEEKDAYS_FULL[i]).toLowerCase();
+    if (new RegExp("\\b" + wd + "\\b").test(rawLowerNoDia)) {
+      const d = new Date(today);
+      let diff = (i - d.getDay() + 7) % 7;
+      if (diff === 0) diff = 7;
+      d.setDate(d.getDate() + diff);
+      return fmt(d);
+    }
+  }
+  const m = rawLowerNoDia.match(/\b(\d{1,2})\.\s*(\d{1,2})\.(?:\s*(\d{4}))?/);
+  if (m) {
+    const day = Number(m[1]), month = Number(m[2]), year = m[3] ? Number(m[3]) : today.getFullYear();
+    const d = new Date(year, month - 1, day);
+    if (!m[3] && d < today) d.setFullYear(d.getFullYear() + 1);
+    return fmt(d);
+  }
+  return fmt(today);
+}
+
+function parseShorthandWorkType(rawLowerNoDia) {
+  for (const [kw, val] of WORK_TYPE_KEYWORDS) {
+    if (rawLowerNoDia.includes(stripDiacritics(kw))) return val;
+  }
+  return "Zakázka";
+}
+
+function findShorthandCustomer(rawText, customers) {
+  // Porovnává jednotlivá slova jména/firmy (ne celé pole najednou) — v textu
+  // typicky bude jen "Novák", ne celé "Jan Novák". Krátká obecná slova (méně
+  // než 4 znaky, např. "FVE", "a.s.") se do skóre nepočítají, ať nezpůsobí
+  // náhodné shody napříč více zákazníky.
+  const norm = stripDiacritics(rawText.toLowerCase());
+  let best = null, bestScore = 0;
+  for (const c of customers || []) {
+    let score = 0;
+    for (const field of [c.name, c.company]) {
+      if (!field) continue;
+      const words = stripDiacritics(field.toLowerCase()).split(/\s+/).filter(w => w.length >= 4);
+      for (const w of words) {
+        const esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp("\\b" + esc + "\\b").test(norm)) score += w.length;
+      }
+    }
+    if (score > bestScore) { best = c; bestScore = score; }
+  }
+  return best;
+}
+
+function parseShorthandEvent(rawText, { customers, todayDate }) {
+  const noDia = stripDiacritics(rawText.toLowerCase());
+  const date = parseShorthandDate(noDia, todayDate);
+  const work_type = parseShorthandWorkType(noDia);
+  const phoneMatch = rawText.match(/(?:\+420\s?)?\b\d{3}\s?\d{3}\s?\d{3}\b/);
+  const phone = phoneMatch ? phoneMatch[0] : "";
+  const timeMatch = rawText.match(/\b(\d{1,2})(?:[:.](\d{2}))?\s*-\s*(\d{1,2})(?:[:.](\d{2}))?\b/);
+  const timeRange = timeMatch ? timeMatch[0] : "";
+  const customer = findShorthandCustomer(rawText, customers);
+
+  const titleBits = [work_type];
+  if (customer) titleBits.push(customer.name || customer.company);
+  else {
+    const firstBit = rawText.split(/[,\n]/)[0].trim();
+    if (firstBit && firstBit.length <= 60) titleBits.push(firstBit);
+  }
+
+  return {
+    date,
+    work_type,
+    title: titleBits.join(" – "),
+    customer_name: customer?.name || "",
+    customer_company: customer?.company || "",
+    address: customer?.address || "",
+    contact_name: customer?.name || "",
+    contact_phone: phone || customer?.phone || "",
+    work_description: rawText + (timeRange ? `\nČas: ${timeRange}` : ""),
+    contract_id: "",
+  };
+}
+
 function CalendarModule({ currentUser, employees, contracts, customers, tasks, invoices, calendarEvents, setCalendarEvents, setTab }) {
   const isAdmin = currentUser?.role === "admin" || currentUser?.role === "manager";
   const today = new Date();
@@ -5659,6 +5763,30 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
     setShowIcsLink(true);
   };
 
+  // Rychlé zadání — napíšu zkratkovitě, appka to rozpozná a rovnou uloží
+  // (bez potvrzování), přiřazené vždy mně. Díky auto-syncu výše se to samo
+  // dotáhne i do mého Outlooku/iPhone kalendáře.
+  const [quickText, setQuickText] = useState("");
+  const [quickToast, setQuickToast] = useState("");
+  const quickAddSave = async () => {
+    const text = quickText.trim();
+    if (!text || !currentUser?.id) return;
+    const parsed = parseShorthandEvent(text, { customers, todayDate: new Date() });
+    const emp = employees.find(e => e.id === Number(currentUser.id));
+    const payload = {
+      ...parsed,
+      employee_id: Number(currentUser.id),
+      employee_name: emp ? emp.name : currentUser.name,
+      contract_id: null,
+    };
+    const { data, error } = await supabase.from("calendar_events").insert(payload).select().single();
+    if (error) { alert("Nepodařilo se uložit: " + error.message); return; }
+    setCalendarEvents(prev => [...prev, data]);
+    setQuickText("");
+    setQuickToast(`✅ Uloženo: ${parsed.date} · ${parsed.work_type}${parsed.customer_name ? " · " + parsed.customer_name : ""}`);
+    setTimeout(() => setQuickToast(""), 5000);
+  };
+
   const fmt2 = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
   const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
@@ -5726,6 +5854,21 @@ function CalendarModule({ currentUser, employees, contracts, customers, tasks, i
 
   return (
     <div style={{ padding: 24 }}>
+      {/* Rychlé zadání — pro rychlé psaní z mobilu, zkratkovitě, rovnou uloží */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            value={quickText}
+            onChange={e => setQuickText(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && quickAddSave()}
+            placeholder="⚡ Rychlé zadání: např. „zítra Novák servis, 604123456, 9-13“"
+            style={{ ...S.input, marginBottom: 0, flex: 1, minWidth: 220 }}
+          />
+          <button onClick={quickAddSave} style={S.btn()}>Uložit</button>
+        </div>
+        {quickToast && <div style={{ marginTop: 8, fontSize: 12, color: "#15803d", fontWeight: 600 }}>{quickToast}</div>}
+      </div>
+
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1A1A1A" }}>📅 Kalendář</h2>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
