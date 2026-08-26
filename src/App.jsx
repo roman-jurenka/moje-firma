@@ -2332,9 +2332,43 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
   const [newD, setNewD] = useState({ name: "", value: "", stage: "Nový", customerId: "", assigned_to: "" });
   const [dragId, setDragId] = useState(null);
   const [selectedDeal, setSelectedDeal] = useState(null);
-  const [editingDeal, setEditingDeal] = useState(false);
-  const [editVals, setEditVals] = useState({ name: "", value: "" });
   const [lostReasonDraft, setLostReasonDraft] = useState("");
+
+  // Detail poptávky má dvě záložky: Aktuální stav (fáze, úkoly, převod na
+  // zakázku) a Úprava informací (doplnění/oprava poptávky i zákazníka na
+  // jednom místě, ne přes samostatné okno).
+  const [detailTab, setDetailTab] = useState("stav");
+  const [infoEditVals, setInfoEditVals] = useState({ name: "", value: "", assigned_to: "" });
+  const [custInfoVals, setCustInfoVals] = useState({ name: "", company: "", email: "", phone: "", address: "", customer_type: "Koncový zákazník" });
+  const [savingInfo, setSavingInfo] = useState(false);
+
+  const openDealDetail = (d) => {
+    setSelectedDeal(prev => (prev?.id === d.id ? null : d));
+    setDetailTab("stav");
+    const c = customers.find(x => x.id === (d.customerId || d.customer_id));
+    setInfoEditVals({ name: d.name || "", value: d.value || "", assigned_to: d.assigned_to || "" });
+    setCustInfoVals({
+      name: c?.name || "", company: c?.company || "", email: c?.email || "",
+      phone: c?.phone || "", address: c?.address || "", customer_type: c?.customer_type || "Koncový zákazník",
+    });
+  };
+
+  const saveDealInfo = async () => {
+    const patch = { name: infoEditVals.name, value: Number(infoEditVals.value) || 0, assigned_to: infoEditVals.assigned_to };
+    const { error } = await supabase.from("deals").update(patch).eq("id", selectedDeal.id);
+    if (error) { alert("Nepodařilo se uložit: " + error.message); return; }
+    setDeals(prev => prev.map(d => d.id === selectedDeal.id ? { ...d, ...patch } : d));
+    setSelectedDeal(prev => ({ ...prev, ...patch }));
+  };
+
+  const saveCustomerInfo = async (custId) => {
+    if (!custInfoVals.name.trim()) { alert("Jméno zákazníka je potřeba vyplnit."); return; }
+    setSavingInfo(true);
+    const { data, error } = await supabase.from("customers").update(custInfoVals).eq("id", custId).select().single();
+    setSavingInfo(false);
+    if (error) { alert("Nepodařilo se uložit: " + error.message); return; }
+    setCustomers(prev => prev.map(c => c.id === custId ? data : c));
+  };
 
   // Rychlá poptávka — pro telefonát: napíšu pár slov, appka rovnou založí
   // poptávku a pokud volajícího nezná, založí i nový kontakt do Zákazníků.
@@ -2394,20 +2428,6 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
     if (row) setDeals([...deals, { ...row, customerId: row.customer_id }]);
     setNewD({ name: "", value: "", stage: "Nový", customerId: "", assigned_to: "" });
     closeModal();
-  };
-
-  const startEditDeal = () => {
-    setEditVals({ name: selectedDeal.name || "", value: selectedDeal.value || "" });
-    setEditingDeal(true);
-  };
-
-  const saveEditDeal = async () => {
-    if (!editVals.name) return;
-    const patch = { name: editVals.name, value: Number(editVals.value) || 0 };
-    await supabase.from("deals").update(patch).eq("id", selectedDeal.id);
-    setDeals(deals.map(d => d.id === selectedDeal.id ? { ...d, ...patch } : d));
-    setSelectedDeal({ ...selectedDeal, ...patch });
-    setEditingDeal(false);
   };
 
   const moveStage = async (deal, newStage) => {
@@ -2486,7 +2506,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                 <div key={d.id}
                   style={{ ...S.kanbanCard, opacity: dragId === d.id ? 0.4 : 1, cursor: "grab", outline: selectedDeal?.id === d.id ? "2px solid #2E9BE0" : "none" }}
                   draggable onDragStart={e => onDragStart(e, d.id)}
-                  onClick={() => setSelectedDeal(selectedDeal?.id === d.id ? null : d)}>
+                  onClick={() => openDealDetail(d)}>
                   <div style={{ fontWeight: 600, color: "#fff", fontSize: 13, marginBottom: 3 }}>{d.name}</div>
                   {cust && <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3 }}>{cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}</div>}
                   {d.is_repeat && <div style={{ fontSize: 10, color: "#0d9488", fontWeight: 700, marginBottom: 3 }}>🔁 Další zakázka</div>}
@@ -2515,19 +2535,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
           <div style={{ ...S.card, marginTop: 8, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#2E9BE0") }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
               <div style={{ flex: 1 }}>
-                {editingDeal ? (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <input style={{ ...S.input, width: 220, marginBottom: 0 }} value={editVals.name} onChange={e => setEditVals({ ...editVals, name: e.target.value })} placeholder="Název" />
-                    <input style={{ ...S.input, width: 130, marginBottom: 0 }} type="number" value={editVals.value} onChange={e => setEditVals({ ...editVals, value: e.target.value })} placeholder="Hodnota (Kč)" />
-                    <button style={{ ...S.btn("#34d399"), padding: "7px 14px", fontSize: 12 }} onClick={saveEditDeal}>✓ Uložit</button>
-                    <button style={{ ...S.btn("#334155"), padding: "7px 14px", fontSize: 12 }} onClick={() => setEditingDeal(false)}>Zrušit</button>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <div style={{ fontWeight: 700, color: "#fff", fontSize: 16 }}>{selectedDeal.name}</div>
-                    <button title="Upravit" onClick={startEditDeal} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#94a3b8" }}>✏️</button>
-                  </div>
-                )}
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 16 }}>{selectedDeal.name}</div>
                 {cust && (
                   <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>
                     {cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}{cust.phone ? " · " + cust.phone : ""}
@@ -2548,41 +2556,100 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
-              <div><div style={{ fontSize: 11, color: "#64748b" }}>Hodnota</div><div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{selectedDeal.value ? fmtKc(selectedDeal.value) : "—"}</div></div>
-              <div><div style={{ fontSize: 11, color: "#64748b" }}>Vede případ</div><div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.assigned_to || "—"}</div></div>
-              <div><div style={{ fontSize: 11, color: "#64748b" }}>Fáze</div><span style={S.tag(STAGE_COLORS[selectedDeal.stage])}>{selectedDeal.stage}</span></div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
+              {[["stav", "Aktuální stav"], ["uprava", "Úprava informací"]].map(([k, l]) => (
+                <button key={k} onClick={() => setDetailTab(k)}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer", padding: "8px 4px", marginRight: 16,
+                    fontSize: 13, fontWeight: 700, color: detailTab === k ? "#2E9BE0" : "#64748b",
+                    borderBottom: detailTab === k ? "2px solid #2E9BE0" : "2px solid transparent",
+                  }}>
+                  {l}
+                </button>
+              ))}
             </div>
 
-            {selectedDeal.stage === "Prohráno" && selectedDeal.lost_reason && (
-              <div style={{ background: "#ef444422", border: "1px solid #ef4444", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
-                <div style={{ fontSize: 11, color: "#f87171", fontWeight: 700, marginBottom: 3 }}>DŮVOD PROHRY</div>
-                <div style={{ color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.lost_reason}</div>
-              </div>
+            {detailTab === "stav" && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
+                  <div><div style={{ fontSize: 11, color: "#64748b" }}>Hodnota</div><div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{selectedDeal.value ? fmtKc(selectedDeal.value) : "—"}</div></div>
+                  <div><div style={{ fontSize: 11, color: "#64748b" }}>Vede případ</div><div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.assigned_to || "—"}</div></div>
+                  <div><div style={{ fontSize: 11, color: "#64748b" }}>Fáze</div><span style={S.tag(STAGE_COLORS[selectedDeal.stage])}>{selectedDeal.stage}</span></div>
+                </div>
+
+                {selectedDeal.stage === "Prohráno" && selectedDeal.lost_reason && (
+                  <div style={{ background: "#ef444422", border: "1px solid #ef4444", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, color: "#f87171", fontWeight: 700, marginBottom: 3 }}>DŮVOD PROHRY</div>
+                    <div style={{ color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.lost_reason}</div>
+                  </div>
+                )}
+
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Přesunout do fáze:</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {STAGES.map(s => (
+                      <button key={s} onClick={() => moveStage(selectedDeal, s)}
+                        style={{ ...S.btn(selectedDeal.stage === s ? STAGE_COLORS[s] : "#0E3B5E"), padding: "5px 12px", fontSize: 11, opacity: selectedDeal.stage === s ? 1 : 0.65 }}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {dealTasks.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Úkoly ({dealTasks.length})</div>
+                    {dealTasks.map(t => (
+                      <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid #e2e8f0" }}>
+                        <span>{t.done ? "✅" : "⏳"}</span>
+                        <span style={{ color: "#e2e8f0", fontSize: 13, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Přesunout do fáze:</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {STAGES.map(s => (
-                  <button key={s} onClick={() => moveStage(selectedDeal, s)}
-                    style={{ ...S.btn(selectedDeal.stage === s ? STAGE_COLORS[s] : "#0E3B5E"), padding: "5px 12px", fontSize: 11, opacity: selectedDeal.stage === s ? 1 : 0.65 }}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {dealTasks.length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Úkoly ({dealTasks.length})</div>
-                {dealTasks.map(t => (
-                  <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid #e2e8f0" }}>
-                    <span>{t.done ? "✅" : "⏳"}</span>
-                    <span style={{ color: "#e2e8f0", fontSize: 13, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</span>
+            {detailTab === "uprava" && (
+              <>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 8 }}>POPTÁVKA</div>
+                <label style={S.label}>Název / popis</label>
+                <input style={S.input} value={infoEditVals.name} onChange={e => setInfoEditVals({ ...infoEditVals, name: e.target.value })} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={S.label}>Odhadovaná hodnota (Kč)</label>
+                    <input style={S.input} type="number" value={infoEditVals.value} onChange={e => setInfoEditVals({ ...infoEditVals, value: e.target.value })} />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <label style={S.label}>Zodpovídá</label>
+                    <select style={S.select} value={infoEditVals.assigned_to} onChange={e => setInfoEditVals({ ...infoEditVals, assigned_to: e.target.value })}>
+                      <option value="">— vyberte —</option>{(employees || []).map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <button style={{ ...S.btn(), marginTop: 6, marginBottom: 20 }} onClick={saveDealInfo}>Uložit poptávku</button>
+
+                {cust && (
+                  <>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 8, borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>ZÁKAZNÍK</div>
+                    <label style={S.label}>Typ zákazníka</label>
+                    <select style={S.select} value={custInfoVals.customer_type} onChange={e => setCustInfoVals({ ...custInfoVals, customer_type: e.target.value })}>
+                      <option value="Koncový zákazník">👤 Koncový zákazník</option>
+                      <option value="Firma">🏢 Firma</option>
+                    </select>
+                    {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"], ["Adresa", "address"]].map(([l, k]) => (
+                      <div key={k}>
+                        <label style={S.label}>
+                          {l}
+                          {!custInfoVals[k] && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
+                        </label>
+                        <input style={S.input} value={custInfoVals[k]} onChange={e => setCustInfoVals({ ...custInfoVals, [k]: e.target.value })} />
+                      </div>
+                    ))}
+                    <button style={S.btn()} onClick={() => saveCustomerInfo(cust.id)} disabled={savingInfo}>{savingInfo ? "Ukládám…" : "Uložit zákazníka"}</button>
+                  </>
+                )}
+              </>
             )}
           </div>
         );
