@@ -2527,12 +2527,14 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
         ))}
       </div>
 
-      {/* Detail poptávky — inline panel */}
+      {/* Detail poptávky — vyskakovací formulář (modal) */}
       {selectedDeal && (() => {
         const cust = customers.find(c => c.id === selectedDeal.customerId || c.id === selectedDeal.customer_id);
         const dealTasks = (tasks || []).filter(t => t.deal_id === selectedDeal.id);
         return (
-          <div style={{ ...S.card, marginTop: 8, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#2E9BE0") }}>
+          <div style={{ position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16 }}
+            onClick={() => setSelectedDeal(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ ...S.card, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#2E9BE0"), width: 560, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: "#fff", fontSize: 16 }}>{selectedDeal.name}</div>
@@ -2651,6 +2653,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                 )}
               </>
             )}
+          </div>
           </div>
         );
       })()}
