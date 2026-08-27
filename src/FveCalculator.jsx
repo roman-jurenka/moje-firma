@@ -299,13 +299,13 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   return (
     <div style={S.card}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <div style={{ fontWeight: 700, color: "#fff" }}>☀️ Kalkulačka FVE — přesně podle Excelu</div>
+        <div style={{ fontWeight: 700, color: "#1A1A1A" }}>☀️ Kalkulačka FVE — přesně podle Excelu</div>
         <button style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 11 }} onClick={() => setAdminOpen((v) => !v)}>⚙️ Ceník {isAdmin ? "(admin)" : ""}</button>
       </div>
       <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Materiál, práce, služby, dotace a provize se počítají stejně jako v excelové kalkulačce sestav. Ceník je natažený z databáze.</div>
 
       {adminOpen && (
-        <div style={{ background: "#0a0d14", border: "1px solid #252d45", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
           {!isAdmin && <div style={{ color: "#f59e0b", fontSize: 12, marginBottom: 10 }}>Ceník smí upravovat jen role administrátor — tady je jen náhled.</div>}
           {Object.keys(cenik).map((cat) => (
             <details key={cat} style={{ marginBottom: 8 }}>
@@ -360,7 +360,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           <option value="ostatni">Ostatní kraje</option>
           <option value="zvyhodnene">Zvýhodněné kraje</option>
         </select>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, background: "#0a0d14", border: "1px solid #252d45", borderRadius: 8, padding: "0 10px" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "0 10px" }}>
           <input type="checkbox" checked={cfg.dotaceOn} onChange={(e) => set({ dotaceOn: e.target.checked })} /> S dotací
         </label>
       </div>
@@ -374,7 +374,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         </div>
       )}
 
-      <div style={{ background: "#0a0d14", border: "1px solid #252d45", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
         <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>Údaje pro nabídku pro zákazníka (Word) — nepočítají se, jen se vypíšou do dokumentu.</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           <div><label style={S.label}>Číslo obchodního případu</label><input style={S.input} placeholder="RJ-26-08-0001" value={cfg.cisloOP} onChange={(e) => set({ cisloOP: e.target.value })} /></div>
@@ -388,7 +388,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
             {cfg.zahrnutoItems.map((it) => (
               <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                 <input type="checkbox" checked={it.checked} onChange={() => toggleItem("zahrnutoItems", it.id)} />
-                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#e2e8f0" : "#475569", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
+                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#1A1A1A" : "#94a3b8", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
                 <button onClick={() => removeItem("zahrnutoItems", it.id)} style={{ ...S.btn("#ef4444"), padding: "2px 8px", fontSize: 10 }}>✕</button>
               </div>
             ))}
@@ -402,7 +402,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
             {cfg.nezahrnutoItems.map((it) => (
               <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                 <input type="checkbox" checked={it.checked} onChange={() => toggleItem("nezahrnutoItems", it.id)} />
-                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#e2e8f0" : "#475569", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
+                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#1A1A1A" : "#94a3b8", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
                 <button onClick={() => removeItem("nezahrnutoItems", it.id)} style={{ ...S.btn("#ef4444"), padding: "2px 8px", fontSize: 10 }}>✕</button>
               </div>
             ))}
@@ -492,16 +492,16 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       {marze < 0.35 && <div style={{ fontSize: 12, color: "#f87171", marginBottom: 10 }}>⚠️ Marže pod 35 % je potřeba schválit u Romana.</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: cfg.dotaceOn ? "repeat(2,1fr)" : "repeat(2,1fr)", gap: 12, marginBottom: 12, marginTop: 6 }}>
-        <div style={{ background: "#0a0d14", border: "1px solid #252d45", borderRadius: 10, padding: 14 }}><div style={S.label}>Celkem náklad</div><div style={{ fontSize: 22, fontWeight: 800 }}>{fmtKc(naklad)}</div></div>
-        <div style={{ background: "#0a0d14", border: "1px solid #252d45", borderRadius: 10, padding: 14 }}><div style={S.label}>Cena s DPH po zaokrouhlení</div><div style={{ fontSize: 22, fontWeight: 800 }}>{fmtKc(cenaDphRounded)}</div></div>
-        {cfg.dotaceOn && <div style={{ background: "#0a2b1f", border: "1px solid #14532d", borderRadius: 10, padding: 14 }}><div style={{ ...S.label, color: "#34d399" }}>Dotace</div><div style={{ fontSize: 22, fontWeight: 800, color: "#34d399" }}>{fmtKc(dotace)}</div></div>}
-        {cfg.dotaceOn && <div style={{ background: "#0a1a2b", border: "1px solid #1e3a5f", borderRadius: 10, padding: 14 }}><div style={{ ...S.label, color: "#2E9BE0" }}>Cena po dotaci</div><div style={{ fontSize: 22, fontWeight: 800, color: "#2E9BE0" }}>{fmtKc(cenaPoDotaci)}</div></div>}
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}><div style={S.label}>Celkem náklad</div><div style={{ fontSize: 22, fontWeight: 800 }}>{fmtKc(naklad)}</div></div>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}><div style={S.label}>Cena s DPH po zaokrouhlení</div><div style={{ fontSize: 22, fontWeight: 800 }}>{fmtKc(cenaDphRounded)}</div></div>
+        {cfg.dotaceOn && <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: 14 }}><div style={{ ...S.label, color: "#16a34a" }}>Dotace</div><div style={{ fontSize: 22, fontWeight: 800, color: "#16a34a" }}>{fmtKc(dotace)}</div></div>}
+        {cfg.dotaceOn && <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: 14 }}><div style={{ ...S.label, color: "#2E9BE0" }}>Cena po dotaci</div><div style={{ fontSize: 22, fontWeight: 800, color: "#2E9BE0" }}>{fmtKc(cenaPoDotaci)}</div></div>}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 16 }}>
-        <div style={{ background: "#0a0d14", border: "1px solid #252d45", borderRadius: 10, padding: 10 }}><div style={S.label}>Marže Kč</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtKc(marzeKc)}</div></div>
-        <div style={{ background: "#0a0d14", border: "1px solid #252d45", borderRadius: 10, padding: 10, gridColumn: "span 2" }}><div style={S.label}>Provize OZ celkem</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtKc(provizeCelkem)} <span style={{ color: "#64748b", fontWeight: 400 }}>(zákl. {fmtKc(cfg.zakladniProvize)} + plov. {Math.round(plovouciPct * 10) / 10}% = {fmtKc(provizeKc)})</span></div></div>
-        <div style={{ background: "#0a0d14", border: "1px solid #252d45", borderRadius: 10, padding: 10 }}><div style={S.label}>Výkon / Baterie</div><div style={{ fontSize: 14, fontWeight: 700 }}>{Math.round(vykonFve * 10) / 10} kWp / {Math.round(bateriKwh * 10) / 10} kWh</div></div>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}><div style={S.label}>Marže Kč</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtKc(marzeKc)}</div></div>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, gridColumn: "span 2" }}><div style={S.label}>Provize OZ celkem</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtKc(provizeCelkem)} <span style={{ color: "#64748b", fontWeight: 400 }}>(zákl. {fmtKc(cfg.zakladniProvize)} + plov. {Math.round(plovouciPct * 10) / 10}% = {fmtKc(provizeKc)})</span></div></div>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}><div style={S.label}>Výkon / Baterie</div><div style={{ fontSize: 14, fontWeight: 700 }}>{Math.round(vykonFve * 10) / 10} kWp / {Math.round(bateriKwh * 10) / 10} kWh</div></div>
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

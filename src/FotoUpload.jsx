@@ -16,10 +16,10 @@ function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
 }
 
 const S = {
-  app: { fontFamily: "'DM Sans',sans-serif", background: "#0a0d14", minHeight: "100vh", color: "#e2e8f0", padding: "20px" },
-  card: { background: "#0f1117", borderRadius: 12, border: "1px solid #1a2035", padding: "16px 18px", marginBottom: 12 },
-  inp: { background: "#080b12", border: "1px solid #252d45", borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" },
-  btn: (c = "#2E9BE0") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
+  app: { fontFamily: "'DM Sans',sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px" },
+  card: { background: "#1A1A1Afff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "16px 18px", marginBottom: 12, boxShadow: "0 1px 4px #0000000a" },
+  inp: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" },
+  btn: (c = "#2E9BE0") => ({ background: c, color: "#1A1A1A", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
 };
 
 export default function FotoUpload({ currentUser, setTab }) {
@@ -100,7 +100,7 @@ export default function FotoUpload({ currentUser, setTab }) {
   if (!activeContract) {
     return (
       <div style={S.app}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", marginBottom: 4 }}>📷 Nahrát fotky</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1A1A1A", marginBottom: 4 }}>📷 Nahrát fotky</h1>
         <p style={{ color: "#475569", fontSize: 13, marginBottom: 18 }}>Vyber zakázku, ke které chceš přidat fotky. Fotky se ukládají rovnou na OneDrive.</p>
         {odChecking && (
           <div style={{ ...S.card, fontSize: 13, color: "#475569" }}>⏳ Připojuji se k firemnímu OneDrive...</div>
@@ -112,13 +112,13 @@ export default function FotoUpload({ currentUser, setTab }) {
         )}
         <input style={{ ...S.inp, marginBottom: 14, fontSize: 14 }} placeholder="Hledat zakázku podle jména nebo čísla..." value={search} onChange={e => setSearch(e.target.value)} />
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {filtered.length === 0 && <div style={{ color: "#334155", fontSize: 13 }}>Žádné zakázky nenalezeny.</div>}
+          {filtered.length === 0 && <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné zakázky nenalezeny.</div>}
           {filtered.map(c => (
             <div key={c.id} onClick={() => openContract(c)}
-              style={{ background: "#0f1117", borderRadius: 12, padding: "14px 18px", border: "1px solid #1a2035", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+              style={{ background: "#ffffff", borderRadius: 12, padding: "14px 18px", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ fontSize: 22 }}>🔧</span>
               <div>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{c.code ? `[${c.code}] ` : ""}{c.name}</div>
+                <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 14 }}>{c.code ? `[${c.code}] ` : ""}{c.name}</div>
                 {c.status && <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{c.status}</div>}
               </div>
             </div>
@@ -131,8 +131,8 @@ export default function FotoUpload({ currentUser, setTab }) {
   // ─── NAHRÁVÁNÍ FOTEK ─────────────────────────────────────────────────────
   return (
     <div style={S.app}>
-      <button onClick={closeContract} style={{ ...S.btn("#1a2035"), color: "#94a3b8", padding: "6px 14px", marginBottom: 14 }}>← Zpět na výběr zakázky</button>
-      <h1 style={{ fontSize: 20, fontWeight: 800, color: "#fff", marginBottom: 2 }}>📷 {activeContract.name}</h1>
+      <button onClick={closeContract} style={{ ...S.btn("#e2e8f0"), color: "#94a3b8", padding: "6px 14px", marginBottom: 14 }}>← Zpět na výběr zakázky</button>
+      <h1 style={{ fontSize: 20, fontWeight: 800, color: "#1A1A1A", marginBottom: 2 }}>📷 {activeContract.name}</h1>
       <p style={{ color: "#475569", fontSize: 12, marginBottom: 18 }}>Fotky se ukládají do FirmaCRM/Zakázky/{activeContract.name}/Fotky na OneDrive.</p>
 
       {odChecking && (
@@ -151,11 +151,11 @@ export default function FotoUpload({ currentUser, setTab }) {
         const busy = uploading[kat] > 0;
         return (
           <div key={kat} style={S.card}>
-            <div style={{ fontWeight: 700, color: "#fff", fontSize: 14, marginBottom: 10 }}>{kat} <span style={{ color: "#475569", fontWeight: 500 }}>({fc.length})</span></div>
+            <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 14, marginBottom: 10 }}>{kat} <span style={{ color: "#475569", fontWeight: 500 }}>({fc.length})</span></div>
             {fc.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8, marginBottom: 10 }}>
                 {fc.map(f => (
-                  <div key={f.id} style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #1a2035", position: "relative" }}>
+                  <div key={f.id} style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", position: "relative" }}>
                     <a href={f.link || f.url} target="_blank" rel="noreferrer">
                       <OneDriveThumb itemId={f.itemId} fallbackUrl={f.url} alt={f.name} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
                     </a>
@@ -165,7 +165,7 @@ export default function FotoUpload({ currentUser, setTab }) {
                 ))}
               </div>
             )}
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: busy ? "#0ea5e922" : "#1a2035", color: busy ? "#0ea5e9" : "#94a3b8", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer", border: "1px dashed #252d45" }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: busy ? "#0ea5e922" : "#e2e8f0", color: busy ? "#0ea5e9" : "#94a3b8", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer", border: "1px dashed #e2e8f0" }}>
               {busy ? `⏳ Nahrávám na OneDrive (${uploading[kat]})...` : "+ Přidat foto"}
               <input type="file" accept="image/*" multiple disabled={busy} style={{ display: "none" }} onChange={e => {
                 const files = Array.from(e.target.files);

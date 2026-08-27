@@ -3,15 +3,15 @@ import { supabase } from "./supabase.js";
 import FveCalculator from "./FveCalculator.jsx";
 
 const S = {
-  app:      { fontFamily: "'DM Sans', sans-serif", background: "#080b12", minHeight: "100vh", color: "#e2e8f0", padding: "20px 28px" },
-  card:     { background: "#0f1320", borderRadius: 12, padding: 22, border: "1px solid #1a2035", marginBottom: 16 },
-  input:    { background: "#0a0d14", border: "1px solid #252d45", borderRadius: 8, padding: "8px 10px", color: "#e2e8f0", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box" },
-  select:   { background: "#0a0d14", border: "1px solid #252d45", borderRadius: 8, padding: "8px 10px", color: "#e2e8f0", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box" },
+  app:      { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px 28px" },
+  card:     { background: "#ffffff", borderRadius: 12, padding: 22, border: "1px solid #e2e8f0", marginBottom: 16, boxShadow: "0 1px 4px #0000000a" },
+  input:    { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box" },
+  select:   { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box" },
   label:    { fontSize: 11, color: "#64748b", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
   btn:      (c = "#2E9BE0") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
   btnGhost: { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  th:       { textAlign: "left", padding: "7px 8px", fontSize: 11, color: "#64748b", borderBottom: "1px solid #1a2035", textTransform: "uppercase", letterSpacing: "0.05em" },
-  td:       { padding: "5px 8px", fontSize: 13, color: "#e2e8f0" },
+  th:       { textAlign: "left", padding: "7px 8px", fontSize: 11, color: "#64748b", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.05em" },
+  td:       { padding: "5px 8px", fontSize: 13, color: "#1A1A1A" },
 };
 
 const fmtKc = (n) => (Number(n) || 0).toLocaleString("cs-CZ") + " Kč";
@@ -100,7 +100,7 @@ function InterniTabulka({ radky, setRadky, sazbaMd }) {
             );
           })}
           {radky.length === 0 && (
-            <tr><td colSpan={cols.length + 3} style={{ ...S.td, color: "#334155", padding: "12px 8px" }}>Zatím žádné řádky interního nacenění.</td></tr>
+            <tr><td colSpan={cols.length + 3} style={{ ...S.td, color: "#94a3b8", padding: "12px 8px" }}>Zatím žádné řádky interního nacenění.</td></tr>
           )}
         </tbody>
       </table>
@@ -134,7 +134,7 @@ function PolozkyTabulka({ polozky, setPolozky, sazbaMd }) {
             );
           })}
           {polozky.length === 0 && (
-            <tr><td colSpan={4} style={{ ...S.td, color: "#334155", padding: "10px 8px" }}>Zatím žádné samostatné položky.</td></tr>
+            <tr><td colSpan={4} style={{ ...S.td, color: "#94a3b8", padding: "10px 8px" }}>Zatím žádné samostatné položky.</td></tr>
           )}
         </tbody>
       </table>
@@ -162,7 +162,7 @@ function SekceTabulka({ sekce, setSekce }) {
             </tr>
           ))}
           {sekce.length === 0 && (
-            <tr><td colSpan={3} style={{ ...S.td, color: "#334155", padding: "12px 8px" }}>Zatím žádné sekce — přidej vlastní členění, které dává smysl u téhle zakázky.</td></tr>
+            <tr><td colSpan={3} style={{ ...S.td, color: "#94a3b8", padding: "12px 8px" }}>Zatím žádné sekce — přidej vlastní členění, které dává smysl u téhle zakázky.</td></tr>
           )}
         </tbody>
       </table>
@@ -191,7 +191,7 @@ function DenniPlanTabulka({ plan, setPlan }) {
             </tr>
           ))}
           {plan.length === 0 && (
-            <tr><td colSpan={4} style={{ ...S.td, color: "#334155", padding: "12px 8px" }}>Zatím žádné naplánované dny.</td></tr>
+            <tr><td colSpan={4} style={{ ...S.td, color: "#94a3b8", padding: "12px 8px" }}>Zatím žádné naplánované dny.</td></tr>
           )}
         </tbody>
       </table>
@@ -339,7 +339,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   // Interní přehled — MD rozpis, jen pro vlastní potřebu firmy (necháváme si to interně).
   const printInterni = () => {
     const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Interní nacenění – " + name + "</title>" +
-      "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#334155;color:#fff;padding:6px 8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:12px}.total{font-size:16px;font-weight:bold;margin-top:16px;text-align:right}@media print{body{padding:16px}}</style>" +
+      "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#94a3b8;color:#fff;padding:6px 8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:12px}.total{font-size:16px;font-weight:bold;margin-top:16px;text-align:right}@media print{body{padding:16px}}</style>" +
       "</head><body>" +
       "<h1>Interní nacenění – " + name + "</h1>" +
       "<h2>Sazba: " + fmtKc(sazbaMd) + " / MD</h2>" +
@@ -367,7 +367,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     return (
       <div style={S.app}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", margin: 0 }}>💰 Nacenění</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1A1A1A", margin: 0 }}>💰 Nacenění</h1>
           <button style={S.btn()} onClick={newQuote}>+ Nová nabídka</button>
         </div>
         <p style={{ color: "#64748b", fontSize: 13, marginBottom: 18 }}>Interní nacenění po MD (člověko-dnech) + rozvrh po dnech + volné sekce pro zákazníka. Následně překlop na obchodní případ.</p>
@@ -377,8 +377,8 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           {[["vse", "Vše"], ...JOB_TYPES.map(t => [t.id, t.label]), ["bez", "Bez typu"]].map(([k, l]) => (
             <button key={k} onClick={() => setTypeFilter(k)}
               style={{
-                background: typeFilter === k ? "#2E9BE0" : "#0f1320", color: typeFilter === k ? "#fff" : "#94a3b8",
-                border: "1px solid " + (typeFilter === k ? "#2E9BE0" : "#252d45"), borderRadius: 8,
+                background: typeFilter === k ? "#2E9BE0" : "#f8fafc", color: typeFilter === k ? "#fff" : "#64748b",
+                border: "1px solid " + (typeFilter === k ? "#2E9BE0" : "#e2e8f0"), borderRadius: 8,
                 padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer",
               }}>
               {l}
@@ -387,7 +387,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {filtered.length === 0 && <div style={{ color: "#334155", fontSize: 13 }}>Zatím žádné nabídky.</div>}
+          {filtered.length === 0 && <div style={{ color: "#94a3b8", fontSize: 13 }}>Zatím žádné nabídky.</div>}
           {filtered.map(q => {
             const cust = customers.find(c => c.id === q.customer_id);
             return (
@@ -395,7 +395,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
                 style={{ ...S.card, marginBottom: 0, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{q.name}</div>
+                    <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 14 }}>{q.name}</div>
                     {q.type && (
                       <span style={{ background: typeBadgeColor(q.type) + "22", color: typeBadgeColor(q.type), border: "1px solid " + typeBadgeColor(q.type), borderRadius: 6, padding: "1px 8px", fontSize: 10, fontWeight: 700 }}>
                         {q.type}
@@ -457,7 +457,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
 
       {/* INTERNÍ NACENĚNÍ — po MD */}
       <div style={S.card}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4 }}>🧮 Interní nacenění — po MD (člověko-dnech)</div>
+        <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>🧮 Interní nacenění — po MD (člověko-dnech)</div>
         <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Počet MD (dní) a počet lidí se u každého řádku píší ručně — appka je vynásobí (2 dny × 3 lidi = 6 MD) a tím se počítá práce (MD × sazba). Doprava se násobí jen počtem dní (stejná cesta bez ohledu na počet lidí). Materiál se nenásobí vůbec — je to vždy celková částka za řádek. Jen pro vnitřní potřebu — zákazník tohle nevidí.</div>
         <div style={{ maxWidth: 200, marginBottom: 14 }}>
           <label style={S.label}>Sazba (Kč / MD)</label><input type="number" style={S.input} value={data.interni.sazbaMd} onChange={e => setData({ ...data, interni: { ...data.interni, sazbaMd: e.target.value } })} />
@@ -483,7 +483,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
 
       {/* ROZVRH PO DNECH */}
       <div style={S.card}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4 }}>📅 Rozvrh po dnech</div>
+        <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>📅 Rozvrh po dnech</div>
         <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Kolik lidí je potřeba který den — přenese se do projektu a zakázky jako plán, proti kterému appka srovná skutečnou docházku.</div>
         <DenniPlanTabulka plan={data.denniPlan} setPlan={plan => setData({ ...data, denniPlan: plan })} />
         <div style={{ marginTop: 12, fontSize: 13 }}>
@@ -498,7 +498,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
 
       {/* NABÍDKA PRO ZÁKAZNÍKA — po sekcích */}
       <div style={S.card}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4 }}>📋 Nabídka pro zákazníka — po sekcích</div>
+        <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>📋 Nabídka pro zákazníka — po sekcích</div>
         <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>To, co uvidí zákazník: vlastní pojmenované sekce a jejich cena, bez vnitřního rozpisu hodin a nákladů.</div>
         <div style={{ maxWidth: 260, marginBottom: 14 }}>
           <label style={S.label}>Cílová prodejní cena celkem (Kč) <span style={{ textTransform: "none" }}>— prázdné = návrh {fmtKc(Math.round(celkemNaklad * 1.25))}</span></label>
@@ -518,7 +518,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         <textarea style={{ ...S.input, minHeight: 70, resize: "vertical" }} value={data.notes} onChange={e => setData({ ...data, notes: e.target.value })} />
       </div>
 
-      <div style={{ ...S.card, background: "#0a0d14" }}>
+      <div style={{ ...S.card, background: "#f8fafc" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
           <div><div style={S.label}>Celkem interní náklad</div><div style={{ fontSize: 20, fontWeight: 800, color: "#f87171" }}>{fmtKc(celkemNaklad)}</div></div>
           <div><div style={S.label}>Cílová cena</div><div style={{ fontSize: 20, fontWeight: 800, color: "#34d399" }}>{fmtKc(cilovaCena)}</div></div>
