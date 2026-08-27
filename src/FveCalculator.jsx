@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
+import PizZip from "pizzip";
+import Docxtemplater from "docxtemplater";
 
 // ─── FVE kalkulačka — přesně podle Excelu "Kalkulačka sestav" ──────────────
 // Materiál/práce/služby se vybírají z ceníku (tabulka fve_cenik_items),
@@ -43,6 +45,9 @@ export const PRAZDNA_FVE = () => ({
   zakladniProvize: 6400,
   plovouciProvizePct: null, // null = ještě nedotčeno, dopočte se z marže
   marze: 0.45, dph: 0.15, sleva: 0,
+  cisloOP: "",          // číslo obchodního případu do nabídky pro zákazníka (RJ-XX-XX-XXXX)
+  adresaInstalace: "",  // prázdné = použije se jméno zákazníka
+  rocniVynosOverride: "", // prázdné = dopočte se odhadem z výkonu FVE
 });
 
 // Reálné výchozí kusovníky šablon — přesně podle listů LIGHT/BASIC/OPTIMAL/
@@ -225,6 +230,60 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     w.document.close();
   };
 
+  // Nabídka pro zákazníka jako Word dokument — přesně podle firemní šablony
+  // (public/templates/nabidka_fve_sablona.docx), jen se do ní zapíšou
+  // hodnoty. Formát, styl písma i rozvržení zůstávají beze změny, protože
+  // se mění jen text v existujících místech šablony, ne formátování.
+  const fmt1 = (n) => (Math.round((Number(n) || 0) * 10) / 10).toFixed(1).replace(".", ",");
+  const fmtCz = (n) => (Math.round((Number(n) || 0) * 100) / 100).toString().replace(".", ",");
+  const fmtNum = (n) => Math.round(Number(n) || 0).toLocaleString("cs-CZ");
+
+  const generateWordOffer = async () => {
+    try {
+      const res = await fetch("/templates/nabidka_fve_sablona.docx");
+      if (!res.ok) throw new Error("Šablona nenalezena");
+      const buf = await res.arrayBuffer();
+      const zip = new PizZip(buf);
+      const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+      const vykonStr = fmt1(vykonFve);
+      const bateriStr = fmtCz(bateriKwh);
+      const vykonVeta = vykonFve > 0 ? `${vykonStr} kWp${bateriKwh > 0 ? ` a bateriového úložiště ${bateriStr} kWh` : ""}` : "—";
+      const rocniVynos = cfg.rocniVynosOverride || (vykonFve > 0 ? `${fmt1(vykonFve * 1.0)}–${fmt1(vykonFve * 1.1)}` : "");
+
+      doc.render({
+        vykonVeta,
+        cisloOP: cfg.cisloOP || "—",
+        adresaInstalace: cfg.adresaInstalace || customerName || "—",
+        vykon: vykonStr,
+        panely: cfg.panel.qty > 0 ? `${cfg.panel.qty}x ${panel.name}` : "neuvedeno",
+        konstrukce: cfg.konstrukce.qty > 0 ? `${cfg.konstrukce.qty}x konstrukce pro uchycení panelů` : "neuvedeno",
+        stridac: cfg.stridac.qty > 0 ? `${cfg.stridac.qty}x ${stridac.name}` : "neuvedeno",
+        baterieText: cfg.baterie.qty > 0 ? `${cfg.baterie.qty} x ${baterie.name} (${bateriStr}kWh)${cfg.bms.qty > 0 ? " + BMS" : ""}` : "Bez baterie",
+        regulace: cfg.regulace.qty > 0 ? regulace.name : "Bez regulace",
+        elektromobilita: cfg.wallbox.qty > 0 ? wallbox.name : "",
+        rocniVynos,
+        cenaCelkem: fmtNum(cenaDphRounded),
+        dotace: fmtNum(dotace),
+        cenaPoDotaci: fmtNum(cfg.dotaceOn ? cenaPoDotaci : cenaDphRounded),
+        dph: String(Math.round(dph * 100)),
+      });
+
+      const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Nabidka_${(customerName || quoteName || "FVE").replace(/[^\p{L}\p{N}]+/gu, "_")}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Nepodařilo se vygenerovat nabídku ve Wordu: " + (err?.message || err));
+    }
+  };
+
   const selStyle = { ...S.select, marginBottom: 0 };
   const qtyStyle = { ...S.input, marginBottom: 0, width: 70 };
 
@@ -314,6 +373,15 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           </select>
         </div>
       )}
+
+      <div style={{ background: "#0a0d14", border: "1px solid #252d45", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>Údaje pro nabídku pro zákazníka (Word) — nepočítají se, jen se vypíšou do dokumentu.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+          <div><label style={S.label}>Číslo obchodního případu</label><input style={S.input} placeholder="RJ-26-08-0001" value={cfg.cisloOP} onChange={(e) => set({ cisloOP: e.target.value })} /></div>
+          <div><label style={S.label}>Adresa instalace</label><input style={S.input} placeholder={customerName || "např. Zábřeh, Jan Novák"} value={cfg.adresaInstalace} onChange={(e) => set({ adresaInstalace: e.target.value })} /></div>
+          <div><label style={S.label}>Roční výnos FVE (MWh) — prázdné = odhad</label><input style={S.input} placeholder="např. 6,0–6,9" value={cfg.rocniVynosOverride} onChange={(e) => set({ rocniVynosOverride: e.target.value })} /></div>
+        </div>
+      </div>
 
       <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>Materiál</div>
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
@@ -411,7 +479,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
             ➡️ Použít jako cílovou cenu pro zákazníka
           </button>
         )}
-        <button style={S.btnGhost} onClick={printOffer}>🖨️ Vygenerovat nabídku pro zákazníka</button>
+        <button style={S.btnGhost} onClick={printOffer}>🖨️ Náhled k tisku (HTML)</button>
+        <button style={S.btn("#2E9BE0")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>
       </div>
     </div>
   );
