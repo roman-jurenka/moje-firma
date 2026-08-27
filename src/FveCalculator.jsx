@@ -264,10 +264,16 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       });
 
       const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const PRESET_LABELS = { light: "LIGHT", basic: "BASIC", optimal: "OPTIMAL", premium: "PREMIUM", emobilita: "E-MOBILITA", servis: "SERVIS", custom: "Vlastni" };
+      const now = new Date();
+      const datumStr = `${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}`;
+      const jmenoPrijmeni = (customerName || quoteName || "Zakaznik").replace(/[^\p{L}\p{N} ]+/gu, "").trim().replace(/\s+/g, "_");
+      const fileName = `FVE_${jmenoPrijmeni}_${PRESET_LABELS[cfg.preset] || "Vlastni"}_${vykonStr}kWp_${datumStr}.docx`;
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Nabidka_${(customerName || quoteName || "FVE").replace(/[^\p{L}\p{N}]+/gu, "_")}.docx`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
