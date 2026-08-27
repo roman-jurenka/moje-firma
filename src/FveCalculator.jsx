@@ -48,6 +48,21 @@ export const PRAZDNA_FVE = () => ({
   cisloOP: "",          // číslo obchodního případu do nabídky pro zákazníka (RJ-XX-XX-XXXX)
   adresaInstalace: "",  // prázdné = použije se jméno zákazníka
   rocniVynosOverride: "", // prázdné = dopočte se odhadem z výkonu FVE
+  // Co je / není v ceně — přesně podle firemní šablony, každou položku lze
+  // pro konkrétní nabídku odškrtnout nebo přidat vlastní.
+  zahrnutoItems: [
+    { id: "z1", text: "Dodávka FVE a všech komponent", checked: true },
+    { id: "z2", text: "Instalace FVE", checked: true },
+    { id: "z3", text: "Odborná montáž panelů", checked: true },
+    { id: "z4", text: "Provedení elektroinstalačních prací", checked: true },
+    { id: "z5", text: "Revize systému", checked: true },
+    { id: "z6", text: "Vyřízení připojení k distribuční síti", checked: true },
+    { id: "z7", text: "Konečné zprovoznění a předání FVE", checked: true },
+    { id: "z8", text: "Back-up kompletní záloha domu s přepínačem", checked: true },
+  ],
+  nezahrnutoItems: [
+    { id: "n1", text: "Úprava odběrného místa (elektroměrový sloupek) dle požadavků distribuční společnosti", checked: true },
+  ],
 });
 
 // Reálné výchozí kusovníky šablon — přesně podle listů LIGHT/BASIC/OPTIMAL/
@@ -99,6 +114,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const [cenik, setCenik] = useState(null); // { panely: [...], ... }
   const [adminOpen, setAdminOpen] = useState(false);
   const [savingCenik, setSavingCenik] = useState(false);
+  const [newZahrnuto, setNewZahrnuto] = useState("");
+  const [newNezahrnuto, setNewNezahrnuto] = useState("");
   const isAdmin = currentUser?.role === "admin";
 
   const loadCenik = () => {
@@ -194,40 +211,120 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const updateCustomRow = (id, patch) => set({ customRows: cfg.customRows.map((r) => r.id === id ? { ...r, ...patch } : r) });
   const removeCustomRow = (id) => set({ customRows: cfg.customRows.filter((r) => r.id !== id) });
 
-  // Nabídka pro zákazníka — jen specifikace sestavy a cena, žádný vnitřní
-  // rozpis nákladů, marže ani provize (stejný duch jako printQuote v Pricing.jsx).
-  const printOffer = () => {
-    const specs = [];
-    if (vykonFve > 0) specs.push(["Výkon FVE", (Math.round(vykonFve * 10) / 10) + " kWp"]);
-    if (panel.name && cfg.panel.qty > 0) specs.push(["Fotovoltaické panely", cfg.panel.qty + " × " + panel.name]);
-    if (konstr.name && cfg.konstrukce.qty > 0) specs.push(["Konstrukce", konstr.name]);
-    if (stridac.name && cfg.stridac.qty > 0) specs.push(["Střídač", cfg.stridac.qty + " × " + stridac.name]);
-    if (cfg.zaruka) specs.push(["Záruka na střídač", "10 let"]);
-    if (baterie.name && cfg.baterie.qty > 0) specs.push(["Baterie", cfg.baterie.qty + " × " + baterie.name + " (" + (Math.round(bateriKwh * 10) / 10) + " kWh)"]);
-    if (backup.name && cfg.backup.qty > 0 && backup.name !== "Bez Back-up") specs.push(["Záložní napájení (Back-up)", backup.name]);
-    if (wallbox.name && cfg.wallbox.qty > 0) specs.push(["Wallbox / dobíjení", wallbox.name]);
-    if (bojler.name && cfg.bojler.qty > 0 && bojler.name !== "Bez bojleru") specs.push(["Ohřev vody", bojler.name]);
-    if (regulace.name && cfg.regulace.qty > 0 && regulace.name !== "Bez regulace") specs.push(["Regulace přetoků", regulace.name]);
-    (cfg.customRows || []).forEach((r) => { if (r.name && Number(r.qty) > 0) specs.push([r.name, String(r.qty) + " ks"]); });
-    specs.push(["Montáž a instalace", "v ceně"]);
-    specs.push(["Vyřízení dotace a připojení k distribuční síti", "v ceně"]);
-    specs.push(["Revize", "v ceně"]);
+  // Checklist "co je / není v ceně" — položky se dají odškrtnout (nepůjdou
+  // do nabídky) nebo přidat vlastní; do dokumentu jde jen zaškrtnuté.
+  const toggleItem = (key, id) => set({ [key]: cfg[key].map((it) => it.id === id ? { ...it, checked: !it.checked } : it) });
+  const removeItem = (key, id) => set({ [key]: cfg[key].filter((it) => it.id !== id) });
+  const addItem = (key, text, clear) => {
+    if (!text.trim()) return;
+    set({ [key]: [...(cfg[key] || []), { id: Date.now() + Math.random(), text: text.trim(), checked: true }] });
+    clear("");
+  };
 
-    const specsHtml = specs.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+  // Specifikace sestavy a cena pro zákazníka — žádný vnitřní rozpis nákladů,
+  // marže ani provize. Sdílené mezi tiskovým náhledem (HTML) a PDF exportem.
+  const specs = [];
+  if (vykonFve > 0) specs.push(["Výkon FVE", (Math.round(vykonFve * 10) / 10) + " kWp"]);
+  if (panel.name && cfg.panel.qty > 0) specs.push(["Fotovoltaické panely", cfg.panel.qty + " × " + panel.name]);
+  if (konstr.name && cfg.konstrukce.qty > 0) specs.push(["Konstrukce", konstr.name]);
+  if (stridac.name && cfg.stridac.qty > 0) specs.push(["Střídač", cfg.stridac.qty + " × " + stridac.name]);
+  if (cfg.zaruka) specs.push(["Záruka na střídač", "10 let"]);
+  if (baterie.name && cfg.baterie.qty > 0) specs.push(["Baterie", cfg.baterie.qty + " × " + baterie.name + " (" + (Math.round(bateriKwh * 10) / 10) + " kWh)"]);
+  if (backup.name && cfg.backup.qty > 0 && backup.name !== "Bez Back-up") specs.push(["Záložní napájení (Back-up)", backup.name]);
+  if (wallbox.name && cfg.wallbox.qty > 0) specs.push(["Wallbox / dobíjení", wallbox.name]);
+  if (bojler.name && cfg.bojler.qty > 0 && bojler.name !== "Bez bojleru") specs.push(["Ohřev vody", bojler.name]);
+  if (regulace.name && cfg.regulace.qty > 0 && regulace.name !== "Bez regulace") specs.push(["Regulace přetoků", regulace.name]);
+  (cfg.customRows || []).forEach((r) => { if (r.name && Number(r.qty) > 0) specs.push([r.name, String(r.qty) + " ks"]); });
+  specs.push(["Montáž a instalace", "v ceně"]);
+  specs.push(["Vyřízení dotace a připojení k distribuční síti", "v ceně"]);
+  specs.push(["Revize", "v ceně"]);
+  const specsHtml = specs.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+  const offerPriceBlock =
+    "<div class='sub'>Cena s DPH: " + fmtKc(cenaDphRounded) + "</div>" +
+    (cfg.dotaceOn ? "<div class='dotace'>Odhad dotace: −" + fmtKc(dotace) + "</div>" : "") +
+    "<div class='total'>" + (cfg.dotaceOn ? "Cena po dotaci: " + fmtKc(cenaPoDotaci) : "Celková cena: " + fmtKc(cenaDphRounded)) + "</div>";
+
+  const printOffer = () => {
     const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Nabídka FVE – " + (quoteName || "") + "</title>" +
       "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.total{font-size:20px;font-weight:bold;margin-top:18px;text-align:right}.sub{font-size:13px;text-align:right;color:#555}.dotace{font-size:14px;text-align:right;color:#15803d;margin-top:6px}@media print{body{padding:16px}}</style>" +
       "</head><body>" +
       "<h1>Nabídka fotovoltaické elektrárny</h1>" +
       "<h2>" + (quoteName || "") + (customerName ? " · " + customerName : "") + " · " + new Date().toLocaleDateString("cs-CZ") + "</h2>" +
       "<table><thead><tr><th>Specifikace sestavy</th><th></th></tr></thead><tbody>" + specsHtml + "</tbody></table>" +
-      "<div class='sub'>Cena s DPH: " + fmtKc(cenaDphRounded) + "</div>" +
-      (cfg.dotaceOn ? "<div class='dotace'>Odhad dotace: −" + fmtKc(dotace) + "</div>" : "") +
-      "<div class='total'>" + (cfg.dotaceOn ? "Cena po dotaci: " + fmtKc(cenaPoDotaci) : "Celková cena: " + fmtKc(cenaDphRounded)) + "</div>" +
+      offerPriceBlock +
       "<p style='margin-top:24px;font-size:11px;color:#777'>Nabídka je informativní a konečná cena může být upravena po prohlídce místa realizace. Výše dotace je odhad — přesnou částku stanoví poskytovatel dotačního programu.</p>" +
       "<script>window.onload=function(){window.print();}</script></body></html>";
     const w = window.open("", "_blank");
     w.document.write(html);
     w.document.close();
+  };
+
+  // PDF export nabídky — stejná cesta jako u Zakázkového listu (offscreen
+  // HTML → html2canvas → jsPDF), kvůli spolehlivé české diakritice. Víc
+  // stran A4 podle výšky vykresleného obrázku, když se nabídka nevejde na jednu.
+  async function safeImportOffer(loader) {
+    try {
+      return await loader();
+    } catch {
+      const reload = confirm("Aplikace byla mezitím aktualizována a je potřeba načíst stránku znovu, než půjde PDF vygenerovat. Načíst teď?");
+      if (reload) window.location.reload();
+      throw new Error("stale-chunk");
+    }
+  }
+
+  const generatePdfOffer = async () => {
+    let jsPdfMod, html2canvasMod;
+    try {
+      [jsPdfMod, html2canvasMod] = await Promise.all([
+        safeImportOffer(() => import("jspdf")), safeImportOffer(() => import("html2canvas")),
+      ]);
+    } catch {
+      return;
+    }
+    const { jsPDF } = jsPdfMod;
+    const html2canvas = html2canvasMod.default;
+
+    const el = document.createElement("div");
+    el.style.position = "fixed";
+    el.style.left = "-9999px";
+    el.style.top = "0";
+    el.style.width = `${(595.27 * 4 / 3).toFixed(2)}px`;
+    el.style.background = "#fff";
+    el.innerHTML =
+      "<div style=\"font-family:'DM Sans',Arial,sans-serif;padding:28px;background:#fff;color:#0f172a;\">" +
+      "<h1 style='font-size:22px;margin:0 0 2px'>Nabídka fotovoltaické elektrárny</h1>" +
+      "<h2 style='font-size:13px;color:#555;font-weight:normal;margin:0 0 20px'>" + (quoteName || "") + (customerName ? " · " + customerName : "") + " · " + new Date().toLocaleDateString("cs-CZ") + "</h2>" +
+      "<table style='width:100%;border-collapse:collapse;margin-bottom:10px'>" +
+      "<thead><tr><th style='background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px'>Specifikace sestavy</th><th style='background:#0E3B5E'></th></tr></thead>" +
+      "<tbody>" + specs.map(([k, v]) => `<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px">${k}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px">${v}</td></tr>`).join("") + "</tbody></table>" +
+      "<div style='font-size:13px;text-align:right;color:#555'>" + (offerPriceBlock
+        .replace("class='sub'", "style='margin-top:6px'")
+        .replace("class='dotace'", "style='margin-top:6px;color:#15803d'")
+        .replace("class='total'", "style='margin-top:10px;font-size:20px;font-weight:bold'")) + "</div>" +
+      "<p style='margin-top:24px;font-size:11px;color:#777'>Nabídka je informativní a konečná cena může být upravena po prohlídce místa realizace. Výše dotace je odhad — přesnou částku stanoví poskytovatel dotačního programu.</p>" +
+      "</div>";
+
+    document.body.appendChild(el);
+    try {
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const pageWidth = 210, pageHeight = 297;
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height / canvas.width) * imgWidth;
+      const imgData = canvas.toDataURL("image/png");
+      let heightLeft = imgHeight, position = 0;
+      doc.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        doc.addPage();
+        doc.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      doc.save(`Nabidka_${(customerName || quoteName || "FVE").replace(/[^\p{L}\p{N}]+/gu, "_")}.pdf`);
+    } finally {
+      document.body.removeChild(el);
+    }
   };
 
   // Nabídka pro zákazníka jako Word dokument — přesně podle firemní šablony
@@ -267,6 +364,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         dotace: fmtNum(dotace),
         cenaPoDotaci: fmtNum(cfg.dotaceOn ? cenaPoDotaci : cenaDphRounded),
         dph: String(Math.round(dph * 100)),
+        zahrnuto: (cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
+        nezahrnuto: (cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
       });
 
       const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
@@ -381,6 +480,37 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           <div><label style={S.label}>Adresa instalace</label><input style={S.input} placeholder={customerName || "např. Zábřeh, Jan Novák"} value={cfg.adresaInstalace} onChange={(e) => set({ adresaInstalace: e.target.value })} /></div>
           <div><label style={S.label}>Roční výnos FVE (MWh) — prázdné = odhad</label><input style={S.input} placeholder="např. 6,0–6,9" value={cfg.rocniVynosOverride} onChange={(e) => set({ rocniVynosOverride: e.target.value })} /></div>
         </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>Ve výše uvedené ceně elektrárny JE zahrnuto</div>
+            {cfg.zahrnutoItems.map((it) => (
+              <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <input type="checkbox" checked={it.checked} onChange={() => toggleItem("zahrnutoItems", it.id)} />
+                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#e2e8f0" : "#475569", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
+                <button onClick={() => removeItem("zahrnutoItems", it.id)} style={{ ...S.btn("#ef4444"), padding: "2px 8px", fontSize: 10 }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <input style={{ ...S.input, marginBottom: 0 }} placeholder="+ přidat položku" value={newZahrnuto} onChange={(e) => setNewZahrnuto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addItem("zahrnutoItems", newZahrnuto, setNewZahrnuto)} />
+              <button style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }} onClick={() => addItem("zahrnutoItems", newZahrnuto, setNewZahrnuto)}>Přidat</button>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>Ve výše uvedené ceně elektrárny NENÍ zahrnuto</div>
+            {cfg.nezahrnutoItems.map((it) => (
+              <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <input type="checkbox" checked={it.checked} onChange={() => toggleItem("nezahrnutoItems", it.id)} />
+                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#e2e8f0" : "#475569", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
+                <button onClick={() => removeItem("nezahrnutoItems", it.id)} style={{ ...S.btn("#ef4444"), padding: "2px 8px", fontSize: 10 }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <input style={{ ...S.input, marginBottom: 0 }} placeholder="+ přidat položku" value={newNezahrnuto} onChange={(e) => setNewNezahrnuto(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addItem("nezahrnutoItems", newNezahrnuto, setNewNezahrnuto)} />
+              <button style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }} onClick={() => addItem("nezahrnutoItems", newNezahrnuto, setNewNezahrnuto)}>Přidat</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>Materiál</div>
@@ -481,6 +611,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         )}
         <button style={S.btnGhost} onClick={printOffer}>🖨️ Náhled k tisku (HTML)</button>
         <button style={S.btn("#2E9BE0")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>
+        <button style={S.btn("#ef4444")} onClick={generatePdfOffer}>📕 Vygenerovat nabídku (PDF)</button>
       </div>
     </div>
   );
