@@ -259,74 +259,6 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     w.document.close();
   };
 
-  // PDF export nabídky — stejná cesta jako u Zakázkového listu (offscreen
-  // HTML → html2canvas → jsPDF), kvůli spolehlivé české diakritice. Víc
-  // stran A4 podle výšky vykresleného obrázku, když se nabídka nevejde na jednu.
-  async function safeImportOffer(loader) {
-    try {
-      return await loader();
-    } catch {
-      const reload = confirm("Aplikace byla mezitím aktualizována a je potřeba načíst stránku znovu, než půjde PDF vygenerovat. Načíst teď?");
-      if (reload) window.location.reload();
-      throw new Error("stale-chunk");
-    }
-  }
-
-  const generatePdfOffer = async () => {
-    let jsPdfMod, html2canvasMod;
-    try {
-      [jsPdfMod, html2canvasMod] = await Promise.all([
-        safeImportOffer(() => import("jspdf")), safeImportOffer(() => import("html2canvas")),
-      ]);
-    } catch {
-      return;
-    }
-    const { jsPDF } = jsPdfMod;
-    const html2canvas = html2canvasMod.default;
-
-    const el = document.createElement("div");
-    el.style.position = "fixed";
-    el.style.left = "-9999px";
-    el.style.top = "0";
-    el.style.width = `${(595.27 * 4 / 3).toFixed(2)}px`;
-    el.style.background = "#fff";
-    el.innerHTML =
-      "<div style=\"font-family:'DM Sans',Arial,sans-serif;padding:28px;background:#fff;color:#0f172a;\">" +
-      "<h1 style='font-size:22px;margin:0 0 2px'>Nabídka fotovoltaické elektrárny</h1>" +
-      "<h2 style='font-size:13px;color:#555;font-weight:normal;margin:0 0 20px'>" + (quoteName || "") + (customerName ? " · " + customerName : "") + " · " + new Date().toLocaleDateString("cs-CZ") + "</h2>" +
-      "<table style='width:100%;border-collapse:collapse;margin-bottom:10px'>" +
-      "<thead><tr><th style='background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px'>Specifikace sestavy</th><th style='background:#0E3B5E'></th></tr></thead>" +
-      "<tbody>" + specs.map(([k, v]) => `<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px">${k}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px">${v}</td></tr>`).join("") + "</tbody></table>" +
-      "<div style='font-size:13px;text-align:right;color:#555'>" + (offerPriceBlock
-        .replace("class='sub'", "style='margin-top:6px'")
-        .replace("class='dotace'", "style='margin-top:6px;color:#15803d'")
-        .replace("class='total'", "style='margin-top:10px;font-size:20px;font-weight:bold'")) + "</div>" +
-      "<p style='margin-top:24px;font-size:11px;color:#777'>Nabídka je informativní a konečná cena může být upravena po prohlídce místa realizace. Výše dotace je odhad — přesnou částku stanoví poskytovatel dotačního programu.</p>" +
-      "</div>";
-
-    document.body.appendChild(el);
-    try {
-      const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
-      const doc = new jsPDF({ unit: "mm", format: "a4" });
-      const pageWidth = 210, pageHeight = 297;
-      const imgWidth = pageWidth;
-      const imgHeight = (canvas.height / canvas.width) * imgWidth;
-      const imgData = canvas.toDataURL("image/png");
-      let heightLeft = imgHeight, position = 0;
-      doc.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        doc.addPage();
-        doc.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-      doc.save(`Nabidka_${(customerName || quoteName || "FVE").replace(/[^\p{L}\p{N}]+/gu, "_")}.pdf`);
-    } finally {
-      document.body.removeChild(el);
-    }
-  };
-
   // Nabídka pro zákazníka jako Word dokument — přesně podle firemní šablony
   // (public/templates/nabidka_fve_sablona.docx), jen se do ní zapíšou
   // hodnoty. Formát, styl písma i rozvržení zůstávají beze změny, protože
@@ -611,8 +543,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         )}
         <button style={S.btnGhost} onClick={printOffer}>🖨️ Náhled k tisku (HTML)</button>
         <button style={S.btn("#2E9BE0")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>
-        <button style={S.btn("#ef4444")} onClick={generatePdfOffer}>📕 Vygenerovat nabídku (PDF)</button>
       </div>
+      <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>Pro PDF: otevři stažený Word dokument a použij "Uložit jako → PDF" — appka umí přesně vyplnit šablonu, ale přesný převod na PDF (1:1 jako Word) neumí bez samotného Wordu/LibreOffice udělat.</div>
     </div>
   );
 }
