@@ -98,9 +98,9 @@ function MiniCalendar({ value, onChange, onClose }) {
   return (
     <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, width: 232, userSelect: "none", boxShadow: "0 8px 32px #00000088" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <button onClick={prev} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>‹</button>
+        <button onClick={prev} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>‹</button>
         <span style={{ color: "#1A1A1A", fontWeight: 700, fontSize: 13 }}>{CZ_MONTHS[view.month]} {view.year}</span>
-        <button onClick={next} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>›</button>
+        <button onClick={next} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>›</button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
         {CZ_DAYS.map(d => (
@@ -113,8 +113,8 @@ function MiniCalendar({ value, onChange, onClose }) {
           return (
             <div key={i} onClick={() => pick(day)}
               style={{ textAlign: "center", fontSize: 12, padding: "5px 2px", borderRadius: 6, cursor: "pointer",
-                background: isSel ? "#2E9BE0" : isToday ? "#2E9BE022" : "transparent",
-                color: isSel ? "#fff" : isToday ? "#3b82f6" : "#64748b",
+                background: isSel ? "#0369a1" : isToday ? "#0369a122" : "transparent",
+                color: isSel ? "#fff" : isToday ? "#3b82f6" : "#475569",
                 fontWeight: isSel || isToday ? 700 : 400 }}>
               {day}
             </div>
@@ -162,8 +162,8 @@ const COST_TYPES = ["práce", "materiál", "doprava"];
 const UNITS = ["h", "ks", "km", "m", "m²", "m³", "kg", "t", "l", "den", "pauš."];
 
 const STATUS_COLORS = {
-  "Nová":        { bg: "#e2e8f0", color: "#2E9BE0", border: "#2E9BE033" },
-  "Probíhá":     { bg: "#e2e8f0", color: "#2E9BE0", border: "#2E9BE033" },
+  "Nová":        { bg: "#e2e8f0", color: "#0369a1", border: "#0369a133" },
+  "Probíhá":     { bg: "#e2e8f0", color: "#0369a1", border: "#0369a133" },
   "Dokončena":   { bg: "#e2e8f0", color: "#34d399", border: "#34d39933" },
   "Fakturována": { bg: "#e2e8f0", color: "#f59e0b", border: "#f59e0b33" },
 };
@@ -189,17 +189,17 @@ const S = {
   card:     { background: "#ffffff", borderRadius: 12, padding: 22, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px #0000000a" },
   input:    { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
   select:   { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
-  label:    { fontSize: 11, color: "#64748b", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
-  btn:      (c = "#2E9BE0") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
-  btnGhost: { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  label:    { fontSize: 11, color: "#475569", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
+  btn:      (c = "#0369a1") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
+  btnGhost: { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   modal:    { position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 },
   modalBox: { background: "#ffffff", borderRadius: 16, padding: 28, width: 500, maxWidth: "92vw", boxSizing: "border-box", border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
-  th:       { textAlign: "left", padding: "8px 10px", fontSize: 11, color: "#64748b", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" },
+  th:       { textAlign: "left", padding: "8px 10px", fontSize: 11, color: "#475569", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" },
   td:       { padding: "10px 10px", fontSize: 13, borderBottom: "1px solid #e2e8f0", color: "#475569" },
   tag:      (c) => ({ background: c + "22", color: c, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700, display: "inline-block" }),
   badge:    (c) => ({ background: c + "22", color: c, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }),
   statCard: (c) => ({ background: "#ffffff", borderRadius: 12, padding: "16px 20px", border: `1px solid ${c}33`, boxShadow: "0 1px 4px #0000000a" }),
-  statLabel: { fontSize: 11, color: "#64748b", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" },
+  statLabel: { fontSize: 11, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" },
   statValue: (c) => ({ fontSize: 22, fontWeight: 800, color: c }),
 };
 
@@ -229,7 +229,7 @@ function ContractKalendarWidget({ attendance, employees }) {
   return (
     <div style={{ background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", padding: "14px 16px", marginBottom: 20 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase" }}>📆 Kalendář práce</div>
+        <div style={{ fontWeight: 700, color: "#64748b", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase" }}>📆 Kalendář práce</div>
         {availMonths.length > 0 && (
           <select value={calMon} onChange={e => { setCalMon(e.target.value); setSelDay(null); }}
             style={{ ...S.select, marginBottom: 0, width: 160, fontSize: 12, padding: "4px 8px" }}>
@@ -243,7 +243,7 @@ function ContractKalendarWidget({ attendance, employees }) {
       {employees.filter(e => monthAtt.some(a => a.employee_id === e.id || a.employeeId === e.id)).length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
           {employees.filter(e => monthAtt.some(a => a.employee_id === e.id || a.employeeId === e.id)).map(e => (
-            <span key={e.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#94a3b8" }}>
+            <span key={e.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#64748b" }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: empColorMap[e.id], display: "inline-block" }} />
               {e.name}
             </span>
@@ -251,12 +251,12 @@ function ContractKalendarWidget({ attendance, employees }) {
         </div>
       )}
       {attendance.length === 0 && (
-        <div style={{ color: "#94a3b8", fontSize: 12 }}>Žádné záznamy práce pro tuto zakázku.</div>
+        <div style={{ color: "#64748b", fontSize: 12 }}>Žádné záznamy práce pro tuto zakázku.</div>
       )}
       {/* Day headers */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3, marginBottom: 3 }}>
         {["Po", "Út", "St", "Čt", "Pá", "So", "Ne"].map(d => (
-          <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: "#94a3b8" }}>{d}</div>
+          <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: "#64748b" }}>{d}</div>
         ))}
       </div>
       {/* Calendar cells */}
@@ -274,11 +274,11 @@ function ContractKalendarWidget({ attendance, employees }) {
               onClick={() => dayRecs.length > 0 && setSelDay(isSel ? null : dateStr)}
               style={{
                 background: isSel ? "#dbeafe" : isToday ? "#eff6ff" : "#f8fafc",
-                border: isSel ? "1.5px solid #3b82f6" : isToday ? "1.5px solid #2E9BE055" : "1px solid #e2e8f0",
+                border: isSel ? "1.5px solid #3b82f6" : isToday ? "1.5px solid #0369a155" : "1px solid #e2e8f0",
                 borderRadius: 6, padding: "3px 2px", minHeight: 44,
                 cursor: dayRecs.length > 0 ? "pointer" : "default",
               }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: dow >= 5 ? "#94a3b8" : "#64748b", textAlign: "right", marginBottom: 2 }}>{day}</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: dow >= 5 ? "#64748b" : "#475569", textAlign: "right", marginBottom: 2 }}>{day}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}>
                 {dayRecs.map(r => {
                   const emp = employees.find(e => e.id === (r.employee_id || r.employeeId));
@@ -304,14 +304,14 @@ function ContractKalendarWidget({ attendance, employees }) {
         const dayTotal = dayRecs.reduce((s, r) => s + calcH2(r.checkin, r.checkout), 0);
         return (
           <div style={{ marginTop: 10, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "10px 14px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#2E9BE0", marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#0369a1", marginBottom: 8 }}>
               {new Date(selDay).toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" })}
               {" · "}<span style={{ color: "#475569", fontWeight: 400 }}>{fmtH2(dayTotal)}</span>
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>{["Zaměstnanec", "Příchod", "Odchod", "Hodin", "Činnost"].map(h => (
-                  <th key={h} style={{ textAlign: "left", padding: "3px 8px", fontSize: 10, color: "#94a3b8", borderBottom: "1px solid #e2e8f0" }}>{h}</th>
+                  <th key={h} style={{ textAlign: "left", padding: "3px 8px", fontSize: 10, color: "#64748b", borderBottom: "1px solid #e2e8f0" }}>{h}</th>
                 ))}</tr>
               </thead>
               <tbody>
@@ -327,7 +327,7 @@ function ContractKalendarWidget({ attendance, employees }) {
                       <td style={{ padding: "4px 8px", fontSize: 12, color: "#34d399" }}>{r.checkin || "—"}</td>
                       <td style={{ padding: "4px 8px", fontSize: 12, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#475569" }}>probíhá</span>}</td>
                       <td style={{ padding: "4px 8px", fontSize: 12, color: "#1A1A1A", fontWeight: 700 }}>{fmtH2(h)}</td>
-                      <td style={{ padding: "4px 8px", fontSize: 11, color: "#64748b", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
+                      <td style={{ padding: "4px 8px", fontSize: 11, color: "#475569", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
                     </tr>
                   );
                 })}
@@ -852,8 +852,8 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       {/* STATS */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {[
-          { label: "Celkem zakázek", value: contracts.length, color: "#2E9BE0" },
-          { label: "Probíhá", value: contracts.filter(c => c.status === "Probíhá").length, color: "#2E9BE0" },
+          { label: "Celkem zakázek", value: contracts.length, color: "#0369a1" },
+          { label: "Probíhá", value: contracts.filter(c => c.status === "Probíhá").length, color: "#0369a1" },
           { label: "Celkový obrat", value: fmtKc(contracts.reduce((s, c) => s + Number(c.price || 0), 0)), color: "#34d399" },
           { label: "Celkový zisk", value: fmtKc(contracts.reduce((s, c) => s + contractProfit(c).profit, 0)), color: "#f59e0b" },
         ].map(st => (
@@ -874,9 +874,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         {["aktivní","vše","Nová","Probíhá","Dokončena","Fakturována"].map(s => (
           <button key={s} onClick={() => setFilterStatus(s)}
             style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid", fontSize: 12, cursor: "pointer", fontWeight: filterStatus === s ? 700 : 400,
-              background: filterStatus === s ? "#2E9BE0" : "#e2e8f0",
-              color: filterStatus === s ? "#fff" : "#94a3b8",
-              borderColor: filterStatus === s ? "#2E9BE0" : "#e2e8f0" }}>
+              background: filterStatus === s ? "#0369a1" : "#e2e8f0",
+              color: filterStatus === s ? "#fff" : "#64748b",
+              borderColor: filterStatus === s ? "#0369a1" : "#e2e8f0" }}>
             {s === "vše" ? "Vše" : s === "aktivní" ? "Aktivní" : s}
           </button>
         ))}
@@ -916,13 +916,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         const sc = STATUS_COLORS[contract.status] || STATUS_COLORS["Nová"];
 
         return (
-          <div key={contract.id} style={{ ...S.card, marginBottom: 14, border: isExpanded ? "1px solid #2E9BE055" : "1px solid #e2e8f0" }}>
+          <div key={contract.id} style={{ ...S.card, marginBottom: 14, border: isExpanded ? "1px solid #0369a155" : "1px solid #e2e8f0" }}>
 
             {/* HLAVIČKA ZAKÁZKY */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: isExpanded ? 20 : 0 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {contract.code && <span style={{ background: "#2E9BE022", color: "#2E9BE0", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, letterSpacing: "0.05em" }}>{contract.code}</span>}
+                  {contract.code && <span style={{ background: "#0369a122", color: "#0369a1", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, letterSpacing: "0.05em" }}>{contract.code}</span>}
                   <span style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 15 }}>{contract.name}</span>
                 </div>
                 <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
@@ -944,19 +944,19 @@ export default function Contracts({ customers, employees, currentUser, initialDe
               <button
                 onClick={() => setModal({ type: "editContract", contract })}
                 title="Upravit zakázku"
-                style={{ background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", color: "#94a3b8", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
+                style={{ background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", color: "#64748b", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
                 ✏️
               </button>
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent("openSheet", { detail: { contractId: contract.id, contractName: contract.name } }))}
                 title="Zakázkový list"
-                style={{ background: "#2E9BE022", border: "1px solid #2E9BE044", borderRadius: 8, padding: "6px 10px", color: "#2E9BE0", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
+                style={{ background: "#0369a122", border: "1px solid #0369a144", borderRadius: 8, padding: "6px 10px", color: "#0369a1", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
                 📋
               </button>
               <button
                 onClick={() => duplicateContract(contract)}
                 title="Duplikovat zakázku"
-                style={{ background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", color: "#94a3b8", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
+                style={{ background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", color: "#64748b", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
                 📑
               </button>
               <button
@@ -967,7 +967,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
               </button>
               <button
                 onClick={() => setExpandedId(isExpanded ? null : contract.id)}
-                style={{ background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 14px", color: "#94a3b8", cursor: "pointer", fontSize: 12, flexShrink: 0 }}>
+                style={{ background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 14px", color: "#64748b", cursor: "pointer", fontSize: 12, flexShrink: 0 }}>
                 {isExpanded ? "▲ Sbalit" : "▼ Detail"}
               </button>
             </div>
@@ -981,7 +981,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "2px solid #e2e8f0", paddingBottom: 0 }}>
                   {[["prehled", "📋 Přehled"], ["popis", "📝 Popis zakázky"]].map(([v, label]) => (
                     <button key={v} onClick={() => setView(contract.id, v)}
-                      style={{ background: view === v ? "#2E9BE0" : "transparent", color: view === v ? "#fff" : "#64748b", border: "none", borderRadius: "8px 8px 0 0", padding: "8px 20px", fontSize: 13, fontWeight: view === v ? 700 : 500, cursor: "pointer", transition: "all 0.15s" }}>
+                      style={{ background: view === v ? "#0369a1" : "transparent", color: view === v ? "#fff" : "#475569", border: "none", borderRadius: "8px 8px 0 0", padding: "8px 20px", fontSize: 13, fontWeight: view === v ? 700 : 500, cursor: "pointer", transition: "all 0.15s" }}>
                       {label}
                     </button>
                   ))}
@@ -998,7 +998,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2e8f0", marginBottom: 20 }}>
                   {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
                     <button key={t} onClick={() => setTab(contract.id, t)}
-                      style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #2E9BE0" : "2px solid transparent", color: tab === t ? "#2E9BE0" : "#64748b", padding: "8px 16px", fontSize: 13, cursor: "pointer", fontWeight: tab === t ? 600 : 400 }}>
+                      style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #0369a1" : "2px solid transparent", color: tab === t ? "#0369a1" : "#475569", padding: "8px 16px", fontSize: 13, cursor: "pointer", fontWeight: tab === t ? 600 : 400 }}>
                       {label}
                     </button>
                   ))}
@@ -1029,7 +1029,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
 
                       {/* PRÁCE */}
                       {showPrace && <>
-                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🔨 Práce — základní</div>
+                        <div style={{ fontWeight: 700, color: "#64748b", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🔨 Práce — základní</div>
                         <div style={{ marginBottom: 12 }}>
                           <CostSection
                             label="práce" actual={sums.prace} budget={contract.budget_prace}
@@ -1041,7 +1041,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                             onMoveEntry={(eid) => setModal({ type: "moveEntry", entryId: eid, currentContractId: contract.id })}
                           />
                         </div>
-                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🔨 Práce — vícepráce</div>
+                        <div style={{ fontWeight: 700, color: "#64748b", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🔨 Práce — vícepráce</div>
                         <div style={{ marginBottom: 20 }}>
                           <CostSection
                             label="Více – práce" actual={sums.vicePrace} budget={contract.budget_vice_prace}
@@ -1061,7 +1061,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
 
                       {/* MATERIÁL */}
                       {showMaterial && <>
-                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>📦 Materiál — základní</div>
+                        <div style={{ fontWeight: 700, color: "#64748b", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>📦 Materiál — základní</div>
                         <div style={{ marginBottom: 12 }}>
                           <CostSection
                             label="materiál" actual={sums.material} budget={contract.budget_material}
@@ -1086,13 +1086,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                                 </div>
                               )}
                             </div>
-                            <button style={{ ...S.btn("#e2e8f0"), border: "1px solid #e2e8f0", color: "#2E9BE0", fontSize: 12, padding: "6px 14px" }}
+                            <button style={{ ...S.btn("#e2e8f0"), border: "1px solid #e2e8f0", color: "#0369a1", fontSize: 12, padding: "6px 14px" }}
                               onClick={() => setModal({ type: "addDeliveryNote", contractId: contract.id })}>
                               + Nový dodací list
                             </button>
                           </div>
                           {contDN.length === 0 && (
-                            <div style={{ padding: "16px", fontSize: 12, color: "#94a3b8" }}>Žádné dodací listy. Klikněte "+ Nový dodací list".</div>
+                            <div style={{ padding: "16px", fontSize: 12, color: "#64748b" }}>Žádné dodací listy. Klikněte "+ Nový dodací list".</div>
                           )}
                           {contDN.map(dn => (
                             <DeliveryNoteRow
@@ -1108,7 +1108,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                           ))}
                         </div>
 
-                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>📦 Materiál — vícepráce</div>
+                        <div style={{ fontWeight: 700, color: "#64748b", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>📦 Materiál — vícepráce</div>
                         <div style={{ marginBottom: 20 }}>
                           <CostSection
                             label="Více – materiál" actual={sums.viceMaterial} budget={contract.budget_vice_material}
@@ -1124,7 +1124,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
 
                       {/* DOPRAVA */}
                       {showDoprava && <>
-                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🚛 Doprava — základní</div>
+                        <div style={{ fontWeight: 700, color: "#64748b", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🚛 Doprava — základní</div>
                         <div style={{ marginBottom: 12 }}>
                           <CostSection
                             label="doprava" actual={sums.doprava} budget={contract.budget_doprava}
@@ -1136,7 +1136,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                             onMoveEntry={(eid) => setModal({ type: "moveEntry", entryId: eid, currentContractId: contract.id })}
                           />
                         </div>
-                        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🚛 Doprava — vícepráce</div>
+                        <div style={{ fontWeight: 700, color: "#64748b", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>🚛 Doprava — vícepráce</div>
                         <div style={{ marginBottom: 20 }}>
                           <CostSection
                             label="Více – doprava" actual={sums.viceDoprava} budget={contract.budget_vice_doprava}
@@ -1284,7 +1284,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                           Celkem: <strong style={{ color: "#1A1A1A" }}>{fmtH(totalH)}</strong> · {sorted.length} záznamů
                         </div>
                         <div style={{ flex: 1 }} />
-                        <button style={{ ...S.btn("#2E9BE0"), padding: "7px 16px", fontWeight: 700, fontSize: 13 }} onClick={generatePDF}>
+                        <button style={{ ...S.btn("#0369a1"), padding: "7px 16px", fontWeight: 700, fontSize: 13 }} onClick={generatePDF}>
                           📄 Generovat PDF
                         </button>
                       </div>
@@ -1303,18 +1303,18 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                               const h = calcH(r.checkin, r.checkout);
                               return (
                                 <tr key={r.id} style={{ borderBottom:"1px solid #e2e8f0" }}>
-                                  <td style={{ padding:"6px 10px", fontSize:13, color:"#94a3b8" }}>{fmtDateCz(r.date)}</td>
+                                  <td style={{ padding:"6px 10px", fontSize:13, color:"#64748b" }}>{fmtDateCz(r.date)}</td>
                                   <td style={{ padding:"6px 10px", fontSize:13, color:"#1A1A1A", fontWeight:600 }}>{emp?.name||"—"}</td>
                                   <td style={{ padding:"6px 10px", fontSize:13, color:"#34d399" }}>{r.checkin||"—"}</td>
                                   <td style={{ padding:"6px 10px", fontSize:13, color:"#f59e0b" }}>{r.checkout||<span style={{color:"#475569"}}>probíhá</span>}</td>
                                   <td style={{ padding:"6px 10px", fontSize:13, color:"#1A1A1A", fontWeight:700 }}>{fmtH(h)}</td>
-                                  <td style={{ padding:"6px 10px", fontSize:12, color:"#94a3b8", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.activity||"—"}</td>
+                                  <td style={{ padding:"6px 10px", fontSize:12, color:"#64748b", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.activity||"—"}</td>
                                 </tr>
                               );
                             })}
                             <tr style={{ borderTop:"2px solid #cbd5e1" }}>
                               <td colSpan={4} style={{ padding:"8px 10px", fontSize:13, color:"#475569", fontWeight:600 }}>Celkem</td>
-                              <td style={{ padding:"8px 10px", fontSize:13, color:"#2E9BE0", fontWeight:700 }}>{fmtH(totalH)}</td>
+                              <td style={{ padding:"8px 10px", fontSize:13, color:"#0369a1", fontWeight:700 }}>{fmtH(totalH)}</td>
                               <td style={{ padding:"8px 10px", fontSize:12, color:"#475569" }}>{sorted.length} záznamů</td>
                             </tr>
                           </tbody>
@@ -1399,7 +1399,7 @@ function CostSection({ label, actual, budget, entries, employees, onUpdateBudget
     <div style={{ background: "#f8fafc", borderRadius: 10, border: color ? `1px solid ${color}44` : "1px solid #e2e8f0", overflow: "hidden" }}>
       <div style={{ padding: "12px 14px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>{icons[baseType]} {label.toUpperCase()}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>{icons[baseType]} {label.toUpperCase()}</div>
           {color && <span style={{ fontSize: 10, background: color + "22", color, borderRadius: 20, padding: "2px 8px", fontWeight: 700 }}>{color === "#34d399" ? "✓" : color === "#f87171" ? "!" : "="}</span>}
         </div>
         <div style={{ fontSize: 22, fontWeight: 800, color: color || "#1A1A1A" }}>{fmtKc(actual)}</div>
@@ -1420,7 +1420,7 @@ function CostSection({ label, actual, budget, entries, employees, onUpdateBudget
             <>
               <span style={{ fontSize: 11, color: "#475569" }}>Budget: {fmtKc(budget)}</span>
               {lbl && <span style={{ fontSize: 10, color }}>{lbl}</span>}
-              <button style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 11, marginLeft: "auto" }} onClick={() => { setBudgetVal(budget); setEditBudget(true); }}>✏️</button>
+              <button style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11, marginLeft: "auto" }} onClick={() => { setBudgetVal(budget); setEditBudget(true); }}>✏️</button>
             </>
           )}
         </div>
@@ -1433,7 +1433,7 @@ function CostSection({ label, actual, budget, entries, employees, onUpdateBudget
           {expanded ? "▲ Sbalit" : `▼ ${entries.length} záznamů`}
         </button>
         <button onClick={onAddEntry}
-          style={{ background: "none", border: "none", borderLeft: "1px solid #e2e8f0", color: "#2E9BE0", cursor: "pointer", padding: "7px 12px", fontSize: 11, fontWeight: 700 }}>
+          style={{ background: "none", border: "none", borderLeft: "1px solid #e2e8f0", color: "#0369a1", cursor: "pointer", padding: "7px 12px", fontSize: 11, fontWeight: 700 }}>
           + Přidat
         </button>
       </div>
@@ -1442,7 +1442,7 @@ function CostSection({ label, actual, budget, entries, employees, onUpdateBudget
       {expanded && (
         <div style={{ borderTop: "1px solid #e2e8f0" }}>
           {entries.length === 0 ? (
-            <div style={{ padding: "10px 14px", fontSize: 12, color: "#94a3b8" }}>Žádné záznamy</div>
+            <div style={{ padding: "10px 14px", fontSize: 12, color: "#64748b" }}>Žádné záznamy</div>
           ) : entries.map(e => {
             const emp = employees.find(em => em.id === e.employee_id);
             const isApproved = !!e.approved;
@@ -1475,7 +1475,7 @@ function CostSection({ label, actual, budget, entries, employees, onUpdateBudget
                     style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 13, padding: "0 2px" }}>⇄</button>
                 )}
                 {!isBilled && <button onClick={() => onDeleteEntry(e.id)}
-                  style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 15, padding: "0 2px" }}>×</button>}
+                  style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 15, padding: "0 2px" }}>×</button>}
               </div>
             );
           })}
@@ -1491,8 +1491,8 @@ function FinanceTab({ contract, sums, totalCost, totalRevenue, profit, profitPct
     <>
       {divider && <div style={{ borderTop: "1px solid #e2e8f0", margin: "6px 0" }} />}
       <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0" }}>
-        <span style={{ fontSize: 13, color: bold ? "#1A1A1A" : "#94a3b8", fontWeight: bold ? 700 : 400 }}>{label}</span>
-        <span style={{ fontSize: 13, fontWeight: bold ? 800 : 400, color: color || (bold ? "#1A1A1A" : "#94a3b8") }}>{value}</span>
+        <span style={{ fontSize: 13, color: bold ? "#1A1A1A" : "#64748b", fontWeight: bold ? 700 : 400 }}>{label}</span>
+        <span style={{ fontSize: 13, fontWeight: bold ? 800 : 400, color: color || (bold ? "#1A1A1A" : "#64748b") }}>{value}</span>
       </div>
     </>
   );
@@ -1573,7 +1573,7 @@ function EmployeesTab({ attendance, employees, contracts, contractId }) {
         <span>Celkem fakturováno: <strong style={{ color: "#34d399" }}>{fmtKc(totalBilled)}</strong></span>
       </div>
       {sorted.length === 0 ? (
-        <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné záznamy docházky pro tuto zakázku.</div>
+        <div style={{ color: "#64748b", fontSize: 13 }}>Žádné záznamy docházky pro tuto zakázku.</div>
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
@@ -1591,7 +1591,7 @@ function EmployeesTab({ attendance, employees, contracts, contractId }) {
                   <td style={S.td}>{fmtDateCz(r.date)}</td>
                   <td style={{ ...S.td, color: "#1A1A1A", fontWeight: 600 }}>{emp?.name || "—"}</td>
                   <td style={{ ...S.td, color: "#34d399" }}>{r.checkin || "—"}</td>
-                  <td style={{ ...S.td, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#94a3b8" }}>probíhá</span>}</td>
+                  <td style={{ ...S.td, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#64748b" }}>probíhá</span>}</td>
                   <td style={{ ...S.td, color: "#1A1A1A", fontWeight: 700 }}>{h > 0 ? fmtH(h) : "—"}</td>
                   <td style={S.td}>
                     <input
@@ -1650,27 +1650,27 @@ function PlanTab({ project, dayPlan, attendance, vehicleLog, employees }) {
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
         <div style={{ ...S.card, marginBottom: 0, padding: 14 }}>
-          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>Plán MD</div>
+          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase" }}>Plán MD</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#a78bfa" }}>{plannedMd ? Math.round(plannedMd * 100) / 100 : "—"}</div>
         </div>
         <div style={{ ...S.card, marginBottom: 0, padding: 14 }}>
-          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>Skutečnost MD</div>
+          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase" }}>Skutečnost MD</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#1A1A1A" }}>{Math.round(skutecneMd * 100) / 100}</div>
         </div>
         <div style={{ ...S.card, marginBottom: 0, padding: 14 }}>
-          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>Rozdíl</div>
+          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase" }}>Rozdíl</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: rozdilMd <= 0 ? "#34d399" : "#f87171" }}>
             {rozdilMd > 0 ? "+" : ""}{Math.round(rozdilMd * 100) / 100}
           </div>
         </div>
         <div style={{ ...S.card, marginBottom: 0, padding: 14 }}>
-          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase" }}>Najeto km</div>
+          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase" }}>Najeto km</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#1A1A1A" }}>{skutecneKm}</div>
         </div>
       </div>
 
       {!plannedMd && dayPlan.length === 0 ? (
-        <div style={{ color: "#94a3b8", fontSize: 13 }}>Tato zakázka nemá plán z Nacenění — porovnání se zobrazí u zakázek založených z nabídky s rozvrhem po dnech.</div>
+        <div style={{ color: "#64748b", fontSize: 13 }}>Tato zakázka nemá plán z Nacenění — porovnání se zobrazí u zakázek založených z nabídky s rozvrhem po dnech.</div>
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
@@ -1687,7 +1687,7 @@ function PlanTab({ project, dayPlan, attendance, vehicleLog, employees }) {
                   <td style={S.td}>{fmtDateCz(date)}</td>
                   <td style={{ ...S.td, color: "#a78bfa", fontWeight: 700 }}>{planLide ?? "—"}</td>
                   <td style={{ ...S.td, fontWeight: 700, color: sedi ? "#34d399" : "#f59e0b" }}>{skutLide || "—"}</td>
-                  <td style={{ ...S.td, color: "#64748b" }}>{plan?.note || ""}</td>
+                  <td style={{ ...S.td, color: "#475569" }}>{plan?.note || ""}</td>
                 </tr>
               );
             })}
@@ -1767,7 +1767,7 @@ function TasksTab({ tasks, employees, onAdd, onToggle }) {
         <button style={S.btn()} onClick={onAdd}>+ Přidat úkol</button>
       </div>
       {tasks.length === 0 ? (
-        <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné úkoly.</div>
+        <div style={{ color: "#64748b", fontSize: 13 }}>Žádné úkoly.</div>
       ) : tasks.map(t => {
         const emp = employees.find(e => e.id === t.assignee_id);
         const assignedName = t.assigned_to_name || t.assigned_to || emp?.name || "";
@@ -1777,14 +1777,14 @@ function TasksTab({ tasks, employees, onAdd, onToggle }) {
           <div key={t.id} style={{ borderBottom: "1px solid #e2e8f0", opacity: t.done ? 0.5 : 1 }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0" }}>
               <input type="checkbox" checked={t.done} onChange={() => onToggle(t.id)}
-                style={{ accentColor: "#2E9BE0", flexShrink: 0, marginTop: 3 }} />
+                style={{ accentColor: "#0369a1", flexShrink: 0, marginTop: 3 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 13, color: "#1A1A1A", fontWeight: 600, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</span>
-                  {t.priority && <span style={{ background: (PRIO[t.priority] || "#64748b") + "22", color: PRIO[t.priority] || "#64748b", borderRadius: 5, padding: "1px 7px", fontSize: 10, fontWeight: 700 }}>{t.priority}</span>}
+                  {t.priority && <span style={{ background: (PRIO[t.priority] || "#475569") + "22", color: PRIO[t.priority] || "#475569", borderRadius: 5, padding: "1px 7px", fontSize: 10, fontWeight: 700 }}>{t.priority}</span>}
                 </div>
                 <div style={{ display: "flex", gap: 12, marginTop: 4, flexWrap: "wrap" }}>
-                  {createdBy && <span style={{ fontSize: 11, color: "#475569" }}>Zadal: <span style={{ color: "#2E9BE0" }}>{createdBy}</span></span>}
+                  {createdBy && <span style={{ fontSize: 11, color: "#475569" }}>Zadal: <span style={{ color: "#0369a1" }}>{createdBy}</span></span>}
                   {assignedName && <span style={{ fontSize: 11, color: "#475569" }}>Pro: <span style={{ color: "#34d399", fontWeight: 600 }}>{assignedName}</span></span>}
                   {t.due && <span style={{ fontSize: 11, color: "#475569" }}>📅 {t.due}</span>}
                 </div>
@@ -1855,7 +1855,7 @@ function PhotosTab({ photos, contractId, currentUser, onUpload }) {
           </div>
         </div>
       ))}
-      {photos.length === 0 && <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné fotky.</div>}
+      {photos.length === 0 && <div style={{ color: "#64748b", fontSize: 13 }}>Žádné fotky.</div>}
     </div>
   );
 }
@@ -1908,15 +1908,15 @@ function PopisTab({ contract, setContracts }) {
           <button onClick={addMilestone} style={{ ...S.btn(), padding: "4px 12px", fontSize: 12 }}>+ Přidat</button>
         </div>
 
-        {milestones.length === 0 && <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 12 }}>Žádné termíny.</div>}
+        {milestones.length === 0 && <div style={{ color: "#64748b", fontSize: 13, marginBottom: 12 }}>Žádné termíny.</div>}
         {milestones.map((m, i) => (
           <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, background: "#f8fafc", borderRadius: 8, padding: "8px 10px", border: "1px solid #e2e8f0" }}>
             <input
               type="checkbox" checked={m.done}
               onChange={e => updMilestone(i, "done", e.target.checked)}
-              style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#2E9BE0", flexShrink: 0 }} />
+              style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#0369a1", flexShrink: 0 }} />
             <input
-              style={{ ...S.input, marginBottom: 0, flex: 1, fontSize: 13, textDecoration: m.done ? "line-through" : "none", color: m.done ? "#94a3b8" : "#1A1A1A" }}
+              style={{ ...S.input, marginBottom: 0, flex: 1, fontSize: 13, textDecoration: m.done ? "line-through" : "none", color: m.done ? "#64748b" : "#1A1A1A" }}
               value={m.title} onChange={e => updMilestone(i, "title", e.target.value)} placeholder="Popis termínu..." />
             <input
               type="date" style={{ ...S.input, marginBottom: 0, width: 140, fontSize: 12 }}
@@ -1933,7 +1933,7 @@ function PopisTab({ contract, setContracts }) {
           <button onClick={addContact} style={{ ...S.btn(), padding: "4px 12px", fontSize: 12 }}>+ Přidat</button>
         </div>
 
-        {contacts.length === 0 && <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 12 }}>Žádné kontakty.</div>}
+        {contacts.length === 0 && <div style={{ color: "#64748b", fontSize: 13, marginBottom: 12 }}>Žádné kontakty.</div>}
         {contacts.map((c, i) => (
           <div key={i} style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px", marginBottom: 10, border: "1px solid #e2e8f0", position: "relative" }}>
             <button onClick={() => delContact(i)} style={{ position: "absolute", top: 8, right: 8, background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 14 }}>✕</button>
@@ -1953,7 +1953,7 @@ function PopisTab({ contract, setContracts }) {
         {saved && <span style={{ color: "#16a34a", fontSize: 13, fontWeight: 600 }}>✓ Uloženo</span>}
         {address && (
           <a href={`https://mapy.cz/zakladni?q=${encodeURIComponent(address)}`} target="_blank" rel="noreferrer"
-            style={{ background: "#dbeafe", color: "#2E9BE0", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+            style={{ background: "#dbeafe", color: "#0369a1", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
             🗺 Otevřít v Mapy.cz
           </a>
         )}
@@ -2051,14 +2051,14 @@ function NewContractModal({ customers, deal, currentUser, onSave, onClose }) {
           </div>
         </div>
 
-        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 12, marginBottom: 8, marginTop: 4 }}>BUDGET — ZÁKLADNÍ NÁKLADY</div>
+        <div style={{ fontWeight: 700, color: "#64748b", fontSize: 12, marginBottom: 8, marginTop: 4 }}>BUDGET — ZÁKLADNÍ NÁKLADY</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           {[["budgetPrace","Práce (Kč)"],["budgetMaterial","Materiál (Kč)"],["budgetDoprava","Doprava (Kč)"]].map(([k,l]) => (
             <div key={k}><label style={S.label}>{l}</label><input style={S.input} type="number" value={f[k]} onChange={e => set(k, e.target.value)} /></div>
           ))}
         </div>
 
-        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 12, marginBottom: 8 }}>BUDGET — VÍCEPRÁCE</div>
+        <div style={{ fontWeight: 700, color: "#64748b", fontSize: 12, marginBottom: 8 }}>BUDGET — VÍCEPRÁCE</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           {[["budgetVicePrace","Více-Práce"],["budgetViceMaterial","Více-Materiál"],["budgetViceDoprava","Více-Doprava"]].map(([k,l]) => (
             <div key={k}><label style={S.label}>{l}</label><input style={S.input} type="number" value={f[k]} onChange={e => set(k, e.target.value)} /></div>
@@ -2234,7 +2234,7 @@ function PripravaTab({ contractId }) {
     setTasks(ts => ts.map(x => x.id === taskId ? { ...x, subtasks: subs } : x));
   };
 
-  if (!loaded) return <div style={{ color: "#94a3b8", fontSize: 13 }}>Načítám...</div>;
+  if (!loaded) return <div style={{ color: "#64748b", fontSize: 13 }}>Načítám...</div>;
 
   const done = tasks.filter(t => t.done).length;
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
@@ -2244,12 +2244,12 @@ function PripravaTab({ contractId }) {
       {/* Progress */}
       {tasks.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", marginBottom: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#475569", marginBottom: 6 }}>
             <span>Připraveno {done} / {tasks.length} úkolů</span>
-            <span style={{ fontWeight: 700, color: pct === 100 ? "#16a34a" : "#2E9BE0" }}>{pct}%</span>
+            <span style={{ fontWeight: 700, color: pct === 100 ? "#16a34a" : "#0369a1" }}>{pct}%</span>
           </div>
           <div style={{ height: 6, background: "#e2e8f0", borderRadius: 3 }}>
-            <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#16a34a" : "#2E9BE0", borderRadius: 3, transition: "width 0.4s" }} />
+            <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#16a34a" : "#0369a1", borderRadius: 3, transition: "width 0.4s" }} />
           </div>
         </div>
       )}
@@ -2291,15 +2291,15 @@ function TaskRow({ task, onToggle, onDelete, onAddSub, onToggleSub, onDeleteSub 
       {/* Hlavní úkol */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
         <input type="checkbox" checked={task.done} onChange={onToggle}
-          style={{ width: 17, height: 17, accentColor: "#2E9BE0", cursor: "pointer", flexShrink: 0 }} />
-        <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: task.done ? "#94a3b8" : "#1A1A1A", textDecoration: task.done ? "line-through" : "none" }}>
+          style={{ width: 17, height: 17, accentColor: "#0369a1", cursor: "pointer", flexShrink: 0 }} />
+        <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: task.done ? "#64748b" : "#1A1A1A", textDecoration: task.done ? "line-through" : "none" }}>
           {task.title}
         </span>
         {task.done_date && (
           <span style={{ fontSize: 11, color: "#16a34a", background: "#dcfce7", borderRadius: 5, padding: "2px 7px", fontWeight: 600 }}>✓ {task.done_date}</span>
         )}
         {subs.length > 0 && (
-          <span onClick={() => setShowSubs(s => !s)} style={{ cursor: "pointer", fontSize: 11, color: "#64748b" }}>
+          <span onClick={() => setShowSubs(s => !s)} style={{ cursor: "pointer", fontSize: 11, color: "#475569" }}>
             {subDone}/{subs.length} {showSubs ? "▲" : "▼"}
           </span>
         )}
@@ -2311,7 +2311,7 @@ function TaskRow({ task, onToggle, onDelete, onAddSub, onToggleSub, onDeleteSub 
         <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px 7px 34px", borderTop: "1px solid #f1f5f9", background: "#ffffff" }}>
           <input type="checkbox" checked={s.done} onChange={() => onToggleSub(s.id)}
             style={{ width: 15, height: 15, accentColor: "#F5821F", cursor: "pointer", flexShrink: 0 }} />
-          <span style={{ flex: 1, fontSize: 13, color: s.done ? "#94a3b8" : "#475569", textDecoration: s.done ? "line-through" : "none" }}>{s.title}</span>
+          <span style={{ flex: 1, fontSize: 13, color: s.done ? "#64748b" : "#475569", textDecoration: s.done ? "line-through" : "none" }}>{s.title}</span>
           {s.done_date && <span style={{ fontSize: 11, color: "#16a34a", background: "#dcfce7", borderRadius: 5, padding: "2px 7px", fontWeight: 600 }}>✓ {s.done_date}</span>}
           <button onClick={() => onDeleteSub(s.id)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 13, padding: "0 4px" }}>✕</button>
         </div>
@@ -2393,29 +2393,29 @@ function DokumentyTab({ contractId, currentUser }) {
   };
 
   const ICONS = { pdf: "📄", doc: "📝", docx: "📝", xls: "📊", xlsx: "📊", jpg: "🖼", jpeg: "🖼", png: "🖼", zip: "🗜" };
-  if (!loaded) return <div style={{ color: "#94a3b8", fontSize: 13 }}>Načítám...</div>;
+  if (!loaded) return <div style={{ color: "#64748b", fontSize: 13 }}>Načítám...</div>;
 
   return (
     <div>
       <div style={{ background: "#f8fafc", border: "2px dashed #e2e8f0", borderRadius: 12, padding: 20, marginBottom: 20, textAlign: "center" }}>
-        <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 10 }}>Přetáhni dokumenty sem nebo klikni pro výběr</div>
+        <div style={{ fontSize: 13, color: "#64748b", marginBottom: 10 }}>Přetáhni dokumenty sem nebo klikni pro výběr</div>
         <input style={{ ...S.input, marginBottom: 8 }} placeholder="Popis (volitelné)" value={desc} onChange={e => setDesc(e.target.value)} />
         <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={e => upload(e.target.files)} />
         <button style={{ ...S.btn(), padding: "9px 24px" }} onClick={() => fileRef.current?.click()} disabled={uploading}>
           {uploading ? "Nahrávám..." : "📎 Nahrát dokumenty"}
         </button>
       </div>
-      {docs.length === 0 && <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné dokumenty.</div>}
+      {docs.length === 0 && <div style={{ color: "#64748b", fontSize: 13 }}>Žádné dokumenty.</div>}
       {docs.map(doc => (
         <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", marginBottom: 8 }}>
           <span style={{ fontSize: 22, flexShrink: 0 }}>{ICONS[doc.file_type] || "📎"}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <a href={doc.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600, color: "#2E9BE0", fontSize: 14, textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <a href={doc.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600, color: "#0369a1", fontSize: 14, textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {doc.name}
             </a>
-            {doc.description && <div style={{ fontSize: 12, color: "#64748b" }}>{doc.description}</div>}
+            {doc.description && <div style={{ fontSize: 12, color: "#475569" }}>{doc.description}</div>}
           </div>
-          <div style={{ fontSize: 11, color: "#94a3b8", flexShrink: 0, textAlign: "right" }}>
+          <div style={{ fontSize: 11, color: "#64748b", flexShrink: 0, textAlign: "right" }}>
             <div>{doc.uploaded_by}</div>
             <div>{doc.created_at ? new Date(doc.created_at).toLocaleDateString("cs") : ""}</div>
           </div>
@@ -2440,9 +2440,9 @@ function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDel
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px" }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={onEditNote} title="Klikni pro úpravu dodavatele a čísla">
-            <span style={{ background: "#2E9BE022", color: "#2E9BE0", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{dn.code}</span>
+            <span style={{ background: "#0369a122", color: "#0369a1", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{dn.code}</span>
             <span style={{ fontWeight: 600, color: "#1A1A1A", fontSize: 13 }}>{dn.supplier}</span>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>✏️</span>
+            <span style={{ fontSize: 11, color: "#64748b" }}>✏️</span>
           </div>
           <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: 11, color: "#475569", flexWrap: "wrap", alignItems: "center" }}>
             <span>Náklad: <strong style={{ color: "#f87171" }}>{fmtKc(totalCost)}</strong></span>
@@ -2467,28 +2467,28 @@ function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDel
                 <>
                   <strong style={{ color: "#f59e0b" }}>{dn.margin ?? 30}%</strong>{" "}
                   <button onClick={() => { setMarginVal(String(dn.margin ?? 30)); setEditMargin(true); }}
-                    style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 11, padding: 0 }}>✏️</button>
+                    style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11, padding: 0 }}>✏️</button>
                 </>
               )}
             </span>
           </div>
         </div>
         <button onClick={() => setExpanded(e => !e)}
-          style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 6, color: "#94a3b8", cursor: "pointer", fontSize: 11, padding: "4px 10px", whiteSpace: "nowrap" }}>
+          style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 6, color: "#64748b", cursor: "pointer", fontSize: 11, padding: "4px 10px", whiteSpace: "nowrap" }}>
           {expanded ? `▲ Sbalit (${items.length})` : `▼ Položky (${items.length})`}
         </button>
         <button onClick={onAddItem}
-          style={{ background: "#e2e8f0", border: "1px solid #2E9BE044", borderRadius: 6, color: "#2E9BE0", fontSize: 11, padding: "5px 10px", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>
+          style={{ background: "#e2e8f0", border: "1px solid #0369a144", borderRadius: 6, color: "#0369a1", fontSize: 11, padding: "5px 10px", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>
           + Položka
         </button>
         <button onClick={onDelete}
-          style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 18, padding: "0 4px", lineHeight: 1 }}>×</button>
+          style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, padding: "0 4px", lineHeight: 1 }}>×</button>
       </div>
 
       {expanded && (
         <div style={{ background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
           {items.length === 0 && (
-            <div style={{ padding: "12px 16px", fontSize: 12, color: "#94a3b8" }}>Žádné položky. Klikněte "+ Položka".</div>
+            <div style={{ padding: "12px 16px", fontSize: 12, color: "#64748b" }}>Žádné položky. Klikněte "+ Položka".</div>
           )}
           {items.length > 0 && (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -2519,7 +2519,7 @@ function DeliveryNoteRow({ dn, items, onDelete, onUpdateMargin, onAddItem, onDel
                       <td style={{ ...S.td, color: "#34d399", fontWeight: 700 }}>{fmtKc(itemClient)}</td>
                       <td style={S.td}>
                         <button onClick={e => { e.stopPropagation(); onDeleteItem(item.id); }}
-                          style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 16 }}>×</button>
+                          style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16 }}>×</button>
                       </td>
                     </tr>
                   );
@@ -2701,7 +2701,7 @@ function MoveEntryModal({ entryId, currentContractId, contracts, onMove, onClose
           <button style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18 }} onClick={onClose}>x</button>
         </div>
 
-        <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>
           Vyberte zakazku, na kterou chcete tuto nakladovou polozku presunout.
         </div>
 
@@ -2749,7 +2749,7 @@ function BillingTab({ contractId, entries, summaries, employees, onMarkBilled, o
         Zaskrtnete polozky v sekci Naklady jako schvalene, pote je zde oznacte jako vyfakturovane.
         Kazdy mesic je zobrazen zvlast pro prehledne dolozeni k fakture.
       </div>
-      {months.length === 0 && <div style={{ color: "#94a3b8", fontSize: 13 }}>Zadne zaznamy k fakturaci.</div>}
+      {months.length === 0 && <div style={{ color: "#64748b", fontSize: 13 }}>Zadne zaznamy k fakturaci.</div>}
       {months.map(key => {
         const { year, month, items } = byMonth[key];
         const approved = items.filter(e => e.approved && !e.billed);
@@ -2770,7 +2770,7 @@ function BillingTab({ contractId, entries, summaries, employees, onMarkBilled, o
                 </div>
               </div>
               {approved.length > 0 && (
-                <button style={{ background: "#2E9BE0", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                <button style={{ background: "#0369a1", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                   onClick={() => onMarkBilled(contractId, year, month)}>Oznacit jako fakturovano</button>
               )}
               {approved.length === 0 && billed.length > 0 && summary && (

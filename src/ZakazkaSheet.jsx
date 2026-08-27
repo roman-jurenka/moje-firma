@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected, getDirectDownloadUrl } from "./onedrive.js";
 
-const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#2E9BE0" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
+const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#0369a1" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
 // Formátování peněžních částek jednotně s tisícovými oddělovači, jako všude jinde v appce.
 const fmtKc = (v) => { const n = Number(v); return (!v || isNaN(n)) ? "—" : n.toLocaleString("cs-CZ") + " Kč"; };
 export const FOTO_KATEGORIE = ["Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"];
 const SEKCE = [
   { id: "zakaznik",  icon: "👤", label: "Zákazník",         barva: "#6366f1" },
-  { id: "nabidka",   icon: "📋", label: "Nabídka",          barva: "#2E9BE0" },
+  { id: "nabidka",   icon: "📋", label: "Nabídka",          barva: "#0369a1" },
   { id: "smlouva",   icon: "✍️", label: "Smlouva",          barva: "#7c3aed" },
   { id: "system",    icon: "⚡", label: "Systém",             barva: "#f59e0b" },
   { id: "zaruky",    icon: "🛡️", label: "Záruky",             barva: "#06b6d4" },
@@ -19,7 +19,7 @@ const SEKCE = [
   { id: "bilance",   icon: "📊", label: "Ekonomika",        barva: "#10b981" },
   { id: "rozsireni", icon: "🔩", label: "Rozšíření",        barva: "#8b5cf6" },
   { id: "fotky",     icon: "📷", label: "Fotodokumentace",  barva: "#06b6d4" },
-  { id: "dokumenty", icon: "📄", label: "Dokumenty",        barva: "#64748b" },
+  { id: "dokumenty", icon: "📄", label: "Dokumenty",        barva: "#475569" },
   { id: "servis",    icon: "🔨", label: "Servis",           barva: "#ec4899" },
 ];
 
@@ -65,9 +65,9 @@ const S = {
   lbl: { fontSize:10, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:3 },
   val: { fontSize:13, color:"#1A1A1A", lineHeight:1.5 },
   inp: { background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:7, padding:"6px 10px", color:"#1A1A1A", fontSize:13, width:"100%", outline:"none", boxSizing:"border-box", resize:"none", fontFamily:"inherit" },
-  btn: (c="#2E9BE0") => ({ background:c, color:"#fff", border:"none", borderRadius:7, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }),
+  btn: (c="#0369a1") => ({ background:c, color:"#fff", border:"none", borderRadius:7, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }),
   div: { borderBottom:"1px solid #e2e8f0", margin:"10px 0" },
-  mono: { fontFamily:"monospace", fontSize:12, color:"#2E9BE0", background:"#1e3a5f22", borderRadius:4, padding:"2px 6px" },
+  mono: { fontFamily:"monospace", fontSize:12, color:"#0369a1", background:"#1e3a5f22", borderRadius:4, padding:"2px 6px" },
   sCard: { background:"#f8fafc", borderRadius:8, padding:12, marginBottom:10, border:"1px solid #e2e8f0" },
 };
 
@@ -86,13 +86,13 @@ function EF({ label, value, onChange, multi, mono }) {
           }
           <div style={{display:"flex",gap:6,marginTop:5}}>
             <button style={S.btn()} onClick={save}>✓</button>
-            <button style={{...S.btn("#64748b")}} onClick={()=>{setDr(value);setEd(false);}}>✕</button>
+            <button style={{...S.btn("#475569")}} onClick={()=>{setDr(value);setEd(false);}}>✕</button>
           </div>
         </div>
       ) : (
         <div style={{display:"flex",alignItems:"flex-start",gap:6,cursor:"pointer"}} onClick={()=>{setDr(value);setEd(true);}}>
-          <div style={mono?S.mono:{...S.val,flex:1}}>{value||<span style={{color:"#94a3b8",fontStyle:"italic"}}>— klikni pro zápis —</span>}</div>
-          <span style={{color:"#94a3b8",fontSize:11,flexShrink:0,paddingTop:2}}>✏️</span>
+          <div style={mono?S.mono:{...S.val,flex:1}}>{value||<span style={{color:"#64748b",fontStyle:"italic"}}>— klikni pro zápis —</span>}</div>
+          <span style={{color:"#64748b",fontSize:11,flexShrink:0,paddingTop:2}}>✏️</span>
         </div>
       )}
     </div>
@@ -157,7 +157,7 @@ function escHtml(s) {
 
 function pdfField(label, value) {
   return `<div style="display:flex;gap:10px;padding:3px 0;border-bottom:1px solid #f1f5f9;font-size:11px;">
-    <div style="width:190px;flex-shrink:0;color:#64748b;font-weight:600;">${escHtml(label)}</div>
+    <div style="width:190px;flex-shrink:0;color:#475569;font-weight:600;">${escHtml(label)}</div>
     <div style="flex:1;color:#0f172a;white-space:pre-wrap;">${escHtml(value) || "—"}</div>
   </div>`;
 }
@@ -186,7 +186,7 @@ function buildSheetHtmlBody(data, contractPhotos) {
   const parts = [];
 
   parts.push(`<div style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:2px;">${escHtml(data._nazev || "Zakázka")}</div>
-    <div style="font-size:11px;color:#64748b;margin-bottom:18px;">Zakázkový list — export ${new Date().toLocaleDateString("cs-CZ")}</div>`);
+    <div style="font-size:11px;color:#475569;margin-bottom:18px;">Zakázkový list — export ${new Date().toLocaleDateString("cs-CZ")}</div>`);
 
   const simple = (id) => {
     const vals = data[id] || {};
@@ -216,7 +216,7 @@ function buildSheetHtmlBody(data, contractPhotos) {
 
   {
     const zaruky = data.zaruky || [];
-    const html = zaruky.length === 0 ? `<div style="color:#94a3b8;font-size:11px;">Žádné záruky</div>` : zaruky.map(z => {
+    const html = zaruky.length === 0 ? `<div style="color:#64748b;font-size:11px;">Žádné záruky</div>` : zaruky.map(z => {
       const instalace = z.datumInstalace ? new Date(z.datumInstalace.split(".").reverse().join("-")) : null;
       const vyprseni = instalace ? new Date(instalace.getFullYear() + Number(z.delkaLet || 0), instalace.getMonth(), instalace.getDate()) : null;
       return `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
@@ -239,7 +239,7 @@ function buildSheetHtmlBody(data, contractPhotos) {
     const b = data.bilance || {};
     const rows = [["Materiál", "planMaterialNaklad", "skutMaterialNaklad"], ["Práce", "planPraceNaklad", "skutPraceNaklad"], ["Doprava", "planDopravaNaklad", "skutDopravaNaklad"], ["Celkem náklad", "planCelkemNaklad", "skutCelkemNaklad"], ["Prodejní cena (bez DPH)", "planProdejBezDph", "skutProdejBezDph"]];
     let html = `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
-      <tr><th style="text-align:left;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#64748b;">Položka</th><th style="text-align:right;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#2E9BE0;">Plán</th><th style="text-align:right;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#10b981;">Skutečnost</th></tr>
+      <tr><th style="text-align:left;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#475569;">Položka</th><th style="text-align:right;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#0369a1;">Plán</th><th style="text-align:right;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#10b981;">Skutečnost</th></tr>
       ${rows.map(([l, pk, sk]) => `<tr><td style="padding:4px 6px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:4px 6px;text-align:right;border-bottom:1px solid #f1f5f9;">${fmtKc(b[pk])}</td><td style="padding:4px 6px;text-align:right;border-bottom:1px solid #f1f5f9;">${fmtKc(b[sk])}</td></tr>`).join("")}
     </table>`;
     html += pdfField("Marže plán", (b.planMarzePct || "—") + " % / " + fmtKc(b.planMarzeKc));
@@ -250,7 +250,7 @@ function buildSheetHtmlBody(data, contractPhotos) {
 
   {
     const items = data.rozsireni || [];
-    const html = items.length === 0 ? `<div style="color:#94a3b8;font-size:11px;">Žádná rozšíření</div>` : items.map((r, i) => `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
+    const html = items.length === 0 ? `<div style="color:#64748b;font-size:11px;">Žádná rozšíření</div>` : items.map((r, i) => `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
       <div style="font-weight:700;font-size:12px;color:#0f172a;">Rozšíření #${i + 1}</div>
       ${pdfField("Datum", r.datum)}${pdfField("Technik", r.technik)}${pdfField("Popis", r.popis)}${pdfField("SN nového dílu", r.sn)}${pdfField("Cena", r.cena ? fmtKc(r.cena) : "")}
     </div>`).join("");
@@ -291,7 +291,7 @@ function buildSheetHtmlBody(data, contractPhotos) {
 
   {
     const items = data.servis || [];
-    const html = items.length === 0 ? `<div style="color:#94a3b8;font-size:11px;">Žádné servisní zásahy</div>` : items.map((z, i) => `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
+    const html = items.length === 0 ? `<div style="color:#64748b;font-size:11px;">Žádné servisní zásahy</div>` : items.map((z, i) => `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
       <div style="font-weight:700;font-size:12px;color:#0f172a;">Zásah #${i + 1}</div>
       ${pdfField("Datum", z.datum)}${pdfField("Technik", z.technik)}${pdfField("Popis problému", z.problem)}${pdfField("Řešení", z.reseni)}${pdfField("Vyměněné díly", z.vymeneneDily)}${pdfField("SN nového dílu", z.snNovehoDilu)}
     </div>`).join("");
@@ -594,7 +594,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         <p style={{ color:"#475569", fontSize:13, marginBottom:20 }}>Otevři zakázkový list kliknutím na 📋 v záložce Zakázky, nebo vyber existující list níže.</p>
         <input style={{...S.inp, marginBottom:16, fontSize:14}} placeholder="Hledat zakázku..." value={search} onChange={e=>setSearch(e.target.value)}/>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {filteredSheets.length === 0 && <div style={{color:"#94a3b8",fontSize:13}}>Žádné listy. Otevři zakázku a klikni na 📋.</div>}
+          {filteredSheets.length === 0 && <div style={{color:"#64748b",fontSize:13}}>Žádné listy. Otevři zakázku a klikni na 📋.</div>}
           {filteredSheets.map(s=>(
             <div key={s.id} onClick={()=>{setData(s.data);setSheetId(s.id);setActiveCId(s.project_id);setSavedSnapshot(JSON.stringify(s.data));loadLinkedCustomer(s.project_id,false);}}
               style={{background:"#ffffff",borderRadius:12,padding:"14px 18px",border:"1px solid #e2e8f0",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
@@ -621,7 +621,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     <div style={S.app}>
       {/* Top bar */}
       <div style={S.topBar}>
-        <button onClick={goBack} style={{...S.btn("#e2e8f0"),color:"#94a3b8",padding:"6px 12px"}}>← Zpět</button>
+        <button onClick={goBack} style={{...S.btn("#e2e8f0"),color:"#64748b",padding:"6px 12px"}}>← Zpět</button>
         <div>
           <div style={{fontWeight:800,fontSize:15,color:"#1A1A1A"}}>{data._nazev||"Nová zakázka"}</div>
           <div style={{fontSize:11,color:"#475569"}}>Zakázkový list</div>
@@ -633,10 +633,10 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
               {s.icon} {s.label}
             </div>
           ))}
-          <button onClick={handleExportPdf} disabled={pdfExporting} style={{...S.btn(pdfExporting?"#64748b":"#2E9BE0"),padding:"7px 16px",flexShrink:0,cursor:pdfExporting?"default":"pointer",opacity:pdfExporting?0.7:1}}>
+          <button onClick={handleExportPdf} disabled={pdfExporting} style={{...S.btn(pdfExporting?"#475569":"#0369a1"),padding:"7px 16px",flexShrink:0,cursor:pdfExporting?"default":"pointer",opacity:pdfExporting?0.7:1}}>
             {pdfExporting?"⏳ Generuji...":"📄 Exportovat PDF"}
           </button>
-          <button onClick={save} disabled={saving} style={{...S.btn(saving?"#64748b":"#16a34a"),padding:"7px 18px",flexShrink:0,cursor:saving?"default":"pointer",opacity:saving?0.7:1}}>
+          <button onClick={save} disabled={saving} style={{...S.btn(saving?"#475569":"#16a34a"),padding:"7px 18px",flexShrink:0,cursor:saving?"default":"pointer",opacity:saving?0.7:1}}>
             {saving?"⏳ Ukládám...":"💾 Uložit"}
           </button>
         </div>
@@ -673,7 +673,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         </div>
 
         {/* NABÍDKA */}
-        <div id="s-nabidka" style={S.card(false,"#2E9BE0")}>
+        <div id="s-nabidka" style={S.card(false,"#0369a1")}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="nabidka")} stav={st.nabidka||"Čeká"} onStav={v=>updStav("nabidka",v)}/>
           <div style={S.body}>
             <EF label="Číslo OP"            value={data.nabidka.cisloOP}         onChange={v=>upd("nabidka","cisloOP",v)} mono/>
@@ -1002,14 +1002,14 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             <table style={{width:"100%",borderCollapse:"collapse",marginBottom:14}}>
               <thead><tr>
                 <th style={{textAlign:"left",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Položka</th>
-                <th style={{textAlign:"right",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#2E9BE0",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Plán</th>
+                <th style={{textAlign:"right",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#0369a1",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Plán</th>
                 <th style={{textAlign:"right",padding:"5px 8px",fontSize:10,fontWeight:700,color:"#10b981",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Skutečnost</th>
               </tr></thead>
               <tbody>
                 {[["Materiál","planMaterialNaklad","skutMaterialNaklad"],["Práce","planPraceNaklad","skutPraceNaklad"],["Doprava","planDopravaNaklad","skutDopravaNaklad"],["Celkem náklad","planCelkemNaklad","skutCelkemNaklad"],["Prodejní cena (bez DPH)","planProdejBezDph","skutProdejBezDph"]].map(([l,pk,sk])=>(
                   <tr key={l} style={{borderBottom:"1px solid #e2e8f0"}}>
-                    <td style={{padding:"6px 8px",fontSize:12,color:"#94a3b8"}}>{l}</td>
-                    <td style={{padding:"6px 8px",fontSize:12,color:"#2E9BE0",textAlign:"right"}}>{fmtKc(data.bilance[pk])}</td>
+                    <td style={{padding:"6px 8px",fontSize:12,color:"#64748b"}}>{l}</td>
+                    <td style={{padding:"6px 8px",fontSize:12,color:"#0369a1",textAlign:"right"}}>{fmtKc(data.bilance[pk])}</td>
                     <td style={{padding:"6px 8px",fontSize:12,color:"#10b981",textAlign:"right"}}>{fmtKc(data.bilance[sk])}</td>
                   </tr>
                 ))}
@@ -1018,7 +1018,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             <div style={{background:"#f8fafc",borderRadius:8,padding:12,marginBottom:12,display:"flex",gap:12}}>
               <div style={{flex:1,textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#475569",marginBottom:3}}>PLÁN</div>
-                <div style={{fontSize:18,fontWeight:800,color:"#2E9BE0"}}>{data.bilance.planMarzePct||"—"} %</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#0369a1"}}>{data.bilance.planMarzePct||"—"} %</div>
                 <div style={{fontSize:11,color:"#475569"}}>{fmtKc(data.bilance.planMarzeKc)}</div>
               </div>
               <div style={{width:1,background:"#e2e8f0"}}/>
@@ -1052,7 +1052,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         <div id="s-rozsireni" style={{...S.card(false,"#8b5cf6"),maxWidth:340,minWidth:340}}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="rozsireni")} stav={st.rozsireni||"Čeká"} onStav={v=>updStav("rozsireni",v)}/>
           <div style={S.body}>
-            {(data.rozsireni||[]).length===0&&<div style={{color:"#94a3b8",fontSize:13,textAlign:"center",padding:"16px 0"}}>Žádná rozšíření</div>}
+            {(data.rozsireni||[]).length===0&&<div style={{color:"#64748b",fontSize:13,textAlign:"center",padding:"16px 0"}}>Žádná rozšíření</div>}
             {(data.rozsireni||[]).map((r,i)=>(
               <div key={r.id} style={{...S.sCard,borderLeft:"3px solid #8b5cf6"}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
@@ -1093,7 +1093,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                       <a href={f.url} target="_blank" rel="noreferrer">
                         <OneDriveThumb itemId={f.item_id} fallbackUrl={f.url} alt={f.description||""} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
                       </a>
-                      {f.description&&<div style={{fontSize:9,color:"#94a3b8",padding:"2px 4px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.description}</div>}
+                      {f.description&&<div style={{fontSize:9,color:"#64748b",padding:"2px 4px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.description}</div>}
                     </div>
                   ))}
                 </div>
@@ -1133,7 +1133,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         </div>
 
         {/* DOKUMENTY */}
-        <div id="s-dokumenty" style={{...S.card(false,"#64748b"),maxWidth:340,minWidth:340}}>
+        <div id="s-dokumenty" style={{...S.card(false,"#475569"),maxWidth:340,minWidth:340}}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="dokumenty")} stav={st.dokumenty||"Čeká"} onStav={v=>updStav("dokumenty",v)}/>
           <div style={S.body}>
             {[
@@ -1162,7 +1162,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     <input style={{...S.inp,padding:"5px 8px",fontSize:12,flex:1}} placeholder="Datum..." value={d2.datum} onChange={e=>updD("datum",e.target.value)}/>
-                    {doc.gen&&<button disabled title="Automatické generování dokumentu zatím není v appce hotové — použij zatím nahrání hotového souboru níže." style={{...S.btn("#64748b"),padding:"5px 10px",fontSize:11,flexShrink:0,cursor:"not-allowed",opacity:0.6}}>⬇️ Gen. (brzy)</button>}
+                    {doc.gen&&<button disabled title="Automatické generování dokumentu zatím není v appce hotové — použij zatím nahrání hotového souboru níže." style={{...S.btn("#475569"),padding:"5px 10px",fontSize:11,flexShrink:0,cursor:"not-allowed",opacity:0.6}}>⬇️ Gen. (brzy)</button>}
                   </div>
                   {!doc.gen&&<input style={{...S.inp,marginTop:6,padding:"5px 8px",fontSize:11,color:"#475569"}} placeholder="Poznámka..." value={d2.poznamka} onChange={e=>updD("poznamka",e.target.value)}/>}
                   <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid #e2e8f0"}}>
@@ -1170,7 +1170,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                       {docUploading===doc.key?"⏳ Nahrávám...":(d2.soubor?"🔁 Nahradit":"📎 Nahrát soubor")}
                       <input type="file" disabled={docUploading===doc.key} style={{display:"none"}} onChange={e=>{const f=e.target.files[0];e.target.value="";handleDokUpload(doc.key,f);}}/>
                     </label>
-                    {d2.soubor&&<a href={d2.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#2E9BE0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {d2.soubor.name}</a>}
+                    {d2.soubor&&<a href={d2.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#0369a1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {d2.soubor.name}</a>}
                   </div>
                 </div>
               );
@@ -1191,11 +1191,11 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                     {docUploading==="extra-"+doc.id?"⏳ Nahrávám...":(doc.soubor?"🔁 Nahradit":"📎 Nahrát soubor")}
                     <input type="file" disabled={docUploading==="extra-"+doc.id} style={{display:"none"}} onChange={e=>{const f=e.target.files[0];e.target.value="";handleExtraDokUpload(doc.id,f);}}/>
                   </label>
-                  {doc.soubor&&<a href={doc.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#2E9BE0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {doc.soubor.name}</a>}
+                  {doc.soubor&&<a href={doc.soubor.link} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#0369a1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📄 {doc.soubor.name}</a>}
                 </div>
               </div>
             ))}
-            <button style={{...S.btn("#64748b"),width:"100%",marginTop:4}}
+            <button style={{...S.btn("#475569"),width:"100%",marginTop:4}}
               onClick={()=>setData(d=>({...d,dokumenty:{...d.dokumenty,extra:[...(d.dokumenty.extra||[]),{id:Date.now(),nazev:"",stav:"ceka",datum:"",poznamka:""}]}}))}>
               + Přidat dokument
             </button>
@@ -1206,7 +1206,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         <div id="s-servis" style={{...S.card(false,"#ec4899"),maxWidth:340,minWidth:340}}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="servis")} stav={st.servis||"Čeká"} onStav={v=>updStav("servis",v)}/>
           <div style={S.body}>
-            {(data.servis||[]).length===0&&<div style={{color:"#94a3b8",fontSize:13,textAlign:"center",padding:"16px 0"}}>Žádné servisní zásahy</div>}
+            {(data.servis||[]).length===0&&<div style={{color:"#64748b",fontSize:13,textAlign:"center",padding:"16px 0"}}>Žádné servisní zásahy</div>}
             {(data.servis||[]).map((z,i)=>(
               <div key={z.id} style={{...S.sCard,borderLeft:"3px solid #ec4899"}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>

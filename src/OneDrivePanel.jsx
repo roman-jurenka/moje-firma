@@ -3,7 +3,7 @@ import { login, logout, isConnected, getUser, backupToOneDrive, connectSharedAcc
 
 const S = {
   card: { background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px", marginBottom: 16, boxShadow: "0 1px 4px #0000000a" },
-  btn: (bg = "#2E9BE0") => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", cursor: "pointer", fontWeight: 600, fontSize: 13 }),
+  btn: (bg = "#0369a1") => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", cursor: "pointer", fontWeight: 600, fontSize: 13 }),
   tag: (color) => ({ background: color + "22", color, border: `1px solid ${color}44`, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }),
 };
 
@@ -66,14 +66,14 @@ export default function OneDrivePanel({ supabase }) {
               {checking ? "Připojuji se..." : connected ? "Připojeno k firemnímu OneDrive" : "Nepřipojeno"}
             </div>
             {connected && user?.name && (
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
                 {user.name}{user.email ? ` · ${user.email}` : ""}
               </div>
             )}
           </div>
           <div style={{ flex: 1 }} />
           {!checking && (connected
-            ? <button style={S.btn("#64748b")} onClick={handleLogout}>Odpojit (jen v tomto prohlížeči)</button>
+            ? <button style={S.btn("#475569")} onClick={handleLogout}>Odpojit (jen v tomto prohlížeči)</button>
             : <button style={S.btn("#0078d4")} onClick={handleLogin}>🔗 Připojit OneDrive</button>
           )}
         </div>
@@ -81,7 +81,7 @@ export default function OneDrivePanel({ supabase }) {
         {connected && (
           <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>
             <div style={{ fontSize: 13, color: "#475569", marginBottom: 14 }}>
-              Data se ukládají do složky <strong style={{ color: "#2E9BE0" }}>FirmaCRM/</strong> na tomto OneDrive. Tenhle účet je nastavený jako sdílený pro celou firmu — všichni zaměstnanci k němu nahrávají fotky a dokumenty automaticky, bez vlastního přihlašování.
+              Data se ukládají do složky <strong style={{ color: "#0369a1" }}>FirmaCRM/</strong> na tomto OneDrive. Tenhle účet je nastavený jako sdílený pro celou firmu — všichni zaměstnanci k němu nahrávají fotky a dokumenty automaticky, bez vlastního přihlašování.
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <button style={S.btn("#10b981")} onClick={handleBackup} disabled={!!progress}>
@@ -95,7 +95,7 @@ export default function OneDrivePanel({ supabase }) {
             {/* Progress bar */}
             {progress && (
               <div style={{ marginTop: 14 }}>
-                <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>{progress.msg}</div>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>{progress.msg}</div>
                 <div style={{ background: "#e2e8f0", borderRadius: 6, height: 8, overflow: "hidden" }}>
                   <div style={{ background: "#10b981", height: "100%", width: `${progress.pct}%`, transition: "width 0.4s" }} />
                 </div>
@@ -116,13 +116,13 @@ export default function OneDrivePanel({ supabase }) {
       <div style={S.card}>
         <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 12 }}>📁 Struktura složek na OneDrive</div>
         <div style={{ fontFamily: "monospace", fontSize: 12, color: "#475569", lineHeight: 1.8 }}>
-          <div><span style={{ color: "#2E9BE0" }}>FirmaCRM/</span></div>
+          <div><span style={{ color: "#0369a1" }}>FirmaCRM/</span></div>
           <div>&nbsp;&nbsp;<span style={{ color: "#34d399" }}>Zálohy/</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span style={{ color: "#94a3b8" }}>2026-07-12/</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style={{ color: "#64748b" }}>contracts.csv, attendance.csv, ...</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span style={{ color: "#64748b" }}>2026-07-12/</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style={{ color: "#475569" }}>contracts.csv, attendance.csv, ...</span></div>
           <div>&nbsp;&nbsp;<span style={{ color: "#34d399" }}>Zakázky/</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span style={{ color: "#94a3b8" }}>Název zakázky/</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style={{ color: "#64748b" }}>Fotky/, Dokumenty/</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span style={{ color: "#64748b" }}>Název zakázky/</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style={{ color: "#475569" }}>Fotky/, Dokumenty/</span></div>
         </div>
       </div>
 
@@ -149,7 +149,7 @@ export default function OneDrivePanel({ supabase }) {
         <div style={{ ...S.card, border: "1px solid #f59e0b44", background: "#fffbeb" }}>
           <div style={{ fontWeight: 700, color: "#b45309", marginBottom: 12 }}>📋 Jak nastavit připojení (jednou)</div>
           <ol style={{ color: "#475569", fontSize: 12, lineHeight: 2, paddingLeft: 18, margin: 0 }}>
-            <li>Jdi na <a href="https://portal.azure.com" target="_blank" rel="noreferrer" style={{ color: "#2E9BE0" }}>portal.azure.com</a> a přihlas se osobním Microsoft účtem</li>
+            <li>Jdi na <a href="https://portal.azure.com" target="_blank" rel="noreferrer" style={{ color: "#0369a1" }}>portal.azure.com</a> a přihlas se osobním Microsoft účtem</li>
             <li>Hledat: <strong style={{ color: "#1A1A1A" }}>App registrations</strong> → klikni <strong style={{ color: "#1A1A1A" }}>New registration</strong></li>
             <li>Název: <code style={{ color: "#16a34a" }}>FirmaCRM</code>, typ účtů: <strong style={{ color: "#1A1A1A" }}>Personal Microsoft accounts only</strong></li>
             <li>Redirect URI: <strong style={{ color: "#1A1A1A" }}>Single-page application (SPA)</strong> → vlož URL tvé aplikace (Vercel)</li>
@@ -157,7 +157,7 @@ export default function OneDrivePanel({ supabase }) {
             <li>Vlož CLIENT_ID do souboru <code style={{ color: "#16a34a" }}>src/onedrive.js</code> na řádek 7</li>
             <li>Udělej git commit + push, pak klikni <strong style={{ color: "#0078d4" }}>Připojit OneDrive</strong></li>
           </ol>
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 10, paddingTop: 10, borderTop: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 11, color: "#475569", marginTop: 10, paddingTop: 10, borderTop: "1px solid #e2e8f0" }}>
             Připojuje se tu jen jednou — tvůj účet se automaticky nastaví jako sdílený pro celou firmu a zaměstnanci se k němu připojí sami, bez vlastního přihlašování.
           </div>
         </div>

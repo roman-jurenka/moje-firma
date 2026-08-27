@@ -14,7 +14,7 @@ const TYPY = {
   faktura_vydana:  { label: "Faktura vydaná",  direction: "prijem", color: "#34d399" },
   faktura_prijata: { label: "Faktura přijatá", direction: "vydaj",  color: "#f87171" },
   uctenka:         { label: "Účtenka",         direction: "vydaj",  color: "#f59e0b" },
-  jine:            { label: "Jiné",            direction: null,     color: "#94a3b8" },
+  jine:            { label: "Jiné",            direction: null,     color: "#64748b" },
 };
 
 const fmtKc = (v) => `${Number(v || 0).toLocaleString("cs-CZ")} Kč`;
@@ -172,7 +172,7 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
   const months = [...new Set(entries.map(e => monthKey(e.entry_date)))].sort().reverse();
   if (!months.includes(monthKey(todayStr()))) months.unshift(monthKey(todayStr()));
 
-  if (loading) return <div style={{ padding: 24, color: "#94a3b8" }}>Načítání…</div>;
+  if (loading) return <div style={{ padding: 24, color: "#64748b" }}>Načítání…</div>;
 
   return (
     <div>
@@ -188,7 +188,7 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
         <div style={card}>
           <div style={cardLabel}>Aktuální zůstatek</div>
           <div style={{ fontSize: 26, fontWeight: 800, color: zustatek >= 0 ? "#065f46" : "#991b1b" }}>{fmtKc(zustatek)}</div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>Počáteční stav {fmtKc(settings.starting_balance)} k {settings.starting_date}</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Počáteční stav {fmtKc(settings.starting_balance)} k {settings.starting_date}</div>
         </div>
         <div style={card}>
           <div style={cardLabel}>Příjmy tento měsíc</div>
@@ -219,7 +219,7 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
       )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
-        <span style={{ fontSize: 12, color: "#64748b" }}>Měsíc:</span>
+        <span style={{ fontSize: 12, color: "#475569" }}>Měsíc:</span>
         <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
           {months.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
@@ -230,19 +230,19 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
           <thead>
             <tr style={{ background: "#f8fafc", textAlign: "left" }}>
               {["Datum", "Typ", "Popis", "Zakázka", "Protistrana", "Nahrál", "Částka", "Doklad", "Stav", ""].map(h => (
-                <th key={h} style={{ padding: "10px 14px", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                <th key={h} style={{ padding: "10px 14px", fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {monthEntries.length === 0 && (
-              <tr><td colSpan={10} style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>Žádné záznamy v tomto měsíci.</td></tr>
+              <tr><td colSpan={10} style={{ padding: 20, textAlign: "center", color: "#64748b" }}>Žádné záznamy v tomto měsíci.</td></tr>
             )}
             {monthEntries.map(e => (
               <tr key={e.id} style={{ borderTop: "1px solid #f1f5f9" }}>
                 <td style={{ padding: "9px 14px" }}>{e.entry_date}</td>
                 <td style={{ padding: "9px 14px" }}>
-                  <span style={{ background: (TYPY[e.entry_type]?.color || "#94a3b8") + "22", color: TYPY[e.entry_type]?.color || "#64748b", padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                  <span style={{ background: (TYPY[e.entry_type]?.color || "#64748b") + "22", color: TYPY[e.entry_type]?.color || "#475569", padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
                     {TYPY[e.entry_type]?.label || e.entry_type}
                   </span>
                 </td>
@@ -308,7 +308,7 @@ export function ReceiptsModule({ currentUser }) {
     setModal(false);
   };
 
-  if (loading) return <div style={{ padding: 24, color: "#94a3b8" }}>Načítání…</div>;
+  if (loading) return <div style={{ padding: 24, color: "#64748b" }}>Načítání…</div>;
 
   return (
     <div>
@@ -322,13 +322,13 @@ export function ReceiptsModule({ currentUser }) {
           <thead>
             <tr style={{ background: "#f8fafc", textAlign: "left" }}>
               {["Datum", "Popis", "Částka", "Doklad", "Stav"].map(h => (
-                <th key={h} style={{ padding: "10px 14px", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                <th key={h} style={{ padding: "10px 14px", fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {entries.length === 0 && (
-              <tr><td colSpan={5} style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>Zatím jsi nenahrál žádnou účtenku.</td></tr>
+              <tr><td colSpan={5} style={{ padding: 20, textAlign: "center", color: "#64748b" }}>Zatím jsi nenahrál žádnou účtenku.</td></tr>
             )}
             {entries.map(e => (
               <tr key={e.id} style={{ borderTop: "1px solid #f1f5f9" }}>
@@ -343,7 +343,7 @@ export function ReceiptsModule({ currentUser }) {
                     ? (e.reimbursed
                       ? <span style={{ color: "#065f46", fontWeight: 600, fontSize: 12 }}>✓ Proplaceno</span>
                       : <span style={{ color: "#b45309", fontWeight: 600, fontSize: 12 }}>⏳ Čeká na proplacení</span>)
-                    : <span style={{ color: "#64748b", fontSize: 12 }}>Firemní platba</span>}
+                    : <span style={{ color: "#475569", fontSize: 12 }}>Firemní platba</span>}
                 </td>
               </tr>
             ))}
@@ -482,13 +482,13 @@ function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false, 
           <>
             <label style={label}>Foto účtenky (volitelné, s OCR návrhem částky/data)</label>
             <input type="file" accept="image/*" capture="environment" onChange={onPhotoSelected} style={input} />
-            {uploading && <div style={{ fontSize: 12, color: "#94a3b8" }}>Nahrávám doklad…</div>}
-            {ocrRunning && <div style={{ fontSize: 12, color: "#94a3b8" }}>Čtu doklad (OCR)… zkontroluj prosím vyplněné údaje níže.</div>}
+            {uploading && <div style={{ fontSize: 12, color: "#64748b" }}>Nahrávám doklad…</div>}
+            {ocrRunning && <div style={{ fontSize: 12, color: "#64748b" }}>Čtu doklad (OCR)… zkontroluj prosím vyplněné údaje níže.</div>}
             {photoUrl && !uploading && <div style={{ fontSize: 12, color: "#34d399" }}>✓ Doklad nahrán</div>}
             {ocrText && !ocrRunning && (
               <details style={{ marginTop: 6 }}>
-                <summary style={{ fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>Co OCR na dokladu přečetlo (pro kontrolu, pokud návrh sedí špatně)</summary>
-                <div style={{ fontSize: 11, color: "#64748b", background: "#f8fafc", borderRadius: 6, padding: 8, marginTop: 4, whiteSpace: "pre-wrap", maxHeight: 140, overflowY: "auto" }}>{ocrText}</div>
+                <summary style={{ fontSize: 11, color: "#64748b", cursor: "pointer" }}>Co OCR na dokladu přečetlo (pro kontrolu, pokud návrh sedí špatně)</summary>
+                <div style={{ fontSize: 11, color: "#475569", background: "#f8fafc", borderRadius: 6, padding: 8, marginTop: 4, whiteSpace: "pre-wrap", maxHeight: 140, overflowY: "auto" }}>{ocrText}</div>
               </details>
             )}
 
@@ -532,10 +532,10 @@ function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false, 
 }
 
 const card = { background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px #0000000a" };
-const cardLabel = { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, fontWeight: 700 };
+const cardLabel = { fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, fontWeight: 700 };
 const btnPrimary = { background: "#F5C518", color: "#1A1A1A", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
-const btnGhost = { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const btnGhost = { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
 const modalOverlay = { position: "fixed", inset: 0, background: "#00000066", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 400 };
 const modalBox = { background: "#fff", borderRadius: 16, padding: 24, width: 440, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto", border: "1px solid #e2e8f0", boxShadow: "0 20px 60px #0000001a", boxSizing: "border-box" };
-const label = { display: "block", fontSize: 12, color: "#64748b", fontWeight: 600, margin: "10px 0 4px" };
+const label = { display: "block", fontSize: 12, color: "#475569", fontWeight: 600, margin: "10px 0 4px" };
 const input = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" };

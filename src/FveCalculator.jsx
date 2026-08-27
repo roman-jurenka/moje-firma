@@ -137,7 +137,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     if (inserted) setCenik({ ...cenik, [cat]: [...(cenik[cat] || []), inserted] });
   };
 
-  if (!cenik) return <div style={{ ...S.card, color: "#64748b" }}>Načítám ceník…</div>;
+  if (!cenik) return <div style={{ ...S.card, color: "#475569" }}>Načítám ceník…</div>;
 
   const panel = findItem(cenik.panely, cfg.panel.name);
   const konstr = findItem(cenik.konstrukce, cfg.konstrukce.name);
@@ -292,7 +292,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       <td style={S.td}>{label}</td>
       <td style={S.td}><Sel list={list} value={item.name} onChange={(name) => setItem(key, { name })} style={selStyle} /></td>
       <td style={S.td}><input type="number" min="0" style={qtyStyle} value={qty} onChange={(e) => setItem(key, { qty: e.target.value })} /></td>
-      <td style={{ ...S.td, textAlign: "right", color: "#64748b", whiteSpace: "nowrap" }}>{fmtKc(item.cena * (Number(qty) || 0))}</td>
+      <td style={{ ...S.td, textAlign: "right", color: "#475569", whiteSpace: "nowrap" }}>{fmtKc(item.cena * (Number(qty) || 0))}</td>
     </tr>
   );
 
@@ -302,14 +302,14 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         <div style={{ fontWeight: 700, color: "#1A1A1A" }}>☀️ Kalkulačka FVE — přesně podle Excelu</div>
         <button style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 11 }} onClick={() => setAdminOpen((v) => !v)}>⚙️ Ceník {isAdmin ? "(admin)" : ""}</button>
       </div>
-      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Materiál, práce, služby, dotace a provize se počítají stejně jako v excelové kalkulačce sestav. Ceník je natažený z databáze.</div>
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Materiál, práce, služby, dotace a provize se počítají stejně jako v excelové kalkulačce sestav. Ceník je natažený z databáze.</div>
 
       {adminOpen && (
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
           {!isAdmin && <div style={{ color: "#f59e0b", fontSize: 12, marginBottom: 10 }}>Ceník smí upravovat jen role administrátor — tady je jen náhled.</div>}
           {Object.keys(cenik).map((cat) => (
             <details key={cat} style={{ marginBottom: 8 }}>
-              <summary style={{ cursor: "pointer", color: "#94a3b8", fontSize: 12, fontWeight: 700 }}>{CAT_LABELS[cat] || cat} ({cenik[cat].length})</summary>
+              <summary style={{ cursor: "pointer", color: "#64748b", fontSize: 12, fontWeight: 700 }}>{CAT_LABELS[cat] || cat} ({cenik[cat].length})</summary>
               <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 6 }}>
                 <tbody>
                   {cenik[cat].map((it) => (
@@ -375,7 +375,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       )}
 
       <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
-        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>Údaje pro nabídku pro zákazníka (Word) — nepočítají se, jen se vypíšou do dokumentu.</div>
+        <div style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>Údaje pro nabídku pro zákazníka (Word) — nepočítají se, jen se vypíšou do dokumentu.</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           <div><label style={S.label}>Číslo obchodního případu</label><input style={S.input} placeholder="RJ-26-08-0001" value={cfg.cisloOP} onChange={(e) => set({ cisloOP: e.target.value })} /></div>
           <div><label style={S.label}>Adresa instalace</label><input style={S.input} placeholder={customerName || "např. Zábřeh, Jan Novák"} value={cfg.adresaInstalace} onChange={(e) => set({ adresaInstalace: e.target.value })} /></div>
@@ -384,11 +384,11 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>Ve výše uvedené ceně elektrárny JE zahrnuto</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Ve výše uvedené ceně elektrárny JE zahrnuto</div>
             {cfg.zahrnutoItems.map((it) => (
               <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                 <input type="checkbox" checked={it.checked} onChange={() => toggleItem("zahrnutoItems", it.id)} />
-                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#1A1A1A" : "#94a3b8", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
+                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#1A1A1A" : "#64748b", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
                 <button onClick={() => removeItem("zahrnutoItems", it.id)} style={{ ...S.btn("#ef4444"), padding: "2px 8px", fontSize: 10 }}>✕</button>
               </div>
             ))}
@@ -398,11 +398,11 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>Ve výše uvedené ceně elektrárny NENÍ zahrnuto</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Ve výše uvedené ceně elektrárny NENÍ zahrnuto</div>
             {cfg.nezahrnutoItems.map((it) => (
               <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                 <input type="checkbox" checked={it.checked} onChange={() => toggleItem("nezahrnutoItems", it.id)} />
-                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#1A1A1A" : "#94a3b8", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
+                <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#1A1A1A" : "#64748b", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
                 <button onClick={() => removeItem("nezahrnutoItems", it.id)} style={{ ...S.btn("#ef4444"), padding: "2px 8px", fontSize: 10 }}>✕</button>
               </div>
             ))}
@@ -414,7 +414,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         </div>
       </div>
 
-      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>Materiál</div>
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Materiál</div>
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
         <thead><tr><th style={S.th}>Řádek</th><th style={S.th}>Položka</th><th style={S.th}>Množ.</th><th style={S.th}>Cena</th></tr></thead>
         <tbody>
@@ -427,7 +427,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
                 <input type="checkbox" checked={cfg.zaruka} onChange={(e) => set({ zaruka: e.target.checked })} /> + Záruka 10 let na střídač (0 % marže)
               </label>
             </td>
-            <td style={{ ...S.td, textAlign: "right", color: "#64748b" }}>{fmtKc(zarukaCena)}</td>
+            <td style={{ ...S.td, textAlign: "right", color: "#475569" }}>{fmtKc(zarukaCena)}</td>
           </tr>
           {row("Baterie", "baterie", cenik.baterie, baterie, cfg.baterie.qty)}
           {row("BMS", "bms", cenik.bms, bms, cfg.bms.qty)}
@@ -445,20 +445,20 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           <input style={{ ...S.input, marginBottom: 0, flex: 1 }} placeholder="Název nespecifikované položky" value={r.name} onChange={(e) => updateCustomRow(r.id, { name: e.target.value })} />
           <input type="number" style={{ ...S.input, marginBottom: 0, width: 70 }} placeholder="ks" value={r.qty} onChange={(e) => updateCustomRow(r.id, { qty: e.target.value })} />
           <input type="number" style={{ ...S.input, marginBottom: 0, width: 100 }} placeholder="Kč/ks" value={r.cena} onChange={(e) => updateCustomRow(r.id, { cena: e.target.value })} />
-          <span style={{ width: 90, textAlign: "right", fontSize: 13, color: "#64748b" }}>{fmtKc((Number(r.qty) || 0) * (Number(r.cena) || 0))}</span>
+          <span style={{ width: 90, textAlign: "right", fontSize: 13, color: "#475569" }}>{fmtKc((Number(r.qty) || 0) * (Number(r.cena) || 0))}</span>
           <button onClick={() => removeCustomRow(r.id)} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11 }}>✕</button>
         </div>
       ))}
       <button onClick={addCustomRow} style={{ ...S.btnGhost, marginBottom: 16, padding: "6px 14px", fontSize: 12 }}>+ Přidat nespecifikovanou položku</button>
 
-      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>Práce (MD)</div>
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Práce (MD)</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 16 }}>
         <div><label style={S.label}>Elektro práce ({fmtKc(prace.elektro)}/MD)</label><input type="number" style={S.input} value={cfg.mdElektro} onChange={(e) => set({ mdElektro: e.target.value })} /></div>
         <div><label style={S.label}>Střecha práce ({fmtKc(prace.strecha)}/MD)</label><input type="number" style={S.input} value={cfg.mdStrecha} onChange={(e) => set({ mdStrecha: e.target.value })} /></div>
         <div><label style={S.label}>Instalatérské práce ({fmtKc(prace.instalater)}/MD)</label><input type="number" style={S.input} value={cfg.mdInstalater} onChange={(e) => set({ mdInstalater: e.target.value })} /></div>
       </div>
 
-      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>Služby</div>
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Služby</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 16 }}>
         <div><label style={S.label}>Vyřízení dotace</label><input type="number" style={S.input} value={cfg.svcDotace} onChange={(e) => set({ svcDotace: e.target.value })} /></div>
         <div><label style={S.label}>Vyřízení připojení k DS</label><input type="number" style={S.input} value={cfg.svcDs} onChange={(e) => set({ svcDs: e.target.value })} /></div>
@@ -472,7 +472,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         </div>
       </div>
 
-      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>Provize OZ</div>
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Provize OZ</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
         <div><label style={S.label}>Základní provize (Kč)</label><input type="number" style={S.input} value={cfg.zakladniProvize} onChange={(e) => set({ zakladniProvize: e.target.value })} /></div>
         <div>
@@ -495,12 +495,12 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}><div style={S.label}>Celkem náklad</div><div style={{ fontSize: 22, fontWeight: 800 }}>{fmtKc(naklad)}</div></div>
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}><div style={S.label}>Cena s DPH po zaokrouhlení</div><div style={{ fontSize: 22, fontWeight: 800 }}>{fmtKc(cenaDphRounded)}</div></div>
         {cfg.dotaceOn && <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: 14 }}><div style={{ ...S.label, color: "#16a34a" }}>Dotace</div><div style={{ fontSize: 22, fontWeight: 800, color: "#16a34a" }}>{fmtKc(dotace)}</div></div>}
-        {cfg.dotaceOn && <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: 14 }}><div style={{ ...S.label, color: "#2E9BE0" }}>Cena po dotaci</div><div style={{ fontSize: 22, fontWeight: 800, color: "#2E9BE0" }}>{fmtKc(cenaPoDotaci)}</div></div>}
+        {cfg.dotaceOn && <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: 14 }}><div style={{ ...S.label, color: "#0369a1" }}>Cena po dotaci</div><div style={{ fontSize: 22, fontWeight: 800, color: "#0369a1" }}>{fmtKc(cenaPoDotaci)}</div></div>}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 16 }}>
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}><div style={S.label}>Marže Kč</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtKc(marzeKc)}</div></div>
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, gridColumn: "span 2" }}><div style={S.label}>Provize OZ celkem</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtKc(provizeCelkem)} <span style={{ color: "#64748b", fontWeight: 400 }}>(zákl. {fmtKc(cfg.zakladniProvize)} + plov. {Math.round(plovouciPct * 10) / 10}% = {fmtKc(provizeKc)})</span></div></div>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, gridColumn: "span 2" }}><div style={S.label}>Provize OZ celkem</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtKc(provizeCelkem)} <span style={{ color: "#475569", fontWeight: 400 }}>(zákl. {fmtKc(cfg.zakladniProvize)} + plov. {Math.round(plovouciPct * 10) / 10}% = {fmtKc(provizeKc)})</span></div></div>
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}><div style={S.label}>Výkon / Baterie</div><div style={{ fontSize: 14, fontWeight: 700 }}>{Math.round(vykonFve * 10) / 10} kWp / {Math.round(bateriKwh * 10) / 10} kWh</div></div>
       </div>
 
@@ -510,9 +510,9 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
             ➡️ Použít jako cílovou cenu pro zákazníka
           </button>
         )}
-        <button style={S.btn("#2E9BE0")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>
+        <button style={S.btn("#0369a1")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>
       </div>
-      <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>Pro PDF: otevři stažený Word dokument a použij "Uložit jako → PDF" — appka umí přesně vyplnit šablonu, ale přesný převod na PDF (1:1 jako Word) neumí bez samotného Wordu/LibreOffice udělat.</div>
+      <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>Pro PDF: otevři stažený Word dokument a použij "Uložit jako → PDF" — appka umí přesně vyplnit šablonu, ale přesný převod na PDF (1:1 jako Word) neumí bez samotného Wordu/LibreOffice udělat.</div>
     </div>
   );
 }

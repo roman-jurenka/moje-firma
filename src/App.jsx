@@ -17,7 +17,7 @@ function ProudOSMark({ size = 28, outline = true }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" style={{ flexShrink: 0 }} aria-hidden="true">
       <circle cx="50" cy="50" r="46" fill="#1d4ed8" />
-      <circle cx="50" cy="50" r="40" fill="#2E9BE0" />
+      <circle cx="50" cy="50" r="40" fill="#0369a1" />
       <path d="M62,14 L32,54 L46,54 L36,88 L70,44 L52,44 Z" fill="#F5821F"
         stroke={outline ? "#ffffff" : "none"} strokeWidth={outline ? 3 : 0} strokeLinejoin="round" />
     </svg>
@@ -69,7 +69,7 @@ function MiniCalendar({ value, onChange, onClose }) {
           return (
             <div key={i} onClick={() => pick(day)}
               style={{ textAlign: "center", fontSize: 12, padding: "5px 2px", borderRadius: 6, cursor: "pointer",
-                background: isSel ? "#2E9BE0" : isToday ? "#2E9BE022" : "transparent",
+                background: isSel ? "#0369a1" : isToday ? "#0369a122" : "transparent",
                 color: isSel ? "#fff" : isToday ? "#3b82f6" : "#cbd5e1",
                 fontWeight: isSel || isToday ? 700 : 400 }}>
               {day}
@@ -140,9 +140,9 @@ function SearchSelect({ options, value, onChange, placeholder = "— vyberte —
         <div style={{ position: "absolute", top: "calc(100% + 2px)", left: 0, right: 0, zIndex: 9999, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: 240, overflowY: "auto", boxShadow: "0 6px 16px #00000022" }}>
           {allowClear && value && (
             <div onClick={() => { onChange(""); setQ(""); setOpen(false); }}
-              style={{ padding: "8px 12px", fontSize: 13, color: "#94a3b8", cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>— zrušit výběr —</div>
+              style={{ padding: "8px 12px", fontSize: 13, color: "#64748b", cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>— zrušit výběr —</div>
           )}
-          {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>Nic nenalezeno.</div>}
+          {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 13, color: "#64748b" }}>Nic nenalezeno.</div>}
           {filtered.map(o => (
             <div key={o.id} onClick={() => { onChange(String(o.id)); setQ(""); setOpen(false); }}
               style={{ padding: "8px 12px", fontSize: 13, color: "#1A1A1A", cursor: "pointer", background: String(o.id) === String(value) ? "#eff6ff" : "transparent" }}
@@ -172,7 +172,7 @@ const ROLES = {
   admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","finance","reports","ai","attendance","calendar","knjiga","onedrive","permissions","podpisy","profile"] },
   manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","projects","costs","finance","reports","ai","attendance","calendar","knjiga","podpisy","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
-  employee: { label: "Zaměstnanec",   color: "#2E9BE0", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
+  employee: { label: "Zaměstnanec",   color: "#0369a1", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
 };
 
 // Simulovaná docházka — záznamy příchod/odchod
@@ -333,7 +333,7 @@ const initialTemplates = [
 ];
 
 const COST_CATEGORIES = ["Mzdy", "Nájem", "Marketing", "IT & Software", "Logistika", "Ostatní"];
-const CAT_COLORS = { "Mzdy": "#2E9BE0", "Nájem": "#f59e0b", "Marketing": "#f87171", "IT & Software": "#2E9BE0", "Logistika": "#34d399", "Ostatní": "#a78bfa" };
+const CAT_COLORS = { "Mzdy": "#0369a1", "Nájem": "#f59e0b", "Marketing": "#f87171", "IT & Software": "#0369a1", "Logistika": "#34d399", "Ostatní": "#a78bfa" };
 const MONTHS = ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"];
 
 const initialCosts = [
@@ -356,7 +356,7 @@ const initialCosts = [
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
 const STAGES = ["Nový", "Jednání", "Nabídka", "Vyhráno", "Prohráno"];
-const STAGE_COLORS = { Nový: "#2E9BE0", Jednání: "#f59e0b", Nabídka: "#a78bfa", Vyhráno: "#34d399", Prohráno: "#f87171" };
+const STAGE_COLORS = { Nový: "#0369a1", Jednání: "#f59e0b", Nabídka: "#a78bfa", Vyhráno: "#34d399", Prohráno: "#f87171" };
 // Stejné typy jako TYPY_ZAKAZEK v Contracts.jsx (kód zakázky se generuje z
 // tohohle ID) — poptávka může typ nastavit rovnou, ať se při převodu na
 // zakázku nezadává znovu.
@@ -366,11 +366,11 @@ const JOB_TYPES = [
   { id: "ELK", label: "ELK — Elektroinstalace" },
   { id: "SRV", label: "SRV — Servis" },
 ];
-const TAG_COLORS = { VIP: "#f59e0b", Aktivní: "#34d399", Nový: "#2E9BE0" };
+const TAG_COLORS = { VIP: "#f59e0b", Aktivní: "#34d399", Nový: "#0369a1" };
 const PRIO_COLORS = { Vysoká: "#f87171", Střední: "#f59e0b", Nízká: "#34d399" };
-const INV_COLORS = { Zaplacena: "#34d399", Čeká: "#f59e0b", "Po splatnosti": "#f87171", Storno: "#64748b" };
-const PROJ_COLORS = { Probíhá: "#2E9BE0", Plánováno: "#2E9BE0", Dokončeno: "#34d399", Pozastaveno: "#f87171" };
-const avatarColors = ["#2E9BE0", "#f59e0b", "#34d399", "#f87171", "#a78bfa", "#2E9BE0"];
+const INV_COLORS = { Zaplacena: "#34d399", Čeká: "#f59e0b", "Po splatnosti": "#f87171", Storno: "#475569" };
+const PROJ_COLORS = { Probíhá: "#0369a1", Plánováno: "#0369a1", Dokončeno: "#34d399", Pozastaveno: "#f87171" };
+const avatarColors = ["#0369a1", "#f59e0b", "#34d399", "#f87171", "#a78bfa", "#0369a1"];
 
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "ti-layout-dashboard", group: "CRM" },
@@ -414,16 +414,16 @@ const S = {
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 },
   h1: { fontSize: 24, fontWeight: 700, color: "#1A1A1A", margin: 0 },
   btn: (c = "#F5C518") => ({ background: c, color: c === "#F5C518" ? "#1A1A1A" : "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
-  btnGhost: { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  btnGhost: { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   card: { background: "#ffffff", borderRadius: 12, padding: 22, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px #0000000a" },
   grid4: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 },
   grid3: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 24 },
   grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 },
   statCard: (c) => ({ background: "#ffffff", borderRadius: 12, padding: "18px 22px", border: `1px solid ${c}33`, boxShadow: "0 1px 4px #0000000a" }),
-  statLabel: { fontSize: 11, color: "#64748b", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" },
+  statLabel: { fontSize: 11, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" },
   statValue: (c) => ({ fontSize: 26, fontWeight: 800, color: c }),
   table: { width: "100%", borderCollapse: "collapse" },
-  th: { textAlign: "left", padding: "9px 12px", fontSize: 11, color: "#64748b", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" },
+  th: { textAlign: "left", padding: "9px 12px", fontSize: 11, color: "#475569", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" },
   td: { padding: "11px 12px", fontSize: 13, borderBottom: "1px solid #f1f5f9", color: "#475569" },
   tag: (c) => ({ background: c + "22", color: c, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700, display: "inline-block" }),
   search: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 13px", color: "#1A1A1A", fontSize: 13, outline: "none", width: 240 },
@@ -431,14 +431,14 @@ const S = {
   modalBox: { background: "#ffffff", borderRadius: 16, padding: 28, width: 440, maxWidth: "92vw", boxSizing: "border-box", border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
   input: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
   select: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
-  label: { fontSize: 11, color: "#64748b", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
+  label: { fontSize: 11, color: "#475569", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
   avatar: (c) => ({ width: 34, height: 34, borderRadius: "50%", background: c, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0 }),
   progress: (pct, c) => ({ height: 6, borderRadius: 3, background: "#e2e8f0", overflow: "hidden", position: "relative" }),
   progressBar: (pct, c) => ({ height: "100%", width: `${pct}%`, background: c, borderRadius: 3, transition: "width 0.4s" }),
   kanbanCol: { background: "#f8fafc", borderRadius: 12, padding: 14, minWidth: 170, flex: 1, border: "1px solid #e2e8f0" },
   kanbanCard: { background: "#ffffff", borderRadius: 8, padding: 12, marginBottom: 8, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px #0000000a" },
   commItem: { display: "flex", gap: 12, padding: "12px 0", borderBottom: "1px solid #f1f5f9" },
-  commDot: (t) => ({ width: 9, height: 9, borderRadius: "50%", background: t === "Email" ? "#2E9BE0" : t === "Hovor" ? "#16a34a" : "#F5821F", marginTop: 4, flexShrink: 0 }),
+  commDot: (t) => ({ width: 9, height: 9, borderRadius: "50%", background: t === "Email" ? "#0369a1" : t === "Hovor" ? "#16a34a" : "#F5821F", marginTop: 4, flexShrink: 0 }),
   divider: { height: 1, background: "#e2e8f0", margin: "12px 0" },
   badge: (c) => ({ background: c + "22", color: c, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }),
 };
@@ -483,20 +483,20 @@ function ContractPhotoPicker({ onSelect, onClose }) {
         <ModalHeader title="📁 Fotky ze zakázek" onClose={onClose} />
         <input style={{ ...S.input, marginBottom: 12 }} placeholder="Hledat podle popisu nebo zakázky..." value={search} onChange={e => setSearch(e.target.value)} />
         {loading ? (
-          <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Načítám…</div>
+          <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>Načítám…</div>
         ) : filtered.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Žádné fotky</div>
+          <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>Žádné fotky</div>
         ) : (
           <div style={{ overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
             {filtered.map(p => (
               <div key={p.id} onClick={() => onSelect(p.url)} style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "2px solid #e2e8f0", transition: "border 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = "#2E9BE0"}
+                onMouseEnter={e => e.currentTarget.style.borderColor = "#0369a1"}
                 onMouseLeave={e => e.currentTarget.style.borderColor = "#e2e8f0"}>
                 <img src={p.url} alt="" style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
-                <div style={{ padding: "4px 6px", fontSize: 11, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div style={{ padding: "4px 6px", fontSize: 11, color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {p.contracts?.name || "—"}
                 </div>
-                {p.description && <div style={{ padding: "0 6px 4px", fontSize: 10, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.description}</div>}
+                {p.description && <div style={{ padding: "0 6px 4px", fontSize: 10, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.description}</div>}
               </div>
             ))}
           </div>
@@ -510,7 +510,7 @@ function ModalHeader({ title, onClose }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
       <div style={{ fontWeight: 700, fontSize: 17, color: "#1A1A1A" }}>{title}</div>
-      <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#94a3b8", lineHeight: 1 }}>✕</button>
+      <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#64748b", lineHeight: 1 }}>✕</button>
     </div>
   );
 }
@@ -590,7 +590,7 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
     <div style={S.modal}>
       <div style={S.modalBox}>
         <ModalHeader title="Doplnit údaje zákazníka" onClose={onClose} />
-        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>
           Co appka zná, je vyplněné. Zbytek doplň, nebo zavři a udělej to později v Zákaznících.
         </div>
         <label style={S.label}>Typ zákazníka</label>
@@ -611,7 +611,7 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
 
         {isFirma ? (
           <>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", margin: "10px 0 4px" }}>Kontaktní osoba</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", margin: "10px 0 4px" }}>Kontaktní osoba</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
                 <label style={S.label}>
@@ -815,10 +815,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "DM Sans, sans-serif" }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 28, fontWeight: 800, color: "#1A1A1A", marginBottom: 16 }}>Firma<span style={{ color: "#2E9BE0" }}>CRM</span><span style={{ color: "#F5821F" }}>+ERP</span></div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: "#1A1A1A", marginBottom: 16 }}>Firma<span style={{ color: "#0369a1" }}>CRM</span><span style={{ color: "#F5821F" }}>+ERP</span></div>
         <div style={{ color: "#475569", fontSize: 14 }}>Načítám data z databáze...</div>
         <div style={{ marginTop: 20, display: "flex", gap: 6, justifyContent: "center" }}>
-          {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: "#2E9BE0", animation: `pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
+          {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: "#0369a1", animation: `pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
         </div>
         <style>{`@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1)}}`}</style>
       </div>
@@ -915,22 +915,22 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             <input autoFocus value={gQuery} onChange={e => setGQuery(e.target.value)}
               placeholder="Hledat zákazníka, zakázku, fakturu, produkt…"
               style={{ ...S.input, marginBottom: gResults ? 10 : 0 }} />
-            {gQuery.trim().length > 0 && gQuery.trim().length < 2 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Piš aspoň 2 znaky.</div>}
-            {gResults && gTotal === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Nic nenalezeno.</div>}
+            {gQuery.trim().length > 0 && gQuery.trim().length < 2 && <div style={{ fontSize: 12, color: "#64748b" }}>Piš aspoň 2 znaky.</div>}
+            {gResults && gTotal === 0 && <div style={{ fontSize: 12, color: "#64748b" }}>Nic nenalezeno.</div>}
             {gResults && gResults.customers.length > 0 && (
               <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Zákazníci</div>
+                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Zákazníci</div>
                 {gResults.customers.map(c => (
                   <div key={`c-${c.id}`} onClick={() => { setTab("customers"); setGSearchOpen(false); setGQuery(""); }}
                     style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
-                    <i className="ti ti-user" aria-hidden="true" style={{ marginRight: 6, color: "#2E9BE0" }}></i>{c.name}{c.company ? ` — ${c.company}` : ""}
+                    <i className="ti ti-user" aria-hidden="true" style={{ marginRight: 6, color: "#0369a1" }}></i>{c.name}{c.company ? ` — ${c.company}` : ""}
                   </div>
                 ))}
               </div>
             )}
             {gResults && gResults.contracts.length > 0 && (
               <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Zakázky</div>
+                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Zakázky</div>
                 {gResults.contracts.map(c => (
                   <div key={`co-${c.id}`} onClick={() => { setTab("contracts"); setGSearchOpen(false); setGQuery(""); }}
                     style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
@@ -941,7 +941,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             )}
             {gResults && gResults.invoices.length > 0 && (
               <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Faktury</div>
+                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Faktury</div>
                 {gResults.invoices.map(i => (
                   <div key={`i-${i.id}`} onClick={() => { setTab("invoices"); setGSearchOpen(false); setGQuery(""); }}
                     style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
@@ -952,7 +952,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             )}
             {gResults && gResults.products.length > 0 && (
               <div>
-                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Sklad</div>
+                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Sklad</div>
                 {gResults.products.map(p => (
                   <div key={`p-${p.id}`} onClick={() => { setTab("warehouse"); setGSearchOpen(false); setGQuery(""); }}
                     style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
@@ -972,7 +972,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         <button className="mobile-checkin-fab" onClick={checkin}
           style={{
             display: "none", position: "fixed", bottom: 18, right: 18, zIndex: 480,
-            background: todayRecord?.checkout ? "#34d399" : todayRecord?.checkin ? "#f59e0b" : "#2E9BE0",
+            background: todayRecord?.checkout ? "#34d399" : todayRecord?.checkin ? "#f59e0b" : "#0369a1",
             color: "#fff", border: "none", borderRadius: 28, padding: "14px 20px",
             fontSize: 14, fontWeight: 700, boxShadow: "0 4px 16px #0004", alignItems: "center", gap: 8,
           }}
@@ -1071,17 +1071,17 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* User info + role */}
         <div style={{ padding: "12px 16px", margin: "0 12px 8px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#2E9BE0", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#0369a1", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0 }}>
               {getInitial(currentUser.name)}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.name}</div>
-              <span style={{ ...S.tag(ROLES[currentUser.role]?.color || "#2E9BE0"), fontSize: 10 }}>{ROLES[currentUser.role]?.label}</span>
+              <span style={{ ...S.tag(ROLES[currentUser.role]?.color || "#0369a1"), fontSize: 10 }}>{ROLES[currentUser.role]?.label}</span>
             </div>
           </div>
           {/* Quick checkin */}
           {myEmpId && (
-            <button onClick={checkin} style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#34d399" : "#2E9BE0"), width: "100%", marginTop: 10, fontSize: 11, padding: "7px" }}>
+            <button onClick={checkin} style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#34d399" : "#0369a1"), width: "100%", marginTop: 10, fontSize: 11, padding: "7px" }}>
               {todayRecord?.checkout ? `✓ Odchod ${todayRecord.checkout}` : todayRecord?.checkin ? `⏱ Zapsat odchod (${todayRecord.checkin})` : "▶ Zapsat příchod"}
             </button>
           )}
@@ -1289,8 +1289,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
                   ))}
                   {pendingReqCount > 0 && (
                     <div onClick={() => setTab("attendance")}
-                      style={{ ...S.card, borderLeft: "3px solid #2E9BE0", padding: "10px 16px", cursor: "pointer", fontSize: 13 }}>
-                      <i className="ti ti-calendar-check" aria-hidden="true" style={{ color: "#2E9BE0", marginRight: 8 }}></i>
+                      style={{ ...S.card, borderLeft: "3px solid #0369a1", padding: "10px 16px", cursor: "pointer", fontSize: 13 }}>
+                      <i className="ti ti-calendar-check" aria-hidden="true" style={{ color: "#0369a1", marginRight: 8 }}></i>
                       {pendingReqCount} {pendingReqCount === 1 ? "žádost čeká" : "žádostí čeká"} na schválení v docházce
                     </div>
                   )}
@@ -1306,10 +1306,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {notifications.filter(n => !n.user_name || n.user_name === currentUser?.name).map(n => (
-                <div key={n.id} style={{ ...S.card, borderLeft: `3px solid ${n.read ? "#cbd5e1" : "#2E9BE0"}`, padding: "14px 18px" }}>
+                <div key={n.id} style={{ ...S.card, borderLeft: `3px solid ${n.read ? "#cbd5e1" : "#0369a1"}`, padding: "14px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
-                      <div style={{ fontWeight: 700, color: n.read ? "#64748b" : "#fff", marginBottom: 4 }}>{n.title}</div>
+                      <div style={{ fontWeight: 700, color: n.read ? "#475569" : "#fff", marginBottom: 4 }}>{n.title}</div>
                       <div style={{ color: "#475569", fontSize: 13 }}>{n.message}</div>
                     </div>
                     <div style={{ fontSize: 11, color: "#475569", whiteSpace: "nowrap", marginLeft: 12 }}>{new Date(n.created_at).toLocaleString("cs")}</div>
@@ -1498,7 +1498,7 @@ function RadialMenu({ currentUser, tab, setTab }) {
               <button title="Zpět na sekce" aria-label="Zpět na sekce" onClick={back}
                 style={{
                   position: "absolute", left: "50%", top: `calc(50% - ${activeRadius + 60}px)`, marginLeft: -18, marginTop: -18,
-                  width: 36, height: 36, borderRadius: "50%", border: "1px solid #cbd5e1", background: "#fff", color: "#64748b",
+                  width: 36, height: 36, borderRadius: "50%", border: "1px solid #cbd5e1", background: "#fff", color: "#475569",
                   cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, zIndex: 4,
                 }}>
                 <i className="ti ti-arrow-back-up" aria-hidden="true"></i>
@@ -1625,9 +1625,9 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
         </div>
 
         {/* Hodiny tento měsíc */}
-        <div style={S.statCard("#2E9BE0")}>
+        <div style={S.statCard("#0369a1")}>
           <div style={S.statLabel}>📅 Odpracováno tento měsíc</div>
-          <div style={{ fontSize: 38, fontWeight: 900, color: "#2E9BE0", lineHeight: 1.1 }}>{Math.floor(hoursThisMonth)}</div>
+          <div style={{ fontSize: 38, fontWeight: 900, color: "#0369a1", lineHeight: 1.1 }}>{Math.floor(hoursThisMonth)}</div>
           <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>hodin ({fmtH(hoursThisMonth)})</div>
           <div style={{ fontSize: 11, color: "#334155", marginTop: 8 }}>{myAtt.length} směn tento měsíc</div>
         </div>
@@ -1652,7 +1652,7 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
               <button style={{ ...S.btn(), padding: "5px 12px", fontSize: 12 }} onClick={() => setAddingTask(!addingTask)}>
                 {addingTask ? "✕" : "+ Přidat"}
               </button>
-              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
+              <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
             </div>
           </div>
 
@@ -1681,12 +1681,12 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
             ? <div style={{ color: "#334155", fontSize: 13 }}>Žádné otevřené úkoly ✓</div>
             : myTasks.map(t => (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <input type="checkbox" checked={false} onChange={() => toggleTask(t.id)} style={{ accentColor: "#2E9BE0", flexShrink: 0 }} />
+                <input type="checkbox" checked={false} onChange={() => toggleTask(t.id)} style={{ accentColor: "#0369a1", flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, color: "#1A1A1A" }}>{t.title}</div>
                   {t.due && <div style={{ fontSize: 11, color: "#475569" }}>📅 {fmtDateCz(t.due)}</div>}
                 </div>
-                {t.priority && <span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span>}
+                {t.priority && <span style={S.tag(PRIO_COLORS[t.priority] || "#475569")}>{t.priority}</span>}
               </div>
             ))
           }
@@ -1696,7 +1696,7 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
             🕐 Poslední docházka
-            <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>
+            <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>
           </div>
           {recentAtt.length === 0
             ? <div style={{ color: "#334155", fontSize: 13 }}>Žádné záznamy</div>
@@ -1708,10 +1708,10 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
                     <div style={{ fontSize: 13, color: "#1A1A1A" }}>{new Date(a.date + "T00:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}</div>
                     <div style={{ fontSize: 11, color: "#475569" }}>
                       {a.checkin} – {a.checkout}
-                      {a.contract_name && <span style={{ color: "#2E9BE0", marginLeft: 6 }}>· {a.contract_name}</span>}
+                      {a.contract_name && <span style={{ color: "#0369a1", marginLeft: 6 }}>· {a.contract_name}</span>}
                     </div>
                   </div>
-                  <span style={S.badge("#2E9BE0")}>{fmtH(h)}</span>
+                  <span style={S.badge("#0369a1")}>{fmtH(h)}</span>
                 </div>
               );
             })
@@ -1732,7 +1732,7 @@ const DASH_WIDGETS = [
 
 // Sekce, podle kterých se u zakázky sleduje rozpočet vs. skutečné čerpání.
 const CONTRACT_COST_SECTIONS = [
-  { key: "prace", label: "Práce", costType: "práce", budgetKey: "budget_prace", budgetExtraKey: "budget_vice_prace", color: "#2E9BE0" },
+  { key: "prace", label: "Práce", costType: "práce", budgetKey: "budget_prace", budgetExtraKey: "budget_vice_prace", color: "#0369a1" },
   { key: "material", label: "Materiál", costType: "materiál", budgetKey: "budget_material", budgetExtraKey: "budget_vice_material", color: "#f59e0b" },
   { key: "doprava", label: "Doprava", costType: "doprava", budgetKey: "budget_doprava", budgetExtraKey: "budget_vice_doprava", color: "#a78bfa" },
 ];
@@ -1800,16 +1800,16 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   const maxRevenue = Math.max(1, ...revenueByMonth);
 
   const stats = [
-    { label: "Zákazníci", value: customers.length, color: "#2E9BE0" },
+    { label: "Zákazníci", value: customers.length, color: "#0369a1" },
     { label: "Zaplaceno (příjmy)", value: fmtKc(totalRevenue), color: "#34d399" },
     { label: "Náklady celkem", value: fmtKc(totalCosts), color: "#f87171" },
     { label: "Zisk", value: fmtKc(profit), color: profit >= 0 ? "#34d399" : "#f87171" },
     { label: "Náklady tento měsíc", value: fmtKc(thisMonthCosts), color: "#f59e0b" },
-    { label: "Produkty skladu", value: products.length, color: "#2E9BE0" },
+    { label: "Produkty skladu", value: products.length, color: "#0369a1" },
     { label: "Zaměstnanci", value: employees.length, color: "#a78bfa" },
     { label: "Aktivní projekty", value: activeProjects, color: "#34d399" },
     { label: "Mzdové náklady", value: fmtKc(totalPayroll), color: "#f59e0b" },
-    { label: "Na pracovišti dnes", value: `${presentToday.length} / ${activeEmployees.length}`, color: "#2E9BE0" },
+    { label: "Na pracovišti dnes", value: `${presentToday.length} / ${activeEmployees.length}`, color: "#0369a1" },
     { label: "Pohledávky po splatnosti", value: `${overdueReceivables.length} (${fmtKc(overdueReceivablesSum)})`, color: "#f87171" },
     { label: "Závazky po splatnosti", value: `${overduePayables.length} (${fmtKc(overduePayablesSum)})`, color: "#fb923c" },
   ];
@@ -1844,7 +1844,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
               </div>
             );
           })}
-          {overdueReceivables.length > 5 && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>… a dalších {overdueReceivables.length - 5}</div>}
+          {overdueReceivables.length > 5 && <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>… a dalších {overdueReceivables.length - 5}</div>}
         </div>
       )}
 
@@ -1860,14 +1860,14 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
               </div>
             );
           })}
-          {overduePayables.length > 5 && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>… a dalších {overduePayables.length - 5}</div>}
+          {overduePayables.length > 5 && <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>… a dalších {overduePayables.length - 5}</div>}
         </div>
       )}
 
       {/* Přizpůsobitelné widgety */}
       {editMode && (
         <div style={{ ...S.card, marginBottom: 16, display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>Zobrazit widgety:</span>
+          <span style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>Zobrazit widgety:</span>
           {DASH_WIDGETS.map(w => (
             <label key={w.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#1A1A1A", cursor: "pointer" }}>
               <input type="checkbox" checked={!hiddenWidgets.includes(w.id)} onChange={() => toggleWidget(w.id)} />
@@ -1881,21 +1881,21 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Zakázky a fakturace */}
         {!hiddenWidgets.includes("zakazky") && (
           <div style={S.card}>
-            {widgetCardHeader("ti-file-invoice", "Zakázky a fakturace", "#2E9BE0",
-              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>)}
+            {widgetCardHeader("ti-file-invoice", "Zakázky a fakturace", "#0369a1",
+              <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>)}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
               <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
-                <div style={{ fontSize: 11, color: "#64748b" }}>Tržby tento měsíc</div>
+                <div style={{ fontSize: 11, color: "#475569" }}>Tržby tento měsíc</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: "#1A1A1A" }}>{fmtKc(revenueByMonth[5])}</div>
               </div>
               <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
-                <div style={{ fontSize: 11, color: "#64748b" }}>Otevřené faktury</div>
+                <div style={{ fontSize: 11, color: "#475569" }}>Otevřené faktury</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: "#F5821F" }}>{openInvoices.length}</div>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 44 }}>
               {revenueByMonth.map((v, i) => (
-                <div key={i} title={fmtKc(v)} style={{ flex: 1, background: i === 5 ? "#2E9BE0" : "#bfdbfe", borderRadius: "3px 3px 0 0", height: `${Math.max(4, (v / maxRevenue) * 100)}%` }} />
+                <div key={i} title={fmtKc(v)} style={{ flex: 1, background: i === 5 ? "#0369a1" : "#bfdbfe", borderRadius: "3px 3px 0 0", height: `${Math.max(4, (v / maxRevenue) * 100)}%` }} />
               ))}
             </div>
           </div>
@@ -1904,18 +1904,18 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Docházka / HR */}
         {!hiddenWidgets.includes("dochazka") && (
           <div style={S.card}>
-            {widgetCardHeader("ti-users", "Docházka / HR", "#2E9BE0",
-              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>)}
-            {activeEmployees.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádní aktivní zaměstnanci</div> :
+            {widgetCardHeader("ti-users", "Docházka / HR", "#0369a1",
+              <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>)}
+            {activeEmployees.length === 0 ? <div style={{ color: "#64748b", fontSize: 13 }}>Žádní aktivní zaměstnanci</div> :
               activeEmployees.map(e => {
                 const rec = presentToday.find(a => a.employeeId === e.id);
                 return (
                   <div key={e.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, marginBottom: 9, opacity: rec ? 1 : 0.55 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 7, color: "#1A1A1A" }}>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: rec ? (rec.checkout ? "#94a3b8" : "#34d399") : "#cbd5e1" }} />
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: rec ? (rec.checkout ? "#64748b" : "#34d399") : "#cbd5e1" }} />
                       {e.name}
                     </span>
-                    <span style={{ color: "#64748b", fontSize: 12 }}>
+                    <span style={{ color: "#475569", fontSize: 12 }}>
                       {rec ? (rec.checkout ? `Odešel/a ${rec.checkout}` : `Od ${rec.checkin}`) : "Nezapsáno"}
                     </span>
                   </div>
@@ -1928,9 +1928,9 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Sklad / materiál */}
         {!hiddenWidgets.includes("sklad") && (
           <div style={S.card}>
-            {widgetCardHeader("ti-package", "Sklad / materiál", "#2E9BE0",
-              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("warehouse")}>Sklad →</span>)}
-            {lowStock.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Vše skladem v pořádku ✓</div> :
+            {widgetCardHeader("ti-package", "Sklad / materiál", "#0369a1",
+              <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("warehouse")}>Sklad →</span>)}
+            {lowStock.length === 0 ? <div style={{ color: "#64748b", fontSize: 13 }}>Vše skladem v pořádku ✓</div> :
               lowStock.slice(0, 4).map(p => {
                 const critical = p.stock <= p.minStock * 0.5;
                 return (
@@ -1947,9 +1947,9 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Projekty */}
         {!hiddenWidgets.includes("projekty") && (
           <div style={S.card}>
-            {widgetCardHeader("ti-building", "Projekty", "#2E9BE0",
-              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("projects")}>Vše →</span>)}
-            {projects.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné projekty</div> :
+            {widgetCardHeader("ti-building", "Projekty", "#0369a1",
+              <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("projects")}>Vše →</span>)}
+            {projects.length === 0 ? <div style={{ color: "#64748b", fontSize: 13 }}>Žádné projekty</div> :
               projects.slice(0, 3).map(p => (
                 <div key={p.id} style={{ marginBottom: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -1959,7 +1959,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
                   <div style={S.progress(p.progress)}>
                     <div style={S.progressBar(p.progress, PROJ_COLORS[p.status])} />
                   </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{p.progress}% dokončeno</div>
+                  <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>{p.progress}% dokončeno</div>
                 </div>
               ))
             }
@@ -1971,9 +1971,9 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Rozpracované zakázky — finanční stav po sekcích a úkoly */}
         {!hiddenWidgets.includes("rozpracovane") && (
           <div style={{ ...S.card, gridColumn: "1 / -1" }}>
-            {widgetCardHeader("ti-progress", "Rozpracované zakázky — finanční stav", "#2E9BE0",
-              <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("contracts")}>Vše →</span>)}
-            {inProgressContracts.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné rozpracované zakázky</div> :
+            {widgetCardHeader("ti-progress", "Rozpracované zakázky — finanční stav", "#0369a1",
+              <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("contracts")}>Vše →</span>)}
+            {inProgressContracts.length === 0 ? <div style={{ color: "#64748b", fontSize: 13 }}>Žádné rozpracované zakázky</div> :
               inProgressContracts.map(c => {
                 const contractTasks = (tasks || []).filter(t => t.contract_id === c.id);
                 const doneTasks = contractTasks.filter(t => t.done).length;
@@ -1981,10 +1981,10 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
                   <div key={c.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
                       <span style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 13, cursor: "pointer" }} onClick={() => onOpenSheet(c.id, c.name)}>
-                        {c.name} {c.code && <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: 11 }}>({c.code})</span>}
+                        {c.name} {c.code && <span style={{ fontWeight: 400, color: "#64748b", fontSize: 11 }}>({c.code})</span>}
                       </span>
                       {contractTasks.length > 0 && (
-                        <span style={{ fontSize: 11, color: "#64748b" }}>Úkoly: {doneTasks}/{contractTasks.length}</span>
+                        <span style={{ fontSize: 11, color: "#475569" }}>Úkoly: {doneTasks}/{contractTasks.length}</span>
                       )}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
@@ -1995,9 +1995,9 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
                         const over = budget > 0 && spent > budget;
                         return (
                           <div key={sec.key}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", marginBottom: 3 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#475569", marginBottom: 3 }}>
                               <span>{sec.label}</span>
-                              <span style={{ color: over ? "#f87171" : "#64748b", fontWeight: over ? 700 : 400 }}>{fmtKc(spent)} / {fmtKc(budget)}</span>
+                              <span style={{ color: over ? "#f87171" : "#475569", fontWeight: over ? 700 : 400 }}>{fmtKc(spent)} / {fmtKc(budget)}</span>
                             </div>
                             <div style={{ background: "#f1f5f9", borderRadius: 6, height: 6, overflow: "hidden" }}>
                               <div style={{ width: `${Math.min(100, pct)}%`, height: "100%", background: over ? "#f87171" : sec.color, borderRadius: 6 }} />
@@ -2036,7 +2036,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
                 }
               }}
             />
-            <button style={{ ...S.btn("#2E9BE0"), padding: "9px 18px", flexShrink: 0 }}
+            <button style={{ ...S.btn("#0369a1"), padding: "9px 18px", flexShrink: 0 }}
               onClick={() => {
                 const q = sheetSearch.toLowerCase();
                 const found = (contracts || []).find(c =>
@@ -2061,14 +2061,14 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
                     <span style={{ fontSize: 16 }}>📋</span>
                     <div>
                       <div style={{ fontWeight: 600, color: "#1A1A1A", fontSize: 13 }}>{c.name}</div>
-                      {c.code && <div style={{ fontSize: 11, color: "#64748b" }}>{c.code}</div>}
+                      {c.code && <div style={{ fontSize: 11, color: "#475569" }}>{c.code}</div>}
                     </div>
-                    <span style={{ marginLeft: "auto", color: "#2E9BE0", fontSize: 12 }}>Otevřít →</span>
+                    <span style={{ marginLeft: "auto", color: "#0369a1", fontSize: 12 }}>Otevřít →</span>
                   </div>
                 ))
               }
               {(contracts || []).filter(c => c.name?.toLowerCase().includes(sheetSearch.toLowerCase()) || c.code?.toLowerCase().includes(sheetSearch.toLowerCase())).length === 0 && (
-                <div style={{ color: "#64748b", fontSize: 12, padding: "8px 12px" }}>Žádná zakázka nenalezena</div>
+                <div style={{ color: "#475569", fontSize: 12, padding: "8px 12px" }}>Žádná zakázka nenalezena</div>
               )}
             </div>
           )}
@@ -2077,16 +2077,16 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Nejbližší úkoly */}
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
-            Nejbližší úkoly <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
+            Nejbližší úkoly <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
           </div>
           {tasks.filter(t => !t.done).slice(0, 4).map(t => (
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} style={{ accentColor: "#2E9BE0" }} />
+              <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} style={{ accentColor: "#0369a1" }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: "#1A1A1A" }}>{t.title}</div>
-                <div style={{ fontSize: 11, color: "#64748b" }}>{fmtDateCz(t.due)}</div>
+                <div style={{ fontSize: 11, color: "#475569" }}>{fmtDateCz(t.due)}</div>
               </div>
-              <span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span>
+              <span style={S.tag(PRIO_COLORS[t.priority] || "#475569")}>{t.priority}</span>
             </div>
           ))}
         </div>
@@ -2094,7 +2094,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
         {/* Poslední faktury */}
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
-            Poslední faktury <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>
+            Poslední faktury <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("invoices")}>Vše →</span>
           </div>
           {invoices.slice(-3).reverse().map(inv => {
             const cust = customers.find(c => c.id === inv.customerId);
@@ -2102,7 +2102,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
               <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 13, color: "#1A1A1A" }}>{inv.number}</div>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>{cust?.name}</div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{cust?.name}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>{fmtKc(inv.amount)}</div>
@@ -2239,7 +2239,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
                     </div>
                   </td>
                   <td style={S.td}>
-                    <span style={S.tag(c.customer_type === "Firma" ? "#0d9488" : "#64748b")}>
+                    <span style={S.tag(c.customer_type === "Firma" ? "#0d9488" : "#475569")}>
                       {c.customer_type === "Firma" ? "🏢 Firma" : "👤 Koncový"}
                     </span>
                   </td>
@@ -2247,7 +2247,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
                   <td style={S.td}>{c.email}</td>
                   <td style={S.td}>{c.phone || "—"}</td>
                   <td style={S.td}>{custInvoices.length} faktur</td>
-                  <td style={S.td}><span style={S.tag(TAG_COLORS[c.tag] || "#2E9BE0")}>{c.tag}</span></td>
+                  <td style={S.td}><span style={S.tag(TAG_COLORS[c.tag] || "#0369a1")}>{c.tag}</span></td>
                   <td style={S.td}>
                     <div style={{ display: "flex", gap: 6 }}>
                       {!c.archived && (
@@ -2317,14 +2317,14 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
         const custComm = getCustomerCommunication({ communication, dealMsgs, contractMsgs, deals, contracts }, c.id);
         const custTasks = (tasks || []).filter(t => t.customerId === c.id);
         const custOpenTasks = custTasks.filter(t => !t.done);
-        const CONTRACT_STATUS_COLOR = { "Příprava": "#f59e0b", "Probíhá": "#2E9BE0", "Dokončeno": "#34d399", "Pozastaveno": "#ef4444" };
+        const CONTRACT_STATUS_COLOR = { "Příprava": "#f59e0b", "Probíhá": "#0369a1", "Dokončeno": "#34d399", "Pozastaveno": "#ef4444" };
         return (
           <div style={S.modal} onClick={closeModal}>
             <div style={{ ...S.modalBox, width: 600 }} onClick={e => e.stopPropagation()}>
               <ModalHeader title={c.name} onClose={closeModal} />
               <div style={{ color: "#475569", fontSize: 13, marginBottom: 16 }}>
-                {c.company && <span style={{ fontWeight: 600, color: "#94a3b8" }}>{c.company} · </span>}
-                {c.email && <a href={`mailto:${c.email}`} style={{ color: "#2E9BE0" }}>{c.email}</a>}
+                {c.company && <span style={{ fontWeight: 600, color: "#64748b" }}>{c.company} · </span>}
+                {c.email && <a href={`mailto:${c.email}`} style={{ color: "#0369a1" }}>{c.email}</a>}
                 {c.phone && <span> · <a href={`tel:${c.phone}`} style={{ color: "#16a34a" }}>📞 {c.phone}</a></span>}
                 {c.email_contact && c.email_contact !== c.email && <span> · <a href={`mailto:${c.email_contact}`} style={{ color: "#a78bfa" }}>✉️ {c.email_contact}</a></span>}
               </div>
@@ -2347,7 +2347,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
               </div>
               {custComm.length === 0 ? <Empty /> : custComm.slice(0, 5).map(m => (
                 <div key={m.id} style={{ padding: "8px 0", borderBottom: "1px solid #e2e8f0" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#94a3b8" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b" }}>
                     <span>{m.label}{m.author ? " · " + m.author : ""}</span>
                     <span>{m.kind === "log" ? (fmtDateCz ? fmtDateCz(m.date) : m.date) : new Date(m.date).toLocaleString("cs")}</span>
                   </div>
@@ -2360,8 +2360,8 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
                 <div key={t.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #e2e8f0" }}>
                   <span style={{ color: "#e2e8f0", fontSize: 13 }}>{t.title}</span>
                   <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <span style={{ color: "#94a3b8", fontSize: 12 }}>{t.due ? (fmtDateCz ? fmtDateCz(t.due) : t.due) : "—"}</span>
-                    <span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span>
+                    <span style={{ color: "#64748b", fontSize: 12 }}>{t.due ? (fmtDateCz ? fmtDateCz(t.due) : t.due) : "—"}</span>
+                    <span style={S.tag(PRIO_COLORS[t.priority] || "#475569")}>{t.priority}</span>
                   </div>
                 </div>
               ))}
@@ -2373,7 +2373,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
                     <div style={{ fontSize: 13, color: "#1A1A1A", fontWeight: 600 }}>{z.name}</div>
                     {z.code && <div style={{ fontSize: 11, color: "#475569" }}>{z.code}{z.address ? " · " + z.address : ""}</div>}
                   </div>
-                  <span style={S.tag(CONTRACT_STATUS_COLOR[z.status] || "#64748b")}>{z.status || "—"}</span>
+                  <span style={S.tag(CONTRACT_STATUS_COLOR[z.status] || "#475569")}>{z.status || "—"}</span>
                 </div>
               ))}
 
@@ -2579,7 +2579,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
           />
           <button onClick={quickAddDeal} style={S.btn()}>Uložit</button>
         </div>
-        <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: "#475569", marginTop: 6 }}>
           Zákazníka appka pozná podle jména/firmy z evidence; pokud ho nezná, rovnou založí nový kontakt.
         </div>
         {quickDealToast && <div style={{ marginTop: 6, fontSize: 12, color: "#15803d", fontWeight: 600 }}>{quickDealToast}</div>}
@@ -2593,8 +2593,8 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
         {[["vse", "Vše"], ["neprevedeno", "Nepřevedeno na zakázku"], ["prevedeno", "Převedeno na zakázku"]].map(([k, l]) => (
           <button key={k} onClick={() => setConvertedFilter(k)}
             style={{
-              background: convertedFilter === k ? "#2E9BE0" : "#fff", color: convertedFilter === k ? "#fff" : "#475569",
-              border: "1px solid " + (convertedFilter === k ? "#2E9BE0" : "#e2e8f0"), borderRadius: 8,
+              background: convertedFilter === k ? "#0369a1" : "#fff", color: convertedFilter === k ? "#fff" : "#475569",
+              border: "1px solid " + (convertedFilter === k ? "#0369a1" : "#e2e8f0"), borderRadius: 8,
               padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer",
             }}>
             {l}
@@ -2621,20 +2621,20 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
               const isConverted = convertedDealIds.has(d.id);
               return (
                 <div key={d.id}
-                  style={{ ...S.kanbanCard, opacity: dragId === d.id ? 0.4 : 1, cursor: "grab", outline: selectedDeal?.id === d.id ? "2px solid #2E9BE0" : "none" }}
+                  style={{ ...S.kanbanCard, opacity: dragId === d.id ? 0.4 : 1, cursor: "grab", outline: selectedDeal?.id === d.id ? "2px solid #0369a1" : "none" }}
                   draggable onDragStart={e => onDragStart(e, d.id)}
                   onClick={() => openDealDetail(d)}>
                   <div style={{ fontWeight: 600, color: "#1A1A1A", fontSize: 13, marginBottom: 3 }}>{d.name}</div>
-                  {cust && <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3 }}>{cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}</div>}
+                  {cust && <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>{cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}</div>}
                   {d.is_repeat && <div style={{ fontSize: 10, color: "#0d9488", fontWeight: 700, marginBottom: 3 }}>🔁 Další zakázka</div>}
                   {isConverted && <div style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, marginBottom: 3 }}>✅ Zakázka založena</div>}
-                  {d.assigned_to && <div style={{ fontSize: 11, color: "#2E9BE0", marginBottom: 4 }}>👤 {d.assigned_to}</div>}
+                  {d.assigned_to && <div style={{ fontSize: 11, color: "#0369a1", marginBottom: 4 }}>👤 {d.assigned_to}</div>}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ color: STAGE_COLORS[stage], fontWeight: 800, fontSize: 14 }}>{d.value ? fmtKc(d.value) : "—"}</div>
                     {stage === "Vyhráno" && onConvertToContract && (
                       isConverted ? (
                         <span title="Zakázka už byla založena, další jde vytvořit jen ze zakázek modulu"
-                          style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 6, color: "#64748b", fontSize: 11, padding: "4px 10px", fontWeight: 700 }}>
+                          style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 6, color: "#475569", fontSize: 11, padding: "4px 10px", fontWeight: 700 }}>
                           ✅ Založeno
                         </span>
                       ) : (
@@ -2661,12 +2661,12 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
         return (
           <div style={{ position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16 }}
             onClick={() => setSelectedDeal(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ ...S.card, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#2E9BE0"), width: 560, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
+          <div onClick={e => e.stopPropagation()} style={{ ...S.card, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#0369a1"), width: 560, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 16 }}>{selectedDeal.name}</div>
                 {cust && (
-                  <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>
+                  <div style={{ color: "#475569", fontSize: 13, marginTop: 2 }}>
                     {cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}{cust.phone ? " · " + cust.phone : ""}
                     {selectedDeal.is_repeat && <span style={{ color: "#0d9488", fontWeight: 700, marginLeft: 8 }}>🔁 Další zakázka</span>}
                   </div>
@@ -2676,7 +2676,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                 {selectedDeal.stage === "Vyhráno" && onConvertToContract && (
                   dealIsConverted ? (
                     <span title="Zakázka z téhle poptávky už byla založena"
-                      style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 8, color: "#64748b", padding: "7px 16px", fontWeight: 700, fontSize: 13 }}>
+                      style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 8, color: "#475569", padding: "7px 16px", fontWeight: 700, fontSize: 13 }}>
                       ✅ Zakázka založena
                     </span>
                   ) : (
@@ -2697,8 +2697,8 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                 <button key={k} onClick={() => setDetailTab(k)}
                   style={{
                     background: "none", border: "none", cursor: "pointer", padding: "8px 4px", marginRight: 16,
-                    fontSize: 13, fontWeight: 700, color: detailTab === k ? "#2E9BE0" : "#64748b",
-                    borderBottom: detailTab === k ? "2px solid #2E9BE0" : "2px solid transparent",
+                    fontSize: 13, fontWeight: 700, color: detailTab === k ? "#0369a1" : "#475569",
+                    borderBottom: detailTab === k ? "2px solid #0369a1" : "2px solid transparent",
                   }}>
                   {l}
                 </button>
@@ -2708,9 +2708,9 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
             {detailTab === "stav" && (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
-                  <div><div style={{ fontSize: 11, color: "#64748b" }}>Hodnota</div><div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 15 }}>{selectedDeal.value ? fmtKc(selectedDeal.value) : "—"}</div></div>
-                  <div><div style={{ fontSize: 11, color: "#64748b" }}>Vede případ</div><div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.assigned_to || "—"}</div></div>
-                  <div><div style={{ fontSize: 11, color: "#64748b" }}>Fáze</div><span style={S.tag(STAGE_COLORS[selectedDeal.stage])}>{selectedDeal.stage}</span></div>
+                  <div><div style={{ fontSize: 11, color: "#475569" }}>Hodnota</div><div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 15 }}>{selectedDeal.value ? fmtKc(selectedDeal.value) : "—"}</div></div>
+                  <div><div style={{ fontSize: 11, color: "#475569" }}>Vede případ</div><div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.assigned_to || "—"}</div></div>
+                  <div><div style={{ fontSize: 11, color: "#475569" }}>Fáze</div><span style={S.tag(STAGE_COLORS[selectedDeal.stage])}>{selectedDeal.stage}</span></div>
                 </div>
 
                 {selectedDeal.stage === "Prohráno" && selectedDeal.lost_reason && (
@@ -2721,7 +2721,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                 )}
 
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Přesunout do fáze:</div>
+                  <div style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>Přesunout do fáze:</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {STAGES.map(s => (
                       <button key={s} onClick={() => moveStage(selectedDeal, s)}
@@ -2734,7 +2734,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
 
                 {dealTasks.length > 0 && (
                   <div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Úkoly ({dealTasks.length})</div>
+                    <div style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>Úkoly ({dealTasks.length})</div>
                     {dealTasks.map(t => (
                       <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid #e2e8f0" }}>
                         <span>{t.done ? "✅" : "⏳"}</span>
@@ -2748,7 +2748,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
 
             {detailTab === "uprava" && (
               <>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 8 }}>POPTÁVKA</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>POPTÁVKA</div>
                 <label style={S.label}>Název / popis</label>
                 <input style={S.input} value={infoEditVals.name} onChange={e => setInfoEditVals({ ...infoEditVals, name: e.target.value })} />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -2766,7 +2766,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
 
                 {cust && (
                   <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginTop: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 8 }}>ZÁKAZNÍK</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>ZÁKAZNÍK</div>
                     <label style={S.label}>Typ zákazníka</label>
                     <select style={S.select} value={custInfoVals.customer_type} onChange={e => setCustInfoVals({ ...custInfoVals, customer_type: e.target.value })}>
                       <option value="Koncový zákazník">👤 Koncový zákazník</option>
@@ -2785,7 +2785,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
 
                     {custInfoVals.customer_type === "Firma" ? (
                       <>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", margin: "10px 0 4px" }}>Kontaktní osoba</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", margin: "10px 0 4px" }}>Kontaktní osoba</div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                           <div>
                             <label style={S.label}>
@@ -2839,7 +2839,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                 )}
 
                 <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginTop: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 8 }}>INFORMACE O ZAKÁZCE</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>INFORMACE O ZAKÁZCE</div>
                   <label style={S.label}>Typ zakázky</label>
                   <select style={S.select} value={infoEditVals.type} onChange={e => setInfoEditVals({ ...infoEditVals, type: e.target.value })}>
                     <option value="">— nezadáno —</option>
@@ -2848,7 +2848,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                   <label style={S.label}>Adresa místa výkonu</label>
                   <input style={S.input} value={infoEditVals.site_address} onChange={e => setInfoEditVals({ ...infoEditVals, site_address: e.target.value })} placeholder="Může se lišit od adresy zákazníka" />
 
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", margin: "10px 0 4px" }}>Kontakt na místě</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", margin: "10px 0 4px" }}>Kontakt na místě</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                     <div>
                       <label style={S.label}>Jméno</label>
@@ -2893,7 +2893,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
       {modal?.type === "dealLostReason" && (
         <div style={S.modal}><div style={S.modalBox}>
           <ModalHeader title="Důvod prohry" onClose={closeModal} />
-          <div style={{ color: "#64748b", fontSize: 13, marginBottom: 10 }}>{modal.data.name}</div>
+          <div style={{ color: "#475569", fontSize: 13, marginBottom: 10 }}>{modal.data.name}</div>
           <label style={S.label}>Proč jsme obchodní případ prohráli?</label>
           <textarea style={{ ...S.input, minHeight: 80, resize: "vertical" }} value={lostReasonDraft} onChange={e => setLostReasonDraft(e.target.value)} placeholder="např. cena, termín, konkurence..." />
           <ModalActions onSave={saveLostReason} onClose={closeModal} />
@@ -2958,7 +2958,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
       <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); setThreadDeal(null); setThreadContract(null); }}
-            style={{ ...S.btn(tab === t.id ? "#2E9BE0" : "#0E3B5E"), padding: "7px 16px", fontSize: 12 }}>
+            style={{ ...S.btn(tab === t.id ? "#0369a1" : "#0E3B5E"), padding: "7px 16px", fontSize: 12 }}>
             {t.label}
           </button>
         ))}
@@ -2974,7 +2974,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
             return (
               <div key={deal.id} style={{ ...S.card, cursor: "pointer" }} onClick={() => { setThreadDeal(deal); setNewMsg(""); }}>
                 <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 13, marginBottom: 4 }}>💼 {deal.name}</div>
-                <div style={{ fontSize: 11, color: "#2E9BE0", marginBottom: 4 }}>{msgs.length} zpráv</div>
+                <div style={{ fontSize: 11, color: "#0369a1", marginBottom: 4 }}>{msgs.length} zpráv</div>
                 <div style={{ fontSize: 12, color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{last.user_name}: {last.message}</div>
                 <div style={{ fontSize: 10, color: "#475569", marginTop: 4 }}>{new Date(last.created_at).toLocaleString("cs")}</div>
               </div>
@@ -3053,7 +3053,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
           <div style={S.card}>
             {unified.slice(0, 100).map(m => {
               const cust = customers.find(cu => cu.id === m.customerId);
-              const dotColor = m.kind === "deal" ? "#2E9BE0" : m.kind === "contract" ? "#34d399" : (m.label === "Email" ? "#2E9BE0" : m.label === "Hovor" ? "#34d399" : "#f59e0b");
+              const dotColor = m.kind === "deal" ? "#0369a1" : m.kind === "contract" ? "#34d399" : (m.label === "Email" ? "#0369a1" : m.label === "Hovor" ? "#34d399" : "#f59e0b");
               return (
                 <div key={m.id} style={S.commItem}>
                   <div style={{ width: 9, height: 9, borderRadius: "50%", background: dotColor, marginTop: 4, flexShrink: 0 }} />
@@ -3084,7 +3084,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
                     <span style={{ fontWeight: 600, color: "#1A1A1A", fontSize: 13 }}>{cust?.name || "—"}</span>
-                    <span style={S.tag(c.type === "Email" ? "#2E9BE0" : c.type === "Hovor" ? "#34d399" : "#f59e0b")}>{c.type}</span>
+                    <span style={S.tag(c.type === "Email" ? "#0369a1" : c.type === "Hovor" ? "#34d399" : "#f59e0b")}>{c.type}</span>
                     <span style={{ color: "#475569", fontSize: 11, marginLeft: "auto" }}>{fmtDateCz(c.date)}</span>
                   </div>
                   <div style={{ color: "#475569", fontSize: 13 }}>{c.note}</div>
@@ -3266,7 +3266,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
       <div style={{ display: "flex", gap: 6, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
         {[["all", "Vše"], ["open", "Otevřené"], ["mine", "Moje"], ["done", "Hotové"]].map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)}
-            style={{ ...S.btn(filter === k ? "#2E9BE0" : "#0E3B5E"), padding: "6px 14px", fontSize: 12 }}>{l}</button>
+            style={{ ...S.btn(filter === k ? "#0369a1" : "#0E3B5E"), padding: "6px 14px", fontSize: 12 }}>{l}</button>
         ))}
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           {outlookConn ? (
@@ -3294,11 +3294,11 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               const deal  = (deals || []).find(d => d.id === t.deal_id);
               return (
                 <tr key={t.id} style={{ opacity: t.done ? 0.4 : 1, cursor: "pointer" }} onClick={() => setDetailTask(t)}>
-                  <td style={S.td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} style={{ accentColor: "#2E9BE0" }} /></td>
+                  <td style={S.td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} style={{ accentColor: "#0369a1" }} /></td>
                   <td style={{ ...S.td, textDecoration: t.done ? "line-through" : "none", color: "#1A1A1A", fontWeight: 500 }}>
                     {t.title}
                     {t.recurrence && <span title={`Opakuje se: ${RECURRENCE_LABELS[t.recurrence] || t.recurrence}`} style={{ fontSize: 10, color: "#f59e0b", marginLeft: 6 }}>🔁 {RECURRENCE_LABELS[t.recurrence] || t.recurrence}</span>}
-                    {t.visible_to?.length > 0 && <span style={{ fontSize: 10, color: "#2E9BE0", marginLeft: 6 }}>👁 {t.visible_to.join(", ")}</span>}
+                    {t.visible_to?.length > 0 && <span style={{ fontSize: 10, color: "#0369a1", marginLeft: 6 }}>👁 {t.visible_to.join(", ")}</span>}
                   </td>
                   <td style={S.td}>{cust?.name || "—"}</td>
                   <td style={S.td}>
@@ -3307,8 +3307,8 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                     {!contr && !deal && "—"}
                   </td>
                   <td style={S.td}>{fmtDateCz(t.due)}</td>
-                  <td style={{ ...S.td, color: "#2E9BE0", fontSize: 11 }}>{t.created_by || "—"}</td>
-                  <td style={S.td}><span style={S.tag(PRIO_COLORS[t.priority] || "#64748b")}>{t.priority}</span></td>
+                  <td style={{ ...S.td, color: "#0369a1", fontSize: 11 }}>{t.created_by || "—"}</td>
+                  <td style={S.td}><span style={S.tag(PRIO_COLORS[t.priority] || "#475569")}>{t.priority}</span></td>
                 </tr>
               );
             })}
@@ -3334,9 +3334,9 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
             <ModalHeader title={detailTask.title} onClose={() => setDetailTask(null)} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
               <div><div style={S.statLabel}>Termín</div><div style={{ color: "#1A1A1A", fontWeight: 600 }}>{fmtDateCz(detailTask.due) || "—"}</div></div>
-              <div><div style={S.statLabel}>Priorita</div><span style={S.tag(PRIO_COLORS[detailTask.priority] || "#64748b")}>{detailTask.priority}</span></div>
-              <div><div style={S.statLabel}>Zadal</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.created_by || "—"}</div></div>
-              <div><div style={S.statLabel}>Přiřazeno</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.assigned_to || "—"}</div></div>
+              <div><div style={S.statLabel}>Priorita</div><span style={S.tag(PRIO_COLORS[detailTask.priority] || "#475569")}>{detailTask.priority}</span></div>
+              <div><div style={S.statLabel}>Zadal</div><div style={{ color: "#64748b", fontSize: 13 }}>{detailTask.created_by || "—"}</div></div>
+              <div><div style={S.statLabel}>Přiřazeno</div><div style={{ color: "#64748b", fontSize: 13 }}>{detailTask.assigned_to || "—"}</div></div>
               {detailTask.recurrence && (
                 <div><div style={S.statLabel}>Opakování</div><div style={{ color: "#f59e0b", fontSize: 13 }}>🔁 {RECURRENCE_LABELS[detailTask.recurrence] || detailTask.recurrence}{detailTask.recurrence_until ? ` do ${fmtDateCz(detailTask.recurrence_until)}` : ""}</div></div>
               )}
@@ -3351,7 +3351,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               if (photos.length === 0) return null;
               return (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 8 }}>FOTKY ({photos.length})</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 1, marginBottom: 8 }}>FOTKY ({photos.length})</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8 }}>
                     {photos.map((ph, i) => (
                       <div key={i} onClick={() => setLightboxUrl(ph.url)} style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "2px solid #334155" }}>
@@ -3416,7 +3416,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               <input type="checkbox"
                 checked={newT.visibleTo.length === 0}
                 onChange={() => setNewT({ ...newT, visibleTo: [] })}
-                style={{ accentColor: "#2E9BE0" }} />
+                style={{ accentColor: "#0369a1" }} />
               <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Všichni zaměstnanci</span>
             </div>
             <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3430,8 +3430,8 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                 };
                 return (
                   <label key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <input type="checkbox" checked={checked} onChange={toggle} style={{ accentColor: "#2E9BE0" }} />
-                    <span style={{ fontSize: 13, color: checked ? "#e2e8f0" : "#64748b" }}>{e.name}</span>
+                    <input type="checkbox" checked={checked} onChange={toggle} style={{ accentColor: "#0369a1" }} />
+                    <span style={{ fontSize: 13, color: checked ? "#e2e8f0" : "#475569" }}>{e.name}</span>
                   </label>
                 );
               })}
@@ -3682,7 +3682,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             {["vydané", "přijaté"].map(t => (
               <button key={t} onClick={() => setInvTab(t)}
-                style={{ ...S.btn(invTab === t ? "#2E9BE0" : "#e2e8f0"), color: invTab === t ? "#fff" : "#475569", padding: "6px 18px", fontSize: 12, textTransform: "capitalize" }}>
+                style={{ ...S.btn(invTab === t ? "#0369a1" : "#e2e8f0"), color: invTab === t ? "#fff" : "#475569", padding: "6px 18px", fontSize: 12, textTransform: "capitalize" }}>
                 {t === "vydané" ? "📤 Vydané" : "📥 Přijaté"}
               </button>
             ))}
@@ -3722,7 +3722,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
           style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
           {exportBusy ? "…" : "📊 Export do Excelu"}
         </button>
-        <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>{visibleInvoices.length} z {currentTypeInvoices.length}</span>
+        <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>{visibleInvoices.length} z {currentTypeInvoices.length}</span>
       </div>
 
       <div style={S.card}>
@@ -3730,7 +3730,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
           <thead><tr>{["Číslo", "Zákazník", "Částka", "DPH", "Vystavena", "Splatnost", "Uhrazeno", "Datum úhrady", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {visibleInvoices.length === 0 && (
-              <tr><td colSpan={11} style={{ ...S.td, textAlign: "center", color: "#94a3b8", padding: "24px 0" }}>Žádné faktury neodpovídají filtru.</td></tr>
+              <tr><td colSpan={11} style={{ ...S.td, textAlign: "center", color: "#64748b", padding: "24px 0" }}>Žádné faktury neodpovídají filtru.</td></tr>
             )}
             {visibleInvoices.map(inv => {
               const cust = customers.find(c => c.id === inv.customerId);
@@ -3809,11 +3809,11 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                           : <span style={{ color: "#0369a1", fontWeight: 600 }}>🤝 {fmtDateCz(inv.promised_payment_date)}</span>)
                         : <span style={{ color: "#cbd5e1" }}>—</span>}
                     </td>
-                    <td style={{ ...S.td, color: info.isOverdue ? "#ef4444" : "#94a3b8", fontWeight: info.isOverdue ? 700 : 400 }}>
+                    <td style={{ ...S.td, color: info.isOverdue ? "#ef4444" : "#64748b", fontWeight: info.isOverdue ? 700 : 400 }}>
                       {info.isOverdue ? info.daysOverdue : "—"}
                     </td>
                     <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>
-                      {fmtKc(info.outstanding)}{info.isPartial && <span style={{ color: "#94a3b8", fontWeight: 400, fontSize: 11 }}> (částečně uhrazeno)</span>}
+                      {fmtKc(info.outstanding)}{info.isPartial && <span style={{ color: "#64748b", fontWeight: 400, fontSize: 11 }}> (částečně uhrazeno)</span>}
                     </td>
                     <td style={{ ...S.td }}>
                       {(() => {
@@ -3827,7 +3827,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                                 return (
                                   <button key={level} disabled={remindBusy === `${inv.id}-${level}`} onClick={() => handleReminder(inv, level)}
                                     title={sentAt ? `Odesláno ${fmtDateCz(sentAt)}` : undefined}
-                                    style={{ ...S.btn(isRec ? "#f59e0b" : sentAt ? "#94a3b8" : "#475569"), padding: "5px 10px", fontSize: 11,
+                                    style={{ ...S.btn(isRec ? "#f59e0b" : sentAt ? "#64748b" : "#475569"), padding: "5px 10px", fontSize: 11,
                                       boxShadow: isRec ? "0 0 0 2px #fde68a" : "none" }}>
                                     {remindBusy === `${inv.id}-${level}` ? "…" : `${level}. upomínka${sentAt ? " ✓" : ""}`}
                                   </button>
@@ -3863,7 +3863,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                     <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
                     <td style={S.td}>{cust?.name || "—"}</td>
                     <td style={S.td}>{fmtDateCz(inv.due)}</td>
-                    <td style={{ ...S.td, color: info.isOverdue ? "#ef4444" : "#94a3b8", fontWeight: info.isOverdue ? 700 : 400 }}>
+                    <td style={{ ...S.td, color: info.isOverdue ? "#ef4444" : "#64748b", fontWeight: info.isOverdue ? 700 : 400 }}>
                       {info.isOverdue ? info.daysOverdue : "—"}
                     </td>
                     <td style={S.td}>
@@ -3877,7 +3877,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
                         value={inv.paid_date || ""} onChange={e => savePaidDate(inv.id, e.target.value)} />
                     </td>
                     <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>
-                      {fmtKc(info.outstanding)}{info.isPartial && <span style={{ color: "#94a3b8", fontWeight: 400, fontSize: 11 }}> (částečně uhrazeno)</span>}
+                      {fmtKc(info.outstanding)}{info.isPartial && <span style={{ color: "#64748b", fontWeight: 400, fontSize: 11 }}> (částečně uhrazeno)</span>}
                     </td>
                   </tr>
                 );
@@ -4021,15 +4021,15 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
     setNewMov({ product_name: "", quantity: "", unit: "ks", movement_type: "in", contract_id: "", vehicle: "", from_location: "Sklad", to_location: "", note: "" });
   };
 
-  const MOV_COLORS = { in: "#34d399", out: "#f87171", out_contract: "#f87171", out_vehicle: "#f59e0b", transfer: "#2E9BE0", transfer_vh: "#a78bfa" };
+  const MOV_COLORS = { in: "#34d399", out: "#f87171", out_contract: "#f87171", out_vehicle: "#f59e0b", transfer: "#0369a1", transfer_vh: "#a78bfa" };
   const MOV_LABELS = Object.fromEntries(MOVE_TYPES.map(t => [t.value, t.label]));
 
   return (
     <>
       <div style={S.header}><h1 style={S.h1}>Sklad & zboží</h1>
         <div style={{ display: "flex", gap: 8 }}>
-          <button style={{ ...S.btn(whTab === "stock" ? "#2E9BE0" : "#94a3b8"), padding: "7px 16px" }} onClick={() => setWhTab("stock")}>📦 Skladové zásoby</button>
-          <button style={{ ...S.btn(whTab === "movements" ? "#2E9BE0" : "#94a3b8"), padding: "7px 16px" }} onClick={() => setWhTab("movements")}>🔄 Pohyby</button>
+          <button style={{ ...S.btn(whTab === "stock" ? "#0369a1" : "#64748b"), padding: "7px 16px" }} onClick={() => setWhTab("stock")}>📦 Skladové zásoby</button>
+          <button style={{ ...S.btn(whTab === "movements" ? "#0369a1" : "#64748b"), padding: "7px 16px" }} onClick={() => setWhTab("movements")}>🔄 Pohyby</button>
           <button style={S.btn()} onClick={() => setShowAddProduct(true)}>+ Přidat produkt</button>
         </div>
       </div>
@@ -4038,7 +4038,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
         <>
           <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 22 }}>
             {[
-              { label: "Produktů celkem", value: products.length, color: "#2E9BE0" },
+              { label: "Produktů celkem", value: products.length, color: "#0369a1" },
               { label: "Nízký stav", value: products.filter(p => p.stock <= p.minStock).length, color: "#f87171" },
               { label: "Hodnota skladu", value: fmtKc(products.reduce((s, p) => s + p.price * p.stock, 0)), color: "#34d399" },
             ].map(s => (
@@ -4061,12 +4061,12 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                       </div>
                       </td>
                       <td style={{ ...S.td, fontWeight: 600, color: "#1A1A1A" }}>{p.name}</td>
-                      <td style={{ ...S.td, fontSize: 12, color: "#64748b" }}>{p.sku}</td>
-                      <td style={{ ...S.td, fontSize: 12, color: "#64748b" }}>{p.category}</td>
+                      <td style={{ ...S.td, fontSize: 12, color: "#475569" }}>{p.sku}</td>
+                      <td style={{ ...S.td, fontSize: 12, color: "#475569" }}>{p.category}</td>
                       <td style={S.td}>{fmtKc(p.price)}</td>
                       <td style={{ ...S.td, color: "#F5821F", fontWeight: 600 }}>{p.price_sell ? fmtKc(p.price_sell) : "—"}</td>
                       <td style={S.td}><span style={{ ...S.tag(low ? "#ef4444" : "#16a34a"), fontWeight: 700 }}>{p.stock} {p.unit}</span></td>
-                      <td style={{ ...S.td, fontSize: 12, color: "#94a3b8" }}>{p.minStock || p.min_stock || 0} {p.unit}</td>
+                      <td style={{ ...S.td, fontSize: 12, color: "#64748b" }}>{p.minStock || p.min_stock || 0} {p.unit}</td>
                       <td style={S.td}>
                         <div style={{ display: "flex", gap: 4 }}>
                           <button style={{ ...S.btn("#16a34a"), padding: "4px 10px", fontSize: 13 }} onClick={() => adjustStock(p.id, 1)}>+</button>
@@ -4087,7 +4087,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
         <>
           {/* Formulář pohybu */}
           <div style={{ ...S.card, marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 14 }}>NOVÝ POHYB</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 1, marginBottom: 14 }}>NOVÝ POHYB</div>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 2fr", gap: 10, marginBottom: 10 }}>
               <div>
                 <label style={S.label}>Typ pohybu</label>
@@ -4121,7 +4121,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                                       {img && <img src={img} alt="" onError={e => e.target.remove()} style={{ position: "absolute", inset: 0, width: 28, height: 28, objectFit: "contain", background: "#fff", borderRadius: 4 }} />}
                                     </span>
                             <span style={{ color: "#1A1A1A", fontWeight: 500 }}>{p.name}</span>
-                            <span style={{ color: "#64748b", fontSize: 11, marginLeft: "auto" }}>{p.stock} {p.unit}</span>
+                            <span style={{ color: "#475569", fontSize: 11, marginLeft: "auto" }}>{p.stock} {p.unit}</span>
                           </div>
                         );
                       })}
@@ -4174,13 +4174,13 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                   const contr = (contracts || []).find(c => c.id === m.contract_id);
                   return (
                     <tr key={m.id}>
-                      <td style={{ ...S.td, fontSize: 11, color: "#64748b" }}>{new Date(m.created_at).toLocaleString("cs", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
-                      <td style={S.td}><span style={S.tag(MOV_COLORS[m.movement_type] || "#64748b")}>{MOV_LABELS[m.movement_type] || m.movement_type}</span></td>
+                      <td style={{ ...S.td, fontSize: 11, color: "#475569" }}>{new Date(m.created_at).toLocaleString("cs", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                      <td style={S.td}><span style={S.tag(MOV_COLORS[m.movement_type] || "#475569")}>{MOV_LABELS[m.movement_type] || m.movement_type}</span></td>
                       <td style={{ ...S.td, color: "#1A1A1A", fontWeight: 600 }}>{m.product_name}</td>
                       <td style={{ ...S.td, fontWeight: 700, color: m.movement_type === "in" ? "#34d399" : "#f87171" }}>{m.movement_type === "in" ? "+" : "−"}{m.quantity} {m.unit}</td>
                       <td style={{ ...S.td, fontSize: 11 }}>{m.from_location} → {m.to_location}</td>
                       <td style={S.td}>{contr ? <span style={S.tag("#34d399")}>🔧 {contr.name}</span> : m.vehicle ? <span style={S.tag("#f59e0b")}>🚗 {m.vehicle}</span> : m.note || "—"}</td>
-                      <td style={{ ...S.td, fontSize: 11, color: "#2E9BE0" }}>{m.created_by}</td>
+                      <td style={{ ...S.td, fontSize: 11, color: "#0369a1" }}>{m.created_by}</td>
                     </tr>
                   );
                 })}
@@ -4200,7 +4200,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
             ))}
           </div>
           <div style={{ marginTop: 8, padding: "10px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#2E9BE0", marginBottom: 6 }}>🖼 Obrázek produktu</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#0369a1", marginBottom: 6 }}>🖼 Obrázek produktu</div>
             <label style={S.label}>Kód produktu z emas.cz (číslo)</label>
             <input style={S.input} value={newP.emas_code} onChange={e => setNewP({ ...newP, emas_code: e.target.value })} placeholder="např. 12345" />
             <label style={S.label}>Nebo přímý URL obrázku</label>
@@ -4225,7 +4225,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
             ))}
           </div>
           <div style={{ marginTop: 8, padding: "10px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#2E9BE0", marginBottom: 6 }}>🖼 Obrázek produktu</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#0369a1", marginBottom: 6 }}>🖼 Obrázek produktu</div>
             <label style={S.label}>Kód emas.cz</label>
             <input style={S.input} value={editP.emas_code || ""} onChange={e => setEditP({ ...editP, emas_code: e.target.value })} placeholder="12345" />
             <label style={S.label}>URL obrázku</label>
@@ -4393,8 +4393,8 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
 
   // Barvy podle oddělení
   const deptColor = (dept) => {
-    const map = { "IT": "#2E9BE0", "Obchod": "#f59e0b", "Výroba": "#34d399", "Management": "#a78bfa", "Finance": "#38bdf8", "HR": "#f87171" };
-    return map[dept] || "#64748b";
+    const map = { "IT": "#0369a1", "Obchod": "#f59e0b", "Výroba": "#34d399", "Management": "#a78bfa", "Finance": "#38bdf8", "HR": "#f87171" };
+    return map[dept] || "#475569";
   };
 
   const [hrTab, setHrTab] = useState("info");
@@ -4449,7 +4449,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                       }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, color: t.done ? "#475569" : "#fff", textDecoration: t.done ? "line-through" : "none", fontSize: 14 }}>{t.title}</div>
-                      {t.description && <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>{t.description}</div>}
+                      {t.description && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{t.description}</div>}
                       <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
                         {t.due_date && <span style={{ ...S.tag("#f59e0b"), fontSize: 11 }}>📅 {t.due_date}</span>}
                         {t.priority  && <span style={{ ...S.tag(t.priority === "Vysoká" ? "#f87171" : "#a78bfa"), fontSize: 11 }}>{t.priority}</span>}
@@ -4473,9 +4473,9 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
               <div style={{ position: "relative", display: "inline-block" }}>
                 {emp.photo_url
                   ? <img src={emp.photo_url} alt={emp.name} style={{ width: 120, height: 120, borderRadius: "50%", objectFit: "cover", border: "3px solid #6366f1" }} />
-                  : <div style={{ width: 120, height: 120, borderRadius: "50%", background: "#2E9BE0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 48, color: "#fff", fontWeight: 800, margin: "0 auto" }}>{getInitial(emp.name)}</div>
+                  : <div style={{ width: 120, height: 120, borderRadius: "50%", background: "#0369a1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 48, color: "#fff", fontWeight: 800, margin: "0 auto" }}>{getInitial(emp.name)}</div>
                 }
-                <label style={{ position: "absolute", bottom: 0, right: 0, background: "#2E9BE0", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }} title="Nahrát foto">
+                <label style={{ position: "absolute", bottom: 0, right: 0, background: "#0369a1", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }} title="Nahrát foto">
                   {uploading ? "⏳" : "📷"}
                   <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => uploadPhoto(e.target.files[0])} />
                 </label>
@@ -4489,20 +4489,20 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
 
             {/* Přístup do aplikace */}
             <div style={S.card}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 12 }}>PŘÍSTUP DO APLIKACE</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 1, marginBottom: 12 }}>PŘÍSTUP DO APLIKACE</div>
               {accessErr && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 8, padding: "8px 10px", fontSize: 12, marginBottom: 10 }}>{accessErr}</div>}
               {accessProfile ? (
                 <>
                   <div style={{ fontSize: 13, color: "#34d399", fontWeight: 700, marginBottom: 6 }}>✅ Má přístup</div>
-                  <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>{accessProfile.email}</div>
-                  <div style={{ marginBottom: 10 }}><span style={S.tag(ROLES[accessProfile.role]?.color || "#2E9BE0")}>{ROLES[accessProfile.role]?.label || accessProfile.role}</span></div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>{accessProfile.email}</div>
+                  <div style={{ marginBottom: 10 }}><span style={S.tag(ROLES[accessProfile.role]?.color || "#0369a1")}>{ROLES[accessProfile.role]?.label || accessProfile.role}</span></div>
                   <button style={{ ...S.btn("#ef4444"), width: "100%", fontSize: 12, padding: "7px" }} disabled={accessBusy} onClick={() => removeAccess(emp)}>
                     {accessBusy ? "Ruším…" : "Zrušit přístup"}
                   </button>
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>
                     Zaměstnanec zatím nemá přihlašovací účet. Appka mu na zadaný email pošle pozvánku, kterou si sám otevře a nastaví si vlastní heslo.
                   </div>
                   <label style={S.label}>Email zaměstnance</label>
@@ -4522,14 +4522,14 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
 
             {/* Statistiky */}
             <div style={S.card}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 12 }}>PŘEHLED</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 1, marginBottom: 12 }}>PŘEHLED</div>
               {[
                 { label: "Plat/měs.", value: fmtKc(emp.salary || 0), color: "#f59e0b" },
                 { label: "Sazba náklady", value: `${Number(editField.hourly_rate_cost || emp.hourly_rate_cost || 0)} Kč/h`, color: "#f87171" },
                 { label: "Sazba fakturace", value: `${Number(editField.hourly_rate_client || emp.hourly_rate_client || 0)} Kč/h`, color: "#34d399" },
                 { label: "Vyplaceno ze zakázek", value: fmtKc(totalPaid), color: "#f87171" },
                 { label: "Fakturováno ze zakázek", value: fmtKc(totalBilled), color: "#34d399" },
-                { label: `Hodiny tento měsíc (${thisMonth})`, value: fmtHours(monthHours), color: "#2E9BE0" },
+                { label: `Hodiny tento měsíc (${thisMonth})`, value: fmtHours(monthHours), color: "#0369a1" },
               ].map(s => (
                 <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #e2e8f0" }}>
                   <span style={{ color: "#475569", fontSize: 12 }}>{s.label}</span>
@@ -4551,7 +4551,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                   Doplňte <strong>Hodinová sazba náklady</strong> a <strong>Hodinová sazba klient</strong> v tabulce zaměstnanců v Supabase (sloupce hourly_rate_cost, hourly_rate_client).
                 </div>
               )}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 14 }}>ZÁKLADNÍ ÚDAJE</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 1, marginBottom: 14 }}>ZÁKLADNÍ ÚDAJE</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <label style={S.label}>Jméno</label>
@@ -4582,7 +4582,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
 
             {/* Bio / popis */}
             <div style={S.card}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1, marginBottom: 14 }}>POPIS / BIO</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: 1, marginBottom: 14 }}>POPIS / BIO</div>
               <textarea
                 style={{ ...S.input, minHeight: 80, resize: "vertical" }}
                 placeholder="Krátký popis zaměstnance..."
@@ -4678,7 +4678,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
               </div>
               {/* Specializace */}
               {e.specialization && (
-                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 10, background: "#f8fafc", borderRadius: 6, padding: "5px 8px" }}>
+                <div style={{ fontSize: 11, color: "#475569", marginBottom: 10, background: "#f8fafc", borderRadius: 6, padding: "5px 8px" }}>
                   ✅ {e.specialization.slice(0, 60)}{e.specialization.length > 60 ? "…" : ""}
                 </div>
               )}
@@ -4691,11 +4691,11 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
               {/* Finance */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: "auto" }}>
                 <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 10, color: "#64748b" }}>Plat/měs.</div>
+                  <div style={{ fontSize: 10, color: "#475569" }}>Plat/měs.</div>
                   <div style={{ color: "#f59e0b", fontWeight: 700, fontSize: 13 }}>{fmtKc(e.salary || 0)}</div>
                 </div>
                 <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 10, color: "#64748b" }}>Vyplaceno</div>
+                  <div style={{ fontSize: 10, color: "#475569" }}>Vyplaceno</div>
                   <div style={{ color: "#f87171", fontWeight: 700, fontSize: 13 }}>{fmtKc(empPaid)}</div>
                 </div>
               </div>
@@ -4944,8 +4944,8 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
       {/* Stats */}
       <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 22 }}>
         {[
-          { label: "Celkem projektů", value: projects.length, color: "#2E9BE0" },
-          { label: "Probíhá", value: projects.filter(p => p.status === "Probíhá").length, color: "#2E9BE0" },
+          { label: "Celkem projektů", value: projects.length, color: "#0369a1" },
+          { label: "Probíhá", value: projects.filter(p => p.status === "Probíhá").length, color: "#0369a1" },
           { label: "Celkový rozpočet", value: fmtKc(projectBudget), color: "#34d399" },
         ].map(s => (
           <div key={s.label} style={S.statCard(s.color)}><div style={S.statLabel}>{s.label}</div><div style={S.statValue(s.color)}>{s.value}</div></div>
@@ -4993,19 +4993,19 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#475569", marginBottom: 3 }}>
                       <span>Reálný postup dle kroků: {doneSteps}/{steps.length} kroků</span>
-                      <span style={{ color: "#2E9BE0", fontWeight: 700 }}>{realProgress}%</span>
+                      <span style={{ color: "#0369a1", fontWeight: 700 }}>{realProgress}%</span>
                     </div>
                     {/* Kroky vizuální progress */}
                     <div style={{ display: "flex", gap: 2 }}>
                       {steps.map(s => (
-                        <div key={s.id} style={{ flex: 1, height: 6, borderRadius: 3, background: s.done ? "#2E9BE0" : "#e2e8f0", transition: "background 0.3s" }} title={s.title} />
+                        <div key={s.id} style={{ flex: 1, height: 6, borderRadius: 3, background: s.done ? "#0369a1" : "#e2e8f0", transition: "background 0.3s" }} title={s.title} />
                       ))}
                     </div>
                   </div>
                 )}
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#475569", marginBottom: 3 }}>
                   <span>Rozpočet: {fmtKc(p.spent)} / {fmtKc(p.budget)}</span>
-                  <span style={{ color: budgetPct > 90 ? "#f87171" : "#94a3b8" }}>{budgetPct}%</span>
+                  <span style={{ color: budgetPct > 90 ? "#f87171" : "#64748b" }}>{budgetPct}%</span>
                 </div>
                 <div style={S.progress(budgetPct)}>
                   <div style={S.progressBar(Math.min(budgetPct, 100), budgetPct > 90 ? "#f87171" : PROJ_COLORS[p.status])} />
@@ -5025,7 +5025,7 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                     <input type="range" min={0} max={100} value={p.progress}
                       onChange={e => updateProgress(p.id, e.target.value)}
                       style={{ accentColor: PROJ_COLORS[p.status], width: 100 }} />
-                    <span style={{ fontSize: 11, color: "#2E9BE0", fontWeight: 700 }}>{p.progress}%</span>
+                    <span style={{ fontSize: 11, color: "#0369a1", fontWeight: 700 }}>{p.progress}%</span>
                   </div>
                 )}
               </div>
@@ -5037,7 +5037,7 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                   <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid #e2e8f0" }}>
                     {["kroky", "material"].map(tab => (
                       <button key={tab} onClick={() => setProjectTab(prev => ({ ...prev, [p.id]: tab }))}
-                        style={{ padding: "7px 18px", background: "none", border: "none", borderBottom: (projectTab[p.id] || "kroky") === tab ? "2px solid #2E9BE0" : "2px solid transparent", color: (projectTab[p.id] || "kroky") === tab ? "#2E9BE0" : "#475569", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                        style={{ padding: "7px 18px", background: "none", border: "none", borderBottom: (projectTab[p.id] || "kroky") === tab ? "2px solid #0369a1" : "2px solid transparent", color: (projectTab[p.id] || "kroky") === tab ? "#0369a1" : "#475569", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
                         {tab === "kroky" ? "📋 Kroky" : "📦 Materiál / Dodací list"}
                       </button>
                     ))}
@@ -5085,7 +5085,7 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                             {/* Číslo a checkbox — dotyková plocha 44×44px kvůli pohodlnému ovládání na mobilu */}
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, marginTop: -9, marginBottom: -9, marginLeft: -11, flexShrink: 0, cursor: "pointer", touchAction: "manipulation" }}
                               onClick={() => toggleStep(p.id, step.id)}>
-                              <div style={{ width: 24, height: 24, borderRadius: "50%", background: step.done ? "#2E9BE0" : "#e2e8f0", border: step.done ? "none" : "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: step.done ? "#fff" : "#334155", flexShrink: 0, fontWeight: 700 }}>
+                              <div style={{ width: 24, height: 24, borderRadius: "50%", background: step.done ? "#0369a1" : "#e2e8f0", border: step.done ? "none" : "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: step.done ? "#fff" : "#334155", flexShrink: 0, fontWeight: 700 }}>
                                 {step.done ? "✓" : idx + 1}
                               </div>
                             </div>
@@ -5140,7 +5140,7 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                       placeholder="Přidat nový krok..."
                       onKeyDown={e => e.key === "Enter" && addStep(p.id)}
                     />
-                    <button style={{ ...S.btn("#2E9BE0"), padding: "9px 16px", fontSize: 13 }} onClick={() => addStep(p.id)}>+ Přidat</button>
+                    <button style={{ ...S.btn("#0369a1"), padding: "9px 16px", fontSize: 13 }} onClick={() => addStep(p.id)}>+ Přidat</button>
                   </div>
                     </div>
                   )}
@@ -5151,7 +5151,7 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                     const items = contractDNItems[p.contract_id] || [];
                     return (
                       <div>
-                        <div style={{ background: "#2E9BE018", border: "1px solid #2E9BE044", borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 12, color: "#93c5fd", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <div style={{ background: "#0369a118", border: "1px solid #0369a144", borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 12, color: "#93c5fd", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                           <span>📦 Soupis práce z navázané zakázky — náhled, úprava se dělá v Zakázkách.</span>
                           {setTab && <button onClick={() => setTab("contracts")} style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 11, flexShrink: 0 }}>→ Otevřít v Zakázkách</button>}
                         </div>
@@ -5165,14 +5165,14 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                                 {dn.code && <span style={{ fontSize: 11, color: "#475569" }}>{dn.code}</span>}
                               </div>
                               {dnItems.length === 0 ? (
-                                <div style={{ fontSize: 12, color: "#94a3b8" }}>Žádné položky.</div>
+                                <div style={{ fontSize: 12, color: "#64748b" }}>Žádné položky.</div>
                               ) : (
                                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                   <tbody>
                                     {dnItems.map(item => (
                                       <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                                         <td style={{ padding: "6px 4px", color: "#1A1A1A", fontSize: 12 }}>{item.description}</td>
-                                        <td style={{ padding: "6px 4px", color: "#94a3b8", fontSize: 12, textAlign: "right" }}>{item.quantity} {item.unit}</td>
+                                        <td style={{ padding: "6px 4px", color: "#64748b", fontSize: 12, textAlign: "right" }}>{item.quantity} {item.unit}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -5215,20 +5215,20 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                                       autoFocus
                                     />
                                     <button onClick={() => updateDeliveryQty(p.id, item.id, editingItem[item.id])}
-                                      style={{ ...S.btn("#2E9BE0"), padding: "4px 10px", fontSize: 12 }}>✓</button>
+                                      style={{ ...S.btn("#0369a1"), padding: "4px 10px", fontSize: 12 }}>✓</button>
                                     <button onClick={() => setEditingItem({})}
                                       style={{ ...S.btnGhost, padding: "4px 8px", fontSize: 12 }}>✕</button>
                                   </div>
                                 ) : (
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                    <span style={{ fontWeight: 700, color: "#2E9BE0", fontSize: 14 }}>{item.quantity}</span>
+                                    <span style={{ fontWeight: 700, color: "#0369a1", fontSize: 14 }}>{item.quantity}</span>
                                     <button onClick={() => setEditingItem({ [item.id]: item.quantity })}
                                       style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 13, padding: "2px 6px" }}
                                       title="Upravit množství">✏️</button>
                                   </div>
                                 )}
                               </td>
-                              <td style={{ padding: "9px 10px", color: "#94a3b8", fontSize: 13 }}>{item.unit}</td>
+                              <td style={{ padding: "9px 10px", color: "#64748b", fontSize: 13 }}>{item.unit}</td>
                               <td style={{ padding: "9px 10px", color: "#475569", fontSize: 12 }}>{item.note || "—"}</td>
                               <td style={{ padding: "9px 10px" }}>
                                 <button onClick={() => deleteDeliveryItem(p.id, item.id)}
@@ -5238,14 +5238,14 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                             </tr>
                           ))}
                           {(deliveryItems[p.id] || []).length === 0 && (
-                            <tr><td colSpan={5} style={{ padding: "16px 10px", color: "#94a3b8", fontSize: 13, textAlign: "center" }}>Žádné položky. Přidejte první položku níže.</td></tr>
+                            <tr><td colSpan={5} style={{ padding: "16px 10px", color: "#64748b", fontSize: 13, textAlign: "center" }}>Žádné položky. Přidejte první položku níže.</td></tr>
                           )}
                         </tbody>
                       </table>
 
                       {/* Přidat novou položku */}
                       <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}>
-                        <div style={{ fontWeight: 600, color: "#94a3b8", fontSize: 12, marginBottom: 10 }}>+ Přidat položku do dodacího listu</div>
+                        <div style={{ fontWeight: 600, color: "#64748b", fontSize: 12, marginBottom: 10 }}>+ Přidat položku do dodacího listu</div>
                         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
                           <div style={{ flex: 3, minWidth: 200 }}>
                             <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>Název</div>
@@ -5280,7 +5280,7 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                               onChange={e => setNewDeliveryItem(prev => ({ ...prev, [p.id]: { ...prev[p.id], note: e.target.value } }))}
                             />
                           </div>
-                          <button style={{ ...S.btn("#2E9BE0"), padding: "9px 16px", fontSize: 13, flexShrink: 0 }}
+                          <button style={{ ...S.btn("#0369a1"), padding: "9px 16px", fontSize: 13, flexShrink: 0 }}
                             onClick={() => addDeliveryItem(p.id)}>+ Přidat</button>
                         </div>
                       </div>
@@ -5340,7 +5340,7 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
             {["💻", "🌐", "🏗️", "📣", "⚙️", "🎨", "📦", "🔬", "🎯", "📋", "🚀", "💡"].map(ico => (
               <button key={ico} onClick={() => setNewTemplate({ ...newTemplate, icon: ico })}
-                style={{ fontSize: 20, padding: "6px 10px", borderRadius: 8, background: newTemplate.icon === ico ? "#2E9BE033" : "#f8fafc", border: newTemplate.icon === ico ? "1px solid #6366f1" : "1px solid #e2e8f0", cursor: "pointer" }}>
+                style={{ fontSize: 20, padding: "6px 10px", borderRadius: 8, background: newTemplate.icon === ico ? "#0369a133" : "#f8fafc", border: newTemplate.icon === ico ? "1px solid #6366f1" : "1px solid #e2e8f0", cursor: "pointer" }}>
                 {ico}
               </button>
             ))}
@@ -5448,7 +5448,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {[
           { label: "Náklady celkem", value: fmtKc(totalAll), color: "#f87171" },
-          ...quarters.map(q => ({ label: q.label, value: fmtKc(q.total), color: "#2E9BE0" })),
+          ...quarters.map(q => ({ label: q.label, value: fmtKc(q.total), color: "#0369a1" })),
         ].map(s => (
           <div key={s.label} style={S.statCard(s.color)}>
             <div style={S.statLabel}>{s.label}</div>
@@ -5476,7 +5476,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
                     })}
                   </div>
                 </div>
-                <div style={{ fontSize: 10, color: i === 3 ? "#2E9BE0" : "#475569", fontWeight: i === 3 ? 700 : 400 }}>{m.month}</div>
+                <div style={{ fontSize: 10, color: i === 3 ? "#0369a1" : "#475569", fontWeight: i === 3 ? 700 : 400 }}>{m.month}</div>
               </div>
             );
           })}
@@ -5518,7 +5518,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 16, fontSize: 14 }}>Pravidelné vs. jednorázové</div>
           {[
-            { label: "Pravidelné náklady", items: costs.filter(c => c.recurring), color: "#2E9BE0" },
+            { label: "Pravidelné náklady", items: costs.filter(c => c.recurring), color: "#0369a1" },
             { label: "Jednorázové náklady", items: costs.filter(c => !c.recurring), color: "#f59e0b" },
           ].map(g => {
             const total = g.items.reduce((s, c) => s + c.amount, 0);
@@ -5548,7 +5548,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {["Vše", ...COST_CATEGORIES].map(cat => (
               <button key={cat} onClick={() => setFilterCat(cat)}
-                style={{ ...S.btn(filterCat === cat ? CAT_COLORS[cat] || "#2E9BE0" : "#e2e8f0"), padding: "5px 12px", fontSize: 11, border: filterCat === cat ? "none" : "1px solid #e2e8f0" }}>
+                style={{ ...S.btn(filterCat === cat ? CAT_COLORS[cat] || "#0369a1" : "#e2e8f0"), padding: "5px 12px", fontSize: 11, border: filterCat === cat ? "none" : "1px solid #e2e8f0" }}>
                 {cat}
               </button>
             ))}
@@ -5562,11 +5562,11 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
               return (
                 <tr key={c.id}>
                   <td style={S.td}>{fmtDateCz(c.date)}</td>
-                  <td style={S.td}><span style={S.tag(CAT_COLORS[c.category] || "#2E9BE0")}>{c.category}</span></td>
+                  <td style={S.td}><span style={S.tag(CAT_COLORS[c.category] || "#0369a1")}>{c.category}</span></td>
                   <td style={{ ...S.td, color: "#1A1A1A" }}>{c.description}</td>
                   <td style={S.td}>{contr ? <span style={S.tag("#34d399")}>🔧 {contr.name}</span> : "—"}</td>
                   <td style={{ ...S.td, color: "#1A1A1A", fontWeight: 700 }}>{fmtKc(c.amount)}</td>
-                  <td style={S.td}><span style={S.tag(c.recurring ? "#2E9BE0" : "#f59e0b")}>{c.recurring ? "Pravidelný" : "Jednorázový"}</span></td>
+                  <td style={S.td}><span style={S.tag(c.recurring ? "#0369a1" : "#f59e0b")}>{c.recurring ? "Pravidelný" : "Jednorázový"}</span></td>
                   <td style={S.td}>
                     <button onClick={() => deleteCost(c.id)}
                       style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 16 }}>×</button>
@@ -5596,7 +5596,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
             <option value="">— nepřiřazeno —</option>{(contracts || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <label style={{ ...S.label, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-            <input type="checkbox" checked={newC.recurring} onChange={e => setNewC({ ...newC, recurring: e.target.checked })} style={{ accentColor: "#2E9BE0" }} />
+            <input type="checkbox" checked={newC.recurring} onChange={e => setNewC({ ...newC, recurring: e.target.checked })} style={{ accentColor: "#0369a1" }} />
             Pravidelný náklad
           </label>
           <ModalActions onSave={save} onClose={closeModal} />
@@ -5678,7 +5678,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
         <h1 style={S.h1}>📈 Analytika & reporty</h1>
         <div style={{ display: "flex", gap: 8 }}>
           {["2026"].map(y => (
-            <button key={y} style={{ ...S.btn(period === y ? "#2E9BE0" : "#e2e8f0"), border: "1px solid #e2e8f0" }} onClick={() => setPeriod(y)}>{y}</button>
+            <button key={y} style={{ ...S.btn(period === y ? "#0369a1" : "#e2e8f0"), border: "1px solid #e2e8f0" }} onClick={() => setPeriod(y)}>{y}</button>
           ))}
         </div>
       </div>
@@ -5687,7 +5687,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {[
           { label: "Celkový zisk", value: fmtKc(profit), sub: `Marže ${margin}%`, color: profit >= 0 ? "#34d399" : "#f87171" },
-          { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena").length} faktur`, color: "#2E9BE0" },
+          { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena").length} faktur`, color: "#0369a1" },
           { label: "Náklady", value: fmtKc(totalCosts), sub: `${costs.length} položek`, color: "#f87171" },
           { label: "Konverzní poměr", value: `${conversionRate}%`, sub: `Ø deal ${fmtKc(avgDealValue)}`, color: "#f59e0b" },
         ].map(k => (
@@ -5717,7 +5717,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
                   <div style={{ width: 10, height: revH || 2, background: "#34d399", borderRadius: "2px 2px 0 0", opacity: 0.85 }} title={`Příjmy: ${fmtKc(m.revenue)}`} />
                   <div style={{ width: 10, height: costH || 2, background: "#f87171", borderRadius: "2px 2px 0 0", opacity: 0.85 }} title={`Náklady: ${fmtKc(m.costs)}`} />
                 </div>
-                <div style={{ fontSize: 9, color: i === 3 ? "#2E9BE0" : "#334155" }}>{m.month}</div>
+                <div style={{ fontSize: 9, color: i === 3 ? "#0369a1" : "#334155" }}>{m.month}</div>
               </div>
             );
           })}
@@ -5738,7 +5738,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 16, fontSize: 14 }}>🏆 Top zákazníci dle příjmů</div>
           {topCustomers.map((c, i) => (
             <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <div style={{ width: 22, height: 22, borderRadius: "50%", background: i === 0 ? "#f59e0b" : i === 1 ? "#94a3b8" : "#cd7c2f", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#f8fafc", flexShrink: 0 }}>{i + 1}</div>
+              <div style={{ width: 22, height: 22, borderRadius: "50%", background: i === 0 ? "#f59e0b" : i === 1 ? "#64748b" : "#cd7c2f", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#f8fafc", flexShrink: 0 }}>{i + 1}</div>
               <div style={S.avatar(avatarColors[i % 6])}>{getInitial(c.name)}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: "#1A1A1A", fontWeight: 600 }}>{c.name}</div>
@@ -5771,7 +5771,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
           <div style={{ ...S.divider, margin: "14px 0" }} />
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontSize: 13, color: "#475569" }}>Celková pipeline hodnota</span>
-            <span style={{ fontSize: 14, fontWeight: 800, color: "#2E9BE0" }}>{fmtKc(totalPipeline)}</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#0369a1" }}>{fmtKc(totalPipeline)}</span>
           </div>
         </div>
 
@@ -5956,8 +5956,8 @@ Odpovídej vždy v češtině. Buď konkrétní, stručný a praktický. Pokud t
         {suggestions.map(s => (
           <button key={s} onClick={() => send(s)}
             style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#475569", cursor: "pointer", transition: "all 0.15s" }}
-            onMouseEnter={e => { e.target.style.borderColor = "#2E9BE0"; e.target.style.color = "#fff"; }}
-            onMouseLeave={e => { e.target.style.borderColor = "#e2e8f0"; e.target.style.color = "#94a3b8"; }}>
+            onMouseEnter={e => { e.target.style.borderColor = "#0369a1"; e.target.style.color = "#fff"; }}
+            onMouseLeave={e => { e.target.style.borderColor = "#e2e8f0"; e.target.style.color = "#64748b"; }}>
             {s}
           </button>
         ))}
@@ -5967,10 +5967,10 @@ Odpovídej vždy v češtině. Buď konkrétní, stručný a praktický. Pokud t
       <div style={{ ...S.card, height: 440, overflowY: "auto", marginBottom: 16, display: "flex", flexDirection: "column", gap: 16, padding: 20 }}>
         {messages.map((m, i) => (
           <div key={i} style={{ display: "flex", gap: 12, flexDirection: m.role === "user" ? "row-reverse" : "row", alignItems: "flex-start" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: m.role === "user" ? "#2E9BE0" : "#e2e8f0", border: m.role === "assistant" ? "1px solid #e2e8f0" : "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: m.role === "user" ? "#0369a1" : "#e2e8f0", border: m.role === "assistant" ? "1px solid #e2e8f0" : "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
               {m.role === "user" ? "👤" : "🤖"}
             </div>
-            <div style={{ maxWidth: "75%", background: m.role === "user" ? "#2E9BE033" : "#e2e8f0", border: `1px solid ${m.role === "user" ? "#6366f155" : "#e2e8f0"}`, borderRadius: m.role === "user" ? "16px 4px 16px 16px" : "4px 16px 16px 16px", padding: "12px 16px" }}>
+            <div style={{ maxWidth: "75%", background: m.role === "user" ? "#0369a133" : "#e2e8f0", border: `1px solid ${m.role === "user" ? "#6366f155" : "#e2e8f0"}`, borderRadius: m.role === "user" ? "16px 4px 16px 16px" : "4px 16px 16px 16px", padding: "12px 16px" }}>
               <div style={{ fontSize: 13, color: "#1A1A1A", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{m.content}</div>
             </div>
           </div>
@@ -5981,7 +5981,7 @@ Odpovídej vždy v češtině. Buď konkrétní, stručný a praktický. Pokud t
             <div style={{ background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: "4px 16px 16px 16px", padding: "14px 18px" }}>
               <div style={{ display: "flex", gap: 5 }}>
                 {[0, 1, 2].map(j => (
-                  <div key={j} style={{ width: 7, height: 7, borderRadius: "50%", background: "#2E9BE0", animation: `pulse 1.2s ease-in-out ${j * 0.2}s infinite` }} />
+                  <div key={j} style={{ width: 7, height: 7, borderRadius: "50%", background: "#0369a1", animation: `pulse 1.2s ease-in-out ${j * 0.2}s infinite` }} />
                 ))}
               </div>
             </div>
@@ -6011,7 +6011,7 @@ Odpovídej vždy v češtině. Buď konkrétní, stručný a praktický. Pokud t
 // ─── KALENDÁŘ ────────────────────────────────────────────────────────────────
 
 const WORK_TYPES = {
-  "Zakázka":     { color: "#2E9BE0", bg: "#dbeafe" },
+  "Zakázka":     { color: "#0369a1", bg: "#dbeafe" },
   "Servis":      { color: "#F5821F", bg: "#ffedd5" },
   "Hrubé práce": { color: "#dc2626", bg: "#fee2e2" },
   "Nedodělek":   { color: "#d97706", bg: "#fef3c7" },
@@ -6443,7 +6443,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
       {showIcsLink && icsLink && (
         <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 8, color: "#1A1A1A" }}>📱 Odebíraný kalendář</div>
-          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 10 }}>
+          <div style={{ fontSize: 13, color: "#475569", marginBottom: 10 }}>
             Na iPhonu: Nastavení → Kalendář → Účty → Přidat účet → Jiný → Přidat odebíraný kalendář, a vlož tenhle odkaz. Aktualizuje se sám, obvykle do pár hodin. Funguje i v Outlooku nebo Google Kalendáři (Přidat kalendář → Z URL).
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -6468,7 +6468,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
         {/* Header */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
           {CZ_DAYS.map(d => (
-            <div key={d} style={{ padding: "10px 0", textAlign: "center", fontSize: 12, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }}>{d}</div>
+            <div key={d} style={{ padding: "10px 0", textAlign: "center", fontSize: 12, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.04em" }}>{d}</div>
           ))}
         </div>
         {/* Days */}
@@ -6485,8 +6485,8 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
             const extraCount = Math.max(0, dayEvents.length - 3) + Math.max(0, dayTasks.length - 3) + Math.max(0, dayOverdueInvoices.length - 3);
             return (
               <div key={i} style={{ minHeight: 90, borderRight: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9", padding: 6, position: "relative", background: isToday ? "#eff6ff" : "#fff" }}>
-                <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 500, color: isToday ? "#2E9BE0" : "#374151",
-                  background: isToday ? "#2E9BE0" : "transparent", color: isToday ? "#fff" : "#374151",
+                <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 500, color: isToday ? "#0369a1" : "#374151",
+                  background: isToday ? "#0369a1" : "transparent", color: isToday ? "#fff" : "#374151",
                   borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
                   {dayNum}
                 </div>
@@ -6511,7 +6511,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
                     ⚠️ {inv.number}
                   </div>
                 ))}
-                {extraCount > 0 && <div style={{ fontSize: 10, color: "#94a3b8" }}>+{extraCount} další</div>}
+                {extraCount > 0 && <div style={{ fontSize: 10, color: "#64748b" }}>+{extraCount} další</div>}
               </div>
             );
           })}
@@ -6615,44 +6615,44 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
             <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 460, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
                 <span style={{ background: wt.bg, color: wt.color, border: `1px solid ${wt.color}44`, borderRadius: 20, padding: "4px 14px", fontSize: 13, fontWeight: 700 }}>{detailEvent.work_type}</span>
-                <span style={{ fontSize: 14, color: "#64748b" }}>{fmtDateCz(detailEvent.date)}</span>
+                <span style={{ fontSize: 14, color: "#475569" }}>{fmtDateCz(detailEvent.date)}</span>
               </div>
 
               {detailEvent.title && <div style={{ fontSize: 17, fontWeight: 700, color: "#1A1A1A", marginBottom: 16 }}>{detailEvent.title}</div>}
 
               {(detailEvent.customer_name || detailEvent.customer_company) && (
                 <div style={{ marginBottom: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Zákazník</div>
+                  <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Zákazník</div>
                   {detailEvent.customer_name && <div style={{ fontSize: 15, fontWeight: 600, color: "#1A1A1A" }}>{detailEvent.customer_name}</div>}
-                  {detailEvent.customer_company && <div style={{ fontSize: 13, color: "#64748b" }}>{detailEvent.customer_company}</div>}
+                  {detailEvent.customer_company && <div style={{ fontSize: 13, color: "#475569" }}>{detailEvent.customer_company}</div>}
                 </div>
               )}
 
               {detailEvent.address && (
                 <div style={{ marginBottom: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Adresa</div>
+                  <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Adresa</div>
                   <div style={{ fontSize: 14, color: "#1A1A1A", marginBottom: 8 }}>📍 {detailEvent.address}</div>
-                  {mapsUrl && <a href={mapsUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: "#dbeafe", color: "#2E9BE0", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>🗺 Otevřít v Mapy.cz →</a>}
+                  {mapsUrl && <a href={mapsUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: "#dbeafe", color: "#0369a1", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>🗺 Otevřít v Mapy.cz →</a>}
                 </div>
               )}
 
               {(detailEvent.contact_name || detailEvent.contact_phone) && (
                 <div style={{ marginBottom: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Kontakt</div>
+                  <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Kontakt</div>
                   {detailEvent.contact_name && <div style={{ fontSize: 14, fontWeight: 600, color: "#1A1A1A" }}>👤 {detailEvent.contact_name}</div>}
-                  {detailEvent.contact_phone && <a href={`tel:${detailEvent.contact_phone}`} style={{ fontSize: 14, color: "#2E9BE0", textDecoration: "none" }}>📞 {detailEvent.contact_phone}</a>}
+                  {detailEvent.contact_phone && <a href={`tel:${detailEvent.contact_phone}`} style={{ fontSize: 14, color: "#0369a1", textDecoration: "none" }}>📞 {detailEvent.contact_phone}</a>}
                 </div>
               )}
 
               {detailEvent.work_description && (
                 <div style={{ marginBottom: 16, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Popis práce</div>
+                  <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Popis práce</div>
                   <div style={{ fontSize: 14, color: "#334155", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{detailEvent.work_description}</div>
                 </div>
               )}
 
               {isAdmin && detailEvent.employee_name && (
-                <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>Zaměstnanec: <strong style={{ color: "#475569" }}>{detailEvent.employee_name}</strong></div>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 16 }}>Zaměstnanec: <strong style={{ color: "#475569" }}>{detailEvent.employee_name}</strong></div>
               )}
 
               <div style={{ display: "flex", gap: 10 }}>
@@ -7142,7 +7142,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       ? "<div class='vyplata'>Celková částka k výplatě: <strong>" + castka.toLocaleString("cs-CZ") + " Kč</strong><span class='vyplata-detail'> (" + fmtHours(totalH) + " × " + sazba.toLocaleString("cs-CZ") + " Kč/h)</span></div>"
       : "<div class='vyplata vyplata-warn'>⚠️ Zaměstnanci není nastavena hodinová sazba — částku k výplatě nelze spočítat.</div>";
     const podpisyHtml = "<div class='podpisy'><div class='podpis'><div class='cara'></div><div class='popisek'>Podpis zaměstnance</div></div><div class='podpis'><div class='cara'></div><div class='popisek'>Podpis zaměstnavatele</div></div></div>";
-    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Výkaz práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}tr:nth-child(even) td{background:#f8fafc}.total{font-weight:bold}.vyplata{margin-top:18px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:15px}.vyplata strong{font-size:18px}.vyplata-detail{color:#64748b;font-size:12px;margin-left:6px}.vyplata-warn{background:#fffbeb;border-color:#fde68a;font-size:13px}.podpisy{display:flex;justify-content:space-between;margin-top:64px}.podpis{width:42%}.cara{border-top:1px solid #111;margin-bottom:6px}.popisek{font-size:12px;color:#555;text-align:center}@media print{body{padding:16px}}</style></head><body><h1>Výkaz práce</h1><h2>" + (empObj ? empObj.name : "") + " · " + monthNames[reportMonth] + " " + reportYear + "</h2><table><thead><tr><th>Datum</th><th>Příchod</th><th>Odchod</th><th>Odpracováno</th><th>Zakázka</th><th>Popis</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table>" + castkaHtml + podpisyHtml + "<script>window.onload=function(){window.print();}<\/script></body></html>";
+    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Výkaz práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}tr:nth-child(even) td{background:#f8fafc}.total{font-weight:bold}.vyplata{margin-top:18px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:15px}.vyplata strong{font-size:18px}.vyplata-detail{color:#475569;font-size:12px;margin-left:6px}.vyplata-warn{background:#fffbeb;border-color:#fde68a;font-size:13px}.podpisy{display:flex;justify-content:space-between;margin-top:64px}.podpis{width:42%}.cara{border-top:1px solid #111;margin-bottom:6px}.popisek{font-size:12px;color:#555;text-align:center}@media print{body{padding:16px}}</style></head><body><h1>Výkaz práce</h1><h2>" + (empObj ? empObj.name : "") + " · " + monthNames[reportMonth] + " " + reportYear + "</h2><table><thead><tr><th>Datum</th><th>Příchod</th><th>Odchod</th><th>Odpracováno</th><th>Zakázka</th><th>Popis</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table>" + castkaHtml + podpisyHtml + "<script>window.onload=function(){window.print();}<\/script></body></html>";
     const win = window.open("", "_blank");
     win.document.write(html);
     win.document.close();
@@ -7199,8 +7199,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               <button key={t.id} onClick={() => setAttTab(t.id)} style={{
                 padding: "10px 22px",
                 background: attTab === t.id ? "#0d2137" : "rgba(100,116,139,0.25)",
-                border: attTab === t.id ? "1.5px solid #2E9BE0" : "1.5px solid #64748b",
-                borderBottom: attTab === t.id ? "1.5px solid #0d2137" : "1.5px solid #64748b",
+                border: attTab === t.id ? "1.5px solid #0369a1" : "1.5px solid #475569",
+                borderBottom: attTab === t.id ? "1.5px solid #0d2137" : "1.5px solid #475569",
                 borderRadius: "10px 10px 0 0",
                 color: attTab === t.id ? "#93c5fd" : "#1A1A1A",
                 fontWeight: attTab === t.id ? 700 : 500,
@@ -7229,7 +7229,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
       {/* TAB CONTENT PANEL */}
       <div style={{
-        border: "1.5px solid #2E9BE0",
+        border: "1.5px solid #0369a1",
         borderTop: "none",
         borderRadius: "0 10px 10px 10px",
         padding: "20px 16px",
@@ -7248,7 +7248,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         <>
           {viewEmp && (
             <div style={{ ...S.card, margin: "16px 0", display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ ...S.avatar("#2E9BE0"), width: 48, height: 48, fontSize: 18 }}>{getInitial(viewEmp.name)}</div>
+              <div style={{ ...S.avatar("#0369a1"), width: 48, height: 48, fontSize: 18 }}>{getInitial(viewEmp.name)}</div>
               <div>
                 <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 15 }}>{viewEmp.name}</div>
                 <div style={{ color: "#475569", fontSize: 12 }}>{viewEmp.position} · {viewEmp.department}</div>
@@ -7278,7 +7278,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               {todayRecord?.checkin && todayRecord?.checkout && (
                 <div>
                   <div style={S.statLabel}>Odpracováno</div>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: "#2E9BE0" }}>{fmtHours(todayEffective)}</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: "#0369a1" }}>{fmtHours(todayEffective)}</div>
                 </div>
               )}
             </div>
@@ -7310,8 +7310,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             <input type="file" accept="image/*" multiple capture="environment"
               onChange={onAttPhotoInput} disabled={attPhotoUploading || !(todayRecord?.contract_id || ciContractId)}
               style={{ ...S.input, padding: 8 }} />
-            {!(todayRecord?.contract_id || ciContractId) && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Nejdřív vyber zakázku výše.</div>}
-            {attPhotoUploading && <div style={{ fontSize: 12, color: "#2E9BE0", marginTop: 4 }}>Nahrávám…</div>}
+            {!(todayRecord?.contract_id || ciContractId) && <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>Nejdřív vyber zakázku výše.</div>}
+            {attPhotoUploading && <div style={{ fontSize: 12, color: "#0369a1", marginTop: 4 }}>Nahrávám…</div>}
             {attUploadedPhotos.length > 0 && (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, marginBottom: 4 }}>
                 {attUploadedPhotos.map(p => (
@@ -7336,7 +7336,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   onChange={val => setCiTripContractId(val)} />
               </>)}
             </>)}
-            <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#334155" : "#2E9BE0"), width: "100%", padding: "12px", fontWeight: 700, marginTop: 8, fontSize: 15 }}
+            <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#334155" : "#0369a1"), width: "100%", padding: "12px", fontWeight: 700, marginTop: 8, fontSize: 15 }}
               onClick={checkinNow} disabled={!!todayRecord?.checkout}>
               {todayRecord?.checkout ? "✓ Odchod zapsán (" + todayRecord.checkout + ")" : todayRecord?.checkin ? "⏱ Zapsat odchod (příchod " + todayRecord.checkin + ")" : "▶ Zapsat příchod"}
             </button>
@@ -7398,8 +7398,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                     <div style={{ fontSize: 12, color: "#475569", margin: "4px 0" }}>
                       {req.checkin || "—"}–{req.checkout || "—"} · {contract ? contract.name : "bez zakázky"} · {req.target_attendance_id ? "úprava existujícího záznamu" : "nový záznam"}
                     </div>
-                    {req.activity && <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Popis: {req.activity}</div>}
-                    <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>Důvod: {req.reason}</div>
+                    {req.activity && <div style={{ fontSize: 12, color: "#475569", marginBottom: 4 }}>Popis: {req.activity}</div>}
+                    <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Důvod: {req.reason}</div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <button style={{ ...S.btn("#34d399"), padding: "6px 14px", fontSize: 12 }} onClick={() => approveRequest(req)}>✓ Schválit</button>
                       <button style={{ ...S.btn("#ef4444"), padding: "6px 14px", fontSize: 12 }} onClick={() => rejectRequest(req)}>✕ Zamítnout</button>
@@ -7461,7 +7461,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                           <div key={b.id} style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}
                             onMouseDown={() => { setTlActivity(b.description || b.name); setTlSuggestions([]); }}>
                             <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 13 }}>{b.name}</div>
-                            {b.description && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.description}</div>}
+                            {b.description && <div style={{ fontSize: 11, color: "#475569", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.description}</div>}
                           </div>
                         ))}
                       </div>
@@ -7531,7 +7531,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                 <div style={{ fontSize: 13, color: "#1A1A1A", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                   {rec.activity || "— bez popisu —"}
                                 </div>
-                                {contract && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>📋 {contract.name}</div>}
+                                {contract && <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>📋 {contract.name}</div>}
                               </div>
                               {expandedActivity === rec.id && (
                                 <div style={{ ...S.card, marginTop: 6, borderLeft: "3px solid " + col, padding: "12px 16px" }}>
@@ -7539,7 +7539,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                     <div>
                                       <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 6 }}>Detail bloku</div>
                                       <div style={{ fontSize: 13, color: "#475569" }}>🕐 {rec.checkin.slice(0,5)} – {rec.checkout ? rec.checkout.slice(0,5) : "—"} {h > 0 ? " · " + fmtHours(h) : ""}</div>
-                                      {contract && <div style={{ fontSize: 13, color: "#2E9BE0", marginTop: 4 }}>📋 Zakázka: {contract.name}</div>}
+                                      {contract && <div style={{ fontSize: 13, color: "#0369a1", marginTop: 4 }}>📋 Zakázka: {contract.name}</div>}
                                       <div style={{ marginTop: 8, fontSize: 13, color: "#475569", whiteSpace: "pre-wrap" }}>{rec.activity || "Žádný popis"}</div>
                                     </div>
                                     {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
@@ -7570,8 +7570,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, margin: "16px 0 20px" }}>
             {[
-              { label: "Dnes (bez pauzy)", value: todayEffective > 0 ? fmtHours(todayEffective) : todayRecord?.checkin ? "Probíhá..." : "—", color: "#2E9BE0" },
-              { label: "Tento týden", value: fmtHours(weekHours), color: "#2E9BE0" },
+              { label: "Dnes (bez pauzy)", value: todayEffective > 0 ? fmtHours(todayEffective) : todayRecord?.checkin ? "Probíhá..." : "—", color: "#0369a1" },
+              { label: "Tento týden", value: fmtHours(weekHours), color: "#0369a1" },
               { label: viewMonth === "all" ? "Celkem" : monthLabel, value: fmtHours(viewMonth === "all" ? yearHours : viewMonthHours), color: "#34d399" },
               { label: "Tento rok", value: fmtHours(yearHours), color: "#f59e0b" },
             ].map(s => (
@@ -7650,7 +7650,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                   await supabase.from("attendance").update({ activity: e.target.value }).eq("id", rec.id);
                                   setAttendance(attendance.map(a => a.id === rec.id ? { ...a, activity: e.target.value } : a));
                                 }} />
-                              <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginTop: 8, marginBottom: 6 }}>Materiál</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginTop: 8, marginBottom: 6 }}>Materiál</div>
                               {mats && mats.length > 0 && (
                                 <table style={{ width: "100%", fontSize: 12, marginBottom: 10 }}>
                                   <thead><tr>{["Položka","Množství","Jednotka"].map(h => <th key={h} style={{ ...S.th, fontSize: 11 }}>{h}</th>)}</tr></thead>
@@ -7661,7 +7661,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                   </tbody>
                                 </table>
                               )}
-                              {(!mats || mats.length === 0) && <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 8 }}>Žádný materiál.</div>}
+                              {(!mats || mats.length === 0) && <div style={{ color: "#64748b", fontSize: 12, marginBottom: 8 }}>Žádný materiál.</div>}
                               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
                                 <div style={{ position: "relative", flex: 2 }}>
                                   <input style={{ ...S.input, marginBottom: 0, fontSize: 12 }} placeholder="Název materiálu..."
@@ -7679,7 +7679,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                             onClick={() => { setMatItem(p.name); setMatUnit(p.unit); setMatSuggestions([]); }}>
                                             {img ? <img src={img} alt="" onError={e => e.target.style.display="none"} style={{ width: 24, height: 24, objectFit: "contain", borderRadius: 4 }} /> : <span>📦</span>}
                                             <span style={{ color: "#1A1A1A" }}>{p.name}</span>
-                                            <span style={{ color: "#94a3b8", marginLeft: "auto", fontSize: 11 }}>{p.stock} {p.unit}</span>
+                                            <span style={{ color: "#64748b", marginLeft: "auto", fontSize: 11 }}>{p.stock} {p.unit}</span>
                                           </div>
                                         );
                                       })}
@@ -7744,7 +7744,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   {blockTemplates.map(b => (
                     <tr key={b.id}>
                       <td style={{ ...S.td, fontWeight: 700, color: "#1A1A1A" }}>{b.name}</td>
-                      <td style={{ ...S.td, color: "#94a3b8", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.description || "—"}</td>
+                      <td style={{ ...S.td, color: "#64748b", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.description || "—"}</td>
                       <td style={{ ...S.td, color: "#475569", fontSize: 12 }}>{b.created_by || "—"}</td>
                       <td style={S.td}>
                         <button style={{ ...S.btn("#ef4444"), padding: "3px 10px", fontSize: 12 }} onClick={async () => {
@@ -7787,7 +7787,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             {/* Legend */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
               {employees.map(e => (
-                <span key={e.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#94a3b8" }}>
+                <span key={e.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#64748b" }}>
                   <span style={{ width: 12, height: 12, borderRadius: "50%", background: empColorMap[e.id], display: "inline-block" }} />
                   {e.name}
                 </span>
@@ -7814,13 +7814,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                     onClick={() => setKalDay(isSelected ? null : dateStr)}
                     style={{
                       background: isSelected ? "#dbeafe" : isToday ? "#eff6ff" : "#f8fafc",
-                      border: isSelected ? "1.5px solid #3b82f6" : isToday ? "1.5px solid #2E9BE055" : "1px solid #e2e8f0",
+                      border: isSelected ? "1.5px solid #3b82f6" : isToday ? "1.5px solid #0369a155" : "1px solid #e2e8f0",
                       borderRadius: 8,
                       padding: "6px 4px",
                       cursor: dayRecs.length > 0 ? "pointer" : "default",
                       minHeight: 56,
                     }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: dow >= 5 ? "#64748b" : "#94a3b8", textAlign: "right", marginBottom: 4 }}>{day}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: dow >= 5 ? "#475569" : "#64748b", textAlign: "right", marginBottom: 4 }}>{day}</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}>
                       {dayRecs.map(r => {
                         const emp = employees.find(e => e.id === (r.employee_id || r.employeeId));
@@ -7844,7 +7844,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               const dayRecs = monthAttendance.filter(a => a.date === kalDay);
               return (
                 <div style={{ marginTop: 16, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "16px 20px" }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#2E9BE0", marginBottom: 12 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#0369a1", marginBottom: 12 }}>
                     {new Date(kalDay).toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" })}
                     {" · "}
                     <span style={{ color: "#475569", fontWeight: 400 }}>{dayRecs.length} záznamů</span>
@@ -7872,8 +7872,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                               <td style={{ padding: "6px 10px", fontSize: 13, color: "#34d399" }}>{r.checkin || "—"}</td>
                               <td style={{ padding: "6px 10px", fontSize: 13, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#475569" }}>probíhá</span>}</td>
                               <td style={{ padding: "6px 10px", fontSize: 13, color: "#1A1A1A", fontWeight: 700 }}>{h > 0 ? fmtHours(h) : "—"}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, color: "#94a3b8" }}>{contract?.name || "—"}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, color: "#94a3b8", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "#64748b" }}>{contract?.name || "—"}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "#64748b", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
                             </tr>
                           );
                         })}
@@ -7949,13 +7949,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                       const contract = contractOpts.find(c => c.id === r.contract_id);
                       return (
                         <tr key={r.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#94a3b8", whiteSpace: "nowrap" }}>{fmtDateCz(r.date)}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#64748b", whiteSpace: "nowrap" }}>{fmtDateCz(r.date)}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#1A1A1A", fontWeight: 600 }}>{emp?.name || "—"}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#34d399" }}>{r.checkin || "—"}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#475569" }}>probíhá</span>}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#1A1A1A", fontWeight: 700 }}>{h > 0 ? fmtHours(h) : "—"}</td>
-                          <td style={{ padding: "6px 12px", fontSize: 12, color: "#94a3b8" }}>{contract?.name || "—"}</td>
-                          <td style={{ padding: "6px 12px", fontSize: 12, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 12, color: "#64748b" }}>{contract?.name || "—"}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 12, color: "#64748b", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
                         </tr>
                       );
                     })}
@@ -7981,7 +7981,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 20 }}>📄 Generovat výkaz práce</div>
             {isHR && (
               <div style={{ marginBottom: 14 }}>
-                <label style={S.label}>Zaměstnanec</label>
+                <label style={{ ...S.label, color: "#64748b" }}>Zaměstnanec</label>
                 <select style={S.select} value={reportEmpId || effectiveEmpId} onChange={e => setReportEmpId(Number(e.target.value))}>
                   {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                 </select>
@@ -7989,13 +7989,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
               <div>
-                <label style={S.label}>Rok</label>
+                <label style={{ ...S.label, color: "#64748b" }}>Rok</label>
                 <select style={S.select} value={reportYear} onChange={e => setReportYear(Number(e.target.value))}>
                   {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
               <div>
-                <label style={S.label}>Měsíc</label>
+                <label style={{ ...S.label, color: "#64748b" }}>Měsíc</label>
                 <select style={S.select} value={reportMonth} onChange={e => setReportMonth(Number(e.target.value))}>
                   {["Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"].map((m,i) => (
                     <option key={i+1} value={i+1}>{m}</option>
@@ -8030,20 +8030,20 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
           <div style={{ background: "#0E3B5E", borderRadius: 16, padding: "28px 32px", minWidth: 360, maxWidth: 460, width: "100%" }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 4 }}>📩 Žádost o zápis/úpravu záznamu</div>
             <div style={{ fontSize: 12, color: "#93c5fd", marginBottom: 16 }}>Měsíc {fmtDateCz(requestModal.date)} je už odsouhlasený a uzamčený. Návrh záznamu pošli ke schválení administrátorovi.</div>
-            <label style={S.label}>Datum</label>
+            <label style={{ ...S.label, color: "#64748b" }}>Datum</label>
             <input style={{ ...S.input, opacity: 0.7 }} value={requestModal.date} disabled />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div><label style={S.label}>Příchod</label><input type="time" style={S.input} value={requestModal.checkin} onChange={e => setRequestModal({ ...requestModal, checkin: e.target.value })} /></div>
-              <div><label style={S.label}>Odchod</label><input type="time" style={S.input} value={requestModal.checkout} onChange={e => setRequestModal({ ...requestModal, checkout: e.target.value })} /></div>
+              <div><label style={{ ...S.label, color: "#64748b" }}>Příchod</label><input type="time" style={S.input} value={requestModal.checkin} onChange={e => setRequestModal({ ...requestModal, checkin: e.target.value })} /></div>
+              <div><label style={{ ...S.label, color: "#64748b" }}>Odchod</label><input type="time" style={S.input} value={requestModal.checkout} onChange={e => setRequestModal({ ...requestModal, checkout: e.target.value })} /></div>
             </div>
-            <label style={S.label}>Zakázka</label>
+            <label style={{ ...S.label, color: "#64748b" }}>Zakázka</label>
             <select style={S.select} value={requestModal.contract_id || ""} onChange={e => setRequestModal({ ...requestModal, contract_id: e.target.value ? Number(e.target.value) : null })}>
               <option value="">—</option>
               {(contracts || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <label style={S.label}>Popis práce</label>
+            <label style={{ ...S.label, color: "#64748b" }}>Popis práce</label>
             <textarea style={{ ...S.input, minHeight: 50 }} value={requestModal.activity || ""} onChange={e => setRequestModal({ ...requestModal, activity: e.target.value })} />
-            <label style={S.label}>Důvod žádosti</label>
+            <label style={{ ...S.label, color: "#64748b" }}>Důvod žádosti</label>
             <textarea style={{ ...S.input, minHeight: 60 }} value={requestModal.reason} onChange={e => setRequestModal({ ...requestModal, reason: e.target.value })} placeholder="Proč se záznam přidává/upravuje dodatečně..." />
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
               <button style={{ ...S.btn("#334155"), padding: "9px 20px" }} onClick={() => setRequestModal(null)}>Zrušit</button>
@@ -8060,7 +8060,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
 function SectionTitle({ children, style }) {
   return (
-    <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, ...style }}>
+    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, ...style }}>
       {children}
     </div>
   );
@@ -8070,7 +8070,7 @@ function SectionTitle({ children, style }) {
 
 function Empty() {
   return (
-    <div style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}>
+    <div style={{ textAlign: "center", padding: "60px 20px", color: "#64748b" }}>
       <div style={{ fontSize: 40, marginBottom: 10 }}>📭</div>
       <div style={{ fontSize: 14 }}>Žádné záznamy</div>
     </div>
@@ -8093,10 +8093,10 @@ function Profile({ currentUser, attendance, employees }) {
       <div style={{ ...S.grid2, marginBottom: 20 }}>
         <div style={S.card}>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
-            <div style={{ width: 60, height: 60, borderRadius: "50%", background: "#2E9BE0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#fff", fontWeight: 800 }}>{getInitial(myName)}</div>
+            <div style={{ width: 60, height: 60, borderRadius: "50%", background: "#0369a1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#fff", fontWeight: 800 }}>{getInitial(myName)}</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 18, color: "#1A1A1A" }}>{myName}</div>
-              <div style={{ color: "#64748b", fontSize: 13 }}>{currentUser.role}</div>
+              <div style={{ color: "#475569", fontSize: 13 }}>{currentUser.role}</div>
             </div>
           </div>
           <div style={{ display: "grid", gap: 8 }}>
@@ -8108,7 +8108,7 @@ function Profile({ currentUser, attendance, employees }) {
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14 }}>Statistiky tento měsíc</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div style={S.statCard("#2E9BE0")}><div style={S.statLabel}>Odpracováno</div><div style={S.statValue("#2E9BE0")}>{fmtHours(totalH)}</div></div>
+            <div style={S.statCard("#0369a1")}><div style={S.statLabel}>Odpracováno</div><div style={S.statValue("#0369a1")}>{fmtHours(totalH)}</div></div>
             <div style={S.statCard("#34d399")}><div style={S.statLabel}>Docházka</div><div style={S.statValue("#34d399")}>{thisMonth.length} dní</div></div>
           </div>
         </div>
@@ -8168,14 +8168,14 @@ function PermissionsPanel() {
 
   const resetNav = (profile) => upsertPerm(profile.id, { nav_override: null });
 
-  if (loading) return <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Načítám…</div>;
+  if (loading) return <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>Načítám…</div>;
 
   return (
     <div>
       <div style={S.header}>
         <h1 style={S.h1}>🔐 Oprávnění</h1>
       </div>
-      <p style={{ color: "#64748b", fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: "#475569", fontSize: 13, marginBottom: 20 }}>
         Nastav roli, kdo smí zapisovat kilometry v knize jízd, a které záložky menu daný člověk vidí (přepíše výchozí nastavení role).
       </p>
       {profiles.map(p => {
@@ -8197,15 +8197,15 @@ function PermissionsPanel() {
                 <input type="checkbox" checked={!!perm?.can_edit_km} onChange={() => toggleKm(p)} />
                 🚗 Zapisovat kilometry v knize jízd
               </label>
-              {savingId === p.id && <span style={{ fontSize: 11, color: "#94a3b8" }}>Ukládám…</span>}
+              {savingId === p.id && <span style={{ fontSize: 11, color: "#64748b" }}>Ukládám…</span>}
             </div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginBottom: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 8 }}>
               Viditelné záložky {jeVychozi ? "(výchozí podle role)" : "(vlastní nastavení)"}
               {!jeVychozi && <button onClick={() => resetNav(p)} style={{ ...S.btnGhost, marginLeft: 10, padding: "2px 8px", fontSize: 11 }}>↺ vrátit výchozí</button>}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {NAV.map(n => (
-                <label key={n.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: navSelected.includes(n.id) ? "#1A1A1A" : "#94a3b8", background: navSelected.includes(n.id) ? "#eff6ff" : "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>
+                <label key={n.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: navSelected.includes(n.id) ? "#1A1A1A" : "#64748b", background: navSelected.includes(n.id) ? "#eff6ff" : "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>
                   <input type="checkbox" checked={navSelected.includes(n.id)} onChange={() => toggleNav(p, n.id)} />
                   <i className={`ti ${n.icon}`} aria-hidden="true"></i> {n.label}
                 </label>
@@ -8391,14 +8391,14 @@ function KnihaJizd({ currentUser, employees, contracts }) {
 
       {/* Statistiky */}
       <div style={{ ...S.grid3, marginBottom: 20 }}>
-        <div style={S.statCard("#2E9BE0")}><div style={S.statLabel}>Celkem km</div><div style={S.statValue("#2E9BE0")}>{totalKm.toLocaleString("cs-CZ")} km</div></div>
+        <div style={S.statCard("#0369a1")}><div style={S.statLabel}>Celkem km</div><div style={S.statValue("#0369a1")}>{totalKm.toLocaleString("cs-CZ")} km</div></div>
         <div style={S.statCard("#F5821F")}><div style={S.statLabel}>Odhadované náklady</div><div style={S.statValue("#F5821F")}>{fmtKc(totalCost)}</div></div>
         <div style={S.statCard("#34d399")}><div style={S.statLabel}>Počet jízd</div><div style={S.statValue("#34d399")}>{logs.length}</div></div>
       </div>
 
       {/* Formulář */}
       {showForm && (
-        <div style={{ ...S.card, marginBottom: 20, borderLeft: "3px solid #2E9BE0" }}>
+        <div style={{ ...S.card, marginBottom: 20, borderLeft: "3px solid #0369a1" }}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, fontSize: 14 }}>Nová jízda</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
             <div><label style={S.label}>Datum</label><input type="date" style={S.input} value={fDate} onChange={e => setFDate(e.target.value)} /></div>
@@ -8446,7 +8446,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
                   {contractList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div style={{ fontSize: 12, color: "#94a3b8" }}>Kilometry doplní Šárlota nebo Roman.</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>Kilometry doplní Šárlota nebo Roman.</div>
             </div>
           )}
           <div><label style={S.label}>Poznámka</label><input style={S.input} placeholder="Účel jízdy..." value={fNote} onChange={e => setFNote(e.target.value)} /></div>
@@ -8472,7 +8472,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
       {/* Tabulka */}
       <div style={S.card}>
         {loading ? (
-          <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Načítám…</div>
+          <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>Načítám…</div>
         ) : logs.length === 0 ? (
           <Empty />
         ) : (
@@ -8495,7 +8495,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
                       <input type="number" style={{ ...S.input, marginBottom: 0, width: 80, padding: "3px 6px", fontSize: 13 }}
                         value={editKmLog.km_start} onChange={e => setEditKmLog({ ...editKmLog, km_start: e.target.value })} autoFocus />
                     ) : canEditKm ? (
-                      <span onClick={() => setEditKmLog({ id: l.id, km_start: l.km_start ?? "", km_end: l.km_end ?? "" })} style={{ cursor: "pointer", borderBottom: "1px dashed #94a3b8" }} title="Klikněte pro úpravu">
+                      <span onClick={() => setEditKmLog({ id: l.id, km_start: l.km_start ?? "", km_end: l.km_end ?? "" })} style={{ cursor: "pointer", borderBottom: "1px dashed #64748b" }} title="Klikněte pro úpravu">
                         {l.km_start != null ? l.km_start.toLocaleString("cs-CZ") : <span style={{ color: "#F5821F" }}>doplnit</span>}
                       </span>
                     ) : (
@@ -8511,16 +8511,16 @@ function KnihaJizd({ currentUser, employees, contracts }) {
                         <button style={{ ...S.btnGhost, padding: "3px 8px", fontSize: 11 }} onClick={() => setEditKmLog(null)}>✕</button>
                       </div>
                     ) : canEditKm ? (
-                      <span onClick={() => setEditKmLog({ id: l.id, km_start: l.km_start ?? "", km_end: l.km_end ?? "" })} style={{ cursor: "pointer", borderBottom: "1px dashed #94a3b8" }} title="Klikněte pro úpravu">
+                      <span onClick={() => setEditKmLog({ id: l.id, km_start: l.km_start ?? "", km_end: l.km_end ?? "" })} style={{ cursor: "pointer", borderBottom: "1px dashed #64748b" }} title="Klikněte pro úpravu">
                         {l.km_end != null ? l.km_end.toLocaleString("cs-CZ") : <span style={{ color: "#F5821F" }}>doplnit</span>}
                       </span>
                     ) : (
                       l.km_end != null ? l.km_end.toLocaleString("cs-CZ") : <span style={{ color: "#cbd5e1" }}>čeká na doplnění</span>
                     )}
                   </td>
-                  <td style={{ ...S.td, fontWeight: 700, color: "#2E9BE0" }}>{l.km_total != null ? l.km_total?.toLocaleString("cs-CZ") + " km" : <span style={{ color: "#F5821F" }}>probíhá</span>}</td>
-                  <td style={S.td}>{l.contract_name ? <span style={S.tag("#2E9BE0")}>{l.contract_name}</span> : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
-                  <td style={{ ...S.td, color: "#64748b" }}>{l.note || "—"}</td>
+                  <td style={{ ...S.td, fontWeight: 700, color: "#0369a1" }}>{l.km_total != null ? l.km_total?.toLocaleString("cs-CZ") + " km" : <span style={{ color: "#F5821F" }}>probíhá</span>}</td>
+                  <td style={S.td}>{l.contract_name ? <span style={S.tag("#0369a1")}>{l.contract_name}</span> : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                  <td style={{ ...S.td, color: "#475569" }}>{l.note || "—"}</td>
                   <td style={S.td}>
                     {isHR && <button style={{ ...S.btn("#ef4444"), padding: "3px 8px", fontSize: 11 }} onClick={() => deleteLog(l.id)}>✕</button>}
                   </td>
@@ -8652,10 +8652,10 @@ export default function App() {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <ProudOSMark size={48} />
             <div style={{ fontWeight: 800, fontSize: 22, textAlign: "center" }}>
-              <span style={{ color: "#2E9BE0" }}>Proud</span><span style={{ color: "#F5821F" }}>OS</span>
+              <span style={{ color: "#0369a1" }}>Proud</span><span style={{ color: "#F5821F" }}>OS</span>
             </div>
           </div>
-          <div style={{ color: "#64748b", fontSize: 13, textAlign: "center", marginBottom: 24 }}>Vítej! Nastav si vlastní heslo pro přihlášení.</div>
+          <div style={{ color: "#475569", fontSize: 13, textAlign: "center", marginBottom: 24 }}>Vítej! Nastav si vlastní heslo pro přihlášení.</div>
           {passErr && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 12 }}>{passErr}</div>}
           <label style={S.label}>Nové heslo</label>
           <input type="password" style={S.input} value={newPass1} onChange={e => setNewPass1(e.target.value)} onKeyDown={e => e.key === "Enter" && setOwnPassword()} placeholder="alespoň 6 znaků" />
@@ -8684,10 +8684,10 @@ export default function App() {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <ProudOSMark size={48} />
             <div style={{ fontWeight: 800, fontSize: 22, textAlign: "center" }}>
-              <span style={{ color: "#2E9BE0" }}>Proud</span><span style={{ color: "#F5821F" }}>OS</span>
+              <span style={{ color: "#0369a1" }}>Proud</span><span style={{ color: "#F5821F" }}>OS</span>
             </div>
           </div>
-          <div style={{ color: "#64748b", fontSize: 13, textAlign: "center", marginBottom: 28 }}>Přihlaste se do systému</div>
+          <div style={{ color: "#475569", fontSize: 13, textAlign: "center", marginBottom: 28 }}>Přihlaste se do systému</div>
           {loginErr && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 12 }}>{loginErr}</div>}
           <label style={S.label}>Jméno</label>
           <input style={S.input} value={loginName} onChange={e => setLoginName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Vaše jméno" />
@@ -8695,16 +8695,16 @@ export default function App() {
           <input type="password" style={S.input} value={loginPass} onChange={e => setLoginPass(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="Heslo" />
           <button style={{ ...S.btn(), width: "100%", padding: 12, fontSize: 15, marginTop: 6 }} onClick={handleLogin}>Přihlásit se</button>
           <div style={{ marginTop: 16, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
-            <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8, textAlign: "center" }}>Rychlé přihlášení</div>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, textAlign: "center" }}>Rychlé přihlášení</div>
             {ALL_LOGIN_USERS.map(u => (
               <button key={u.username} onClick={() => { setLoginName(u.name); setLoginPass(""); }}
                 style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 12px", width: "100%", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
                 <span style={{ fontSize: 12, color: "#1A1A1A", fontWeight: 500 }}>{u.name}</span>
-                <span style={{ ...S.tag(ROLES[u.role]?.color || "#2E9BE0"), fontSize: 10 }}>{ROLES[u.role]?.label}</span>
+                <span style={{ ...S.tag(ROLES[u.role]?.color || "#0369a1"), fontSize: 10 }}>{ROLES[u.role]?.label}</span>
               </button>
             ))}
           </div>
-          <div style={{ textAlign: "center", marginTop: 12, e: 12, color: "#94a3b8" }}>© 2026 ProudOS</div>
+          <div style={{ textAlign: "center", marginTop: 12, e: 12, color: "#64748b" }}>© 2026 ProudOS</div>
         </div>
       </div>
     );

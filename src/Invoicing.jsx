@@ -83,13 +83,13 @@ function InvoiceHistoryPanel({ invoiceId, onUpdated, sentAt }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontWeight: 700, fontSize: 13, color: "#334155" }}>Historie faktury</div>
         {sentAt
-          ? <span style={{ fontSize: 11, color: "#94a3b8" }}>✉️ Odesláno {fmtEventDate(sentAt)}</span>
+          ? <span style={{ fontSize: 11, color: "#64748b" }}>✉️ Odesláno {fmtEventDate(sentAt)}</span>
           : <button onClick={markSent} disabled={busy} style={{ ...btnGhost, padding: "4px 10px", fontSize: 11 }}>
               {busy ? "…" : "✉️ Označit jako odesláno"}
             </button>}
       </div>
-      {events === null && <div style={{ fontSize: 12, color: "#94a3b8" }}>Načítám…</div>}
-      {events && events.length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>Zatím žádné události.</div>}
+      {events === null && <div style={{ fontSize: 12, color: "#64748b" }}>Načítám…</div>}
+      {events && events.length === 0 && <div style={{ fontSize: 12, color: "#64748b" }}>Zatím žádné události.</div>}
       {events && events.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
           {events.map(ev => {
@@ -103,7 +103,7 @@ function InvoiceHistoryPanel({ invoiceId, onUpdated, sentAt }) {
                   {ev.type !== "poznamka" && ev.type !== "prislib_platby" && meta.label}
                   {ev.type === "platba" ? ` — ${fmtKc2(ev.amount)} Kč` : ""}
                 </span>
-                <span style={{ color: "#94a3b8", whiteSpace: "nowrap", marginLeft: 8 }}>{fmtEventDate(ev.created_at)}</span>
+                <span style={{ color: "#64748b", whiteSpace: "nowrap", marginLeft: 8 }}>{fmtEventDate(ev.created_at)}</span>
               </div>
             );
           })}
@@ -114,7 +114,7 @@ function InvoiceHistoryPanel({ invoiceId, onUpdated, sentAt }) {
           placeholder="Reakce zákazníka…"
           onChange={e => setNote(e.target.value)} onKeyDown={e => e.key === "Enter" && addNote()} />
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap" }}>Slíbeno do:</span>
+          <span style={{ fontSize: 11, color: "#475569", whiteSpace: "nowrap" }}>Slíbeno do:</span>
           <input type="date" style={{ ...inputStyle, padding: "6px 8px", fontSize: 12 }} value={promiseDate}
             onChange={e => setPromiseDate(e.target.value)} />
         </div>
@@ -145,7 +145,7 @@ function ContractPicker({ options, value, onChange, placeholder = "— vyberte z
         onFocus={() => { setOpen(true); setQ(""); }} onChange={e => { setQ(e.target.value); setOpen(true); }} />
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 2px)", left: 0, right: 0, zIndex: 999, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: 220, overflowY: "auto", boxShadow: "0 6px 16px #00000022" }}>
-          {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>Nic nenalezeno.</div>}
+          {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 13, color: "#64748b" }}>Nic nenalezeno.</div>}
           {filtered.map(o => (
             <div key={o.id} onMouseDown={e => e.preventDefault()} onClick={() => { onChange(o.id); setQ(""); setOpen(false); }}
               style={{ padding: "8px 12px", fontSize: 13, cursor: "pointer", background: String(o.id) === String(value) ? "#eff6ff" : "transparent" }}>
@@ -158,7 +158,7 @@ function ContractPicker({ options, value, onChange, placeholder = "— vyberte z
   );
 }
 
-const labelStyle = { display: "block", fontSize: 12, color: "#64748b", fontWeight: 600, margin: "10px 0 4px" };
+const labelStyle = { display: "block", fontSize: 12, color: "#475569", fontWeight: 600, margin: "10px 0 4px" };
 const inputStyle = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" };
 
 // ─── Vystavení faktury — nejdřív se zeptá ručně/ze zakázky, pak editor položek.
@@ -252,14 +252,14 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
       <div style={overlayStyle}>
         <div style={{ ...boxStyle, width: 420 }}>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>Vystavit fakturu</div>
-          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>Odkud se mají vzít položky faktury?</div>
+          <div style={{ fontSize: 13, color: "#475569", marginBottom: 16 }}>Odkud se mají vzít položky faktury?</div>
           <button onClick={startManual} style={{ ...btnGhost, width: "100%", marginBottom: 10, padding: "12px 16px", textAlign: "left" }}>
             ✍️ Ručně — přidám položky sám
           </button>
           <button onClick={startFromContract} style={{ ...btnGhost, width: "100%", padding: "12px 16px", textAlign: "left" }}>
             📋 Ze zakázky — předvyplní se z nákladů zakázky
           </button>
-          <button onClick={onClose} style={{ ...btnGhost, width: "100%", marginTop: 16, borderColor: "transparent", color: "#94a3b8" }}>Zrušit</button>
+          <button onClick={onClose} style={{ ...btnGhost, width: "100%", marginTop: 16, borderColor: "transparent", color: "#64748b" }}>Zrušit</button>
         </div>
       </div>
     );
@@ -292,8 +292,8 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
             <button key={t.id} onClick={() => setFormTab(t.id)}
               style={{
                 background: "none", border: "none", cursor: "pointer", padding: "8px 14px", fontSize: 13,
-                fontWeight: formTab === t.id ? 700 : 400, color: formTab === t.id ? "#1e293b" : "#64748b",
-                borderBottom: formTab === t.id ? "2px solid #2E9BE0" : "2px solid transparent", marginBottom: -1,
+                fontWeight: formTab === t.id ? 700 : 400, color: formTab === t.id ? "#1e293b" : "#475569",
+                borderBottom: formTab === t.id ? "2px solid #0369a1" : "2px solid transparent", marginBottom: -1,
               }}>
               {t.label}
             </button>
@@ -384,7 +384,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc" }}>
-                    {["Popis", "Počet", "M.j.", "Cena/m.j.", "DPH", "Celkem", ""].map(h => <th key={h} style={{ padding: "6px 8px", fontSize: 10, color: "#64748b", textAlign: "left" }}>{h}</th>)}
+                    {["Popis", "Počet", "M.j.", "Cena/m.j.", "DPH", "Celkem", ""].map(h => <th key={h} style={{ padding: "6px 8px", fontSize: 10, color: "#475569", textAlign: "left" }}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -415,7 +415,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
             {!locked && <button onClick={addItem} style={{ ...btnGhost, marginTop: 8, padding: "6px 14px", fontSize: 12 }}>+ Přidat řádek</button>}
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, gap: 24, alignItems: "baseline" }}>
-              <span style={{ fontSize: 12, color: "#64748b" }}>DPH celkem: {fmtKc2(totalTax)} Kč</span>
+              <span style={{ fontSize: 12, color: "#475569" }}>DPH celkem: {fmtKc2(totalTax)} Kč</span>
               <span style={{ fontSize: 18, fontWeight: 800 }}>Celkem k úhradě: {fmtKc2(getDiscountedTotal(total, f.discountPercent))} Kč</span>
             </div>
           </>
@@ -463,7 +463,7 @@ export function InvoicePreviewModal({ invoice, customer, onClose }) {
             <button onClick={onClose} style={btnGhost}>Zavřít</button>
           </div>
         </div>
-        <div style={{ maxHeight: "80vh", overflowY: "auto", background: "#94a3b8", padding: 20 }}>
+        <div style={{ maxHeight: "80vh", overflowY: "auto", background: "#64748b", padding: 20 }}>
           {error && <div style={{ color: "#fff", background: "#ef4444", padding: 12, borderRadius: 8 }}>Náhled se nepodařilo vytvořit: {error}</div>}
           {!html && !error && <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Načítám náhled…</div>}
           {html && (
@@ -479,4 +479,4 @@ export function InvoicePreviewModal({ invoice, customer, onClose }) {
 const overlayStyle = { position: "fixed", inset: 0, background: "#00000066", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 400 };
 const boxStyle = { background: "#fff", borderRadius: 16, padding: 24, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box", border: "1px solid #e2e8f0", boxShadow: "0 20px 60px #0000001a" };
 const btnPrimary = { background: "#F5C518", color: "#1A1A1A", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
-const btnGhost = { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const btnGhost = { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };

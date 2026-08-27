@@ -19,7 +19,7 @@ const S = {
   app: { fontFamily: "'DM Sans',sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px" },
   card: { background: "#1A1A1Afff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "16px 18px", marginBottom: 12, boxShadow: "0 1px 4px #0000000a" },
   inp: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" },
-  btn: (c = "#2E9BE0") => ({ background: c, color: "#1A1A1A", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
+  btn: (c = "#0369a1") => ({ background: c, color: "#1A1A1A", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
 };
 
 export default function FotoUpload({ currentUser, setTab }) {
@@ -112,7 +112,7 @@ export default function FotoUpload({ currentUser, setTab }) {
         )}
         <input style={{ ...S.inp, marginBottom: 14, fontSize: 14 }} placeholder="Hledat zakázku podle jména nebo čísla..." value={search} onChange={e => setSearch(e.target.value)} />
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {filtered.length === 0 && <div style={{ color: "#94a3b8", fontSize: 13 }}>Žádné zakázky nenalezeny.</div>}
+          {filtered.length === 0 && <div style={{ color: "#64748b", fontSize: 13 }}>Žádné zakázky nenalezeny.</div>}
           {filtered.map(c => (
             <div key={c.id} onClick={() => openContract(c)}
               style={{ background: "#ffffff", borderRadius: 12, padding: "14px 18px", border: "1px solid #e2e8f0", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
@@ -131,7 +131,7 @@ export default function FotoUpload({ currentUser, setTab }) {
   // ─── NAHRÁVÁNÍ FOTEK ─────────────────────────────────────────────────────
   return (
     <div style={S.app}>
-      <button onClick={closeContract} style={{ ...S.btn("#e2e8f0"), color: "#94a3b8", padding: "6px 14px", marginBottom: 14 }}>← Zpět na výběr zakázky</button>
+      <button onClick={closeContract} style={{ ...S.btn("#e2e8f0"), color: "#64748b", padding: "6px 14px", marginBottom: 14 }}>← Zpět na výběr zakázky</button>
       <h1 style={{ fontSize: 20, fontWeight: 800, color: "#1A1A1A", marginBottom: 2 }}>📷 {activeContract.name}</h1>
       <p style={{ color: "#475569", fontSize: 12, marginBottom: 18 }}>Fotky se ukládají do FirmaCRM/Zakázky/{activeContract.name}/Fotky na OneDrive.</p>
 
@@ -165,7 +165,7 @@ export default function FotoUpload({ currentUser, setTab }) {
                 ))}
               </div>
             )}
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: busy ? "#0ea5e922" : "#e2e8f0", color: busy ? "#0ea5e9" : "#94a3b8", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer", border: "1px dashed #e2e8f0" }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: busy ? "#0ea5e922" : "#e2e8f0", color: busy ? "#0ea5e9" : "#64748b", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer", border: "1px dashed #e2e8f0" }}>
               {busy ? `⏳ Nahrávám na OneDrive (${uploading[kat]})...` : "+ Přidat foto"}
               <input type="file" accept="image/*" multiple disabled={busy} style={{ display: "none" }} onChange={e => {
                 const files = Array.from(e.target.files);

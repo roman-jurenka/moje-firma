@@ -5,15 +5,15 @@ const S = {
   app:      { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px 28px" },
   card:     { background: "#ffffff", borderRadius: 12, padding: 22, border: "1px solid #e2e8f0", marginBottom: 14, boxShadow: "0 1px 4px #0000000a" },
   input:    { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box" },
-  btn:      (c = "#2E9BE0") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
-  btnGhost: { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  btn:      (c = "#0369a1") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
+  btnGhost: { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   modal:    { position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 400 },
   modalBox: { background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, width: 460, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
 };
 
 const STATUS_COLOR = {
   "čeká na podpis zaměstnance":    { bg: "#f59e0b22", fg: "#f59e0b" },
-  "čeká na podpis zaměstnavatele": { bg: "#2E9BE022", fg: "#2E9BE0" },
+  "čeká na podpis zaměstnavatele": { bg: "#0369a122", fg: "#0369a1" },
   "podepsáno":                     { bg: "#34d39922", fg: "#34d399" },
 };
 
@@ -71,7 +71,7 @@ export function SignaturePad({ onSave, height = 160 }) {
     <div>
       <canvas
         ref={canvasRef} width={420} height={height}
-        style={{ width: "100%", height, background: "#fff", border: "1px dashed #94a3b8", borderRadius: 8, touchAction: "none", cursor: "crosshair" }}
+        style={{ width: "100%", height, background: "#fff", border: "1px dashed #64748b", borderRadius: 8, touchAction: "none", cursor: "crosshair" }}
         onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
         onTouchStart={start} onTouchMove={move} onTouchEnd={end}
       />
@@ -118,12 +118,12 @@ export function SignFlow({ currentUser, onSigned }) {
     onSigned(dataUrl);
   };
 
-  if (saved === undefined) return <div style={{ color: "#94a3b8", fontSize: 13 }}>Načítám…</div>;
+  if (saved === undefined) return <div style={{ color: "#64748b", fontSize: 13 }}>Načítám…</div>;
 
   if (mode === "pin" && saved) {
     return (
       <div>
-        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>Máš uložený podpis — zadej svůj PIN a použije se automaticky.</div>
+        <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Máš uložený podpis — zadej svůj PIN a použije se automaticky.</div>
         <img src={saved.signature} alt="uložený podpis" style={{ maxHeight: 70, background: "#fff", borderRadius: 6, padding: 4, marginBottom: 10 }} />
         <input type="password" inputMode="numeric" placeholder="PIN" style={{ ...S.input, marginBottom: 6 }}
           value={pin} onChange={e => { setPin(e.target.value); setPinError(""); }} onKeyDown={e => e.key === "Enter" && confirmPin()} />
@@ -139,7 +139,7 @@ export function SignFlow({ currentUser, onSigned }) {
   return (
     <div>
       <SignaturePad onSave={finishDraw} />
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#94a3b8", marginTop: 12 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#64748b", marginTop: 12 }}>
         <input type="checkbox" checked={saveTemplate} onChange={e => setSaveTemplate(e.target.checked)} />
         Uložit tento podpis jako můj vzor — příště stačí PIN
       </label>
@@ -187,7 +187,7 @@ function renderDocumentHtml(doc) {
     table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}
     td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}tr:nth-child(even) td{background:#f8fafc}.total{font-weight:bold}
     .vyplata{margin-top:18px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:15px}.vyplata strong{font-size:18px}
-    .vyplata-detail{color:#64748b;font-size:12px;margin-left:6px}
+    .vyplata-detail{color:#475569;font-size:12px;margin-left:6px}
     .podpisy{display:flex;justify-content:space-between;margin-top:64px}.podpis{width:42%}
     .cara{border-top:1px solid #111;margin-bottom:6px;margin-top:50px}.sigimg{max-width:100%;max-height:70px;display:block;margin-bottom:2px}
     .popisek{font-size:12px;color:#555;text-align:center}@media print{body{padding:16px}}</style>
@@ -246,25 +246,25 @@ function MujPodpisKarta({ currentUser }) {
   return (
     <div style={S.card}>
       <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>🔐 Můj uložený podpis</div>
-      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Nastav si podpis a vlastní PIN jednou — příště pak dokumenty podepíšeš jen zadáním PINu, bez kreslení.</div>
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Nastav si podpis a vlastní PIN jednou — příště pak dokumenty podepíšeš jen zadáním PINu, bez kreslení.</div>
       {!editing ? (
         <div>
           {saved ? (
             <img src={saved.signature} alt="podpis" style={{ maxHeight: 60, background: "#fff", borderRadius: 6, padding: 4, marginBottom: 10, display: "block" }} />
           ) : (
-            <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 10 }}>Zatím nemáš nastavený podpis.</div>
+            <div style={{ color: "#64748b", fontSize: 13, marginBottom: 10 }}>Zatím nemáš nastavený podpis.</div>
           )}
           <button onClick={() => setEditing(true)} style={{ ...S.btnGhost, padding: "6px 14px", fontSize: 12 }}>{saved ? "Změnit podpis" : "Nastavit podpis"}</button>
         </div>
       ) : (
         <div>
           <SignaturePad onSave={uložit} />
-          <div style={{ fontSize: 12, color: "#64748b", marginTop: 12, marginBottom: 6 }}>Zvol si PIN (min. 4 znaky), kterým podpis příště potvrdíš:</div>
+          <div style={{ fontSize: 12, color: "#475569", marginTop: 12, marginBottom: 6 }}>Zvol si PIN (min. 4 znaky), kterým podpis příště potvrdíš:</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <input type="password" inputMode="numeric" placeholder="Nový PIN" style={{ ...S.input, marginBottom: 0 }} value={newPin} onChange={e => setNewPin(e.target.value)} />
             <input type="password" inputMode="numeric" placeholder="Potvrdit PIN" style={{ ...S.input, marginBottom: 0 }} value={newPinConfirm} onChange={e => setNewPinConfirm(e.target.value)} />
           </div>
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>Podpis se uloží po kliknutí na „✓ Uložit podpis" v panelu výše.</div>
+          <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>Podpis se uloží po kliknutí na „✓ Uložit podpis" v panelu výše.</div>
           <button onClick={() => setEditing(false)} style={{ ...S.btnGhost, marginTop: 10, padding: "6px 14px", fontSize: 12 }}>Zrušit</button>
         </div>
       )}
@@ -305,20 +305,20 @@ export default function PodpisyModule({ employees, currentUser }) {
   return (
     <div style={S.app}>
       <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1A1A1A", margin: "0 0 6px" }}>✍️ Podpisy</h1>
-      <p style={{ color: "#64748b", fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: "#475569", fontSize: 13, marginBottom: 20 }}>
         Digitální podepisování dokumentů — výkazy práce a do budoucna i další. Zaměstnanec podepíše hned při vytvoření, zaměstnavatel dokument dopodepíše zde.
       </p>
 
       <MujPodpisKarta currentUser={currentUser} />
 
       {loading ? (
-        <div style={{ color: "#94a3b8", fontSize: 13 }}>Načítám…</div>
+        <div style={{ color: "#64748b", fontSize: 13 }}>Načítám…</div>
       ) : visible.length === 0 ? (
-        <div style={{ color: "#94a3b8", fontSize: 13 }}>Zatím žádné dokumenty k podpisu.</div>
+        <div style={{ color: "#64748b", fontSize: 13 }}>Zatím žádné dokumenty k podpisu.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {visible.map(doc => {
-            const sc = STATUS_COLOR[doc.status] || { bg: "#94a3b822", fg: "#64748b" };
+            const sc = STATUS_COLOR[doc.status] || { bg: "#64748b22", fg: "#475569" };
             const emp = employees.find(e => e.id === doc.employee_id);
             const canSignEmployee = doc.status === "čeká na podpis zaměstnance" && (currentUser.employeeId === doc.employee_id || isEmployer);
             const canSignEmployer = doc.status === "čeká na podpis zaměstnavatele" && isEmployer;
@@ -326,14 +326,14 @@ export default function PodpisyModule({ employees, currentUser }) {
               <div key={doc.id} style={{ ...S.card, marginBottom: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 14 }}>{doc.title}</div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
                     {emp?.name || ""} · vytvořeno {new Date(doc.created_at).toLocaleDateString("cs-CZ")}
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <span style={{ background: sc.bg, color: sc.fg, borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700 }}>{doc.status}</span>
                   {canSignEmployee && <button style={S.btn("#f59e0b")} onClick={() => openSign(doc, "employee")}>✍️ Podepsat (zaměstnanec)</button>}
-                  {canSignEmployer && <button style={S.btn("#2E9BE0")} onClick={() => openSign(doc, "employer")}>✍️ Podepsat (zaměstnavatel)</button>}
+                  {canSignEmployer && <button style={S.btn("#0369a1")} onClick={() => openSign(doc, "employer")}>✍️ Podepsat (zaměstnavatel)</button>}
                   <button style={S.btnGhost} onClick={() => printDoc(doc)}>🖨️ Tisk / PDF</button>
                   {isEmployer && <button style={S.btnGhost} onClick={() => emailDoc(doc, employees)}>✉️ E-mail</button>}
                 </div>
@@ -347,8 +347,8 @@ export default function PodpisyModule({ employees, currentUser }) {
         <div style={S.modal}>
           <div style={S.modalBox}>
             <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>✍️ Podpis — {signModal.role === "employee" ? "zaměstnanec" : "zaměstnavatel"}</div>
-            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>{signModal.doc.title}</div>
-            <label style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Jméno podepisujícího</label>
+            <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>{signModal.doc.title}</div>
+            <label style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Jméno podepisujícího</label>
             <input style={{ ...S.input, marginBottom: 14 }} value={signName} onChange={e => setSignName(e.target.value)} />
             <SignFlow currentUser={currentUser} onSigned={saveSignature} />
             <button onClick={() => setSignModal(null)} style={{ ...S.btnGhost, marginTop: 14, padding: "6px 14px", fontSize: 12 }}>Zrušit</button>
