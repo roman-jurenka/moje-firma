@@ -536,6 +536,6 @@ const cardLabel = { fontSize: 11, color: "#64748b", textTransform: "uppercase", 
 const btnPrimary = { background: "#F5C518", color: "#1A1A1A", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
 const btnGhost = { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
 const modalOverlay = { position: "fixed", inset: 0, background: "#00000066", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 400 };
-const modalBox = { background: "#fff", borderRadius: 14, padding: 24, width: 440, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto" };
+const modalBox = { background: "#fff", borderRadius: 16, padding: 24, width: 440, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto", border: "1px solid #e2e8f0", boxShadow: "0 20px 60px #0000001a", boxSizing: "border-box" };
 const label = { display: "block", fontSize: 12, color: "#64748b", fontWeight: 600, margin: "10px 0 4px" };
 const input = { width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" };

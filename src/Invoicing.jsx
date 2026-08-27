@@ -477,6 +477,6 @@ export function InvoicePreviewModal({ invoice, customer, onClose }) {
 }
 
 const overlayStyle = { position: "fixed", inset: 0, background: "#00000066", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 400 };
-const boxStyle = { background: "#fff", borderRadius: 14, padding: 24, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" };
+const boxStyle = { background: "#fff", borderRadius: 16, padding: 24, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box", border: "1px solid #e2e8f0", boxShadow: "0 20px 60px #0000001a" };
 const btnPrimary = { background: "#F5C518", color: "#1A1A1A", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
 const btnGhost = { background: "transparent", color: "#2E9BE0", border: "1px solid #2E9BE0", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };

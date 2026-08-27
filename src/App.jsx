@@ -815,7 +815,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "DM Sans, sans-serif" }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", marginBottom: 16 }}>Firma<span style={{ color: "#2E9BE0" }}>CRM</span><span style={{ color: "#F5821F" }}>+ERP</span></div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: "#1A1A1A", marginBottom: 16 }}>Firma<span style={{ color: "#2E9BE0" }}>CRM</span><span style={{ color: "#F5821F" }}>+ERP</span></div>
         <div style={{ color: "#475569", fontSize: 14 }}>Načítám data z databáze...</div>
         <div style={{ marginTop: 20, display: "flex", gap: 6, justifyContent: "center" }}>
           {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: "#2E9BE0", animation: `pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
@@ -1075,7 +1075,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
               {getInitial(currentUser.name)}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.name}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.name}</div>
               <span style={{ ...S.tag(ROLES[currentUser.role]?.color || "#2E9BE0"), fontSize: 10 }}>{ROLES[currentUser.role]?.label}</span>
             </div>
           </div>
@@ -1646,7 +1646,7 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
       <div style={S.grid2}>
         {/* Moje úkoly */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span>📋 Moje úkoly</span>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button style={{ ...S.btn(), padding: "5px 12px", fontSize: 12 }} onClick={() => setAddingTask(!addingTask)}>
@@ -1694,7 +1694,7 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
 
         {/* Poslední docházka */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
             🕐 Poslední docházka
             <span style={{ color: "#2E9BE0", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("attendance")}>Vše →</span>
           </div>
@@ -2235,7 +2235,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
                   <td style={S.td}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={S.avatar(avatarColors[i % 6])}>{getInitial(c.name)}</div>
-                      <span style={{ color: "#fff", fontWeight: 600 }}>{c.name}</span>
+                      <span style={{ color: "#1A1A1A", fontWeight: 600 }}>{c.name}</span>
                     </div>
                   </td>
                   <td style={S.td}>
@@ -2370,7 +2370,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
               {custContracts.length === 0 ? <Empty /> : custContracts.map(z => (
                 <div key={z.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: "1px solid #e2e8f0" }}>
                   <div>
-                    <div style={{ fontSize: 13, color: "#fff", fontWeight: 600 }}>{z.name}</div>
+                    <div style={{ fontSize: 13, color: "#1A1A1A", fontWeight: 600 }}>{z.name}</div>
                     {z.code && <div style={{ fontSize: 11, color: "#475569" }}>{z.code}{z.address ? " · " + z.address : ""}</div>}
                   </div>
                   <span style={S.tag(CONTRACT_STATUS_COLOR[z.status] || "#64748b")}>{z.status || "—"}</span>
@@ -2390,7 +2390,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
                 <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #e2e8f0" }}>
                   <span style={{ color: "#e2e8f0", fontSize: 13 }}>{inv.number}</span>
                   <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <span style={{ color: "#fff", fontWeight: 700, fontSize: 13 }}>{fmtKc(inv.amount)}</span>
+                    <span style={{ color: "#1A1A1A", fontWeight: 700, fontSize: 13 }}>{fmtKc(inv.amount)}</span>
                     <span style={S.tag(INV_COLORS[inv.status])}>{inv.status}</span>
                   </div>
                 </div>
@@ -2624,7 +2624,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                   style={{ ...S.kanbanCard, opacity: dragId === d.id ? 0.4 : 1, cursor: "grab", outline: selectedDeal?.id === d.id ? "2px solid #2E9BE0" : "none" }}
                   draggable onDragStart={e => onDragStart(e, d.id)}
                   onClick={() => openDealDetail(d)}>
-                  <div style={{ fontWeight: 600, color: "#fff", fontSize: 13, marginBottom: 3 }}>{d.name}</div>
+                  <div style={{ fontWeight: 600, color: "#1A1A1A", fontSize: 13, marginBottom: 3 }}>{d.name}</div>
                   {cust && <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3 }}>{cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}</div>}
                   {d.is_repeat && <div style={{ fontSize: 10, color: "#0d9488", fontWeight: 700, marginBottom: 3 }}>🔁 Další zakázka</div>}
                   {isConverted && <div style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, marginBottom: 3 }}>✅ Zakázka založena</div>}
@@ -2664,7 +2664,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
           <div onClick={e => e.stopPropagation()} style={{ ...S.card, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#2E9BE0"), width: 560, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 16 }}>{selectedDeal.name}</div>
+                <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 16 }}>{selectedDeal.name}</div>
                 {cust && (
                   <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>
                     {cust.customer_type === "Firma" ? "🏢" : "👤"} {cust.name}{cust.phone ? " · " + cust.phone : ""}
@@ -2708,7 +2708,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
             {detailTab === "stav" && (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
-                  <div><div style={{ fontSize: 11, color: "#64748b" }}>Hodnota</div><div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{selectedDeal.value ? fmtKc(selectedDeal.value) : "—"}</div></div>
+                  <div><div style={{ fontSize: 11, color: "#64748b" }}>Hodnota</div><div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 15 }}>{selectedDeal.value ? fmtKc(selectedDeal.value) : "—"}</div></div>
                   <div><div style={{ fontSize: 11, color: "#64748b" }}>Vede případ</div><div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: 13 }}>{selectedDeal.assigned_to || "—"}</div></div>
                   <div><div style={{ fontSize: 11, color: "#64748b" }}>Fáze</div><span style={S.tag(STAGE_COLORS[selectedDeal.stage])}>{selectedDeal.stage}</span></div>
                 </div>
@@ -2973,7 +2973,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
             const last = msgs[0];
             return (
               <div key={deal.id} style={{ ...S.card, cursor: "pointer" }} onClick={() => { setThreadDeal(deal); setNewMsg(""); }}>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 13, marginBottom: 4 }}>💼 {deal.name}</div>
+                <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 13, marginBottom: 4 }}>💼 {deal.name}</div>
                 <div style={{ fontSize: 11, color: "#2E9BE0", marginBottom: 4 }}>{msgs.length} zpráv</div>
                 <div style={{ fontSize: 12, color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{last.user_name}: {last.message}</div>
                 <div style={{ fontSize: 10, color: "#475569", marginTop: 4 }}>{new Date(last.created_at).toLocaleString("cs")}</div>
@@ -2987,7 +2987,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
         <div>
           <button onClick={() => setThreadDeal(null)} style={{ ...S.btn("#334155"), padding: "6px 14px", marginBottom: 14 }}>← Zpět</button>
           <div style={S.card}>
-            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14 }}>💼 {threadDeal.name}</div>
+            <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14 }}>💼 {threadDeal.name}</div>
             <div style={{ maxHeight: 380, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
               {dealMsgs.filter(m => m.deal_id === threadDeal.id).slice().reverse().map(m => (
                 <div key={m.id} style={{ background: "#0E3B5E", borderRadius: 10, padding: "9px 13px" }}>
@@ -3014,7 +3014,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
             const last = msgs[0];
             return (
               <div key={contract.id} style={{ ...S.card, cursor: "pointer" }} onClick={() => { setThreadContract(contract); setNewMsg(""); }}>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 13, marginBottom: 4 }}>🔧 {contract.name}</div>
+                <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 13, marginBottom: 4 }}>🔧 {contract.name}</div>
                 <div style={{ fontSize: 11, color: "#34d399", marginBottom: 4 }}>{msgs.length} zpráv</div>
                 <div style={{ fontSize: 12, color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{last.user_name}: {last.message}</div>
                 <div style={{ fontSize: 10, color: "#475569", marginTop: 4 }}>{new Date(last.created_at).toLocaleString("cs")}</div>
@@ -3028,7 +3028,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
         <div>
           <button onClick={() => setThreadContract(null)} style={{ ...S.btn("#334155"), padding: "6px 14px", marginBottom: 14 }}>← Zpět</button>
           <div style={S.card}>
-            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14 }}>🔧 {threadContract.name}</div>
+            <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14 }}>🔧 {threadContract.name}</div>
             <div style={{ maxHeight: 380, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
               {contractMsgs.filter(m => m.contract_id === threadContract.id).slice().reverse().map(m => (
                 <div key={m.id} style={{ background: "#0E3B5E", borderRadius: 10, padding: "9px 13px" }}>
@@ -3059,7 +3059,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
                   <div style={{ width: 9, height: 9, borderRadius: "50%", background: dotColor, marginTop: 4, flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
-                      <span style={{ fontWeight: 600, color: "#fff", fontSize: 13 }}>{cust?.name || "—"}</span>
+                      <span style={{ fontWeight: 600, color: "#1A1A1A", fontSize: 13 }}>{cust?.name || "—"}</span>
                       <span style={S.tag(dotColor)}>{m.label}{m.author ? " · " + m.author : ""}</span>
                       <span style={{ color: "#475569", fontSize: 11, marginLeft: "auto" }}>{m.kind === "log" ? fmtDateCz(m.date) : new Date(m.date).toLocaleString("cs")}</span>
                     </div>
@@ -3083,7 +3083,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
                 <div style={S.commDot(c.type)} />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
-                    <span style={{ fontWeight: 600, color: "#fff", fontSize: 13 }}>{cust?.name || "—"}</span>
+                    <span style={{ fontWeight: 600, color: "#1A1A1A", fontSize: 13 }}>{cust?.name || "—"}</span>
                     <span style={S.tag(c.type === "Email" ? "#2E9BE0" : c.type === "Hovor" ? "#34d399" : "#f59e0b")}>{c.type}</span>
                     <span style={{ color: "#475569", fontSize: 11, marginLeft: "auto" }}>{fmtDateCz(c.date)}</span>
                   </div>
@@ -3295,7 +3295,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               return (
                 <tr key={t.id} style={{ opacity: t.done ? 0.4 : 1, cursor: "pointer" }} onClick={() => setDetailTask(t)}>
                   <td style={S.td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} style={{ accentColor: "#2E9BE0" }} /></td>
-                  <td style={{ ...S.td, textDecoration: t.done ? "line-through" : "none", color: "#fff", fontWeight: 500 }}>
+                  <td style={{ ...S.td, textDecoration: t.done ? "line-through" : "none", color: "#1A1A1A", fontWeight: 500 }}>
                     {t.title}
                     {t.recurrence && <span title={`Opakuje se: ${RECURRENCE_LABELS[t.recurrence] || t.recurrence}`} style={{ fontSize: 10, color: "#f59e0b", marginLeft: 6 }}>🔁 {RECURRENCE_LABELS[t.recurrence] || t.recurrence}</span>}
                     {t.visible_to?.length > 0 && <span style={{ fontSize: 10, color: "#2E9BE0", marginLeft: 6 }}>👁 {t.visible_to.join(", ")}</span>}
@@ -3333,7 +3333,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
           <div style={{ ...S.modalBox, width: 560 }}>
             <ModalHeader title={detailTask.title} onClose={() => setDetailTask(null)} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-              <div><div style={S.statLabel}>Termín</div><div style={{ color: "#fff", fontWeight: 600 }}>{fmtDateCz(detailTask.due) || "—"}</div></div>
+              <div><div style={S.statLabel}>Termín</div><div style={{ color: "#1A1A1A", fontWeight: 600 }}>{fmtDateCz(detailTask.due) || "—"}</div></div>
               <div><div style={S.statLabel}>Priorita</div><span style={S.tag(PRIO_COLORS[detailTask.priority] || "#64748b")}>{detailTask.priority}</span></div>
               <div><div style={S.statLabel}>Zadal</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.created_by || "—"}</div></div>
               <div><div style={S.statLabel}>Přiřazeno</div><div style={{ color: "#94a3b8", fontSize: 13 }}>{detailTask.assigned_to || "—"}</div></div>
@@ -3342,7 +3342,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               )}
             </div>
             {detailTask.description && (
-              <div style={{ background: "#0E3B5E", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#cbd5e1", fontSize: 14, lineHeight: 1.6 }}>
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#1A1A1A", fontSize: 14, lineHeight: 1.6 }}>
                 {detailTask.description}
               </div>
             )}
@@ -4176,7 +4176,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                     <tr key={m.id}>
                       <td style={{ ...S.td, fontSize: 11, color: "#64748b" }}>{new Date(m.created_at).toLocaleString("cs", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
                       <td style={S.td}><span style={S.tag(MOV_COLORS[m.movement_type] || "#64748b")}>{MOV_LABELS[m.movement_type] || m.movement_type}</span></td>
-                      <td style={{ ...S.td, color: "#fff", fontWeight: 600 }}>{m.product_name}</td>
+                      <td style={{ ...S.td, color: "#1A1A1A", fontWeight: 600 }}>{m.product_name}</td>
                       <td style={{ ...S.td, fontWeight: 700, color: m.movement_type === "in" ? "#34d399" : "#f87171" }}>{m.movement_type === "in" ? "+" : "−"}{m.quantity} {m.unit}</td>
                       <td style={{ ...S.td, fontSize: 11 }}>{m.from_location} → {m.to_location}</td>
                       <td style={S.td}>{contr ? <span style={S.tag("#34d399")}>🔧 {contr.name}</span> : m.vehicle ? <span style={S.tag("#f59e0b")}>🚗 {m.vehicle}</span> : m.note || "—"}</td>
@@ -4480,7 +4480,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                   <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => uploadPhoto(e.target.files[0])} />
                 </label>
               </div>
-              <div style={{ marginTop: 12, fontSize: 18, fontWeight: 700, color: "#fff" }}>{emp.name}</div>
+              <div style={{ marginTop: 12, fontSize: 18, fontWeight: 700, color: "#1A1A1A" }}>{emp.name}</div>
               <div style={{ fontSize: 13, color: "#475569", marginTop: 2 }}>{emp.position}</div>
               <div style={{ marginTop: 8 }}>
                 <span style={S.tag(emp.status === "Aktivní" ? "#34d399" : "#f59e0b")}>{emp.status}</span>
@@ -4663,7 +4663,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                   : <div style={{ ...S.avatar(avatarColors[i % 6]), width: 52, height: 52, fontSize: 22, flexShrink: 0 }}>{getInitial(e.name)}</div>
                 }
                 <div style={{ flex: 1 }}>
-                  <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{e.name}</div>
+                  <div style={{ color: "#1A1A1A", fontWeight: 700, fontSize: 15 }}>{e.name}</div>
                   <div style={{ color: "#475569", fontSize: 12, marginTop: 2 }}>{e.position}</div>
                   <div style={{ marginTop: 5 }}>
                     <span style={S.tag(e.status === "Aktivní" ? "#34d399" : "#f59e0b")}>{e.status}</span>
@@ -4918,14 +4918,14 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
       {showTemplates && (
         <div style={{ ...S.card, marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>📋 Šablony projektů</div>
+            <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 14 }}>📋 Šablony projektů</div>
             <button style={{ ...S.btn("#34d399"), padding: "6px 14px", fontSize: 12 }} onClick={() => setModal({ type: "addTemplate" })}>+ Nová šablona</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 12 }}>
             {templates.map(t => (
               <div key={t.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}>
                 <div style={{ fontSize: 22, marginBottom: 6 }}>{t.icon}</div>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 13, marginBottom: 8 }}>{t.name}</div>
+                <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 13, marginBottom: 8 }}>{t.name}</div>
                 <div style={{ marginBottom: 10 }}>
                   {t.steps.map((s, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0", borderBottom: "1px solid #e2e8f0" }}>
@@ -4968,7 +4968,7 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
               {/* Hlavička projektu */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{p.name}</div>
+                  <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 15 }}>{p.name}</div>
                   <div style={{ color: "#475569", fontSize: 12, marginTop: 2 }}>{cust?.name || "—"} · Deadline: {fmtDateCz(p.deadline)}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -5047,7 +5047,7 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
                   {(projectTab[p.id] || "kroky") === "kroky" && (
                     <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>Kroky projektu</div>
+                    <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 13 }}>Kroky projektu</div>
                     {/* Přiřadit šablonu */}
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       {selectedTemplate?.forProject === p.id ? (
@@ -5459,7 +5459,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
 
       {/* Bar chart */}
       <div style={{ ...S.card, marginBottom: 22 }}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 18, fontSize: 14 }}>Měsíční přehled nákladů {selectedYear}</div>
+        <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 18, fontSize: 14 }}>Měsíční přehled nákladů {selectedYear}</div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 180 }}>
           {monthlyData.map((m, i) => {
             const barH = maxMonthly > 0 ? Math.round((m.total / maxMonthly) * 150) : 0;
@@ -5495,7 +5495,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
       <div style={S.grid2}>
         {/* Category breakdown */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>Rozložení dle kategorie</div>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 16, fontSize: 14 }}>Rozložení dle kategorie</div>
           {catTotals.map(c => (
             <div key={c.cat} style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -5504,7 +5504,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
                   <span style={{ fontSize: 13, color: "#1A1A1A" }}>{c.cat}</span>
                   <span style={{ fontSize: 11, color: "#334155" }}>({c.count}×)</span>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{fmtKc(c.total)}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>{fmtKc(c.total)}</span>
               </div>
               <div style={{ height: 5, borderRadius: 3, background: "#e2e8f0", overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${(c.total / totalForPct) * 100}%`, background: CAT_COLORS[c.cat], borderRadius: 3 }} />
@@ -5516,7 +5516,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
 
         {/* Recurring vs jednorázové */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>Pravidelné vs. jednorázové</div>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 16, fontSize: 14 }}>Pravidelné vs. jednorázové</div>
           {[
             { label: "Pravidelné náklady", items: costs.filter(c => c.recurring), color: "#2E9BE0" },
             { label: "Jednorázové náklady", items: costs.filter(c => !c.recurring), color: "#f59e0b" },
@@ -5544,7 +5544,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
       {/* Table */}
       <div style={{ ...S.card, marginTop: 22 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>Všechny náklady</div>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 14 }}>Všechny náklady</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {["Vše", ...COST_CATEGORIES].map(cat => (
               <button key={cat} onClick={() => setFilterCat(cat)}
@@ -5565,7 +5565,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
                   <td style={S.td}><span style={S.tag(CAT_COLORS[c.category] || "#2E9BE0")}>{c.category}</span></td>
                   <td style={{ ...S.td, color: "#1A1A1A" }}>{c.description}</td>
                   <td style={S.td}>{contr ? <span style={S.tag("#34d399")}>🔧 {contr.name}</span> : "—"}</td>
-                  <td style={{ ...S.td, color: "#fff", fontWeight: 700 }}>{fmtKc(c.amount)}</td>
+                  <td style={{ ...S.td, color: "#1A1A1A", fontWeight: 700 }}>{fmtKc(c.amount)}</td>
                   <td style={S.td}><span style={S.tag(c.recurring ? "#2E9BE0" : "#f59e0b")}>{c.recurring ? "Pravidelný" : "Jednorázový"}</span></td>
                   <td style={S.td}>
                     <button onClick={() => deleteCost(c.id)}
@@ -5701,7 +5701,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
 
       {/* Graf příjmy vs náklady */}
       <div style={{ ...S.card, marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4, fontSize: 14 }}>Příjmy vs. Náklady — měsíčně</div>
+        <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4, fontSize: 14 }}>Příjmy vs. Náklady — měsíčně</div>
         <div style={{ fontSize: 11, color: "#475569", marginBottom: 16 }}>Zelená = příjmy · Červená = náklady · Tečky = zisk/ztráta</div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 200 }}>
           {monthlyChart.map((m, i) => {
@@ -5735,13 +5735,13 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
       <div style={S.grid2}>
         {/* Top zákazníci */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>🏆 Top zákazníci dle příjmů</div>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 16, fontSize: 14 }}>🏆 Top zákazníci dle příjmů</div>
           {topCustomers.map((c, i) => (
             <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
               <div style={{ width: 22, height: 22, borderRadius: "50%", background: i === 0 ? "#f59e0b" : i === 1 ? "#94a3b8" : "#cd7c2f", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#f8fafc", flexShrink: 0 }}>{i + 1}</div>
               <div style={S.avatar(avatarColors[i % 6])}>{getInitial(c.name)}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: "#fff", fontWeight: 600 }}>{c.name}</div>
+                <div style={{ fontSize: 13, color: "#1A1A1A", fontWeight: 600 }}>{c.name}</div>
                 <div style={{ fontSize: 11, color: "#475569" }}>{c.company} · {c.invoiceCount} faktur</div>
               </div>
               <div style={{ textAlign: "right" }}>
@@ -5753,7 +5753,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
 
         {/* Pipeline dle fáze */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>💼 Pipeline hodnota dle fáze</div>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 16, fontSize: 14 }}>💼 Pipeline hodnota dle fáze</div>
           {pipelineByStage.map(p => (
             <div key={p.stage} style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -5761,7 +5761,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
                   <span style={S.tag(STAGE_COLORS[p.stage])}>{p.stage}</span>
                   <span style={{ fontSize: 11, color: "#334155" }}>{p.count} deal{p.count > 1 ? "y" : ""}</span>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{fmtKc(p.value)}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>{fmtKc(p.value)}</span>
               </div>
               <div style={{ height: 5, borderRadius: 3, background: "#e2e8f0", overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${(p.value / totalPipeline) * 100}%`, background: STAGE_COLORS[p.stage], borderRadius: 3 }} />
@@ -5777,7 +5777,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
 
         {/* Projekty – rozpočty */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>🏗️ Projekty — rozpočet vs. čerpání</div>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 16, fontSize: 14 }}>🏗️ Projekty — rozpočet vs. čerpání</div>
           {projects.map(p => {
             const pct = p.budget > 0 ? Math.round((p.spent / p.budget) * 100) : 0;
             const over = pct > 100;
@@ -5797,20 +5797,20 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
           <div style={{ ...S.divider, margin: "12px 0" }} />
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontSize: 12, color: "#475569" }}>Celkem utraceno / rozpočet</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{fmtKc(projectSpent)} / {fmtKc(projectBudget)}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>{fmtKc(projectSpent)} / {fmtKc(projectBudget)}</span>
           </div>
         </div>
 
         {/* Náklady podle zakázky — napříč Náklady / náklady zakázky / Finanční tok */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4, fontSize: 14 }}>🔧 Náklady podle zakázky (napříč evidencemi)</div>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4, fontSize: 14 }}>🔧 Náklady podle zakázky (napříč evidencemi)</div>
           <div style={{ fontSize: 11, color: "#475569", marginBottom: 16 }}>Součet z modulu Náklady, nákladů zakázky a Finančního toku — jen zakázky, kde je alespoň jedna položka přiřazená.</div>
           {contractsWithCosts.length === 0 && <div style={{ fontSize: 12, color: "#334155" }}>Zatím žádné náklady přiřazené k zakázce. Přiřaď zakázku při zápisu v Nákladech nebo Finančním toku.</div>}
           {contractsWithCosts.map(r => (
             <div key={r.contract.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #e2e8f0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                 <span style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 600 }}>{r.contract.name}</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{fmtKc(r.total)}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: "#1A1A1A" }}>{fmtKc(r.total)}</span>
               </div>
               <div style={{ display: "flex", gap: 10, fontSize: 11, color: "#475569" }}>
                 {r.gen > 0 && <span>Náklady: {fmtKc(r.gen)}</span>}
@@ -5823,7 +5823,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
 
         {/* HR přehled */}
         <div style={S.card}>
-          <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>👤 HR — mzdové náklady dle oddělení</div>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 16, fontSize: 14 }}>👤 HR — mzdové náklady dle oddělení</div>
           {(() => {
             const depts = [...new Set(employees.map(e => e.department))];
             const deptData = depts.map(d => ({
@@ -5840,7 +5840,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
                     <span style={{ fontSize: 13, color: "#1A1A1A" }}>{d.dept}</span>
                     <span style={{ fontSize: 11, color: "#334155" }}>{d.count} os.</span>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{fmtKc(d.salary)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>{fmtKc(d.salary)}</span>
                 </div>
                 <div style={{ height: 5, borderRadius: 3, background: "#e2e8f0", overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${(d.salary / maxSalary) * 100}%`, background: avatarColors[i % 6], borderRadius: 3 }} />
@@ -7250,7 +7250,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             <div style={{ ...S.card, margin: "16px 0", display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{ ...S.avatar("#2E9BE0"), width: 48, height: 48, fontSize: 18 }}>{getInitial(viewEmp.name)}</div>
               <div>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>{viewEmp.name}</div>
+                <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 15 }}>{viewEmp.name}</div>
                 <div style={{ color: "#475569", fontSize: 12 }}>{viewEmp.position} · {viewEmp.department}</div>
               </div>
               {vacDays > 0 && (
@@ -7265,7 +7265,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
           {/* Dnešní záznam */}
           <div style={{ ...S.card, marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 16, fontSize: 14 }}>📅 Dnešní záznam — {todayStr}</div>
+            <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 16, fontSize: 14 }}>📅 Dnešní záznam — {todayStr}</div>
             <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
               <div>
                 <div style={S.statLabel}>Příchod</div>
@@ -7421,7 +7421,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
           <div>
             {/* Hlavička — výběr dne + zaměstnance (HR) */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>🗓 Harmonogram dne</div>
+              <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 15 }}>🗓 Harmonogram dne</div>
               <input type="date" style={{ ...S.input, marginBottom: 0, width: 160 }} value={timelineDate} onChange={e => setTimelineDate(e.target.value)} />
               {isHR && (
                 <select style={{ ...S.select, marginBottom: 0, width: 180 }} value={viewEmpId} onChange={e => setViewEmpId(Number(e.target.value))}>
@@ -7433,7 +7433,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             {/* Přidat blok */}
             {(
               <div style={{ ...S.card, marginBottom: 20 }}>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 13, marginBottom: 12 }}>➕ Přidat blok</div>
+                <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 13, marginBottom: 12 }}>➕ Přidat blok</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr 2fr auto", gap: 8, alignItems: "end" }}>
                   <div><label style={{ ...S.label, fontSize: 11 }}>Od</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlIn} onChange={e => setTlIn(e.target.value)} /></div>
                   <div><label style={{ ...S.label, fontSize: 11 }}>Do</label><input type="time" style={{ ...S.input, marginBottom: 0, fontSize: 12 }} value={tlOut} onChange={e => setTlOut(e.target.value)} /></div>
@@ -7528,7 +7528,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                 <div style={{ fontSize: 12, color: col, fontWeight: 700 }}>
                                   {rec.checkin.slice(0,5)} – {rec.checkout ? rec.checkout.slice(0,5) : "—"} {h > 0 ? "(" + fmtHours(h) + ")" : ""}
                                 </div>
-                                <div style={{ fontSize: 13, color: "#fff", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                <div style={{ fontSize: 13, color: "#1A1A1A", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                   {rec.activity || "— bez popisu —"}
                                 </div>
                                 {contract && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>📋 {contract.name}</div>}
@@ -7537,10 +7537,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                 <div style={{ ...S.card, marginTop: 6, borderLeft: "3px solid " + col, padding: "12px 16px" }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                                     <div>
-                                      <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>Detail bloku</div>
+                                      <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 6 }}>Detail bloku</div>
                                       <div style={{ fontSize: 13, color: "#475569" }}>🕐 {rec.checkin.slice(0,5)} – {rec.checkout ? rec.checkout.slice(0,5) : "—"} {h > 0 ? " · " + fmtHours(h) : ""}</div>
                                       {contract && <div style={{ fontSize: 13, color: "#2E9BE0", marginTop: 4 }}>📋 Zakázka: {contract.name}</div>}
-                                      <div style={{ marginTop: 8, fontSize: 13, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>{rec.activity || "Žádný popis"}</div>
+                                      <div style={{ marginTop: 8, fontSize: 13, color: "#475569", whiteSpace: "pre-wrap" }}>{rec.activity || "Žádný popis"}</div>
                                     </div>
                                     {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
                                       <button style={{ ...S.btn("#ef4444"), padding: "4px 10px", fontSize: 12 }} onClick={async () => {
@@ -7607,7 +7607,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                         <td style={S.td}>{fmtDateCz(rec.date)}</td>
                         <td style={{ ...S.td, color: "#34d399" }}>{rec.checkin || "—"}</td>
                         <td style={{ ...S.td, color: "#f59e0b" }}>{rec.checkout || <span style={{ color: "#334155" }}>probíhá</span>}</td>
-                        <td style={{ ...S.td, fontWeight: 700, color: "#fff" }}>{h > 0 ? fmtHours(h) : "—"}</td>
+                        <td style={{ ...S.td, fontWeight: 700, color: "#1A1A1A" }}>{h > 0 ? fmtHours(h) : "—"}</td>
                         <td style={S.td}>
                           <SearchSelect
                             style={{ marginBottom: 0, minWidth: 160 }}
@@ -7711,7 +7711,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         <div style={{ marginTop: 16 }}>
           {/* Přidat šablonu */}
           <div style={{ ...S.card, marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, fontSize: 14 }}>➕ Nová šablona bloku</div>
+            <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, fontSize: 14 }}>➕ Nová šablona bloku</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 10, alignItems: "end" }}>
               <div>
                 <label style={S.label}>Název bloku</label>
@@ -7734,7 +7734,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
           {/* Seznam šablon */}
           <div style={S.card}>
-            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 14, fontSize: 14 }}>📋 Předdefinované bloky ({blockTemplates.length})</div>
+            <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, fontSize: 14 }}>📋 Předdefinované bloky ({blockTemplates.length})</div>
             {blockTemplates.length === 0 ? (
               <div style={{ color: "#334155", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Žádné šablony — přidejte první výše</div>
             ) : (
@@ -7743,7 +7743,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 <tbody>
                   {blockTemplates.map(b => (
                     <tr key={b.id}>
-                      <td style={{ ...S.td, fontWeight: 700, color: "#fff" }}>{b.name}</td>
+                      <td style={{ ...S.td, fontWeight: 700, color: "#1A1A1A" }}>{b.name}</td>
                       <td style={{ ...S.td, color: "#94a3b8", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.description || "—"}</td>
                       <td style={{ ...S.td, color: "#475569", fontSize: 12 }}>{b.created_by || "—"}</td>
                       <td style={S.td}>
@@ -7781,7 +7781,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         const dayLabel = new Date(calYear, calMonthNum - 1, 1).toLocaleString("cs-CZ", { month: "long", year: "numeric" });
         return (
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#1A1A1A", marginBottom: 16 }}>
               📆 {dayLabel.charAt(0).toUpperCase() + dayLabel.slice(1)}
             </div>
             {/* Legend */}
@@ -7865,13 +7865,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                           const contract = contractOpts.find(c => c.id === r.contract_id);
                           return (
                             <tr key={r.id}>
-                              <td style={{ padding: "6px 10px", fontSize: 13, color: "#fff", fontWeight: 600 }}>
+                              <td style={{ padding: "6px 10px", fontSize: 13, color: "#1A1A1A", fontWeight: 600 }}>
                                 <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: empColorMap[emp?.id] || "#475569", marginRight: 6 }} />
                                 {emp?.name || "—"}
                               </td>
                               <td style={{ padding: "6px 10px", fontSize: 13, color: "#34d399" }}>{r.checkin || "—"}</td>
                               <td style={{ padding: "6px 10px", fontSize: 13, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#475569" }}>probíhá</span>}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 13, color: "#fff", fontWeight: 700 }}>{h > 0 ? fmtHours(h) : "—"}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 13, color: "#1A1A1A", fontWeight: 700 }}>{h > 0 ? fmtHours(h) : "—"}</td>
                               <td style={{ padding: "6px 10px", fontSize: 12, color: "#94a3b8" }}>{contract?.name || "—"}</td>
                               <td style={{ padding: "6px 10px", fontSize: 12, color: "#94a3b8", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
                             </tr>
@@ -7926,7 +7926,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               )}
               <div style={{ flex: 1 }} />
               <div style={{ fontSize: 13, color: "#475569" }}>
-                Celkem: <strong style={{ color: "#fff" }}>{fmtHours(totalH)}</strong> · {filtered.length} záznamů
+                Celkem: <strong style={{ color: "#1A1A1A" }}>{fmtHours(totalH)}</strong> · {filtered.length} záznamů
               </div>
               <button style={{ ...S.btn("#6366f1"), padding: "8px 18px", fontWeight: 700 }} onClick={generateSoupisPDF}>
                 📄 Generovat PDF
@@ -7950,10 +7950,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                       return (
                         <tr key={r.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#94a3b8", whiteSpace: "nowrap" }}>{fmtDateCz(r.date)}</td>
-                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#fff", fontWeight: 600 }}>{emp?.name || "—"}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#1A1A1A", fontWeight: 600 }}>{emp?.name || "—"}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#34d399" }}>{r.checkin || "—"}</td>
                           <td style={{ padding: "6px 12px", fontSize: 13, color: "#f59e0b" }}>{r.checkout || <span style={{ color: "#475569" }}>probíhá</span>}</td>
-                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#fff", fontWeight: 700 }}>{h > 0 ? fmtHours(h) : "—"}</td>
+                          <td style={{ padding: "6px 12px", fontSize: 13, color: "#1A1A1A", fontWeight: 700 }}>{h > 0 ? fmtHours(h) : "—"}</td>
                           <td style={{ padding: "6px 12px", fontSize: 12, color: "#94a3b8" }}>{contract?.name || "—"}</td>
                           <td style={{ padding: "6px 12px", fontSize: 12, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.activity || "—"}</td>
                         </tr>
