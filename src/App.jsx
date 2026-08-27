@@ -1033,6 +1033,13 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           /* Inputs full width on mobile */
           .mobile-full { width: 100% !important; box-sizing: border-box; }
 
+          /* Formulářová pole pod 16px vyvolávají na iOS Safari/WKWebView
+             automatické přiblížení stránky při kliknutí do pole — appka pak
+             "poskočí" a je potřeba ručně oddálit. Na mobilu proto vynutíme
+             alespoň 16px bez ohledu na to, jaké fontSize má dané pole na
+             desktopu (kde menší písmo naopak vejde víc dat do tabulek). */
+          input, select, textarea { font-size: 16px !important; }
+
           /* Obecná záchranná síť pro celou appku — spousta míst (Zakázky,
              Finanční tok, Nacenění, Podpisy...) používá vlastní vícesloupcové
              mřížky přes inline styl bez zvláštní třídy. Místo ručního
@@ -1387,6 +1394,18 @@ function RadialMenu({ currentUser, tab, setTab }) {
   const [hoverId, setHoverId] = useState(null); // najetá/přidržená položka — myší nebo prstem
   const dragging = useRef(false);
 
+  // Kolo je navržené na 480×480px — na mobilu (a i menších tabletech na
+  // šířku) by se bez zmenšení řezalo o okraje obrazovky a krajní položky by
+  // nešly vůbec zmáčknout. Přepočítáme proto poloměry/velikosti podle
+  // aktuální šířky okna, ať se celé kolo vždy vejde s rozumnou rezervou.
+  const [vw, setVw] = useState(typeof window !== "undefined" ? window.innerWidth : 480);
+  useEffect(() => {
+    const onResize = () => setVw(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const wheelScale = Math.min(1, Math.max(0.55, (vw - 32) / 480));
+
   const roleNav = ROLES[currentUser?.role]?.nav || [];
   const outerIds = (RADIAL_OUTER[currentUser?.role] || RADIAL_OUTER.employee).filter((id) => roleNav.includes(id));
   const previewTab = step === "outer" ? (hoverId && outerIds.includes(hoverId) ? hoverId : tab) : selectedOuter;
@@ -1406,10 +1425,10 @@ function RadialMenu({ currentUser, tab, setTab }) {
     else close();
   };
 
-  const outerR = 175, innerR = 96;
+  const outerR = 175 * wheelScale, innerR = 96 * wheelScale;
   const activeIds = step === "outer" ? outerIds : innerIds;
   const activeRadius = step === "outer" ? outerR : innerR;
-  const activeSize = step === "outer" ? 56 : 48;
+  const activeSize = (step === "outer" ? 56 : 48) * wheelScale;
   const activeColors = step === "outer" ? RADIAL_COLOR_OUTER : RADIAL_COLOR_INNER;
 
   // Na dotykové obrazovce najíždíme prstem nad různé položky — sleduje se, co je
@@ -1446,7 +1465,8 @@ function RadialMenu({ currentUser, tab, setTab }) {
     const x = Math.cos(rad) * radius, y = Math.sin(rad) * radius;
     const dx = Math.cos(rad), dy = Math.sin(rad);
     const active = id === hoverId || (step === "outer" && !hoverId && id === tab);
-    const labelDist = radius + size / 2 + 26;
+    const labelMaxW = Math.round(110 * wheelScale);
+    const labelDist = radius + size / 2 + 26 * wheelScale;
     const lx = Math.cos(rad) * labelDist, ly = Math.sin(rad) * labelDist;
     return (
       <React.Fragment key={id}>
@@ -1469,8 +1489,8 @@ function RadialMenu({ currentUser, tab, setTab }) {
         </button>
         <div style={{
           position: "absolute", left: `calc(50% + ${lx}px)`, top: `calc(50% + ${ly}px)`,
-          width: "max-content", maxWidth: 110, marginLeft: dx >= 0 ? 0 : -110, marginTop: -10, textAlign: dx >= 0 ? "left" : "right",
-          fontSize: 12, fontWeight: active ? 700 : 500, color: colors.text, background: colors.bg,
+          width: "max-content", maxWidth: labelMaxW, marginLeft: dx >= 0 ? 0 : -labelMaxW, marginTop: -10, textAlign: dx >= 0 ? "left" : "right",
+          fontSize: Math.max(10, Math.round(12 * wheelScale)), fontWeight: active ? 700 : 500, color: colors.text, background: colors.bg,
           border: `1px solid ${colors.border}`, borderRadius: 6, padding: "3px 7px",
           pointerEvents: "none", lineHeight: 1.2, zIndex: 4, whiteSpace: "nowrap",
         }}>{n.label}</div>
@@ -1487,7 +1507,7 @@ function RadialMenu({ currentUser, tab, setTab }) {
         }}>
           <div onClick={(e) => e.stopPropagation()}
             onTouchStart={onWheelTouchStart} onTouchMove={onWheelTouchMove} onTouchEnd={onWheelTouchEnd} onTouchCancel={onWheelTouchEnd}
-            style={{ position: "relative", width: 480, height: 480, touchAction: "none" }}>
+            style={{ position: "relative", width: 480 * wheelScale, height: 480 * wheelScale, touchAction: "none" }}>
             <div style={{
               position: "absolute", left: "50%", top: "50%", width: activeRadius * 2, height: activeRadius * 2,
               marginLeft: -activeRadius, marginTop: -activeRadius, borderRadius: "50%", border: "1px dashed #cbd5e1",
@@ -1497,7 +1517,7 @@ function RadialMenu({ currentUser, tab, setTab }) {
             {step === "inner" && (
               <button title="Zpět na sekce" aria-label="Zpět na sekce" onClick={back}
                 style={{
-                  position: "absolute", left: "50%", top: `calc(50% - ${activeRadius + 60}px)`, marginLeft: -18, marginTop: -18,
+                  position: "absolute", left: "50%", top: `calc(50% - ${activeRadius + 60 * wheelScale}px)`, marginLeft: -18, marginTop: -18,
                   width: 36, height: 36, borderRadius: "50%", border: "1px solid #cbd5e1", background: "#fff", color: "#475569",
                   cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, zIndex: 4,
                 }}>
@@ -1505,13 +1525,13 @@ function RadialMenu({ currentUser, tab, setTab }) {
               </button>
             )}
             <div onClick={() => step === "inner" && go(selectedOuter)} style={{
-              position: "absolute", left: "50%", top: "50%", width: 104, height: 104, marginLeft: -52, marginTop: -52,
+              position: "absolute", left: "50%", top: "50%", width: 104 * wheelScale, height: 104 * wheelScale, marginLeft: -52 * wheelScale, marginTop: -52 * wheelScale,
               borderRadius: "50%", background: RADIAL_COLOR_CENTER.bg, border: `1px solid ${RADIAL_COLOR_CENTER.border}`,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, zIndex: 3,
               cursor: step === "inner" ? "pointer" : "default",
             }}>
-              <i className={`ti ${centerNav?.icon || "ti-layout-grid"}`} style={{ fontSize: 24, color: RADIAL_COLOR_CENTER.icon }} aria-hidden="true"></i>
-              <span style={{ fontSize: 11, fontWeight: 500, color: RADIAL_COLOR_CENTER.text }}>{centerNav?.label || ""}</span>
+              <i className={`ti ${centerNav?.icon || "ti-layout-grid"}`} style={{ fontSize: Math.max(16, Math.round(24 * wheelScale)), color: RADIAL_COLOR_CENTER.icon }} aria-hidden="true"></i>
+              <span style={{ fontSize: Math.max(9, Math.round(11 * wheelScale)), fontWeight: 500, color: RADIAL_COLOR_CENTER.text }}>{centerNav?.label || ""}</span>
             </div>
           </div>
         </div>
@@ -2661,7 +2681,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
         return (
           <div style={{ position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16 }}
             onClick={() => setSelectedDeal(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ ...S.card, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#0369a1"), width: 560, maxWidth: "100%", maxHeight: "88vh", overflowY: "auto" }}>
+          <div onClick={e => e.stopPropagation()} style={{ ...S.card, borderLeft: "3px solid " + (STAGE_COLORS[selectedDeal.stage] || "#0369a1"), width: 560, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "88vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 16 }}>{selectedDeal.name}</div>
@@ -6521,7 +6541,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
       {/* ADD MODAL */}
       {showAdd && (
         <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowAdd(false)}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 520, maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 520, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
             <h3 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 700 }}>Přidat událost do kalendáře</h3>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
