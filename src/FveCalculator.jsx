@@ -222,43 +222,6 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   };
 
   // Specifikace sestavy a cena pro zákazníka — žádný vnitřní rozpis nákladů,
-  // marže ani provize. Sdílené mezi tiskovým náhledem (HTML) a PDF exportem.
-  const specs = [];
-  if (vykonFve > 0) specs.push(["Výkon FVE", (Math.round(vykonFve * 10) / 10) + " kWp"]);
-  if (panel.name && cfg.panel.qty > 0) specs.push(["Fotovoltaické panely", cfg.panel.qty + " × " + panel.name]);
-  if (konstr.name && cfg.konstrukce.qty > 0) specs.push(["Konstrukce", konstr.name]);
-  if (stridac.name && cfg.stridac.qty > 0) specs.push(["Střídač", cfg.stridac.qty + " × " + stridac.name]);
-  if (cfg.zaruka) specs.push(["Záruka na střídač", "10 let"]);
-  if (baterie.name && cfg.baterie.qty > 0) specs.push(["Baterie", cfg.baterie.qty + " × " + baterie.name + " (" + (Math.round(bateriKwh * 10) / 10) + " kWh)"]);
-  if (backup.name && cfg.backup.qty > 0 && backup.name !== "Bez Back-up") specs.push(["Záložní napájení (Back-up)", backup.name]);
-  if (wallbox.name && cfg.wallbox.qty > 0) specs.push(["Wallbox / dobíjení", wallbox.name]);
-  if (bojler.name && cfg.bojler.qty > 0 && bojler.name !== "Bez bojleru") specs.push(["Ohřev vody", bojler.name]);
-  if (regulace.name && cfg.regulace.qty > 0 && regulace.name !== "Bez regulace") specs.push(["Regulace přetoků", regulace.name]);
-  (cfg.customRows || []).forEach((r) => { if (r.name && Number(r.qty) > 0) specs.push([r.name, String(r.qty) + " ks"]); });
-  specs.push(["Montáž a instalace", "v ceně"]);
-  specs.push(["Vyřízení dotace a připojení k distribuční síti", "v ceně"]);
-  specs.push(["Revize", "v ceně"]);
-  const specsHtml = specs.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
-  const offerPriceBlock =
-    "<div class='sub'>Cena s DPH: " + fmtKc(cenaDphRounded) + "</div>" +
-    (cfg.dotaceOn ? "<div class='dotace'>Odhad dotace: −" + fmtKc(dotace) + "</div>" : "") +
-    "<div class='total'>" + (cfg.dotaceOn ? "Cena po dotaci: " + fmtKc(cenaPoDotaci) : "Celková cena: " + fmtKc(cenaDphRounded)) + "</div>";
-
-  const printOffer = () => {
-    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Nabídka FVE – " + (quoteName || "") + "</title>" +
-      "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.total{font-size:20px;font-weight:bold;margin-top:18px;text-align:right}.sub{font-size:13px;text-align:right;color:#555}.dotace{font-size:14px;text-align:right;color:#15803d;margin-top:6px}@media print{body{padding:16px}}</style>" +
-      "</head><body>" +
-      "<h1>Nabídka fotovoltaické elektrárny</h1>" +
-      "<h2>" + (quoteName || "") + (customerName ? " · " + customerName : "") + " · " + new Date().toLocaleDateString("cs-CZ") + "</h2>" +
-      "<table><thead><tr><th>Specifikace sestavy</th><th></th></tr></thead><tbody>" + specsHtml + "</tbody></table>" +
-      offerPriceBlock +
-      "<p style='margin-top:24px;font-size:11px;color:#777'>Nabídka je informativní a konečná cena může být upravena po prohlídce místa realizace. Výše dotace je odhad — přesnou částku stanoví poskytovatel dotačního programu.</p>" +
-      "<script>window.onload=function(){window.print();}</script></body></html>";
-    const w = window.open("", "_blank");
-    w.document.write(html);
-    w.document.close();
-  };
-
   // Nabídka pro zákazníka jako Word dokument — přesně podle firemní šablony
   // (public/templates/nabidka_fve_sablona.docx), jen se do ní zapíšou
   // hodnoty. Formát, styl písma i rozvržení zůstávají beze změny, protože
@@ -541,7 +504,6 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
             ➡️ Použít jako cílovou cenu pro zákazníka
           </button>
         )}
-        <button style={S.btnGhost} onClick={printOffer}>🖨️ Náhled k tisku (HTML)</button>
         <button style={S.btn("#2E9BE0")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>
       </div>
       <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>Pro PDF: otevři stažený Word dokument a použij "Uložit jako → PDF" — appka umí přesně vyplnit šablonu, ale přesný převod na PDF (1:1 jako Word) neumí bez samotného Wordu/LibreOffice udělat.</div>
