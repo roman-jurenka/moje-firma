@@ -449,6 +449,8 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           onChange={(fve) => setData({ ...data, fve })}
           currentUser={currentUser}
           S={S}
+          quoteName={name}
+          customerName={customers.find((c) => c.id === Number(customerId))?.name}
           onUseAsTarget={(kc) => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: String(Math.round(kc)) } })}
         />
       )}

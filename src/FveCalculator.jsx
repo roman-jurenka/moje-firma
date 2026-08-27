@@ -86,7 +86,7 @@ function Sel({ list, value, onChange, style }) {
   );
 }
 
-export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S }) {
+export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName }) {
   const cfg = value || PRAZDNA_FVE();
   const set = (patch) => onChange({ ...cfg, ...patch });
   const setItem = (key, patch) => onChange({ ...cfg, [key]: { ...cfg[key], ...patch } });
@@ -104,6 +104,16 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     });
   };
   useEffect(loadCenik, []);
+
+  // Doplnění nové položky do ceníku (jen admin) — vloží prázdný řádek rovnou
+  // do databáze, ať se objeví ve výběrových seznamech ihned po uložení.
+  const addCenikItem = async (cat) => {
+    const maxSort = Math.max(0, ...(cenik[cat] || []).map((x) => x.sort_order || 0));
+    const { data: inserted } = await supabase.from("fve_cenik_items")
+      .insert({ category: cat, name: "Nová položka", cena: 0, sort_order: maxSort + 1 })
+      .select().single();
+    if (inserted) setCenik({ ...cenik, [cat]: [...(cenik[cat] || []), inserted] });
+  };
 
   if (!cenik) return <div style={{ ...S.card, color: "#64748b" }}>Načítám ceník…</div>;
 
@@ -179,6 +189,42 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const updateCustomRow = (id, patch) => set({ customRows: cfg.customRows.map((r) => r.id === id ? { ...r, ...patch } : r) });
   const removeCustomRow = (id) => set({ customRows: cfg.customRows.filter((r) => r.id !== id) });
 
+  // Nabídka pro zákazníka — jen specifikace sestavy a cena, žádný vnitřní
+  // rozpis nákladů, marže ani provize (stejný duch jako printQuote v Pricing.jsx).
+  const printOffer = () => {
+    const specs = [];
+    if (vykonFve > 0) specs.push(["Výkon FVE", (Math.round(vykonFve * 10) / 10) + " kWp"]);
+    if (panel.name && cfg.panel.qty > 0) specs.push(["Fotovoltaické panely", cfg.panel.qty + " × " + panel.name]);
+    if (konstr.name && cfg.konstrukce.qty > 0) specs.push(["Konstrukce", konstr.name]);
+    if (stridac.name && cfg.stridac.qty > 0) specs.push(["Střídač", cfg.stridac.qty + " × " + stridac.name]);
+    if (cfg.zaruka) specs.push(["Záruka na střídač", "10 let"]);
+    if (baterie.name && cfg.baterie.qty > 0) specs.push(["Baterie", cfg.baterie.qty + " × " + baterie.name + " (" + (Math.round(bateriKwh * 10) / 10) + " kWh)"]);
+    if (backup.name && cfg.backup.qty > 0 && backup.name !== "Bez Back-up") specs.push(["Záložní napájení (Back-up)", backup.name]);
+    if (wallbox.name && cfg.wallbox.qty > 0) specs.push(["Wallbox / dobíjení", wallbox.name]);
+    if (bojler.name && cfg.bojler.qty > 0 && bojler.name !== "Bez bojleru") specs.push(["Ohřev vody", bojler.name]);
+    if (regulace.name && cfg.regulace.qty > 0 && regulace.name !== "Bez regulace") specs.push(["Regulace přetoků", regulace.name]);
+    (cfg.customRows || []).forEach((r) => { if (r.name && Number(r.qty) > 0) specs.push([r.name, String(r.qty) + " ks"]); });
+    specs.push(["Montáž a instalace", "v ceně"]);
+    specs.push(["Vyřízení dotace a připojení k distribuční síti", "v ceně"]);
+    specs.push(["Revize", "v ceně"]);
+
+    const specsHtml = specs.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Nabídka FVE – " + (quoteName || "") + "</title>" +
+      "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.total{font-size:20px;font-weight:bold;margin-top:18px;text-align:right}.sub{font-size:13px;text-align:right;color:#555}.dotace{font-size:14px;text-align:right;color:#15803d;margin-top:6px}@media print{body{padding:16px}}</style>" +
+      "</head><body>" +
+      "<h1>Nabídka fotovoltaické elektrárny</h1>" +
+      "<h2>" + (quoteName || "") + (customerName ? " · " + customerName : "") + " · " + new Date().toLocaleDateString("cs-CZ") + "</h2>" +
+      "<table><thead><tr><th>Specifikace sestavy</th><th></th></tr></thead><tbody>" + specsHtml + "</tbody></table>" +
+      "<div class='sub'>Cena s DPH: " + fmtKc(cenaDphRounded) + "</div>" +
+      (cfg.dotaceOn ? "<div class='dotace'>Odhad dotace: −" + fmtKc(dotace) + "</div>" : "") +
+      "<div class='total'>" + (cfg.dotaceOn ? "Cena po dotaci: " + fmtKc(cenaPoDotaci) : "Celková cena: " + fmtKc(cenaDphRounded)) + "</div>" +
+      "<p style='margin-top:24px;font-size:11px;color:#777'>Nabídka je informativní a konečná cena může být upravena po prohlídce místa realizace. Výše dotace je odhad — přesnou částku stanoví poskytovatel dotačního programu.</p>" +
+      "<script>window.onload=function(){window.print();}</script></body></html>";
+    const w = window.open("", "_blank");
+    w.document.write(html);
+    w.document.close();
+  };
+
   const selStyle = { ...S.select, marginBottom: 0 };
   const qtyStyle = { ...S.input, marginBottom: 0, width: 70 };
 
@@ -221,6 +267,9 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
                   ))}
                 </tbody>
               </table>
+              {isAdmin && (
+                <button style={{ ...S.btnGhost, marginTop: 6, padding: "4px 10px", fontSize: 11 }} onClick={() => addCenikItem(cat)}>+ Přidat položku</button>
+              )}
             </details>
           ))}
           {isAdmin && (
@@ -356,11 +405,14 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         <div style={{ background: "#0a0d14", border: "1px solid #252d45", borderRadius: 10, padding: 10 }}><div style={S.label}>Výkon / Baterie</div><div style={{ fontSize: 14, fontWeight: 700 }}>{Math.round(vykonFve * 10) / 10} kWp / {Math.round(bateriKwh * 10) / 10} kWh</div></div>
       </div>
 
-      {onUseAsTarget && (
-        <button style={S.btn("#F5C518")} onClick={() => onUseAsTarget(cfg.dotaceOn ? cenaPoDotaci : cenaDphRounded)}>
-          ➡️ Použít jako cílovou cenu pro zákazníka
-        </button>
-      )}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {onUseAsTarget && (
+          <button style={S.btn("#F5C518")} onClick={() => onUseAsTarget(cfg.dotaceOn ? cenaPoDotaci : cenaDphRounded)}>
+            ➡️ Použít jako cílovou cenu pro zákazníka
+          </button>
+        )}
+        <button style={S.btnGhost} onClick={printOffer}>🖨️ Vygenerovat nabídku pro zákazníka</button>
+      </div>
     </div>
   );
 }
