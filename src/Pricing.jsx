@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
+import FveCalculator from "./FveCalculator.jsx";
 
 const S = {
   app:      { fontFamily: "'DM Sans', sans-serif", background: "#080b12", minHeight: "100vh", color: "#e2e8f0", padding: "20px 28px" },
@@ -38,6 +39,7 @@ const PRAZDNA_NABIDKA = () => ({
   },
   denniPlan: [],     // [{id, datum, pocetLidi, poznamka}] — rozvrh po dnech, přenese se do projektu/zakázky
   notes: "",
+  fve: null,         // konfigurace FVE kalkulačky (jen u typu FVE) — viz FveCalculator.jsx
 });
 
 // Cena řádku interního nacenění: Počet MD (dní) se píše ručně a když na tom
@@ -222,6 +224,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     interni: { ...PRAZDNA_NABIDKA().interni, ...(d?.interni || {}) },
     zakaznik: { ...PRAZDNA_NABIDKA().zakaznik, ...(d?.zakaznik || {}) },
     denniPlan: d?.denniPlan || [],
+    fve: d?.fve || null,
   });
 
   const openQuote = (q) => {
@@ -438,6 +441,17 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           </select>
         </div>
       </div>
+
+      {/* FVE KALKULAČKA — jen u typu FVE, přesně podle Excelu */}
+      {type === "FVE" && (
+        <FveCalculator
+          value={data.fve}
+          onChange={(fve) => setData({ ...data, fve })}
+          currentUser={currentUser}
+          S={S}
+          onUseAsTarget={(kc) => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: String(Math.round(kc)) } })}
+        />
+      )}
 
       {/* INTERNÍ NACENĚNÍ — po MD */}
       <div style={S.card}>
