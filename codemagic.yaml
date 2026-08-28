@@ -1,0 +1,82 @@
+# ─── Codemagic CI — sestavení ProudOS pro iOS/Android bez vlastního Macu ────
+# Apple appky jde sestavit jen na počítači s Xcode (Mac). Codemagic tohle
+# obchází — spustí sestavení na svém (cloudovém) Macu a appku rovnou nahraje
+# do TestFlight. Android build tu je jako bonus zdarma, nepotřebuje žádný
+# vývojářský účet, hodí se na .apk k přímé instalaci u zaměstnanců.
+#
+# Než tenhle soubor poprvé spustíš, je potřeba v Codemagic webu (Teams >
+# Integrations > App Store Connect) přidat Apple API klíč pod názvem
+# "codemagic_appstore_api_key" (přesný název musí sedět s "app_store_connect"
+# níž) — návod dostaneš, až budeš mít založený Apple Developer Program účet.
+
+workflows:
+  ios-testflight:
+    name: ProudOS – iOS (TestFlight)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: codemagic_appstore_api_key
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: cz.jurenkaelektro.proudos
+      vars:
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+      node: 20
+    triggering:
+      # Ruční spouštění tlačítkem v Codemagic — appka pro pár lidí ve firmě
+      # se nepotřebuje sestavovat automaticky při každém commitu, ušetří to
+      # zbytečně vyčerpané sestavovací minuty zdarma.
+      events: []
+    scripts:
+      - name: Instalace závislostí
+        script: npm ci
+      - name: Sestavení webové části appky (Vite)
+        script: npm run build
+      - name: Synchronizace s nativním iOS projektem
+        script: npx cap sync ios
+      - name: Instalace CocoaPods závislostí
+        script: |
+          cd ios/App
+          pod install
+      - name: Nastavení podepisování appky (automaticky přes App Store Connect API klíč)
+        script: xcode-project use-profiles
+      - name: Sestavení .ipa
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # Skupina interních testerů se založí přímo v App Store Connect
+        # (TestFlight > Internal Testing) — název musí sedět přesně.
+        beta_groups:
+          - "Interní testeři"
+
+  android-apk:
+    name: ProudOS – Android (APK pro interní instalaci)
+    max_build_duration: 30
+    instance_type: linux_x2
+    environment:
+      node: 20
+    triggering:
+      events: []
+    scripts:
+      - name: Instalace závislostí
+        script: npm ci
+      - name: Sestavení webové části appky (Vite)
+        script: npm run build
+      - name: Synchronizace s nativním Android projektem
+        script: npx cap sync android
+      - name: Sestavení APK (zatím bez podpisu ostrým klíčem — pro interní testování stačí)
+        script: |
+          cd android
+          ./gradlew assembleDebug
+    artifacts:
+      - android/app/build/outputs/**/*.apk

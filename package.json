@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@capacitor/core": "^8.5.0",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@supabase/supabase-js": "^2.105.1",
     "docxtemplater": "^3.69.3",
     "html2canvas": "^1.4.1",

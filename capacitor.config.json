@@ -1,5 +1,19 @@
 {
   "appId": "cz.jurenkaelektro.proudos",
   "appName": "ProudOS",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#0E3B5E",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP"
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#0E3B5E",
+      "overlaysWebView": false
+    }
+  }
 }

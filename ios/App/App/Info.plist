@@ -66,5 +66,12 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- Appka fotí doklady, materiál a průběh prací (Docházka, Zakázky, Sklad) přes
+	     obyčejný <input type="file" capture>, což na iOS spouští nativní kameru/galerii —
+	     bez těchto dvou popisků by iOS přístup ke kameře/fotkám potichu odmítl. -->
+	<key>NSCameraUsageDescription</key>
+	<string>ProudOS potřebuje přístup ke kameře pro fotografování dokladů, materiálu a průběhu prací na zakázkách.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ProudOS potřebuje přístup do fotogalerie pro nahrání fotek k zakázkám a dokladům.</string>
 </dict>
 </plist>
