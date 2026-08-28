@@ -200,6 +200,29 @@ const isPromiseBroken = (v) => {
   return d < today;
 };
 
+// Úkoly se dřív nikde neřadily podle termínu (hlavní seznam, dashboard
+// majitele i zaměstnance) — zobrazovaly se v náhodném pořadí vložení do DB,
+// takže nejnaléhavější úkol mohl klidně být poslední v seznamu. Tenhle
+// komparátor (nejdřív prošlé/nejbližší termíny nahoře, úkoly bez termínu až
+// na konci, hotové úkoly úplně naspod) a helper na zvýraznění "po termínu"
+// se používá na všech třech místech, ať mají stejnou logiku.
+const isTaskOverdue = (t) => {
+  if (!t || t.done || !t.due) return false;
+  const d = new Date(t.due.length === 10 ? t.due + "T00:00:00" : t.due);
+  if (isNaN(d.getTime())) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return d < today;
+};
+const sortTasksByDue = (list) => {
+  return [...(list || [])].sort((a, b) => {
+    if (!!a.done !== !!b.done) return a.done ? 1 : -1; // hotové vždy naspod
+    if (!a.due && !b.due) return 0;
+    if (!a.due) return 1;  // bez termínu až za úkoly s termínem
+    if (!b.due) return -1;
+    return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; // nejbližší/nejvíc prošlé nahoře
+  });
+};
+
 // ─── Opakující se úkoly ─────────────────────────────────────────────────────
 const RECURRENCE_LABELS = { denne: "Denně", tydne: "Týdně", mesicne: "Měsíčně" };
 function nextRecurrenceDate(dueStr, recurrence) {
@@ -1714,15 +1737,16 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
   // Poslední záznamy docházky
   const recentAtt = [...myAtt].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
 
-  // Moje úkoly
-  const myTasks = tasks.filter(t =>
+  // Moje úkoly — seřazené podle termínu (nejnaléhavější nahoře), dřív v
+  // náhodném pořadí (audit appky, bod 9).
+  const myTasks = sortTasksByDue(tasks.filter(t =>
     !t.done && (
       t.assigned_to === myName ||
       t.assignedTo === myName ||
       (t.visible_to || []).includes(myName) ||
       (t.visible_to || []).length === 0
     )
-  ).slice(0, 5);
+  )).slice(0, 5);
 
   const fmtH = (h) => `${Math.floor(h)}h ${Math.round((h % 1) * 60)}m`;
 
@@ -1808,7 +1832,11 @@ function EmployeeDashboard({ currentUser, attendance, tasks, setTasks, employees
                 <input type="checkbox" checked={false} onChange={() => toggleTask(t.id)} style={{ accentColor: "#0369a1", flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, color: "#1A1A1A" }}>{t.title}</div>
-                  {t.due && <div style={{ fontSize: 11, color: "#475569" }}>📅 {fmtDateCz(t.due)}</div>}
+                  {t.due && (
+                    <div style={{ fontSize: 11, color: isTaskOverdue(t) ? "#ef4444" : "#475569", fontWeight: isTaskOverdue(t) ? 700 : 400 }}>
+                      {isTaskOverdue(t) ? "⚠️" : "📅"} {fmtDateCz(t.due)}
+                    </div>
+                  )}
                 </div>
                 {t.priority && <span style={S.tag(PRIO_COLORS[t.priority] || "#475569")}>{t.priority}</span>}
               </div>
@@ -2218,12 +2246,14 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
             Nejbližší úkoly <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("tasks")}>Vše →</span>
           </div>
-          {tasks.filter(t => !t.done).slice(0, 4).map(t => (
+          {sortTasksByDue(tasks.filter(t => !t.done)).slice(0, 4).map(t => (
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
               <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} style={{ accentColor: "#0369a1" }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: "#1A1A1A" }}>{t.title}</div>
-                <div style={{ fontSize: 11, color: "#475569" }}>{fmtDateCz(t.due)}</div>
+                <div style={{ fontSize: 11, color: isTaskOverdue(t) ? "#ef4444" : "#475569", fontWeight: isTaskOverdue(t) ? 700 : 400 }}>
+                  {isTaskOverdue(t) ? "⚠️ " : ""}{fmtDateCz(t.due)}
+                </div>
               </div>
               <span style={S.tag(PRIO_COLORS[t.priority] || "#475569")}>{t.priority}</span>
             </div>
@@ -3392,11 +3422,14 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
     return t.visible_to.includes(myName) || t.created_by === myName;
   });
 
-  const filtered = filter === "mine"
+  const filteredUnsorted = filter === "mine"
     ? visibleTasks.filter(t => t.created_by === myName || (t.visible_to || []).includes(myName))
     : filter === "done" ? visibleTasks.filter(t => t.done)
     : filter === "open" ? visibleTasks.filter(t => !t.done)
     : visibleTasks;
+  // Řazeno podle termínu (nejnaléhavější nahoře), hotové úkoly naspod —
+  // dřív se úkoly zobrazovaly v náhodném pořadí vložení do DB (audit appky, bod 9).
+  const filtered = sortTasksByDue(filteredUnsorted);
 
   return (
     <>
@@ -3445,7 +3478,9 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                     {deal && <span style={S.tag("#f59e0b")}>💼 {deal.name}</span>}
                     {!contr && !deal && "—"}
                   </td>
-                  <td style={S.td}>{fmtDateCz(t.due)}</td>
+                  <td style={{ ...S.td, color: isTaskOverdue(t) ? "#ef4444" : "#1A1A1A", fontWeight: isTaskOverdue(t) ? 700 : 400 }}>
+                    {isTaskOverdue(t) ? "⚠️ " : ""}{fmtDateCz(t.due)}
+                  </td>
                   <td style={{ ...S.td, color: "#0369a1", fontSize: 11 }}>{t.created_by || "—"}</td>
                   <td style={S.td}><span style={S.tag(PRIO_COLORS[t.priority] || "#475569")}>{t.priority}</span></td>
                 </tr>
