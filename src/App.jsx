@@ -702,6 +702,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [contracts, setContracts] = useState([]);
   const [contractInitialDeal, setContractInitialDeal] = useState(null);
   const [costEntries, setCostEntries] = useState([]);
+  const [deliveryNotes, setDeliveryNotes] = useState([]); // dodací listy (materiál s vlastní marží) — pro KPI zisku
+  const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [templates, setTemplates] = useState(initialTemplates);
@@ -757,7 +759,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
     const load = async () => {
       setLoading(true);
-      const [c, d, cm, t, inv, p, e, pr, co, att, ct, ce, notif, cal, dm, cmsg] = await Promise.all([
+      const [c, d, cm, t, inv, p, e, pr, co, att, ct, ce, notif, cal, dm, cmsg, dn, dni] = await Promise.all([
         supabase.from("customers").select("*").order("id"),
         supabase.from("deals").select("*").order("id"),
         supabase.from("communication").select("*").order("id"),
@@ -774,6 +776,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         supabase.from("calendar_events").select("*").order("date"),
         supabase.from("deal_messages").select("*").order("created_at", { ascending: false }),
         supabase.from("contract_messages").select("*").order("created_at", { ascending: false }),
+        supabase.from("delivery_notes").select("id, contract_id, margin").order("id"),
+        supabase.from("delivery_note_items").select("delivery_note_id, quantity, unit_price").order("id"),
       ]);
       setCustomers((c.data || []).map(x => ({ ...x, customerId: x.customer_id })));
       setDeals((d.data || []).map(x => ({ ...x, customerId: x.customer_id })));
@@ -791,8 +795,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       setCalendarEvents(cal.data || []);
       setDealMsgs(dm.data || []);
       setContractMsgs(cmsg.data || []);
+      setDeliveryNotes(dn.data || []);
+      setDeliveryNoteItems(dni.data || []);
       // Log errors
-      [c,d,cm,t,inv,p,e,pr,co,att,ct,ce,notif,cal,dm,cmsg].forEach((res, i) => {
+      [c,d,cm,t,inv,p,e,pr,co,att,ct,ce,notif,cal,dm,cmsg,dn,dni].forEach((res, i) => {
         if (res.error) console.error("Load error table", i, res.error.message);
       });
       setLoading(false);
@@ -829,6 +835,15 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const totalRevenue = invoices.filter(i => i.status === "Zaplacena").reduce((s, i) => s + i.amount, 0);
   const pendingRevenue = invoices.filter(i => i.status === "Čeká").reduce((s, i) => s + i.amount, 0);
   const overdueRevenue = invoices.filter(i => i.status === "Po splatnosti").reduce((s, i) => s + i.amount, 0);
+  // Náklad a marže materiálu z dodacích listů — dřív se do celofiremního
+  // zisku vůbec nepočítaly (stejná chyba jako u marže jednotlivé zakázky,
+  // opravená v Contracts.jsx/ZakazkaSheet.jsx). Počítá se za všechny dodací
+  // listy napříč zakázkami, symetricky náklad i odpovídající prodejní cena.
+  const dnMaterialCostTotal = deliveryNoteItems.reduce((s, i) => s + Number(i.quantity || 1) * Number(i.unit_price || 0), 0);
+  const dnMaterialClientTotal = deliveryNotes.reduce((s, n) => {
+    const cost = deliveryNoteItems.filter(i => i.delivery_note_id === n.id).reduce((sum, i) => sum + Number(i.quantity || 1) * Number(i.unit_price || 0), 0);
+    return s + cost * (1 + Number(n.margin || 30) / 100);
+  }, 0);
   const lowStock = products.filter(p => p.stock <= p.minStock);
   const overdueBellInvoices = invoices
     .filter(i => (i.invoice_type || "vydaná") === "vydaná")
@@ -1139,6 +1154,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
               totalPayroll={totalPayroll} activeProjects={activeProjects}
               costs={costs} toggleTask={toggleTaskGlobal} setTab={setTab}
               contracts={contracts} attendance={attendance} costEntries={costEntries}
+              dnMaterialCost={dnMaterialCostTotal} dnMaterialClient={dnMaterialClientTotal}
               onOpenSheet={(id, name) => { setSheetContractId(id); setSheetContractName(name); setTab("sheets"); }}
             />
         )}
@@ -1229,6 +1245,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           customers={customers} deals={deals} invoices={invoices}
           costs={costs} employees={employees} projects={projects}
           contracts={contracts} costEntries={costEntries}
+          dnMaterialCost={dnMaterialCostTotal} dnMaterialClient={dnMaterialClientTotal}
         />}
 
         {tab === "ai" && <AIAssistant
@@ -1769,7 +1786,7 @@ function widgetCardHeader(icon, label, color, action) {
 }
 
 function Dashboard({ customers, deals, tasks, invoices, products, employees, projects,
-  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab, contracts, attendance, onOpenSheet, costEntries }) {
+  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab, contracts, attendance, onOpenSheet, costEntries, dnMaterialCost, dnMaterialClient }) {
   const [sheetSearch, setSheetSearch] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [hiddenWidgets, setHiddenWidgets] = useState(() => {
@@ -1792,13 +1809,16 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   // Finanční tok záměrně nepřičítáme: je to spíš "co prošlo účtem" než
   // "co nás to stálo" a hrozilo by dvojí počítání stejného výdaje (jednou
   // jako náklad zakázky, podruhé jako pohyb na účtu při placení).
-  const jobCosts = (costEntries || []).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
+  const jobCosts = (costEntries || []).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0) + (dnMaterialCost || 0);
   const totalCosts = costs.reduce((s, c) => s + c.amount, 0) + jobCosts;
   const todayStr = fmt(new Date());
   const thisMonth = todayStr.slice(0, 7);
   const thisMonthJobCosts = (costEntries || []).filter(e => (e.date || "").startsWith(thisMonth)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
   const thisMonthCosts = costs.filter(c => c.date.startsWith(thisMonth)).reduce((s, c) => s + c.amount, 0) + thisMonthJobCosts;
-  const profit = totalRevenue - totalCosts;
+  // Zisk počítá i marži z dodacích listů (prodejní cena materiálu nad rámec
+  // nákladu) — dřív se do nákladů promítl jen náklad z dodacích listů (přes
+  // jobCosts výše), ale odpovídající výnos ne, takže byl zisk podhodnocený.
+  const profit = totalRevenue + (dnMaterialClient || 0) - totalCosts;
   const activeEmployees = employees.filter(e => e.status === "Aktivní");
   const presentToday = (attendance || []).filter(a => a.date === todayStr && a.checkin);
   const openInvoices = invoices.filter(i => i.status === "Čeká" || i.status === "Po splatnosti");
@@ -1833,8 +1853,8 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   const stats = [
     { label: "Zákazníci", value: customers.length, color: "#0369a1" },
     { label: "Zaplaceno (příjmy)", value: fmtKc(totalRevenue), color: "#34d399" },
-    { label: "Náklady celkem", value: fmtKc(totalCosts), color: "#f87171", sub: `firemní ${fmtKc(costs.reduce((s, c) => s + c.amount, 0))} + zakázky ${fmtKc(jobCosts)}` },
-    { label: "Zisk", value: fmtKc(profit), color: profit >= 0 ? "#34d399" : "#f87171" },
+    { label: "Náklady celkem", value: fmtKc(totalCosts), color: "#f87171", sub: `firemní ${fmtKc(costs.reduce((s, c) => s + c.amount, 0))} + zakázky ${fmtKc(jobCosts)} (vč. dodacích listů)` },
+    { label: "Zisk", value: fmtKc(profit), color: profit >= 0 ? "#34d399" : "#f87171", sub: dnMaterialClient ? `vč. marže z dodacích listů ${fmtKc(dnMaterialClient)}` : undefined },
     { label: "Náklady tento měsíc", value: fmtKc(thisMonthCosts), color: "#f59e0b" },
     { label: "Produkty skladu", value: products.length, color: "#0369a1" },
     { label: "Zaměstnanci", value: employees.length, color: "#a78bfa" },
@@ -5653,7 +5673,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
 
 // ─── REPORTY ──────────────────────────────────────────────────────────────────
 
-function Reports({ customers, deals, invoices, costs, employees, projects, contracts, costEntries }) {
+function Reports({ customers, deals, invoices, costs, employees, projects, contracts, costEntries, dnMaterialCost, dnMaterialClient }) {
   const [period, setPeriod] = useState("2026");
   const [cashflowEntries, setCashflowEntries] = useState([]);
 
@@ -5671,9 +5691,12 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
   // Finanční tok záměrně vynechán kvůli riziku dvojího počítání (viz
   // komentář u totalCosts v Dashboard()).
   const genCosts = costs.reduce((s, c) => s + c.amount, 0);
-  const jobCosts = (costEntries || []).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
+  const jobCosts = (costEntries || []).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0) + (dnMaterialCost || 0);
   const totalCosts = genCosts + jobCosts;
-  const profit = totalRevenue - totalCosts;
+  // Zisk zahrnuje i marži z dodacích listů (viz stejná oprava v Dashboard()
+  // a v contractProfit() v Contracts.jsx) — jinak se náklad materiálu z
+  // dodacích listů počítal, ale odpovídající výnos ne.
+  const profit = totalRevenue + (dnMaterialClient || 0) - totalCosts;
   const margin = totalRevenue > 0 ? Math.round((profit / totalRevenue) * 100) : 0;
 
   const wonDeals = deals.filter(d => d.stage === "Vyhráno");
@@ -5739,7 +5762,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
         {[
           { label: "Celkový zisk", value: fmtKc(profit), sub: `Marže ${margin}%`, color: profit >= 0 ? "#34d399" : "#f87171" },
           { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena").length} faktur`, color: "#0369a1" },
-          { label: "Náklady", value: fmtKc(totalCosts), sub: `firemní ${fmtKc(genCosts)} + zakázky ${fmtKc(jobCosts)}`, color: "#f87171" },
+          { label: "Náklady", value: fmtKc(totalCosts), sub: `firemní ${fmtKc(genCosts)} + zakázky ${fmtKc(jobCosts)} (vč. dodacích listů)`, color: "#f87171" },
           { label: "Konverzní poměr", value: `${conversionRate}%`, sub: `Ø deal ${fmtKc(avgDealValue)}`, color: "#f59e0b" },
         ].map(k => (
           <div key={k.label} style={S.statCard(k.color)}>
