@@ -1392,7 +1392,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           <FotoUpload currentUser={currentUser} setTab={setTab} />
         )}
         {tab === "profile" && <Profile
-          currentUser={currentUser} attendance={attendance} employees={employees}
+          currentUser={currentUser} attendance={attendance} employees={employees} tasks={tasks}
         />}
         {tab === "permissions" && <PermissionsPanel />}
 
@@ -8644,13 +8644,28 @@ function Empty() {
 
 // ─── PROFIL ───────────────────────────────────────────────────────────────────
 
-function Profile({ currentUser, attendance, employees }) {
+function Profile({ currentUser, attendance, employees, tasks }) {
   const myName = currentUser?.name || "";
   const emp = employees.find(e => e.name === myName) || {};
   const nowM = new Date().toISOString().slice(0, 7);
   const myAtt = attendance.filter(a => (a.employee_id === currentUser.employeeId || a.employee_name === myName));
   const thisMonth = myAtt.filter(a => a.date && a.date.startsWith(nowM));
   const totalH = thisMonth.reduce((s, r) => s + calcEffectiveHours(r.checkin, r.checkout), 0);
+
+  // Profil byl dřív skoro prázdný — chyběla dovolená, ujeté km i otevřené
+  // úkoly, i když appka tyhle údaje jinde už umí (HR, Kniha jízd, Úkoly).
+  const vacTotal = emp.vacation_days ?? 20;
+  const vacUsed = emp.vacation_used ?? 0;
+  const vacLeft = Math.max(0, vacTotal - vacUsed);
+
+  const [kmThisMonth, setKmThisMonth] = useState(0);
+  useEffect(() => {
+    if (!currentUser?.employeeId) return;
+    supabase.from("vehicle_log").select("km_total").eq("employee_id", currentUser.employeeId).gte("date", nowM + "-01").lte("date", nowM + "-31")
+      .then(({ data }) => setKmThisMonth((data || []).reduce((s, r) => s + (Number(r.km_total) || 0), 0)));
+  }, [currentUser?.employeeId, nowM]);
+
+  const myOpenTasks = (tasks || []).filter(t => !t.done && (t.assigned_to === myName || t.created_by === myName));
 
   return (
     <div>
@@ -8675,8 +8690,22 @@ function Profile({ currentUser, attendance, employees }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div style={S.statCard("#0369a1")}><div style={S.statLabel}>Odpracováno</div><div style={S.statValue("#0369a1")}>{fmtHours(totalH)}</div></div>
             <div style={S.statCard("#34d399")}><div style={S.statLabel}>Docházka</div><div style={S.statValue("#34d399")}>{thisMonth.length} dní</div></div>
+            <div style={S.statCard("#F5821F")}><div style={S.statLabel}>Ujeto km</div><div style={S.statValue("#F5821F")}>{kmThisMonth.toLocaleString("cs-CZ")} km</div></div>
+            <div style={S.statCard("#a78bfa")}><div style={S.statLabel}>Dovolená zbývá</div><div style={S.statValue("#a78bfa")}>{vacLeft} / {vacTotal} dní</div></div>
           </div>
         </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14 }}>✅ Moje otevřené úkoly ({myOpenTasks.length})</div>
+        {myOpenTasks.length === 0 ? <Empty /> : sortTasksByDue(myOpenTasks).map(t => (
+          <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #e2e8f0" }}>
+            <span style={{ fontSize: 13, color: "#1A1A1A" }}>{t.title}</span>
+            <span style={{ fontSize: 12, fontWeight: isTaskOverdue(t) ? 700 : 400, color: isTaskOverdue(t) ? "#ef4444" : "#64748b" }}>
+              {isTaskOverdue(t) ? "⚠️ " : ""}{t.due ? fmtDateCz(t.due) : "—"}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
