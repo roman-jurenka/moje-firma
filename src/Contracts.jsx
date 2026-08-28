@@ -1,6 +1,7 @@
 import { isConnected, uploadFileObject, getDirectDownloadUrl } from "./onedrive.js";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
+import { tryOrQueue } from "./offlineQueue.js";
 
 // Čitelné zobrazení data pro uživatele — den v týdnu, den, měsíc slovem, rok (bez pomlček).
 const DNY_ZKR = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
@@ -799,31 +800,41 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   // ── Upload fotky ──
   const fileRef = useRef();
   async function uploadPhoto(contractId, file, description) {
-    let url, storagePath, itemId = null;
     const contract = contracts.find(c => c.id === contractId);
     const folderName = (contract?.name || String(contractId)).replace(/[/\\?%*:|"<>]/g, "_");
-    if (isConnected()) {
-      try {
-        const res = await uploadFileObject(`FirmaCRM/Zakázky/${folderName}/Fotky`, file);
-        url = res.webUrl;
-        itemId = res.itemId;
-        storagePath = "onedrive:" + file.name;
-      } catch (e) { alert("OneDrive chyba: " + e.message); return; }
-    } else {
-      const ext = file.name.split(".").pop();
-      const path = `${contractId}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from("zakazky-fotky").upload(path, file);
-      if (error) { alert("Chyba uploadu: " + error.message); return; }
-      const { data: urlData } = supabase.storage.from("zakazky-fotky").getPublicUrl(path);
-      url = urlData.publicUrl;
-      storagePath = path;
+    const payload = {
+      file, contractId, folder: `FirmaCRM/Zakázky/${folderName}/Fotky`,
+      date: today(), description, uploadedBy: currentUser?.employeeId || null,
+    };
+    try {
+      // Bez signálu se fotka místo tichého zahození uloží do fronty v
+      // zařízení a nahraje se sama po obnovení připojení (offlineQueue.js,
+      // sdílený handler "contract_photo" s Docházkou a Zakázkovým listem).
+      const res = await tryOrQueue("contract_photo", `Fotka ${contract?.name || contractId}`, payload, async (p) => {
+        let url, storagePath, itemId = null;
+        if (isConnected()) {
+          const r = await uploadFileObject(p.folder, p.file);
+          url = r.webUrl; itemId = r.itemId; storagePath = "onedrive:" + p.file.name;
+        } else {
+          const ext = p.file.name.split(".").pop();
+          const path = `${p.contractId}/${crypto.randomUUID()}.${ext}`;
+          const { error } = await supabase.storage.from("zakazky-fotky").upload(path, p.file);
+          if (error) throw error;
+          url = supabase.storage.from("zakazky-fotky").getPublicUrl(path).data.publicUrl;
+          storagePath = path;
+        }
+        const { data: row, error: insErr } = await supabase.from("contract_photos").insert({
+          contract_id: p.contractId, date: p.date, storage_path: storagePath, url, item_id: itemId,
+          description: p.description, uploaded_by: p.uploadedBy,
+        }).select().single();
+        if (insErr) throw insErr;
+        return row;
+      });
+      if (res.ok && res.result) setPhotos([...photos, res.result]);
+      else if (res.queued) alert("Bez signálu — fotka je uložená v telefonu a nahraje se sama, jakmile se připojení obnoví.");
+    } catch (e) {
+      alert("Chyba uploadu: " + e.message);
     }
-    const { data: row } = await supabase.from("contract_photos").insert({
-      contract_id: contractId, date: today(),
-      storage_path: storagePath, url, item_id: itemId,
-      description, uploaded_by: currentUser?.employeeId || null,
-    }).select().single();
-    if (row) setPhotos([...photos, row]);
     closeModal();
   }
 

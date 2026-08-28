@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./supabase.js";
 import Contracts from "./Contracts.jsx";
 import ZakazkaSheet from "./ZakazkaSheet.jsx";
@@ -11,6 +11,7 @@ import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
+import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -737,27 +738,11 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const closeModal = () => setModal(null);
 
   // ── Load all data from Supabase ──
-  useEffect(() => {
-    // Zpracuj OneDrive OAuth callback hned při načtení appky
-    if (window.location.search.includes("code=")) {
-      handleOAuthCallback().then(ok => {
-        if (ok) {
-          console.log("✅ OneDrive připojeno");
-          setTab("onedrive"); // přepni na OneDrive záložku po přihlášení
-        }
-      });
-      // Osobní připojení Outlook kalendáře/úkolů — nezávislý OAuth flow na
-      // stejné redirect_uri (rozpozná se podle vlastního uloženého PKCE state,
-      // takže se s tím výše nepřebíjí).
-      outlookCal.handleOAuthCallback().then(ok => {
-        if (ok) {
-          console.log("✅ Outlook kalendář připojen");
-          setTab("calendar");
-        }
-      });
-    }
-
-    const load = async () => {
+  // Vytažené z mount efektu do vlastní funkce, ať se dá znovu spustit i
+  // později — používá se jako "dorovnávací" reload po tom, co se automaticky
+  // odešle fronta zápisů uložených offline (viz initOfflineSync níže), aby se
+  // po obnovení signálu appka sama doplnila o mezitím vzniklé záznamy.
+  const loadAllData = useCallback(async () => {
       setLoading(true);
       const [c, d, cm, t, inv, p, e, pr, co, att, ct, ce, notif, cal, dm, cmsg, dn, dni] = await Promise.all([
         supabase.from("customers").select("*").order("id"),
@@ -802,9 +787,94 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         if (res.error) console.error("Load error table", i, res.error.message);
       });
       setLoading(false);
-    };
-    load();
   }, []);
+
+  useEffect(() => {
+    // Zpracuj OneDrive OAuth callback hned při načtení appky
+    if (window.location.search.includes("code=")) {
+      handleOAuthCallback().then(ok => {
+        if (ok) {
+          console.log("✅ OneDrive připojeno");
+          setTab("onedrive"); // přepni na OneDrive záložku po přihlášení
+        }
+      });
+      // Osobní připojení Outlook kalendáře/úkolů — nezávislý OAuth flow na
+      // stejné redirect_uri (rozpozná se podle vlastního uloženého PKCE state,
+      // takže se s tím výše nepřebíjí).
+      outlookCal.handleOAuthCallback().then(ok => {
+        if (ok) {
+          console.log("✅ Outlook kalendář připojen");
+          setTab("calendar");
+        }
+      });
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadAllData();
+  }, [loadAllData]);
+
+  // ── Odolnost proti výpadku signálu (docházka, km, fotky, podpisy) ──
+  // Handlery skutečně provedou zápis, který se dřív ztratil, když selhala
+  // síť — viz src/offlineQueue.js. Registrují se jednou při startu appky;
+  // fronta se pak zkouší odeslat automaticky (návrat online, návrat do
+  // appky, každých 30 s) i ručně přes odznak v horní liště.
+  const [offlineQueueItems, setOfflineQueueItems] = useState([]);
+  const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" || navigator.onLine);
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
+  }, []);
+  useEffect(() => {
+    const unsub = subscribeOfflineQueue(setOfflineQueueItems);
+    initOfflineSync({
+      attendance_checkin: async (payload) => {
+        const { error } = await supabase.from("attendance").insert(payload.entry);
+        if (error) throw error;
+        if (payload.vehicleLog) {
+          const { error: vErr } = await supabase.from("vehicle_log").insert(payload.vehicleLog);
+          if (vErr) throw vErr;
+        }
+      },
+      attendance_checkout: async (payload) => {
+        const { error } = await supabase.from("attendance").update({ checkout: payload.checkout }).eq("id", payload.id);
+        if (error) throw error;
+      },
+      vehicle_log_new: async (payload) => {
+        const { error } = await supabase.from("vehicle_log").insert(payload.row);
+        if (error) throw error;
+      },
+      vehicle_log_km: async (payload) => {
+        const { error } = await supabase.from("vehicle_log").update(payload.patch).eq("id", payload.id);
+        if (error) throw error;
+      },
+      contract_photo: async (payload) => {
+        let url, storagePath, itemId = null;
+        if (isConnected()) {
+          const res = await uploadFileObject(payload.folder, payload.file);
+          url = res.webUrl; itemId = res.itemId; storagePath = "onedrive:" + payload.file.name;
+        } else {
+          const ext = (payload.file.name || "foto.jpg").split(".").pop();
+          const path = `${payload.contractId}/${crypto.randomUUID()}.${ext}`;
+          const { error } = await supabase.storage.from("zakazky-fotky").upload(path, payload.file);
+          if (error) throw error;
+          url = supabase.storage.from("zakazky-fotky").getPublicUrl(path).data.publicUrl;
+          storagePath = path;
+        }
+        const { error: insErr } = await supabase.from("contract_photos").insert({
+          contract_id: payload.contractId, date: payload.date, storage_path: storagePath, url, item_id: itemId,
+          description: payload.description || null, category: payload.category || null, uploaded_by: payload.uploadedBy || null,
+        });
+        if (insErr) throw insErr;
+      },
+      signature: async (payload) => {
+        const { error } = await supabase.from("signed_documents").update(payload.patch).eq("id", payload.docId);
+        if (error) throw error;
+      },
+    }, loadAllData);
+    return unsub;
+  }, [loadAllData]);
 
   // ── Supabase CRUD helpers ──
   const dbAdd = async (table, data) => { const { data: row } = await supabase.from(table).insert(data).select().single(); return row; };
@@ -923,6 +993,23 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       >
         <i className="ti ti-search" aria-hidden="true"></i>
       </button>
+      {(!isOnline || offlineQueueItems.length > 0) && (
+        <button
+          onClick={() => retryOfflineQueueNow()}
+          title={!isOnline ? "Appka je offline — zápisy se ukládají do zařízení a odešlou se samy po obnovení signálu" : "Klikni pro okamžité odeslání čekajících záznamů"}
+          style={{
+            position: "fixed", top: 14, right: 106, zIndex: 500,
+            display: "flex", alignItems: "center", gap: 6,
+            height: 38, borderRadius: 19, border: "1px solid #f59e0b",
+            background: "#fff7ed", color: "#b45309", cursor: "pointer",
+            padding: "0 14px", fontSize: 12, fontWeight: 700,
+            boxShadow: "0 2px 8px #0002",
+          }}
+        >
+          <i className={`ti ${isOnline ? "ti-cloud-upload" : "ti-cloud-off"}`} aria-hidden="true"></i>
+          {!isOnline ? "Offline" : `${offlineQueueItems.length} čeká na odeslání`}
+        </button>
+      )}
       {gSearchOpen && (
         <>
           <div onClick={() => { setGSearchOpen(false); setGQuery(""); }} style={{ position: "fixed", inset: 0, zIndex: 490 }} />
@@ -7034,10 +7121,14 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     if (todayRecord) {
-      // Odchod
-      await supabase.from("attendance").update({ checkout: time }).eq("id", todayRecord.id);
+      // Odchod — optimisticky rovnou v appce, zápis do DB proběhne rovnou
+      // nebo (bez signálu) se uloží do fronty a odešle se sám později, ať se
+      // odchod v terénu neztratí (viz offlineQueue.js).
       const updated = { ...todayRecord, checkout: time };
       setAttendance(attendance.map(a => a.id === todayRecord.id ? updated : a));
+      const res = await tryOrQueue("attendance_checkout", "Odchod " + todayStr, { id: todayRecord.id, checkout: time },
+        async (p) => { const { error } = await supabase.from("attendance").update({ checkout: p.checkout }).eq("id", p.id); if (error) throw error; });
+      if (res.queued) alert("Bez signálu — odchod je uložený v telefonu a odešle se sám, jakmile se připojení obnoví.");
       await createCostEntryFromAttendance(updated, time);
     } else {
       // Příchod — volat přímo bez modalu
@@ -7049,17 +7140,15 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     const contractIdVal = ciContractId ? Number(ciContractId) : null;
-    const { data: row } = await supabase.from("attendance")
-      .insert({ employee_id: effectiveEmpId, date: todayStr, checkin: time, checkout: null, contract_id: contractIdVal, activity: ciActivity || null })
-      .select().single();
-    if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
+    const entry = { employee_id: effectiveEmpId, date: todayStr, checkin: time, checkout: null, contract_id: contractIdVal, activity: ciActivity || null };
+    let vehicleLog = null;
     // Zapis zahajeni jizdy pokud bylo zadano vozidlo + km
     if (ciVehicleId && ciKmStart) {
       const vehicle = attVehicles.find(v => String(v.id) === String(ciVehicleId));
       const vehicleStr = vehicle ? `${vehicle.name}${vehicle.spz ? " (" + vehicle.spz + ")" : ""}` : "";
       const tripContractId = ciTripContractId ? Number(ciTripContractId) : null;
       const tripContractName = contractOpts.find(c => c.id === tripContractId)?.name || null;
-      await supabase.from("vehicle_log").insert({
+      vehicleLog = {
         employee_id: effectiveEmpId,
         employee_name: employees.find(e => e.id === viewEmpId)?.name || currentUser?.name || "",
         date: todayStr,
@@ -7069,7 +7158,22 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         contract_id: tripContractId,
         contract_name: tripContractName,
         note: "Zahájení — km konec doplňte v Knize jízd",
-      });
+      };
+    }
+    const res = await tryOrQueue("attendance_checkin", "Příchod " + todayStr, { entry, vehicleLog }, async (p) => {
+      const { data: row, error } = await supabase.from("attendance").insert(p.entry).select().single();
+      if (error) throw error;
+      if (p.vehicleLog) { const { error: vErr } = await supabase.from("vehicle_log").insert(p.vehicleLog); if (vErr) throw vErr; }
+      return row;
+    });
+    if (res.ok && res.result) {
+      setAttendance([...attendance, { ...res.result, employeeId: res.result.employee_id }]);
+    } else if (res.queued) {
+      // Bez signálu — appka to nezná od skutečně uloženého záznamu (žádné
+      // id z DB), ale ať to zaměstnanec vidí okamžitě, přidá se lokální
+      // "čeká na odeslání" řádek; po odeslání fronty appka data znovu načte.
+      setAttendance([...attendance, { ...entry, id: "pending-checkin-" + todayStr, employeeId: entry.employee_id, _pending: true }]);
+      alert("Bez signálu — příchod je uložený v telefonu a odešle se sám, jakmile se připojení obnoví.");
     }
     setShowCheckinModal(false);
   };
@@ -7080,26 +7184,35 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     const contractIdVal = todayRecord?.contract_id || (ciContractId ? Number(ciContractId) : null);
     if (!contractIdVal) { alert("Nejdřív vyber zakázku, ke které fotku přiřadit."); return; }
     setAttPhotoUploading(true);
+    const contract = contractOpts.find(c => c.id === contractIdVal);
+    const folderName = (contract?.name || String(contractIdVal)).replace(/[/\\?%*:|"<>]/g, "_");
+    const payload = {
+      file, contractId: contractIdVal, folder: `FirmaCRM/Zakázky/${folderName}/Fotky`,
+      date: todayStr, description: "Docházka " + todayStr, uploadedBy: currentUser?.employeeId || null,
+    };
     try {
-      let url, storagePath, itemId = null;
-      const contract = contractOpts.find(c => c.id === contractIdVal);
-      const folderName = (contract?.name || String(contractIdVal)).replace(/[/\\?%*:|"<>]/g, "_");
-      if (isConnected()) {
-        const res = await uploadFileObject(`FirmaCRM/Zakázky/${folderName}/Fotky`, file);
-        url = res.webUrl; itemId = res.itemId; storagePath = "onedrive:" + file.name;
-      } else {
-        const ext = file.name.split(".").pop();
-        const path = `${contractIdVal}/${crypto.randomUUID()}.${ext}`;
-        const { error } = await supabase.storage.from("zakazky-fotky").upload(path, file);
-        if (error) { alert("Chyba uploadu: " + error.message); setAttPhotoUploading(false); return; }
-        url = supabase.storage.from("zakazky-fotky").getPublicUrl(path).data.publicUrl;
-        storagePath = path;
-      }
-      const { data: row } = await supabase.from("contract_photos").insert({
-        contract_id: contractIdVal, date: todayStr, storage_path: storagePath, url, item_id: itemId,
-        description: "Docházka " + todayStr, uploaded_by: currentUser?.employeeId || null,
-      }).select().single();
-      if (row) setAttUploadedPhotos(prev => [...prev, row]);
+      const res = await tryOrQueue("contract_photo", "Fotka z docházky " + todayStr, payload, async (p) => {
+        let url, storagePath, itemId = null;
+        if (isConnected()) {
+          const r = await uploadFileObject(p.folder, p.file);
+          url = r.webUrl; itemId = r.itemId; storagePath = "onedrive:" + p.file.name;
+        } else {
+          const ext = p.file.name.split(".").pop();
+          const path = `${p.contractId}/${crypto.randomUUID()}.${ext}`;
+          const { error } = await supabase.storage.from("zakazky-fotky").upload(path, p.file);
+          if (error) throw error;
+          url = supabase.storage.from("zakazky-fotky").getPublicUrl(path).data.publicUrl;
+          storagePath = path;
+        }
+        const { data: row, error: insErr } = await supabase.from("contract_photos").insert({
+          contract_id: p.contractId, date: p.date, storage_path: storagePath, url, item_id: itemId,
+          description: p.description, uploaded_by: p.uploadedBy,
+        }).select().single();
+        if (insErr) throw insErr;
+        return row;
+      });
+      if (res.ok && res.result) setAttUploadedPhotos(prev => [...prev, res.result]);
+      else if (res.queued) alert("Bez signálu — fotka se uložila v telefonu a nahraje se sama, jakmile se připojení obnoví.");
     } catch (e) {
       alert("Chyba uploadu: " + e.message);
     }
@@ -8385,8 +8498,11 @@ function KnihaJizd({ currentUser, employees, contracts }) {
     if (!log || kmEnd <= kmStart) { alert("Konečný stav km musí být větší než počáteční."); return; }
     const kmTotal = kmEnd - kmStart;
     const melKmDrive = log.km_start != null && log.km_end != null;
-    await supabase.from("vehicle_log").update({ km_start: kmStart, km_end: kmEnd, km_total: kmTotal }).eq("id", editKmLog.id);
     setLogs(logs.map(l => l.id === editKmLog.id ? { ...l, km_start: kmStart, km_end: kmEnd, km_total: kmTotal } : l));
+    const res = await tryOrQueue("vehicle_log_km", "Doplnění km " + editKmLog.id,
+      { id: editKmLog.id, patch: { km_start: kmStart, km_end: kmEnd, km_total: kmTotal } },
+      async (p) => { const { error } = await supabase.from("vehicle_log").update(p.patch).eq("id", p.id); if (error) throw error; });
+    if (res.queued) alert("Bez signálu — km jsou uložené v telefonu a odešlou se sami, jakmile se připojení obnoví.");
     if (!melKmDrive) await addDopravaCost(log, kmTotal); // náklad na dopravu se založí až teď, při prvním doplnění km
     setEditKmLog(null);
   };
@@ -8425,10 +8541,16 @@ function KnihaJizd({ currentUser, employees, contracts }) {
       contract_name: contractName,
       note: fNote || null,
     };
-    const { data: inserted } = await supabase.from("vehicle_log").insert(row).select().single();
-    if (inserted) {
-      setLogs(prev => [inserted, ...prev]);
-      if (canEditKm && fContractId) await addDopravaCost(inserted, kmTotal);
+    const res = await tryOrQueue("vehicle_log_new", "Nová jízda " + fDate, { row }, async (p) => {
+      const { data: inserted, error } = await supabase.from("vehicle_log").insert(p.row).select().single();
+      if (error) throw error;
+      return inserted;
+    });
+    if (res.ok && res.result) {
+      setLogs(prev => [res.result, ...prev]);
+      if (canEditKm && fContractId) await addDopravaCost(res.result, kmTotal);
+    } else if (res.queued) {
+      alert("Bez signálu — záznam je uložený v telefonu a odešle se sám, jakmile se připojení obnoví.");
     }
     setFDate(fmt(new Date())); setFVehicleId(""); setFKmStart(""); setFKmEnd(""); setFUjeteKm("");
     setFContractId(""); setFNote("");

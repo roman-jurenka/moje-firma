@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
+import { tryOrQueue } from "./offlineQueue.js";
 
 const S = {
   app:      { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px 28px" },
@@ -297,8 +298,19 @@ export default function PodpisyModule({ employees, currentUser }) {
     const patch = role === "employee"
       ? { employee_signature: dataUrl, employee_signed_at: now, employee_signed_name: signName, status: "čeká na podpis zaměstnavatele" }
       : { employer_signature: dataUrl, employer_signed_at: now, employer_signed_name: signName, status: "podepsáno" };
-    const { data: updated } = await supabase.from("signed_documents").update(patch).eq("id", doc.id).select().single();
-    if (updated) setDocs(docs.map(d => d.id === doc.id ? updated : d));
+    // Bez signálu se podpis (jen v paměti jako base64 obrázek) místo tichého
+    // zahození uloží do fronty v zařízení a odešle se sám po obnovení
+    // připojení (offlineQueue.js) — jinak by nakreslený podpis prostě zmizel.
+    const res = await tryOrQueue("signature", "Podpis " + (doc.title || doc.id), { docId: doc.id, patch }, async (p) => {
+      const { data: updated, error } = await supabase.from("signed_documents").update(p.patch).eq("id", p.docId).select().single();
+      if (error) throw error;
+      return updated;
+    });
+    if (res.ok && res.result) setDocs(docs.map(d => d.id === doc.id ? res.result : d));
+    else if (res.queued) {
+      setDocs(docs.map(d => d.id === doc.id ? { ...d, ...patch } : d));
+      alert("Bez signálu — podpis je uložený v zařízení a odešle se sám, jakmile se připojení obnoví.");
+    }
     setSignModal(null);
   };
 
