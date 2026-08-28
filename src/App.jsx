@@ -4501,6 +4501,24 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
       created_by: currentUser?.name || "?",
       entry_date: fmt(new Date()), // datum pro případnou nákladovou položku – zachytí se hned při odeslání, ne až při pozdějším odeslání z offline fronty
     };
+    // Lehká pojistka proti nechtěně dvakrát zapsanému stejnému materiálu
+    // (dvojklik na Uložit, nebo že technik zapomene, že to už ráno zapsal) —
+    // appka jen upozorní a nechá rozhodnutí na uživateli, nic sama neblokuje
+    // ani automaticky nemaže.
+    const todayStr = fmt(new Date());
+    const possibleDup = movements.find(m =>
+      (m.product_name || "").toLowerCase() === newMov.product_name.toLowerCase() &&
+      Number(m.quantity) === Number(newMov.quantity) &&
+      m.movement_type === newMov.movement_type &&
+      m.created_at && m.created_at.slice(0, 10) === todayStr
+    );
+    if (possibleDup) {
+      const t = new Date(possibleDup.created_at);
+      const timeStr = `${pad(t.getHours())}:${pad(t.getMinutes())}`;
+      if (!confirm(`Pozor: dnes v ${timeStr} už byl zapsaný stejný pohyb (${newMov.product_name}, ${newMov.quantity} ${newMov.unit}, ${movType?.label || newMov.movement_type}). Nejde o omylem duplicitní zápis? Klikni OK pro zapsání i tohoto pohybu, nebo Zrušit pro storno.`)) {
+        return;
+      }
+    }
     // Technik často zapisuje výdej materiálu přímo na place bez signálu —
     // proto se pohyb (vč. dopadu na stav skladu a nákladovou položku
     // zakázky) posílá přes offline frontu: bez signálu se bezpečně uloží
