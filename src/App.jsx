@@ -1783,10 +1783,21 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
     });
   };
 
-  const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
+  // Náklady se v appce vedou na třech nezávislých místech: obecné firemní
+  // náklady (tady, "Náklady"), náklady konkrétní zakázky (práce/materiál/
+  // doprava v Zakázkách) a ruční Finanční tok (skutečné pohyby na účtu).
+  // Do hlavního čísla "Náklady"/"Zisk" počítáme prvních dvě — obecné firemní
+  // náklady a náklady zakázek — protože appka náklady v praxi zapisuje
+  // hlavně u zakázek a bez nich bylo číslo zisku zavádějící podhodnocené.
+  // Finanční tok záměrně nepřičítáme: je to spíš "co prošlo účtem" než
+  // "co nás to stálo" a hrozilo by dvojí počítání stejného výdaje (jednou
+  // jako náklad zakázky, podruhé jako pohyb na účtu při placení).
+  const jobCosts = (costEntries || []).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
+  const totalCosts = costs.reduce((s, c) => s + c.amount, 0) + jobCosts;
   const todayStr = fmt(new Date());
   const thisMonth = todayStr.slice(0, 7);
-  const thisMonthCosts = costs.filter(c => c.date.startsWith(thisMonth)).reduce((s, c) => s + c.amount, 0);
+  const thisMonthJobCosts = (costEntries || []).filter(e => (e.date || "").startsWith(thisMonth)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
+  const thisMonthCosts = costs.filter(c => c.date.startsWith(thisMonth)).reduce((s, c) => s + c.amount, 0) + thisMonthJobCosts;
   const profit = totalRevenue - totalCosts;
   const activeEmployees = employees.filter(e => e.status === "Aktivní");
   const presentToday = (attendance || []).filter(a => a.date === todayStr && a.checkin);
@@ -1822,7 +1833,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   const stats = [
     { label: "Zákazníci", value: customers.length, color: "#0369a1" },
     { label: "Zaplaceno (příjmy)", value: fmtKc(totalRevenue), color: "#34d399" },
-    { label: "Náklady celkem", value: fmtKc(totalCosts), color: "#f87171" },
+    { label: "Náklady celkem", value: fmtKc(totalCosts), color: "#f87171", sub: `firemní ${fmtKc(costs.reduce((s, c) => s + c.amount, 0))} + zakázky ${fmtKc(jobCosts)}` },
     { label: "Zisk", value: fmtKc(profit), color: profit >= 0 ? "#34d399" : "#f87171" },
     { label: "Náklady tento měsíc", value: fmtKc(thisMonthCosts), color: "#f59e0b" },
     { label: "Produkty skladu", value: products.length, color: "#0369a1" },
@@ -1848,6 +1859,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
           <div key={s.label} style={S.statCard(s.color)}>
             <div style={S.statLabel}>{s.label}</div>
             <div style={S.statValue(s.color)}>{s.value}</div>
+            {s.sub && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{s.sub}</div>}
           </div>
         ))}
       </div>
@@ -5655,7 +5667,12 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
   }, []);
 
   const totalRevenue = invoices.filter(i => i.status === "Zaplacena").reduce((s, i) => s + i.amount, 0);
-  const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
+  // Stejná logika jako na Dashboardu — firemní náklady + náklady zakázek,
+  // Finanční tok záměrně vynechán kvůli riziku dvojího počítání (viz
+  // komentář u totalCosts v Dashboard()).
+  const genCosts = costs.reduce((s, c) => s + c.amount, 0);
+  const jobCosts = (costEntries || []).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
+  const totalCosts = genCosts + jobCosts;
   const profit = totalRevenue - totalCosts;
   const margin = totalRevenue > 0 ? Math.round((profit / totalRevenue) * 100) : 0;
 
@@ -5667,7 +5684,8 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
   const monthlyChart = MONTHS.map((m, i) => {
     const monthStr = `2026-${String(i + 1).padStart(2, "0")}`;
     const rev = invoices.filter(inv => inv.status === "Zaplacena" && inv.issued?.startsWith(monthStr)).reduce((s, inv) => s + inv.amount, 0);
-    const cost = costs.filter(c => c.date.startsWith(monthStr)).reduce((s, c) => s + c.amount, 0);
+    const cost = costs.filter(c => c.date.startsWith(monthStr)).reduce((s, c) => s + c.amount, 0)
+      + (costEntries || []).filter(e => (e.date || "").startsWith(monthStr)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
     return { month: m, revenue: rev, costs: cost, profit: rev - cost };
   });
 
@@ -5721,7 +5739,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
         {[
           { label: "Celkový zisk", value: fmtKc(profit), sub: `Marže ${margin}%`, color: profit >= 0 ? "#34d399" : "#f87171" },
           { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena").length} faktur`, color: "#0369a1" },
-          { label: "Náklady", value: fmtKc(totalCosts), sub: `${costs.length} položek`, color: "#f87171" },
+          { label: "Náklady", value: fmtKc(totalCosts), sub: `firemní ${fmtKc(genCosts)} + zakázky ${fmtKc(jobCosts)}`, color: "#f87171" },
           { label: "Konverzní poměr", value: `${conversionRate}%`, sub: `Ø deal ${fmtKc(avgDealValue)}`, color: "#f59e0b" },
         ].map(k => (
           <div key={k.label} style={S.statCard(k.color)}>
