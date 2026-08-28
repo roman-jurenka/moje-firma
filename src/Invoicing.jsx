@@ -127,7 +127,7 @@ function InvoiceHistoryPanel({ invoiceId, onUpdated, sentAt }) {
 }
 
 // ─── Malý vyhledávací výběr zakázky (bez závislosti na App.jsx) ─────────────
-function ContractPicker({ options, value, onChange, placeholder = "— vyberte zakázku — (piš pro hledání)" }) {
+function ContractPicker({ options, value, onChange, placeholder = "— vyberte zakázku — (piš pro hledání)", disabled = false }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef(null);
@@ -141,9 +141,10 @@ function ContractPicker({ options, value, onChange, placeholder = "— vyberte z
   const filtered = words.length === 0 ? options : options.filter(o => words.every(w => (o.label || "").toLowerCase().includes(w)));
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <input style={inputStyle} value={open ? q : (selected?.label || "")} placeholder={placeholder}
-        onFocus={() => { setOpen(true); setQ(""); }} onChange={e => { setQ(e.target.value); setOpen(true); }} />
-      {open && (
+      <input disabled={disabled} style={{ ...inputStyle, ...(disabled ? { background: "#f8fafc", color: "#94a3b8" } : {}) }}
+        value={open ? q : (selected?.label || "")} placeholder={placeholder}
+        onFocus={() => { if (!disabled) { setOpen(true); setQ(""); } }} onChange={e => { setQ(e.target.value); setOpen(true); }} />
+      {open && !disabled && (
         <div style={{ position: "absolute", top: "calc(100% + 2px)", left: 0, right: 0, zIndex: 999, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: 220, overflowY: "auto", boxShadow: "0 6px 16px #00000022" }}>
           {filtered.length === 0 && <div style={{ padding: "10px 12px", fontSize: 13, color: "#64748b" }}>Nic nenalezeno.</div>}
           {filtered.map(o => (
@@ -368,6 +369,20 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
               <div><label style={labelStyle}>IČ zákazníka (volitelné)</label><input disabled={locked} style={inputStyle} value={f.customerIco} onChange={e => set("customerIco", e.target.value)} /></div>
               <div><label style={labelStyle}>DIČ zákazníka (volitelné)</label><input disabled={locked} style={inputStyle} value={f.customerDic} onChange={e => set("customerDic", e.target.value)} /></div>
               <div><label style={labelStyle}>Objednávka (volitelné)</label><input disabled={locked} style={inputStyle} value={f.orderRef} onChange={e => set("orderRef", e.target.value)} /></div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Zakázka (volitelné)</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ flex: 1 }}>
+                  <ContractPicker disabled={locked}
+                    options={(contracts || []).map(c => ({ id: c.id, label: c.code ? `${c.name} (${c.code})` : c.name }))}
+                    value={fromContractId} onChange={cid => setFromContractId(cid)} />
+                </div>
+                {!!fromContractId && !locked && (
+                  <button type="button" onClick={() => setFromContractId("")} style={{ ...btnGhost, padding: "9px 10px", fontSize: 12 }} title="Zrušit přiřazení zakázky">✕</button>
+                )}
+              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>

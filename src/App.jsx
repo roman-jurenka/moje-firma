@@ -3917,18 +3917,20 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
 
       <div style={S.card}>
         <table style={S.table}>
-          <thead><tr>{["Číslo", "Zákazník", "Částka", "DPH", "Vystavena", "Splatnost", "Uhrazeno", "Datum úhrady", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Číslo", "Zákazník", "Zakázka", "Částka", "DPH", "Vystavena", "Splatnost", "Uhrazeno", "Datum úhrady", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {visibleInvoices.length === 0 && (
-              <tr><td colSpan={11} style={{ ...S.td, textAlign: "center", color: "#64748b", padding: "24px 0" }}>Žádné faktury neodpovídají filtru.</td></tr>
+              <tr><td colSpan={12} style={{ ...S.td, textAlign: "center", color: "#64748b", padding: "24px 0" }}>Žádné faktury neodpovídají filtru.</td></tr>
             )}
             {visibleInvoices.map(inv => {
               const cust = customers.find(c => c.id === inv.customerId);
+              const linkedContract = inv.contract_id ? contracts.find(c => c.id === inv.contract_id) : null;
               const info = getInvoicePaymentInfo(inv);
               return (
                 <tr key={inv.id}>
                   <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
                   <td style={S.td}>{cust?.name || "—"}</td>
+                  <td style={S.td}>{linkedContract ? (linkedContract.code || linkedContract.name) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                   <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>{fmtKc(inv.amount)}</td>
                   <td style={S.td}>{fmtKc(inv.tax)}</td>
                   <td style={S.td}>{fmtDateCz(inv.issued)}</td>
