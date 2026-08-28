@@ -102,6 +102,40 @@ function EF({ label, value, onChange, multi, mono }) {
   );
 }
 
+// Datumové pole — stejné klik-pro-editaci chování jako EF, ale místo
+// volného textu (dřív si každý datum psal jinak — "12.3.", "12.3.2025",
+// "březen" — a appka to nikde nešla spolehlivě vyhodnotit) používá nativní
+// <input type="date">, takže se vždycky uloží jako pořádné ISO datum.
+// Starší záznamy zapsané ještě jako volný text se dál zobrazí beze změny
+// (nerozbijeme historii), jen je při dalším kliknutí nejde předvyplnit do
+// pickeru — přepíšou se novým výběrem data.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function DF({ label, value, onChange }) {
+  const [ed, setEd] = useState(false);
+  const [dr, setDr] = useState(ISO_DATE_RE.test(value) ? value : "");
+  const save = () => { onChange(dr); setEd(false); };
+  const display = value ? (ISO_DATE_RE.test(value) ? fmtDateSheet(value) : value) : null;
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label style={S.lbl}>{label}</label>
+      {ed ? (
+        <div>
+          <input type="date" style={S.inp} value={dr} onChange={e => setDr(e.target.value)} autoFocus onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") setEd(false); }} />
+          <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
+            <button style={S.btn()} onClick={save}>✓</button>
+            <button style={{ ...S.btn("#475569") }} onClick={() => setEd(false)}>✕</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 6, cursor: "pointer" }} onClick={() => { setDr(ISO_DATE_RE.test(value) ? value : ""); setEd(true); }}>
+          <div style={{ ...S.val, flex: 1 }}>{display || <span style={{ color: "#64748b", fontStyle: "italic" }}>— klikni pro výběr data —</span>}</div>
+          <span style={{ color: "#64748b", fontSize: 11, flexShrink: 0, paddingTop: 2 }}>📅</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StavSekce({ val, onChange }) {
   const cols = {"Čeká":"#475569","Probíhá":"#f59e0b","Hotovo":"#16a34a"};
   return (
@@ -718,7 +752,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             <EF label="Adresa"             value={data.zakaznik.adresa}         onChange={v=>upd("zakaznik","adresa",v)}/>
             <EF label="Telefon"            value={data.zakaznik.telefon}        onChange={v=>upd("zakaznik","telefon",v)}/>
             <EF label="E-mail"             value={data.zakaznik.email}          onChange={v=>upd("zakaznik","email",v)}/>
-            <EF label="Datum narození"     value={data.zakaznik.datumNarozeni}  onChange={v=>upd("zakaznik","datumNarozeni",v)}/>
+            <DF label="Datum narození"     value={data.zakaznik.datumNarozeni}  onChange={v=>upd("zakaznik","datumNarozeni",v)}/>
             <div style={S.div}/>
             <EF label="EAN odběrného místa" value={data.zakaznik.ean}          onChange={v=>upd("zakaznik","ean",v)} mono/>
             <EF label="Distributor"        value={data.zakaznik.distributor}    onChange={v=>upd("zakaznik","distributor",v)}/>
@@ -735,8 +769,8 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             <EF label="Číslo OP"            value={data.nabidka.cisloOP}         onChange={v=>upd("nabidka","cisloOP",v)} mono/>
             <EF label="Sestava"             value={data.nabidka.sestava}         onChange={v=>upd("nabidka","sestava",v)}/>
             <EF label="Obchodní zástupce"   value={data.nabidka.oz}              onChange={v=>upd("nabidka","oz",v)}/>
-            <EF label="Datum nabídky"       value={data.nabidka.datumNabidky}    onChange={v=>upd("nabidka","datumNabidky",v)}/>
-            <EF label="Platnost do"         value={data.nabidka.platnostDo}      onChange={v=>upd("nabidka","platnostDo",v)}/>
+            <DF label="Datum nabídky"       value={data.nabidka.datumNabidky}    onChange={v=>upd("nabidka","datumNabidky",v)}/>
+            <DF label="Platnost do"         value={data.nabidka.platnostDo}      onChange={v=>upd("nabidka","platnostDo",v)}/>
             <div style={S.div}/>
             <EF label="Cena s DPH (Kč) — jen orientační z nabídky" value={data.nabidka.cenaSDph}        onChange={v=>upd("nabidka","cenaSDph",v)}/>
             <EF label="Dotace NMP (Kč)"    value={data.nabidka.dotace}          onChange={v=>upd("nabidka","dotace",v)}/>
@@ -751,9 +785,9 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         <div id="s-smlouva" style={S.card(false,"#7c3aed")}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="smlouva")} stav={st.smlouva||"Čeká"} onStav={v=>updStav("smlouva",v)}/>
           <div style={S.body}>
-            <EF label="Datum podpisu"       value={data.smlouva.datumPodpisu}    onChange={v=>upd("smlouva","datumPodpisu",v)}/>
+            <DF label="Datum podpisu"       value={data.smlouva.datumPodpisu}    onChange={v=>upd("smlouva","datumPodpisu",v)}/>
             <EF label="Záloha (Kč)"         value={data.smlouva.zaloha}          onChange={v=>upd("smlouva","zaloha",v)}/>
-            <EF label="Datum úhrady zálohy" value={data.smlouva.datumZalohy}     onChange={v=>upd("smlouva","datumZalohy",v)}/>
+            <DF label="Datum úhrady zálohy" value={data.smlouva.datumZalohy}     onChange={v=>upd("smlouva","datumZalohy",v)}/>
             <EF label="Termín realizace"    value={data.smlouva.terminRealizace} onChange={v=>upd("smlouva","terminRealizace",v)}/>
             <div style={S.div}/>
             <EF label="Poznámka"            value={data.smlouva.poznamka}        onChange={v=>upd("smlouva","poznamka",v)} multi/>
@@ -954,8 +988,11 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                   <div style={{display:"flex",gap:8,marginBottom:6}}>
                     <div style={{flex:1}}>
                       <label style={S.lbl}>Datum instalace</label>
-                      <input style={S.inp} placeholder="dd.mm.rrrr" value={z.datumInstalace}
+                      <input type="date" style={S.inp} value={ISO_DATE_RE.test(z.datumInstalace) ? z.datumInstalace : ""}
                         onChange={e=>setData(d=>({...d,zaruky:(d.zaruky||[]).map(x=>x.id===z.id?{...x,datumInstalace:e.target.value}:x)}))}/>
+                      {z.datumInstalace && !ISO_DATE_RE.test(z.datumInstalace) && (
+                        <div style={{fontSize:10,color:"#64748b",marginTop:3}}>Starší zápis: {z.datumInstalace} (vyber nové datum pro aktualizaci)</div>
+                      )}
                     </div>
                     <div style={{flex:1}}>
                       <label style={S.lbl}>Délka záruky (let)</label>
@@ -983,7 +1020,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         <div id="s-montaz" style={S.card(false,"#ef4444")}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="montaz")} stav={st.montaz||"Čeká"} onStav={v=>updStav("montaz",v)}/>
           <div style={S.body}>
-            <EF label="Datum montáže" value={data.montaz.datumMontaze}    onChange={handleDatumMontaze}/>
+            <DF label="Datum montáže" value={data.montaz.datumMontaze}    onChange={handleDatumMontaze}/>
             <EF label="Technici"      value={data.montaz.technici}         onChange={v=>upd("montaz","technici",v)}/>
             <div style={S.div}/>
             <div style={{display:"flex",gap:10}}>
@@ -1004,7 +1041,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
         <div id="s-predani" style={S.card(false,"#16a34a")}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="predani")} stav={st.predani||"Čeká"} onStav={v=>updStav("predani",v)}/>
           <div style={S.body}>
-            <EF label="Datum předání"    value={data.predani.datumPredani}          onChange={v=>upd("predani","datumPredani",v)}/>
+            <DF label="Datum předání"    value={data.predani.datumPredani}          onChange={v=>upd("predani","datumPredani",v)}/>
             <EF label="Technik"          value={data.predani.technik}               onChange={v=>upd("predani","technik",v)}/>
             <EF label="Číslo protokolu"  value={data.predani.protokolCislo}         onChange={v=>upd("predani","protokolCislo",v)} mono/>
             <EF label="Stav elektrárny"  value={data.predani.stavElektrarny}        onChange={v=>upd("predani","stavElektrarny",v)}/>
@@ -1022,10 +1059,10 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
           <div style={S.body}>
             <EF label="Typ dotace"         value={data.dotace.typ}            onChange={v=>upd("dotace","typ",v)}/>
             <EF label="Kraj"               value={data.dotace.kraj}           onChange={v=>upd("dotace","kraj",v)}/>
-            <EF label="Datum podání"       value={data.dotace.datumPodani}    onChange={v=>upd("dotace","datumPodani",v)}/>
+            <DF label="Datum podání"       value={data.dotace.datumPodani}    onChange={v=>upd("dotace","datumPodani",v)}/>
             <EF label="Stav žádosti"       value={data.dotace.stav}           onChange={v=>upd("dotace","stav",v)}/>
-            <EF label="Datum schválení"    value={data.dotace.datumSchvaleni} onChange={v=>upd("dotace","datumSchvaleni",v)}/>
-            <EF label="Datum vyplacení"    value={data.dotace.datumVyplaceni} onChange={v=>upd("dotace","datumVyplaceni",v)}/>
+            <DF label="Datum schválení"    value={data.dotace.datumSchvaleni} onChange={v=>upd("dotace","datumSchvaleni",v)}/>
+            <DF label="Datum vyplacení"    value={data.dotace.datumVyplaceni} onChange={v=>upd("dotace","datumVyplaceni",v)}/>
             <div style={S.div}/>
             <EF label="Poznámka"           value={data.dotace.poznamka}       onChange={v=>upd("dotace","poznamka",v)} multi/>
           </div>
@@ -1117,7 +1154,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                   <span style={{fontSize:11,fontWeight:700,color:"#8b5cf6"}}>Rozšíření #{i+1}</span>
                   <button onClick={()=>delArr("rozsireni",r.id)} style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:14}}>×</button>
                 </div>
-                <EF label="Datum"            value={r.datum}    onChange={v=>updArr("rozsireni",r.id,"datum",v)}/>
+                <DF label="Datum"            value={r.datum}    onChange={v=>updArr("rozsireni",r.id,"datum",v)}/>
                 <EF label="Technik"          value={r.technik}  onChange={v=>updArr("rozsireni",r.id,"technik",v)}/>
                 <EF label="Popis rozšíření"  value={r.popis}    onChange={v=>updArr("rozsireni",r.id,"popis",v)} multi/>
                 <EF label="SN nového dílu"   value={r.sn}       onChange={v=>updArr("rozsireni",r.id,"sn",v)} mono/>
@@ -1210,9 +1247,12 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                     </select>
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <input style={{...S.inp,padding:"5px 8px",fontSize:12,flex:1}} placeholder="Datum..." value={d2.datum} onChange={e=>updD("datum",e.target.value)}/>
+                    <input type="date" style={{...S.inp,padding:"5px 8px",fontSize:12,flex:1}} value={ISO_DATE_RE.test(d2.datum) ? d2.datum : ""} onChange={e=>updD("datum",e.target.value)}/>
                     {doc.gen&&<button disabled title="Automatické generování dokumentu zatím není v appce hotové — použij zatím nahrání hotového souboru níže." style={{...S.btn("#475569"),padding:"5px 10px",fontSize:11,flexShrink:0,cursor:"not-allowed",opacity:0.6}}>⬇️ Gen. (brzy)</button>}
                   </div>
+                  {d2.datum && !ISO_DATE_RE.test(d2.datum) && (
+                    <div style={{fontSize:10,color:"#64748b",marginTop:3}}>Starší zápis: {d2.datum} (vyber nové datum pro aktualizaci)</div>
+                  )}
                   {!doc.gen&&<input style={{...S.inp,marginTop:6,padding:"5px 8px",fontSize:11,color:"#475569"}} placeholder="Poznámka..." value={d2.poznamka} onChange={e=>updD("poznamka",e.target.value)}/>}
                   <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid #e2e8f0"}}>
                     <label style={{display:"inline-flex",alignItems:"center",gap:5,background:docUploading===doc.key?"#0ea5e922":"#e2e8f0",color:docUploading===doc.key?"#0ea5e9":"#475569",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:docUploading===doc.key?"default":"pointer",border:"1px dashed #e2e8f0",flexShrink:0}}>
@@ -1262,7 +1302,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                   <span style={{fontSize:11,fontWeight:700,color:"#ec4899"}}>Zásah #{i+1}</span>
                   <button onClick={()=>delArr("servis",z.id)} style={{background:"none",border:"none",color:"#f87171",cursor:"pointer",fontSize:14}}>×</button>
                 </div>
-                <EF label="Datum"           value={z.datum}        onChange={v=>updArr("servis",z.id,"datum",v)}/>
+                <DF label="Datum"           value={z.datum}        onChange={v=>updArr("servis",z.id,"datum",v)}/>
                 <EF label="Technik"         value={z.technik}      onChange={v=>updArr("servis",z.id,"technik",v)}/>
                 <EF label="Popis problému"  value={z.problem}      onChange={v=>updArr("servis",z.id,"problem",v)} multi/>
                 <EF label="Řešení"          value={z.reseni}       onChange={v=>updArr("servis",z.id,"reseni",v)} multi/>
