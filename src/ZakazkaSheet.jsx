@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { uploadFileObject, zakazkaFolderPath, toDirectImageUrl, isConnected, getDirectDownloadUrl } from "./onedrive.js";
+import { uploadFileObject, zakazkaFolderPath, isConnected, getDirectDownloadUrl } from "./onedrive.js";
 
 const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#0369a1" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
 // Formátování peněžních částek jednotně s tisícovými oddělovači, jako všude jinde v appce.
@@ -259,12 +259,15 @@ function buildSheetHtmlBody(data, contractPhotos) {
 
   {
     const fotky = data.fotky || {};
+    const allPhotos = contractPhotos || [];
     let html = pdfField("Odkaz na OneDrive", fotky.onedrive);
-    if ((contractPhotos || []).length > 0) html += pdfField("Nahráno v Zakázkách", contractPhotos.length + " fotek");
+    if (allPhotos.length > 0) html += pdfField("Celkem nahráno", allPhotos.length + " fotek");
     FOTO_KATEGORIE.forEach(kat => {
-      const fc = (fotky.nahrane || []).filter(f => f.kategorie === kat);
-      if (fc.length > 0) html += pdfField(kat, fc.map(f => f.name).join(", "));
+      const fc = allPhotos.filter(f => f.category === kat);
+      if (fc.length > 0) html += pdfField(kat, fc.length + " fotek");
     });
+    const nezarazene = allPhotos.filter(f => !f.category || !FOTO_KATEGORIE.includes(f.category));
+    if (nezarazene.length > 0) html += pdfField("Ostatní", nezarazene.length + " fotek");
     html += pdfField("Poznámka", fotky.poznamka);
     parts.push(pdfSection(SEKCE.find(s => s.id === "fotky"), html));
   }
@@ -465,24 +468,48 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     }
   };
 
-  // ─── Upload fotek na OneDrive (FirmaCRM/Zakázky/[název]/Fotky) ─────────────
+  // ─── Upload fotek — stejná tabulka (contract_photos) a stejná OneDrive
+  // složka jako Docházka a záložka "Fotky" v Zakázkách, ať je vidět všechno
+  // na jednom místě místo tří nepropojených evidencí. Ukládá se rovnou při
+  // nahrání (ne až při uložení celého listu), takže fotka nezmizí, i kdyby
+  // se list zavřel bez uložení.
   const handleFotoUpload = async (kategorie, files) => {
     if (!files || files.length === 0) return;
-    if (!isConnected()) { alert("Nejdřív se připoj k OneDrive v záložce ☁️ OneDrive."); return; }
     setFotoUploading(u => ({ ...u, [kategorie]: (u[kategorie] || 0) + files.length }));
     for (const f of files) {
       try {
-        const { webUrl, itemId } = await uploadFileObject(zakazkaFolderPath(data._nazev, `Fotky/${kategorie}`), f);
-        setData(d => ({ ...d, fotky: { ...d.fotky, nahrane: [...(d.fotky.nahrane || []), {
-          id: Date.now() + Math.random(), name: f.name, url: toDirectImageUrl(webUrl), link: webUrl, itemId,
-          datum: new Date().toLocaleDateString("cs-CZ"), kategorie,
-        }] } }));
+        let url, storagePath, itemId = null;
+        if (isConnected()) {
+          const res = await uploadFileObject(zakazkaFolderPath(data._nazev, "Fotky"), f);
+          url = res.webUrl; itemId = res.itemId; storagePath = "onedrive:" + f.name;
+        } else {
+          // OneDrive momentálně nedostupný — fotka se místo blokace uloží do
+          // Supabase Storage, stejně jako u Docházky, ať nezmizí.
+          const ext = f.name.split(".").pop();
+          const path = `${activeCId}/${crypto.randomUUID()}.${ext}`;
+          const { error } = await supabase.storage.from("zakazky-fotky").upload(path, f);
+          if (error) throw error;
+          url = supabase.storage.from("zakazky-fotky").getPublicUrl(path).data.publicUrl;
+          storagePath = path;
+        }
+        const { data: row, error: insErr } = await supabase.from("contract_photos").insert({
+          contract_id: activeCId, date: new Date().toISOString().slice(0, 10),
+          storage_path: storagePath, url, item_id: itemId, category: kategorie,
+          uploaded_by: currentUser?.employeeId || null,
+        }).select().single();
+        if (insErr) throw insErr;
+        if (row) setContractPhotos(prev => [row, ...prev]);
       } catch (e) {
-        alert(`Nahrání fotky "${f.name}" na OneDrive selhalo: ${e.message}`);
+        alert(`Nahrání fotky "${f.name}" selhalo: ${e.message}`);
       } finally {
         setFotoUploading(u => ({ ...u, [kategorie]: Math.max(0, (u[kategorie] || 1) - 1) }));
       }
     }
+  };
+
+  const removeContractPhoto = async (id) => {
+    await supabase.from("contract_photos").delete().eq("id", id);
+    setContractPhotos(prev => prev.filter(f => f.id !== id));
   };
 
   // ─── Upload dokumentu na OneDrive (FirmaCRM/Zakázky/[název]/Dokumenty) ─────
@@ -1084,49 +1111,40 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                 </a>
               )}
             </div>
-            {contractPhotos.length>0&&(
-              <div style={{marginBottom:14}}>
-                <div style={{fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Nahráno v Zakázkách ({contractPhotos.length})</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                  {contractPhotos.map(f=>(
-                    <div key={f.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",position:"relative"}}>
-                      <a href={f.url} target="_blank" rel="noreferrer">
-                        <OneDriveThumb itemId={f.item_id} fallbackUrl={f.url} alt={f.description||""} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
-                      </a>
-                      {f.description&&<div style={{fontSize:9,color:"#64748b",padding:"2px 4px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{f.description}</div>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {FOTO_KATEGORIE.map(kat=>{
-              const fc=(data.fotky.nahrane||[]).filter(f=>f.kategorie===kat);
-              const busy=fotoUploading[kat]>0;
-              return(
-                <div key={kat} style={{marginBottom:12}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>{kat} ({fc.length})</div>
-                  {fc.length>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
-                    {fc.map(f=>(
-                      <div key={f.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",position:"relative"}}>
-                        <a href={f.link||f.url} target="_blank" rel="noreferrer">
-                          <OneDriveThumb itemId={f.itemId} fallbackUrl={f.url} alt={f.name} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
-                        </a>
-                        <button onClick={()=>setData(d=>({...d,fotky:{...d.fotky,nahrane:(d.fotky.nahrane||[]).filter(x=>x.id!==f.id)}}))}
-                          style={{position:"absolute",top:3,right:3,background:"#ef444488",border:"none",borderRadius:4,color:"#fff",cursor:"pointer",fontSize:10,padding:"1px 5px"}}>×</button>
-                      </div>
-                    ))}
-                  </div>}
-                  <label style={{display:"inline-flex",alignItems:"center",gap:5,background:busy?"#0ea5e922":"#e2e8f0",color:busy?"#0ea5e9":"#475569",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:busy?"default":"pointer",border:"1px dashed #e2e8f0"}}>
-                    {busy?`⏳ Nahrávám na OneDrive (${fotoUploading[kat]})...`:"+ Přidat foto"}
-                    <input type="file" accept="image/*" multiple disabled={busy} style={{display:"none"}} onChange={e=>{
-                      const files=Array.from(e.target.files);
-                      e.target.value="";
-                      handleFotoUpload(kat, files);
-                    }}/>
-                  </label>
-                </div>
-              );
-            })}
+            {(() => {
+              const nezarazene = contractPhotos.filter(f => !f.category || !FOTO_KATEGORIE.includes(f.category));
+              const kategorie = nezarazene.length > 0 ? [...FOTO_KATEGORIE, "Ostatní"] : FOTO_KATEGORIE;
+              return kategorie.map(kat => {
+                const fc = kat === "Ostatní" ? nezarazene : contractPhotos.filter(f => f.category === kat);
+                const busy = fotoUploading[kat] > 0;
+                return (
+                  <div key={kat} style={{marginBottom:12}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>{kat} ({fc.length})</div>
+                    {fc.length>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+                      {fc.map(f=>(
+                        <div key={f.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",position:"relative"}}>
+                          <a href={f.url} target="_blank" rel="noreferrer">
+                            <OneDriveThumb itemId={f.item_id} fallbackUrl={f.url} alt={f.description||kat} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
+                          </a>
+                          <button onClick={()=>removeContractPhoto(f.id)}
+                            style={{position:"absolute",top:3,right:3,background:"#ef444488",border:"none",borderRadius:4,color:"#fff",cursor:"pointer",fontSize:10,padding:"1px 5px"}}>×</button>
+                        </div>
+                      ))}
+                    </div>}
+                    {kat!=="Ostatní"&&(
+                      <label style={{display:"inline-flex",alignItems:"center",gap:5,background:busy?"#0ea5e922":"#e2e8f0",color:busy?"#0ea5e9":"#475569",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:busy?"default":"pointer",border:"1px dashed #e2e8f0"}}>
+                        {busy?`⏳ Nahrávám (${fotoUploading[kat]})...`:"+ Přidat foto"}
+                        <input type="file" accept="image/*" multiple disabled={busy} style={{display:"none"}} onChange={e=>{
+                          const files=Array.from(e.target.files);
+                          e.target.value="";
+                          handleFotoUpload(kat, files);
+                        }}/>
+                      </label>
+                    )}
+                  </div>
+                );
+              });
+            })()}
             <div style={S.div}/>
             <EF label="Poznámka" value={data.fotky.poznamka} onChange={v=>upd("fotky","poznamka",v)} multi/>
           </div>
