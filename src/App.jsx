@@ -7161,6 +7161,9 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
               {CZ_MONTHS[viewMonth]} {viewYear}
             </span>
             <button onClick={nextMonth} style={{ ...S.btnGhost, padding: "6px 12px" }}>›</button>
+            {(viewYear !== today.getFullYear() || viewMonth !== today.getMonth()) && (
+              <button onClick={() => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); }} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>Dnes</button>
+            )}
           </div>
           <button onClick={() => { setEditEventId(null); setShowAdd(true); }} style={S.btn()}>+ Přidat událost</button>
         </div>
