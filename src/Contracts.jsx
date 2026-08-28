@@ -563,7 +563,10 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   }
 
   // ── Nová nákladová položka ──
-  async function saveCostEntry(form) {
+  // keepOpen = true: modal zůstane otevřený se stejným typem/datem, jen se
+  // vyprázdní popis/množství/cena — pro rychlé hromadné zadání víc položek
+  // za sebou (např. celý dodací list materiálu), bez otevírání modalu znovu.
+  async function saveCostEntry(form, keepOpen) {
     const { data: row } = await supabase.from("contract_cost_entries").insert({
       contract_id:       form.contractId,
       cost_type:         form.costType,
@@ -576,8 +579,8 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       unit_price_client: Number(form.unitPriceClient) || 0,
       employee_id:       form.employeeId ? Number(form.employeeId) : null,
     }).select().single();
-    if (row) setEntries([...entries, row]);
-    closeModal();
+    if (row) setEntries(prev => [...prev, row]);
+    if (!keepOpen) closeModal();
   }
 
   // ── Smazat nákladovou položku ──
@@ -1436,7 +1439,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       {modal?.type === "addEntry" && (
         <AddEntryModal
           contractId={modal.contractId} costType={modal.costType} isExtra={modal.isExtra}
-          employees={employees}
+          employees={employees} allEntries={entries}
           onSave={saveCostEntry} onClose={closeModal}
         />
       )}
@@ -2176,17 +2179,51 @@ function NewContractModal({ customers, deal, currentUser, onSave, onClose }) {
 }
 
 // ─── MODAL: PŘIDAT NÁKLADOVOU POLOŽKU ────────────────────────────────────────
-function AddEntryModal({ contractId, costType, isExtra, employees, onSave, onClose }) {
-  const [f, setF] = useState({
-    date: today(), description: "", quantity: "1", unit: costType === "práce" ? "h" : "ks",
-    unitPriceCost: "", unitPriceClient: "", employeeId: "",
+function AddEntryModal({ contractId, costType, isExtra, employees, allEntries, onSave, onClose }) {
+  const blank = (prev) => ({
+    date: prev?.date || today(),
+    description: "", quantity: "1", unit: costType === "práce" ? "h" : "ks",
+    unitPriceCost: costType === "práce" ? (prev?.unitPriceCost || "") : "",
+    unitPriceClient: costType === "práce" ? (prev?.unitPriceClient || "") : "",
+    employeeId: prev?.employeeId || "",
     contractId, costType, isExtra,
   });
+  const [f, setF] = useState(blank());
+  const [savedCount, setSavedCount] = useState(0);
+  const [suggestions, setSuggestions] = useState([]);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   const isPrace = costType === "práce";
+  // Ceník opakovaného materiálu/dopravy — místo aby si člověk pokaždé
+  // vzpomínal na cenu stejného kabelu nebo trasy, appka mu při psaní napoví
+  // z historie nákladů napříč všemi zakázkami (allEntries) a jedním klikem
+  // předvyplní jednotku i obě ceny podle posledního použití.
+  const showSuggestions = !isPrace;
+  const findSuggestions = (text) => {
+    if (!showSuggestions || !text || text.length < 2 || !allEntries) return [];
+    const q = text.toLowerCase();
+    const matches = allEntries.filter(e => e.cost_type === costType && e.description?.toLowerCase().includes(q));
+    const byDesc = new Map();
+    for (const e of matches) {
+      const key = e.description.toLowerCase();
+      const existing = byDesc.get(key);
+      if (!existing || (e.id > existing.id)) byDesc.set(key, e);
+    }
+    return [...byDesc.values()].slice(0, 6);
+  };
+
   const totalCost = (Number(f.quantity) || 0) * (Number(f.unitPriceCost) || 0);
   const totalClient = (Number(f.quantity) || 0) * (Number(f.unitPriceClient) || 0);
+
+  const handleSave = (keepOpen) => {
+    if (!f.description && !f.quantity) return;
+    onSave(f, keepOpen);
+    if (keepOpen) {
+      setSavedCount(n => n + 1);
+      setF(blank(f));
+      setSuggestions([]);
+    }
+  };
 
   return (
     <div style={S.modal}>
@@ -2194,6 +2231,7 @@ function AddEntryModal({ contractId, costType, isExtra, employees, onSave, onClo
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 17, color: "#1A1A1A" }}>
             Přidat {isExtra ? "vícepráce – " : ""}{costType}
+            {savedCount > 0 && <span style={{ color: "#34d399", fontSize: 13, fontWeight: 600, marginLeft: 10 }}>✓ přidáno {savedCount}</span>}
           </div>
           <button style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18 }} onClick={onClose}>✕</button>
         </div>
@@ -2219,7 +2257,25 @@ function AddEntryModal({ contractId, costType, isExtra, employees, onSave, onClo
         <DatePicker value={f.date} onChange={v => set("date", v)} />
 
         <label style={S.label}>Popis</label>
-        <input style={S.input} value={f.description} onChange={e => set("description", e.target.value)} placeholder={isPrace ? "Druh práce..." : costType === "materiál" ? "Název materiálu..." : "Trasa..."} />
+        <div style={{ position: "relative" }}>
+          <input style={S.input} value={f.description}
+            onChange={e => { const v = e.target.value; set("description", v); setSuggestions(findSuggestions(v)); }}
+            placeholder={isPrace ? "Druh práce..." : costType === "materiál" ? "Název materiálu..." : "Trasa..."} />
+          {suggestions.length > 0 && (
+            <div style={{ position: "absolute", zIndex: 99, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, width: "100%", top: "100%", marginTop: -6, boxShadow: "0 4px 16px #0000001a" }}>
+              {suggestions.map(s => (
+                <div key={s.id} style={{ padding: "8px 12px", cursor: "pointer", fontSize: 12.5, display: "flex", justifyContent: "space-between", gap: 8, borderBottom: "1px solid #f1f5f9" }}
+                  onClick={() => {
+                    setF(p => ({ ...p, description: s.description, unit: s.unit || p.unit, unitPriceCost: s.unit_price_cost || "", unitPriceClient: s.unit_price_client || "" }));
+                    setSuggestions([]);
+                  }}>
+                  <span style={{ color: "#1A1A1A", fontWeight: 500 }}>{s.description}</span>
+                  <span style={{ color: "#475569", flexShrink: 0 }}>{fmtKc(s.unit_price_client)}/{s.unit}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
           <div>
@@ -2255,9 +2311,12 @@ function AddEntryModal({ contractId, costType, isExtra, employees, onSave, onClo
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <button style={S.btn()} onClick={() => { if (f.description || f.quantity) onSave(f); }}>Uložit</button>
-          <button style={S.btnGhost} onClick={onClose}>Zrušit</button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button style={S.btn()} onClick={() => handleSave(false)}>Uložit</button>
+          <button style={S.btn("#34d399")} onClick={() => handleSave(true)} title="Uloží položku a nechá formulář otevřený pro další — pro rychlé zadání víc položek za sebou (např. celý dodací list)">
+            💾 Uložit a přidat další
+          </button>
+          <button style={S.btnGhost} onClick={onClose}>{savedCount > 0 ? "Hotovo" : "Zrušit"}</button>
         </div>
       </div>
     </div>
