@@ -8793,6 +8793,10 @@ function KnihaJizd({ currentUser, employees, contracts }) {
   const [showAddVehicle, setShowAddVehicle] = useState(false);
   const [filterEmp, setFilterEmp] = useState(isHR ? "" : String(currentUser?.employeeId || ""));
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
+  // Celoroční souhrn — dřív šlo vidět km jen po měsících, na celý rok se
+  // muselo proklikat 12×. Přepínač filtruje/agreguje podle celého roku
+  // místo jednoho měsíce, beze změny statistik ("Celkem km" atd. níž).
+  const [yearMode, setYearMode] = useState(false);
 
   // form state
   const [fDate, setFDate] = useState(fmt(new Date()));
@@ -8834,7 +8838,22 @@ function KnihaJizd({ currentUser, employees, contracts }) {
     supabase.from("vehicles").select("*").order("name").then(({ data }) => setVehicles(data || []));
     supabase.from("contracts").select("id, name").order("name").then(({ data }) => setLocalContracts(data || []));
     loadLogs();
-  }, [filterEmp, filterMonth]);
+  }, [filterEmp, filterMonth, yearMode]);
+
+  // Výchozí "poslední vozidlo" — appka předvyplní formulář vozidlem z
+  // posledního záznamu daného zaměstnance (napříč všemi měsíci, ne jen
+  // aktuálně filtrovaným), ať ho nemusí pokaždé znovu hledat v seznamu.
+  useEffect(() => {
+    const empId = Number(fEmpId) || currentUser?.employeeId;
+    if (!empId || fVehicleId || vehicles.length === 0) return;
+    supabase.from("vehicle_log").select("vehicle").eq("employee_id", empId).order("date", { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => {
+        if (!data?.vehicle) return;
+        const match = vehicles.find(v => data.vehicle.startsWith(v.name));
+        if (match) setFVehicleId(String(match.id));
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicles.length, fEmpId]);
 
   const addVehicle = async () => {
     if (!newVName.trim()) return;
@@ -8889,7 +8908,12 @@ function KnihaJizd({ currentUser, employees, contracts }) {
     setLoading(true);
     let q = supabase.from("vehicle_log").select("*").order("date", { ascending: false });
     if (filterEmp) q = q.eq("employee_id", Number(filterEmp));
-    if (filterMonth) q = q.gte("date", filterMonth + "-01").lte("date", filterMonth + "-31");
+    if (yearMode) {
+      const year = (filterMonth || fmt(new Date())).slice(0, 4);
+      q = q.gte("date", year + "-01-01").lte("date", year + "-12-31");
+    } else if (filterMonth) {
+      q = q.gte("date", filterMonth + "-01").lte("date", filterMonth + "-31");
+    }
     const { data } = await q;
     setLogs(data || []);
     setLoading(false);
@@ -8953,8 +8977,11 @@ function KnihaJizd({ currentUser, employees, contracts }) {
       </div>
 
       {/* Filtry */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-        <input type="month" style={{ ...S.input, width: 160, marginBottom: 0 }} value={filterMonth} onChange={e => setFilterMonth(e.target.value)} />
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+        <input type="month" disabled={yearMode} style={{ ...S.input, width: 160, marginBottom: 0, opacity: yearMode ? 0.5 : 1 }} value={filterMonth} onChange={e => setFilterMonth(e.target.value)} />
+        <button onClick={() => setYearMode(y => !y)} style={{ ...S.btn(yearMode ? "#0369a1" : "#e2e8f0"), border: "1px solid #e2e8f0" }}>
+          📅 {yearMode ? `Celý rok ${(filterMonth || "").slice(0, 4)}` : "Celý rok"}
+        </button>
         {isHR && (
           <select style={{ ...S.select, width: 200, marginBottom: 0 }} value={filterEmp} onChange={e => setFilterEmp(e.target.value)}>
             <option value="">— všichni zaměstnanci —</option>
@@ -8965,7 +8992,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
 
       {/* Statistiky */}
       <div style={{ ...S.grid3, marginBottom: 20 }}>
-        <div style={S.statCard("#0369a1")}><div style={S.statLabel}>Celkem km</div><div style={S.statValue("#0369a1")}>{totalKm.toLocaleString("cs-CZ")} km</div></div>
+        <div style={S.statCard("#0369a1")}><div style={S.statLabel}>{yearMode ? "Celkem km za rok" : "Celkem km"}</div><div style={S.statValue("#0369a1")}>{totalKm.toLocaleString("cs-CZ")} km</div></div>
         <div style={S.statCard("#F5821F")}><div style={S.statLabel}>Odhadované náklady</div><div style={S.statValue("#F5821F")}>{fmtKc(totalCost)}</div></div>
         <div style={S.statCard("#34d399")}><div style={S.statLabel}>Počet jízd</div><div style={S.statValue("#34d399")}>{logs.length}</div></div>
       </div>
