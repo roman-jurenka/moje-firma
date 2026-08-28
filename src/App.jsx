@@ -769,7 +769,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         supabase.from("costs").select("*").order("id"),
         supabase.rpc("get_attendance_full"),
         supabase.from("contracts").select("id, name, status, customer_id, code, type, address, deal_id, budget_prace, budget_material, budget_doprava, budget_vice_prace, budget_vice_material, budget_vice_doprava").order("name"),
-        supabase.from("contract_cost_entries").select("id, employee_id, amount_cost, amount_client, contract_id, attendance_id, cost_type, is_extra").order("id"),
+        supabase.from("contract_cost_entries").select("id, employee_id, amount_cost, amount_client, contract_id, attendance_id, cost_type, is_extra, approved, billed").order("id"),
         supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50),
         supabase.from("calendar_events").select("*").order("date"),
         supabase.from("deal_messages").select("*").order("created_at", { ascending: false }),
@@ -1187,7 +1187,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* ── FAKTURACE ── */}
         {tab === "invoices" && <Invoices
           invoices={invoices} setInvoices={setInvoices} customers={customers}
-          contracts={contracts} costEntries={costEntries}
+          contracts={contracts} costEntries={costEntries} setCostEntries={setCostEntries}
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
 
@@ -3498,7 +3498,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
 
 // ─── FAKTURACE ────────────────────────────────────────────────────────────────
 
-function Invoices({ invoices, setInvoices, customers, contracts, costEntries, modal, setModal, closeModal }) {
+function Invoices({ invoices, setInvoices, customers, contracts, costEntries, setCostEntries, modal, setModal, closeModal }) {
   const [invTab, setInvTab] = useState("vydané");
   const [invSearch, setInvSearch] = useState("");
   const [invStatusFilter, setInvStatusFilter] = useState("Vše");
@@ -3527,6 +3527,19 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, mo
     if (row) {
       setInvoices([...invoices, { ...row, customerId: row.customer_id }]);
       logInvoiceEvent(row.id, "vystavena");
+      // Položky náklady zakázky, které se dostaly do téhle faktury (viz
+      // Invoicing.jsx applyContract), teď označíme jako vyfakturované —
+      // stejný příznak, jaký nastavuje "Označit jako fakturováno" v záložce
+      // "K fakturaci" na zakázce, ať se nenabídnou znovu do příští faktury.
+      if (f.billedEntryIds?.length) {
+        supabase.from("contract_cost_entries")
+          .update({ billed: true, billed_at: new Date().toISOString() })
+          .in("id", f.billedEntryIds)
+          .then(({ error: billErr }) => {
+            if (billErr) console.error("Nepodařilo se označit položky zakázky jako vyfakturované:", billErr);
+            setCostEntries(prev => prev.map(e => f.billedEntryIds.includes(e.id) ? { ...e, billed: true } : e));
+          });
+      }
     }
     closeModal();
   };

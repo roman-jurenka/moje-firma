@@ -184,6 +184,10 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     onInvoiceUpdated?.(id, patch);
   };
   const [fromContractId, setFromContractId] = useState(editInvoice?.contract_id ? String(editInvoice.contract_id) : "");
+  // Info hláška, když se z vybrané zakázky do faktury nezahrne úplně
+  // všechno (protože něco už bylo dřív vyfakturováno, nebo ještě čeká na
+  // schválení v Zakázkách) — ať uživatel nekouká zmateně na nižší částku.
+  const [contractSkipNote, setContractSkipNote] = useState("");
   const [f, setF] = useState(() => editInvoice ? {
     customerId: editInvoice.customerId ? String(editInvoice.customerId) : "",
     invoiceType: editInvoice.invoice_type || "vydaná",
@@ -214,9 +218,20 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     setFromContractId(cid);
     const contract = contracts.find(c => c.id === Number(cid));
     if (!contract) return;
+    const allForContract = (costEntries || []).filter(e => e.contract_id === contract.id);
+    // Do faktury smí jen to, co je na zakázce schválené k fakturaci a ještě
+    // nebylo vyfakturováno (záložka "K fakturaci" v Zakázkách) — jinak by
+    // šlo snadno vyfakturovat stejnou práci/materiál dvakrát. Položky, které
+    // ještě čekají na schválení, se sem záměrně nezahrnou.
+    const billable = allForContract.filter(e => e.approved && !e.billed);
+    const skippedPending = allForContract.filter(e => !e.approved && !e.billed).length;
+    const skippedBilled = allForContract.filter(e => e.billed).length;
     const rows = ["práce", "materiál", "doprava"].map(type => {
-      const sum = (costEntries || []).filter(e => e.contract_id === contract.id && e.cost_type === type).reduce((s, e) => s + (Number(e.amount_client) || 0), 0);
-      return sum > 0 ? { desc: `${type[0].toUpperCase() + type.slice(1)} — ${contract.name}`, qty: 1, unit: "kpl.", price: sum, vatRate: 21 } : null;
+      const entries = billable.filter(e => e.cost_type === type);
+      const sum = entries.reduce((s, e) => s + (Number(e.amount_client) || 0), 0);
+      return sum > 0
+        ? { desc: `${type[0].toUpperCase() + type.slice(1)} — ${contract.name}`, qty: 1, unit: "kpl.", price: sum, vatRate: 21, _entryIds: entries.map(e => e.id) }
+        : null;
     }).filter(Boolean);
     setF(p => ({
       ...p,
@@ -224,6 +239,11 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
       orderRef: contract.code || p.orderRef,
       items: rows.length ? rows : p.items,
     }));
+    setContractSkipNote(
+      skippedPending || skippedBilled
+        ? `Nezahrnuto: ${skippedBilled ? `${skippedBilled}× už vyfakturováno` : ""}${skippedBilled && skippedPending ? ", " : ""}${skippedPending ? `${skippedPending}× čeká na schválení v záložce „K fakturaci" na zakázce` : ""}.`
+        : ""
+    );
     setStep("form");
   };
 
@@ -235,6 +255,10 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
 
   const submit = () => {
     if (!f.customerId || lines.length === 0) { alert("Vyber zákazníka a přidej aspoň jednu položku."); return; }
+    // Položky ze zakázky, které se do téhle faktury reálně dostaly (a
+    // uživatel je mezitím nesmazal) — po uložení faktury se v Zakázkách
+    // označí jako vyfakturované, ať se znovu nenabídnou do příští faktury.
+    const billedEntryIds = lines.flatMap(l => l._entryIds || []);
     onSave({
       ...(isEdit ? { id: editInvoice.id } : {}),
       customerId: f.customerId, invoiceType: f.invoiceType, isDeposit: f.isDeposit,
@@ -244,6 +268,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
       items: lines.map(({ desc, qty, unit, price, vatRate }) => ({ desc, qty, unit, price, vatRate })),
       amount: total - totalTax, tax: totalTax,
       contractId: fromContractId ? Number(fromContractId) : null,
+      billedEntryIds,
     });
   };
 
@@ -380,6 +405,11 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
 
         {formTab === "polozky" && (
           <>
+            {contractSkipNote && (
+              <div style={{ background: "#fffbeb", border: "1px solid #f59e0b44", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#b45309", marginBottom: 10 }}>
+                ⚠️ {contractSkipNote}
+              </div>
+            )}
             <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
