@@ -2673,6 +2673,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
   // ať jde tlačítko "Převést na zakázku" schovat a jde filtrovat seznam.
   const convertedDealIds = new Set((contracts || []).map(c => c.deal_id).filter(Boolean));
   const [convertedFilter, setConvertedFilter] = useState("vse");
+  const [dealSearch, setDealSearch] = useState("");
 
   // Detail poptávky má dvě záložky: Aktuální stav (fáze, úkoly, převod na
   // zakázku) a Úprava informací (doplnění/oprava poptávky i zákazníka na
@@ -2847,7 +2848,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
         <CustomerCompleteModal customer={completingCustomer} onClose={() => setCompletingCustomer(null)} onSaved={handleCustomerCompleted} />
       )}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
         {[["vse", "Vše"], ["neprevedeno", "Nepřevedeno na zakázku"], ["prevedeno", "Převedeno na zakázku"]].map(([k, l]) => (
           <button key={k} onClick={() => setConvertedFilter(k)}
             style={{
@@ -2858,14 +2859,59 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
             {l}
           </button>
         ))}
+        <input value={dealSearch} onChange={e => setDealSearch(e.target.value)}
+          placeholder="🔍 Hledat podle zákazníka nebo názvu…"
+          style={{ ...S.select, marginBottom: 0, flex: 1, minWidth: 200, maxWidth: 320, padding: "6px 12px" }} />
+        {dealSearch && (
+          <button onClick={() => setDealSearch("")} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 12 }}>✕ Zrušit</button>
+        )}
       </div>
+
+      {(() => {
+        // KPI nad kanbanem — respektuje aktivní filtry (převedeno/hledání),
+        // ať ukazuje součet přesně za to, co je zrovna vidět dole.
+        const matchesSearch = (d) => {
+          if (!dealSearch.trim()) return true;
+          const cust = customers.find(c => c.id === (d.customerId || d.customer_id));
+          const haystack = `${d.name || ""} ${cust?.name || ""} ${cust?.company || ""}`.toLowerCase();
+          return haystack.includes(dealSearch.trim().toLowerCase());
+        };
+        const visibleDeals = deals.filter(d => {
+          if (convertedFilter === "prevedeno" && !convertedDealIds.has(d.id)) return false;
+          if (convertedFilter === "neprevedeno" && convertedDealIds.has(d.id)) return false;
+          return matchesSearch(d);
+        });
+        const openDeals = visibleDeals.filter(d => d.stage !== "Vyhráno" && d.stage !== "Prohráno");
+        const wonDeals = visibleDeals.filter(d => d.stage === "Vyhráno");
+        const pipelineValue = openDeals.reduce((s, d) => s + (Number(d.value) || 0), 0);
+        const wonValue = wonDeals.reduce((s, d) => s + (Number(d.value) || 0), 0);
+        const kpis = [
+          { label: "V pipeline", value: openDeals.length, sub: fmtKc(pipelineValue) },
+          { label: "Vyhráno", value: wonDeals.length, sub: fmtKc(wonValue) },
+          { label: "Celkem zobrazeno", value: visibleDeals.length, sub: `Ø ${fmtKc(visibleDeals.length ? visibleDeals.reduce((s, d) => s + (Number(d.value) || 0), 0) / visibleDeals.length : 0)}` },
+        ];
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
+            {kpis.map(k => (
+              <div key={k.label} style={{ ...S.card, padding: "12px 16px" }}>
+                <div style={{ fontSize: 11, color: "#64748b" }}>{k.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#1A1A1A" }}>{k.value}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 16 }}>
         {STAGES.map(stage => {
           const stageDeals = deals.filter(d => d.stage === stage).filter(d => {
-            if (convertedFilter === "prevedeno") return convertedDealIds.has(d.id);
-            if (convertedFilter === "neprevedeno") return !convertedDealIds.has(d.id);
-            return true;
+            if (convertedFilter === "prevedeno" && !convertedDealIds.has(d.id)) return false;
+            if (convertedFilter === "neprevedeno" && convertedDealIds.has(d.id)) return false;
+            if (!dealSearch.trim()) return true;
+            const cust = customers.find(c => c.id === (d.customerId || d.customer_id));
+            const haystack = `${d.name || ""} ${cust?.name || ""} ${cust?.company || ""}`.toLowerCase();
+            return haystack.includes(dealSearch.trim().toLowerCase());
           });
           return (
           <div key={stage} style={{ ...S.kanbanCol, minHeight: 300 }}
@@ -3137,9 +3183,11 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
           <label style={S.label}>Fáze</label>
           <select style={S.select} value={newD.stage} onChange={e => setNewD({ ...newD, stage: e.target.value })}>{STAGES.map(s => <option key={s}>{s}</option>)}</select>
           <label style={S.label}>Zákazník</label>
-          <select style={S.select} value={newD.customerId} onChange={e => setNewD({ ...newD, customerId: e.target.value })}>
-            <option value="">— vyberte —</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <SearchSelect
+            options={customers.map(c => ({ id: c.id, label: c.company ? `${c.name} (${c.company})` : c.name }))}
+            value={newD.customerId}
+            placeholder="— vyberte — (piš pro hledání)"
+            onChange={val => setNewD({ ...newD, customerId: val })} />
           <label style={S.label}>Zodpovídá</label>
           <select style={S.select} value={newD.assigned_to} onChange={e => setNewD({ ...newD, assigned_to: e.target.value })}>
             <option value="">— vyberte —</option>{(employees || []).map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
