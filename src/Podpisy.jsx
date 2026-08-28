@@ -287,6 +287,20 @@ export default function PodpisyModule({ employees, currentUser }) {
   const isEmployer = currentUser.role === "admin" || currentUser.role === "manager";
   const visible = isEmployer ? docs : docs.filter(d => d.employee_id === currentUser.employeeId);
 
+  // Hledání + filtr — seznam podepsaných dokumentů dřív šel jen scrollovat
+  // odshora dolů, u firmy s delší historií (výkazy práce každý měsíc za
+  // každého zaměstnance) bylo těžké najít konkrétní dokument.
+  const [docSearch, setDocSearch] = useState("");
+  const [docFilterEmp, setDocFilterEmp] = useState("all");
+  const [docFilterMonth, setDocFilterMonth] = useState("");
+  const filteredVisible = visible.filter(d => {
+    const emp = employees.find(e => e.id === d.employee_id);
+    if (docSearch && !(`${d.title || ""} ${emp?.name || ""}`.toLowerCase().includes(docSearch.toLowerCase()))) return false;
+    if (isEmployer && docFilterEmp !== "all" && String(d.employee_id) !== docFilterEmp) return false;
+    if (docFilterMonth && !(d.created_at || "").slice(0, 7).startsWith(docFilterMonth)) return false;
+    return true;
+  });
+
   const openSign = (doc, role) => {
     setSignName(role === "employee" ? (employees.find(e => e.id === doc.employee_id)?.name || currentUser.name) : currentUser.name);
     setSignModal({ doc, role });
@@ -323,13 +337,31 @@ export default function PodpisyModule({ employees, currentUser }) {
 
       <MujPodpisKarta currentUser={currentUser} />
 
+      {visible.length > 0 && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+          <input style={{ ...S.input, maxWidth: 240 }} placeholder="🔍 Hledat podle názvu nebo jména…" value={docSearch} onChange={e => setDocSearch(e.target.value)} />
+          {isEmployer && (
+            <select style={{ ...S.input, maxWidth: 200 }} value={docFilterEmp} onChange={e => setDocFilterEmp(e.target.value)}>
+              <option value="all">Všichni zaměstnanci</option>
+              {employees.map(e => <option key={e.id} value={String(e.id)}>{e.name}</option>)}
+            </select>
+          )}
+          <input type="month" style={{ ...S.input, maxWidth: 160 }} value={docFilterMonth} onChange={e => setDocFilterMonth(e.target.value)} />
+          {(docSearch || docFilterEmp !== "all" || docFilterMonth) && (
+            <button style={S.btnGhost} onClick={() => { setDocSearch(""); setDocFilterEmp("all"); setDocFilterMonth(""); }}>✕ Zrušit filtr</button>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div style={{ color: "#64748b", fontSize: 13 }}>Načítám…</div>
       ) : visible.length === 0 ? (
         <div style={{ color: "#64748b", fontSize: 13 }}>Zatím žádné dokumenty k podpisu.</div>
+      ) : filteredVisible.length === 0 ? (
+        <div style={{ color: "#64748b", fontSize: 13 }}>Žádný dokument neodpovídá filtru.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {visible.map(doc => {
+          {filteredVisible.map(doc => {
             const sc = STATUS_COLOR[doc.status] || { bg: "#64748b22", fg: "#475569" };
             const emp = employees.find(e => e.id === doc.employee_id);
             const canSignEmployee = doc.status === "čeká na podpis zaměstnance" && (currentUser.employeeId === doc.employee_id || isEmployer);
