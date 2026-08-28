@@ -114,6 +114,10 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // "entry" | "settings"
   const [monthFilter, setMonthFilter] = useState(monthKey(todayStr()));
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("vse");
+  const [counterpartyFilter, setCounterpartyFilter] = useState("vse");
+  const [sortBy, setSortBy] = useState("date_desc");
 
   const load = () => {
     Promise.all([
@@ -172,6 +176,22 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
   const months = [...new Set(entries.map(e => monthKey(e.entry_date)))].sort().reverse();
   if (!months.includes(monthKey(todayStr()))) months.unshift(monthKey(todayStr()));
 
+  // Hledání/filtr/řazení se aplikují až na záznamy vybraného měsíce — dřív
+  // šlo v seznamu jen listovat po měsících bez možnosti najít konkrétní
+  // platbu nebo protistranu, u firmy s víc pohyby měsíčně těžko dohledatelné.
+  const counterparties = [...new Set(entries.map(e => e.counterparty).filter(Boolean))].sort((a, b) => a.localeCompare(b, "cs"));
+  const q = search.trim().toLowerCase();
+  const visibleEntries = monthEntries
+    .filter(e => typeFilter === "vse" || e.entry_type === typeFilter)
+    .filter(e => counterpartyFilter === "vse" || e.counterparty === counterpartyFilter)
+    .filter(e => !q || (e.description || "").toLowerCase().includes(q) || (e.counterparty || "").toLowerCase().includes(q) || (contracts.find(c => c.id === e.contract_id)?.name || "").toLowerCase().includes(q))
+    .sort((a, b) => {
+      if (sortBy === "date_asc") return a.entry_date.localeCompare(b.entry_date) || a.id - b.id;
+      if (sortBy === "amount_desc") return Number(b.amount) - Number(a.amount);
+      if (sortBy === "amount_asc") return Number(a.amount) - Number(b.amount);
+      return b.entry_date.localeCompare(a.entry_date) || b.id - a.id; // date_desc (výchozí)
+    });
+
   if (loading) return <div style={{ padding: 24, color: "#64748b" }}>Načítání…</div>;
 
   return (
@@ -218,10 +238,26 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, color: "#475569" }}>Měsíc:</span>
         <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
           {months.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <input placeholder="🔍 Hledat (popis, protistrana, zakázka)..." value={search} onChange={e => setSearch(e.target.value)}
+          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, minWidth: 240 }} />
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
+          <option value="vse">Všechny typy</option>
+          {Object.entries(TYPY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <select value={counterpartyFilter} onChange={e => setCounterpartyFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
+          <option value="vse">Všechny protistrany</option>
+          {counterparties.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
+          <option value="date_desc">Řadit: Nejnovější</option>
+          <option value="date_asc">Řadit: Nejstarší</option>
+          <option value="amount_desc">Řadit: Částka sestupně</option>
+          <option value="amount_asc">Řadit: Částka vzestupně</option>
         </select>
       </div>
 
@@ -235,10 +271,10 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
             </tr>
           </thead>
           <tbody>
-            {monthEntries.length === 0 && (
-              <tr><td colSpan={10} style={{ padding: 20, textAlign: "center", color: "#64748b" }}>Žádné záznamy v tomto měsíci.</td></tr>
+            {visibleEntries.length === 0 && (
+              <tr><td colSpan={10} style={{ padding: 20, textAlign: "center", color: "#64748b" }}>{monthEntries.length === 0 ? "Žádné záznamy v tomto měsíci." : "Žádný záznam neodpovídá hledání/filtru."}</td></tr>
             )}
-            {monthEntries.map(e => (
+            {visibleEntries.map(e => (
               <tr key={e.id} style={{ borderTop: "1px solid #f1f5f9" }}>
                 <td style={{ padding: "9px 14px" }}>{e.entry_date}</td>
                 <td style={{ padding: "9px 14px" }}>
