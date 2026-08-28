@@ -4433,10 +4433,16 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
     };
     const { data: row } = await supabase.from("warehouse_movements").insert(row_data).select().single();
     if (row) setMovements([row, ...movements]);
-    // Upravit sklad pokud jde o naskladneni
+    // Pohyb se dřív při neshodě názvu produktu (překlep, jiné velikosti
+    // písmen apod.) tiše zapsal jen do historie pohybů, ale stav skladu se
+    // nezměnil — bez jakéhokoliv upozornění. Teď appka po uložení pohybu,
+    // který má stav skladu ovlivnit, zkontroluje, jestli se produkt podle
+    // názvu skutečně našel, a pokud ne, jasně na to upozorní.
+    let matchedProduct = false;
     if (newMov.movement_type === "in") {
       const prod = products.find(p => p.name.toLowerCase() === newMov.product_name.toLowerCase());
       if (prod) {
+        matchedProduct = true;
         const ns = prod.stock + Number(newMov.quantity);
         await supabase.from("products").update({ stock: ns }).eq("id", prod.id);
         setProducts(products.map(p => p.id === prod.id ? { ...p, stock: ns } : p));
@@ -4444,6 +4450,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
     } else if (["out_contract","out_vehicle","out"].includes(newMov.movement_type)) {
       const prod = products.find(p => p.name.toLowerCase() === newMov.product_name.toLowerCase());
       if (prod) {
+        matchedProduct = true;
         const ns = Math.max(0, prod.stock - Number(newMov.quantity));
         await supabase.from("products").update({ stock: ns }).eq("id", prod.id);
         setProducts(products.map(p => p.id === prod.id ? { ...p, stock: ns } : p));
@@ -4462,9 +4469,44 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
           unit_price_client: Number(prod?.price_sell || prod?.price || 0),
         });
       }
+    } else {
+      matchedProduct = true; // transfer/transfer_vh sklad stav nemění, nekontroluje se
+    }
+    if (!matchedProduct) {
+      alert(`Pozor: produkt „${newMov.product_name}" nebyl nalezen ve skladových zásobách (přesná shoda názvu). Pohyb se zapsal do historie, ale stav skladu se NEZMĚNIL — zkontroluj přesný název produktu nebo ho případně nejdřív zaveď v záložce „Skladové zásoby".`);
     }
     setNewMov({ product_name: "", quantity: "", unit: "ks", movement_type: "in", contract_id: "", vehicle: "", from_location: "Sklad", to_location: "", note: "" });
   };
+
+  // Pohyby z historie, jejichž produkt dnes v evidenci nesedí přesně na
+  // žádný existující produkt — typicky staré neshody, které dřív appka
+  // řešila tiše. Zobrazí se jako varovný přehled v záložce Pohyby.
+  const unmatchedMovements = movements.filter(m =>
+    ["in", "out_contract", "out_vehicle", "out"].includes(m.movement_type) &&
+    !products.some(p => p.name.toLowerCase() === (m.product_name || "").toLowerCase())
+  );
+
+  // Materiál aktuálně na jednotlivých autech — dopočet z pohybů (appka
+  // nemá samostatnou evidenci skladu podle auta, jen historii pohybů):
+  // na auto přibude výdejem/přesunem tam, ubere se přesunem zpět na sklad.
+  const materialByVehicle = (() => {
+    const map = {}; // vehicle -> { productName -> qty }
+    movements.forEach(m => {
+      if (!m.vehicle) return;
+      if (!map[m.vehicle]) map[m.vehicle] = {};
+      const key = m.product_name || "?";
+      const delta = (m.movement_type === "out_vehicle" || m.movement_type === "transfer_vh") ? Number(m.quantity)
+        : m.movement_type === "transfer" ? -Number(m.quantity) : 0;
+      if (delta === 0) return;
+      map[m.vehicle][key] = (map[m.vehicle][key] || 0) + delta;
+    });
+    return Object.entries(map)
+      .map(([vehicle, items]) => ({
+        vehicle,
+        items: Object.entries(items).map(([name, qty]) => ({ name, qty })).filter(i => i.qty > 0),
+      }))
+      .filter(v => v.items.length > 0);
+  })();
 
   const MOV_COLORS = { in: "#34d399", out: "#f87171", out_contract: "#f87171", out_vehicle: "#f59e0b", transfer: "#0369a1", transfer_vh: "#a78bfa" };
   const MOV_LABELS = Object.fromEntries(MOVE_TYPES.map(t => [t.value, t.label]));
@@ -4475,6 +4517,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
         <div style={{ display: "flex", gap: 8 }}>
           <button style={{ ...S.btn(whTab === "stock" ? "#0369a1" : "#64748b"), padding: "7px 16px" }} onClick={() => setWhTab("stock")}>📦 Skladové zásoby</button>
           <button style={{ ...S.btn(whTab === "movements" ? "#0369a1" : "#64748b"), padding: "7px 16px" }} onClick={() => setWhTab("movements")}>🔄 Pohyby</button>
+          <button style={{ ...S.btn(whTab === "vehicles" ? "#0369a1" : "#64748b"), padding: "7px 16px" }} onClick={() => setWhTab("vehicles")}>🚗 Materiál na autech</button>
           <button style={S.btn()} onClick={() => setShowAddProduct(true)}>+ Přidat produkt</button>
         </div>
       </div>
@@ -4610,6 +4653,20 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
             <button style={{ ...S.btn(), padding: "9px 24px", fontWeight: 700 }} onClick={saveMovement}>✅ Zaznamenat pohyb</button>
           </div>
 
+          {unmatchedMovements.length > 0 && (
+            <div style={{ ...S.card, marginBottom: 16, background: "#fffbeb", border: "1px solid #fcd34d" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e", marginBottom: 6 }}>⚠️ Pohyby s neshodou názvu produktu ({unmatchedMovements.length})</div>
+              <div style={{ fontSize: 12, color: "#78350f", marginBottom: 8 }}>
+                Tyto pohyby se zapsaly do historie, ale stav skladu u nich nebyl ovlivněn, protože se název produktu přesně neshodoval s žádnou položkou v seznamu zásob. Zkontroluj názvy a případně produkt zaveď nebo pohyb oprav.
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {[...new Set(unmatchedMovements.map(m => m.product_name))].map(name => (
+                  <span key={name} style={S.tag("#f59e0b")}>{name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Seznam pohybů */}
           <div style={S.card}>
             <table style={S.table}>
@@ -4634,6 +4691,28 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
             {movements.length === 0 && !loadingMov && <Empty />}
           </div>
         </>
+      )}
+
+      {whTab === "vehicles" && (
+        <div>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>
+            Přehled je dopočítaný z historie pohybů (výdej na auto mínus vrácení do skladu) — appka nevede skutečnou evidenci polohy skladu po jednotlivých autech, jde tedy o odhad, ne o přesný stav. Pro kontrolu doporučujeme čas od času udělat fyzickou inventuru na autě.
+          </div>
+          {materialByVehicle.length === 0 && <Empty />}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+            {materialByVehicle.map(v => (
+              <div key={v.vehicle} style={S.card}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#0369a1", marginBottom: 10 }}>🚗 {v.vehicle}</div>
+                {v.items.map(it => (
+                  <div key={it.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid #f1f5f9" }}>
+                    <span style={{ color: "#1A1A1A" }}>{it.name}</span>
+                    <span style={{ fontWeight: 700, color: "#475569" }}>{it.qty}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {showAddProduct && (
