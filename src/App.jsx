@@ -4890,6 +4890,9 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
   const [editField, setEditField] = useState({});
   const [uploading, setUploading] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  // Hledání v seznamu zaměstnanců — u víc než pár lidí bylo těžké najít
+  // konkrétního zaměstnance jinak než scrollováním karet.
+  const [empSearch, setEmpSearch] = useState("");
 
   // Zaměstnanec se nikdy fyzicky nemaže — jen se archivuje, aby zůstaly
   // zachované jeho staré záznamy (docházka, náklady, kniha jízd, úkoly) v historii.
@@ -5282,6 +5285,10 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
     );
   }
 
+  const visibleEmployees = employees
+    .filter(e => !!e.archived === showArchived)
+    .filter(e => !empSearch || `${e.name} ${e.position || ""} ${e.department || ""}`.toLowerCase().includes(empSearch.toLowerCase()));
+
   return (
     <>
       <div style={S.header}>
@@ -5302,13 +5309,14 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
           <div key={s.label} style={S.statCard(s.color)}><div style={S.statLabel}>{s.label}</div><div style={S.statValue(s.color)}>{s.value}</div></div>
         ))}
       </div>
+      <input style={{ ...S.input, maxWidth: 280, marginBottom: 16 }} placeholder="🔍 Hledat jméno, pozici, oddělení…" value={empSearch} onChange={e => setEmpSearch(e.target.value)} />
       <div className="emp-card-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 16 }}>
-        {employees.filter(e => !!e.archived === showArchived).length === 0 && (
+        {visibleEmployees.length === 0 && (
           <div style={{ color: "#334155", fontSize: 13, gridColumn: "1 / -1", textAlign: "center", padding: 24 }}>
-            {showArchived ? "Žádní smazaní zaměstnanci." : "Žádní zaměstnanci."}
+            {empSearch ? "Žádný zaměstnanec neodpovídá hledání." : showArchived ? "Žádní smazaní zaměstnanci." : "Žádní zaměstnanci."}
           </div>
         )}
-        {employees.filter(e => !!e.archived === showArchived).map((e, i) => {
+        {visibleEmployees.map((e, i) => {
           const empPaid   = (costEntries || []).filter(c => c.employee_id === e.id).reduce((s, c) => s + Number(c.amount_cost || 0), 0);
           const empBilled = (costEntries || []).filter(c => c.employee_id === e.id).reduce((s, c) => s + Number(c.amount_client || 0), 0);
           return (
