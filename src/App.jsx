@@ -5948,7 +5948,14 @@ function Projects({ projects, setProjects, customers, employees, contracts, temp
 function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
   const [newC, setNewC] = useState({ date: "", category: "Mzdy", description: "", amount: "", recurring: false, contractId: "" });
   const [filterCat, setFilterCat] = useState("Vše");
-  const [selectedYear] = useState(2026);
+  // Přepínač roku dřív nabízel jen napevno "2026" a nešlo ho přepnout —
+  // od 1. ledna dalšího roku by graf i čtvrtletní součty potichu zůstaly
+  // prázdné, protože by v datech žádný "2026" záznam nebyl (stejná chyba
+  // jako dřív v Reportech, tady doplněná stejnou opravou). Roky v přepínači
+  // se berou z reálných dat + vždy doplněné o aktuální rok.
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
+  const availableYears = [...new Set([String(new Date().getFullYear()), ...costs.map(c => c.date?.slice(0, 4)).filter(Boolean)])]
+    .sort((a, b) => b.localeCompare(a));
 
   const save = async () => {
     if (!newC.description || !newC.amount) return;
@@ -6009,13 +6016,18 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
     <>
       <div style={S.header}>
         <h1 style={S.h1}>Sledování nákladů {selectedYear}</h1>
-        <button style={S.btn()} onClick={() => setModal({ type: "addCost" })}>+ Přidat náklad</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {availableYears.map(y => (
+            <button key={y} style={{ ...S.btn(selectedYear === y ? "#0369a1" : "#e2e8f0"), border: "1px solid #e2e8f0" }} onClick={() => setSelectedYear(y)}>{y}</button>
+          ))}
+          <button style={S.btn()} onClick={() => setModal({ type: "addCost" })}>+ Přidat náklad</button>
+        </div>
       </div>
 
       {/* Top stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {[
-          { label: "Náklady celkem", value: fmtKc(totalAll), color: "#f87171" },
+          { label: "Náklady celkem (všechny roky)", value: fmtKc(totalAll), color: "#f87171" },
           ...quarters.map(q => ({ label: q.label, value: fmtKc(q.total), color: "#0369a1" })),
         ].map(s => (
           <div key={s.label} style={S.statCard(s.color)}>
