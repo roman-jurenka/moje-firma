@@ -915,6 +915,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         const { error } = await supabase.from("signed_documents").update(payload.patch).eq("id", payload.docId);
         if (error) throw error;
       },
+      warehouse_movement: async (payload) => { await performWarehouseMovement(payload); },
     }, loadAllData);
     return unsub;
   }, [loadAllData]);
@@ -4375,6 +4376,51 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
 
 // ─── SKLAD ────────────────────────────────────────────────────────────────────
 
+// Zápis skladového pohybu (vč. dopadu na stav zásob a případné nákladové
+// položky na zakázku) — sdílená logika mezi okamžitým uložením v komponentě
+// Warehouse a offline frontou (viz initOfflineSync níže). Produkt se vždy
+// dohledává čerstvě přímo v Supabase, ne ze stavu komponenty, protože
+// u zprávy z offline fronty se může spustit až s velkým zpožděním (např.
+// druhý den), kdy by lokální stav produktů v prohlížeči už byl zastaralý.
+async function performWarehouseMovement(row_data) {
+  const { data: row, error: insErr } = await supabase.from("warehouse_movements").insert(row_data).select().single();
+  if (insErr) throw insErr;
+
+  let matchedProduct = false;
+  let updatedProduct = null;
+  if (["in", "out_contract", "out_vehicle", "out"].includes(row_data.movement_type)) {
+    const { data: prod } = await supabase.from("products").select("*").ilike("name", row_data.product_name).maybeSingle();
+    if (prod) {
+      matchedProduct = true;
+      const delta = row_data.movement_type === "in" ? Number(row_data.quantity) : -Number(row_data.quantity);
+      const ns = Math.max(0, prod.stock + delta);
+      const { error: updErr } = await supabase.from("products").update({ stock: ns }).eq("id", prod.id);
+      if (updErr) throw updErr;
+      updatedProduct = { id: prod.id, stock: ns };
+      if (row_data.movement_type === "out_contract" && row_data.contract_id) {
+        const { error: costErr } = await supabase.from("contract_cost_entries").insert({
+          contract_id: row_data.contract_id,
+          cost_type: "materiál",
+          is_extra: false,
+          date: row_data.entry_date || fmt(new Date()),
+          description: `Materiál – ${row_data.product_name}`,
+          quantity: Number(row_data.quantity),
+          unit: row_data.unit,
+          unit_price_cost: Number(prod?.price || 0),
+          unit_price_client: Number(prod?.price_sell || prod?.price || 0),
+        });
+        // Tenhle zápis živí náklady/marži zakázky — pokud selže, výdej
+        // materiálu by se jinak tvářil jako v pořádku, ale zakázka by
+        // "ztratila" náklad na materiál. Proto se chyba nepolyká.
+        if (costErr) throw costErr;
+      }
+    }
+  } else {
+    matchedProduct = true; // transfer/transfer_vh sklad stav nemění, nekontroluje se
+  }
+  return { row, matchedProduct, updatedProduct };
+}
+
 function Warehouse({ products, setProducts, contracts, currentUser }) {
   const isAdmin = currentUser?.role === "admin";
   const [newP, setNewP] = useState({ name: "", sku: "", category: "", price: "", price_sell: "", stock: "", minStock: "", unit: "ks", emas_code: "", image_url: "" });
@@ -4394,12 +4440,13 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
   const save = async () => {
     if (!newP.name) return;
     const emasImg = newP.image_url || (newP.emas_code ? `https://www.emas.cz/media/cache/product_image/img/product/${newP.emas_code}.jpg` : "");
-    const { data: row } = await supabase.from("products").insert({
+    const { data: row, error } = await supabase.from("products").insert({
       name: newP.name, sku: newP.sku, category: newP.category,
       price: Number(newP.price), price_sell: Number(newP.price_sell),
       stock: Number(newP.stock), min_stock: Number(newP.minStock),
       unit: newP.unit, emas_code: newP.emas_code, image_url: emasImg || "",
     }).select().single();
+    if (error) { alert("Produkt se nepodařilo uložit: " + error.message); return; }
     if (row) setProducts([...products, { ...row, minStock: row.min_stock }]);
     setNewP({ name: "", sku: "", category: "", price: "", price_sell: "", stock: "", minStock: "", unit: "ks", emas_code: "", image_url: "" });
     setShowAddProduct(false);
@@ -4414,7 +4461,8 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
       stock: Number(editP.stock), min_stock: Number(editP.min_stock || editP.minStock || 0),
       unit: editP.unit, emas_code: editP.emas_code || "", image_url: emasImg || editP.image_url || "",
     };
-    await supabase.from("products").update(upd).eq("id", editP.id);
+    const { error } = await supabase.from("products").update(upd).eq("id", editP.id);
+    if (error) { alert("Úpravu produktu se nepodařilo uložit: " + error.message); return; }
     setProducts(products.map(p => p.id === editP.id ? { ...p, ...upd, minStock: upd.min_stock } : p));
     setEditP(null);
   };
@@ -4423,7 +4471,8 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
     const prod = products.find(p => p.id === id);
     if (!prod) return;
     const newStock = Math.max(0, prod.stock + delta);
-    await supabase.from("products").update({ stock: newStock }).eq("id", id);
+    const { error } = await supabase.from("products").update({ stock: newStock }).eq("id", id);
+    if (error) { alert("Stav skladu se nepodařilo upravit: " + error.message); return; }
     setProducts(products.map(p => p.id === id ? { ...p, stock: newStock } : p));
   };
 
@@ -4450,50 +4499,39 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
       vehicle: newMov.vehicle,
       note: newMov.note,
       created_by: currentUser?.name || "?",
+      entry_date: fmt(new Date()), // datum pro případnou nákladovou položku – zachytí se hned při odeslání, ne až při pozdějším odeslání z offline fronty
     };
-    const { data: row } = await supabase.from("warehouse_movements").insert(row_data).select().single();
-    if (row) setMovements([row, ...movements]);
-    // Pohyb se dřív při neshodě názvu produktu (překlep, jiné velikosti
-    // písmen apod.) tiše zapsal jen do historie pohybů, ale stav skladu se
-    // nezměnil — bez jakéhokoliv upozornění. Teď appka po uložení pohybu,
-    // který má stav skladu ovlivnit, zkontroluje, jestli se produkt podle
-    // názvu skutečně našel, a pokud ne, jasně na to upozorní.
-    let matchedProduct = false;
-    if (newMov.movement_type === "in") {
-      const prod = products.find(p => p.name.toLowerCase() === newMov.product_name.toLowerCase());
-      if (prod) {
-        matchedProduct = true;
-        const ns = prod.stock + Number(newMov.quantity);
-        await supabase.from("products").update({ stock: ns }).eq("id", prod.id);
-        setProducts(products.map(p => p.id === prod.id ? { ...p, stock: ns } : p));
-      }
-    } else if (["out_contract","out_vehicle","out"].includes(newMov.movement_type)) {
-      const prod = products.find(p => p.name.toLowerCase() === newMov.product_name.toLowerCase());
-      if (prod) {
-        matchedProduct = true;
-        const ns = Math.max(0, prod.stock - Number(newMov.quantity));
-        await supabase.from("products").update({ stock: ns }).eq("id", prod.id);
-        setProducts(products.map(p => p.id === prod.id ? { ...p, stock: ns } : p));
-      }
-      // Výdej materiálu na zakázku se zároveň propíše jako nákladová položka (materiál) k dané zakázce
-      if (newMov.movement_type === "out_contract" && newMov.contract_id) {
-        await supabase.from("contract_cost_entries").insert({
-          contract_id: Number(newMov.contract_id),
-          cost_type: "materiál",
-          is_extra: false,
-          date: fmt(new Date()),
-          description: `Materiál – ${newMov.product_name}`,
-          quantity: Number(newMov.quantity),
-          unit: newMov.unit,
-          unit_price_cost: Number(prod?.price || 0),
-          unit_price_client: Number(prod?.price_sell || prod?.price || 0),
-        });
-      }
-    } else {
-      matchedProduct = true; // transfer/transfer_vh sklad stav nemění, nekontroluje se
+    // Technik často zapisuje výdej materiálu přímo na place bez signálu —
+    // proto se pohyb (vč. dopadu na stav skladu a nákladovou položku
+    // zakázky) posílá přes offline frontu: bez signálu se bezpečně uloží
+    // do telefonu a odešle se automaticky, jakmile appka zase naskočí
+    // online, místo aby se ztratil nebo appka spadla na chybě.
+    let res;
+    try {
+      res = await tryOrQueue(
+        "warehouse_movement",
+        `Skladový pohyb – ${newMov.product_name} (${newMov.quantity} ${newMov.unit})`,
+        row_data,
+        performWarehouseMovement
+      );
+    } catch (e) {
+      alert("Skladový pohyb se nepodařilo uložit: " + (e?.message || e || "neznámá chyba"));
+      return;
     }
-    if (!matchedProduct) {
-      alert(`Pozor: produkt „${newMov.product_name}" nebyl nalezen ve skladových zásobách (přesná shoda názvu). Pohyb se zapsal do historie, ale stav skladu se NEZMĚNIL — zkontroluj přesný název produktu nebo ho případně nejdřív zaveď v záložce „Skladové zásoby".`);
+    if (res.queued) {
+      alert("Bez signálu — pohyb je uložený v telefonu a odešle se automaticky, jakmile appka bude zase online.");
+    } else if (res.result) {
+      const { row, matchedProduct, updatedProduct } = res.result;
+      if (row) setMovements([row, ...movements]);
+      if (updatedProduct) setProducts(products.map(p => p.id === updatedProduct.id ? { ...p, stock: updatedProduct.stock } : p));
+      // Pohyb se dřív při neshodě názvu produktu (překlep, jiné velikosti
+      // písmen apod.) tiše zapsal jen do historie pohybů, ale stav skladu se
+      // nezměnil — bez jakéhokoliv upozornění. Appka po uložení pohybu,
+      // který má stav skladu ovlivnit, zkontroluje, jestli se produkt podle
+      // názvu skutečně našel, a pokud ne, jasně na to upozorní.
+      if (!matchedProduct) {
+        alert(`Pozor: produkt „${newMov.product_name}" nebyl nalezen ve skladových zásobách (přesná shoda názvu). Pohyb se zapsal do historie, ale stav skladu se NEZMĚNIL — zkontroluj přesný název produktu nebo ho případně nejdřív zaveď v záložce „Skladové zásoby".`);
+      }
     }
     setNewMov({ product_name: "", quantity: "", unit: "ks", movement_type: "in", contract_id: "", vehicle: "", from_location: "Sklad", to_location: "", note: "" });
   };
