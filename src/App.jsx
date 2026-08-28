@@ -9,7 +9,7 @@ import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel } from "./invoicingUtils.js";
-import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
+import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
 import { compressImage } from "./imageUtils.js";
@@ -835,6 +835,17 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadAllData();
   }, [loadAllData]);
+
+  // ── Plánovaná automatická záloha na OneDrive ──
+  // Appka nemá vlastní server/cron, takže zálohu jednou denně potichu spustí
+  // na pozadí první zaměstnanec, který ten den appku otevře (viz onedrive.js
+  // maybeAutoBackup — hlídá si přes Supabase, že už se dnes nezálohovalo a že
+  // zrovna neběží záloha z jiného zařízení). Se startem se počká pár vteřin,
+  // ať to nesoutěží o síť s počátečním načtením dat.
+  useEffect(() => {
+    const t = setTimeout(() => { maybeAutoBackup(supabase); }, 8000);
+    return () => clearTimeout(t);
+  }, []);
 
   // ── Odolnost proti výpadku signálu (docházka, km, fotky, podpisy) ──
   // Handlery skutečně provedou zápis, který se dřív ztratil, když selhala

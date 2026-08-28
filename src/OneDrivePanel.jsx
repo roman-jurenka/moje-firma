@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { login, logout, isConnected, getUser, backupToOneDrive, connectSharedAccount } from "./onedrive.js";
+import { login, logout, isConnected, getUser, backupToOneDrive, connectSharedAccount, getLastBackupInfo, recordBackupStatus } from "./onedrive.js";
 
 const S = {
   card: { background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px", marginBottom: 16, boxShadow: "0 1px 4px #0000000a" },
@@ -12,6 +12,7 @@ export default function OneDrivePanel({ supabase }) {
   const [user, setUser] = useState(getUser());
   const [progress, setProgress] = useState(null);    // { msg, pct }
   const [lastBackup, setLastBackup] = useState(localStorage.getItem("od_last_backup"));
+  const [sharedBackupInfo, setSharedBackupInfo] = useState(null); // poslední záloha odkudkoli (i automatická z jiného zařízení)
   const [error, setError] = useState(null);
   const [checking, setChecking] = useState(!isConnected());
   const [backupResult, setBackupResult] = useState(null); // { folder, failed, succeeded } — poslední zálohu, ať je vidět, co se případně nepovedlo
@@ -25,6 +26,12 @@ export default function OneDrivePanel({ supabase }) {
       setChecking(false);
     });
   }, []);
+
+  // Stav poslední zálohy (i té, kterou na pozadí spustil automaticky jiný
+  // zaměstnanec na jiném zařízení) — viz onedrive.js maybeAutoBackup.
+  useEffect(() => {
+    getLastBackupInfo(supabase).then(setSharedBackupInfo).catch(() => {});
+  }, [supabase]);
 
   const handleLogin = () => {
     setError(null);
@@ -47,6 +54,8 @@ export default function OneDrivePanel({ supabase }) {
       localStorage.setItem("od_last_backup", now);
       setLastBackup(now);
       setBackupResult(result);
+      await recordBackupStatus(supabase, result, false);
+      setSharedBackupInfo(await getLastBackupInfo(supabase));
       if (result.failed.length === 0) {
         setProgress({ msg: `✓ Záloha uložena do ${result.folder}`, pct: 100 });
         setTimeout(() => setProgress(null), 4000);
@@ -74,11 +83,14 @@ export default function OneDrivePanel({ supabase }) {
       const now = new Date().toLocaleString("cs-CZ");
       localStorage.setItem("od_last_backup", now);
       setLastBackup(now);
-      setBackupResult(prev => ({
+      const merged = {
         folder: result.folder,
         failed: result.failed,
-        succeeded: [...(prev?.succeeded || []), ...result.succeeded],
-      }));
+        succeeded: [...(backupResult?.succeeded || []), ...result.succeeded],
+      };
+      setBackupResult(merged);
+      await recordBackupStatus(supabase, merged, false);
+      setSharedBackupInfo(await getLastBackupInfo(supabase));
       if (result.failed.length === 0) {
         setProgress({ msg: `✓ Doplněno — záloha je teď kompletní`, pct: 100 });
         setTimeout(() => setProgress(null), 4000);
@@ -128,8 +140,15 @@ export default function OneDrivePanel({ supabase }) {
                 {progress ? "⏳ Zálohuji..." : "💾 Záloha teď"}
               </button>
               {lastBackup && !progress && (
-                <span style={{ fontSize: 12, color: "#475569" }}>Poslední záloha: {lastBackup}</span>
+                <span style={{ fontSize: 12, color: "#475569" }}>Poslední záloha v tomto prohlížeči: {lastBackup}</span>
               )}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12, color: "#475569" }}>
+              🕗 Automatická denní záloha: {sharedBackupInfo
+                ? <>{sharedBackupInfo.date === new Date().toISOString().slice(0, 10) ? "dnes proběhla" : `naposledy ${sharedBackupInfo.date}`}
+                    {" "}({new Date(sharedBackupInfo.timestamp).toLocaleString("cs-CZ")}{sharedBackupInfo.failed?.length > 0 ? `, ${sharedBackupInfo.failed.length} tabulek se nepovedlo` : ", vše v pořádku"})
+                  </>
+                : "zatím neproběhla — spustí se sama v pozadí, jakmile někdo příště otevře appku"}
             </div>
 
             {/* Progress bar */}
@@ -193,7 +212,7 @@ export default function OneDrivePanel({ supabase }) {
       <div style={S.card}>
         <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 12 }}>⚙️ Co se ukládá na OneDrive</div>
         {[
-          ["💾 Zálohy databáze", "CSV export všech tabulek (zakázky, docházka, náklady...)", true],
+          ["💾 Zálohy databáze", "CSV export všech tabulek (zakázky, docházka, náklady...) — spouští se automaticky jednou denně na pozadí, ruční tlačítko funguje i tak", true],
           ["📷 Fotky zakázek", "Fotky nahrané v detailu zakázky → FirmaCRM/Zakázky/.../Fotky/", true],
           ["📄 Dokumenty zakázek", "Soubory nahrané v Dokumenty → FirmaCRM/Zakázky/.../Dokumenty/", true],
         ].map(([title, desc, active]) => (

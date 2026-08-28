@@ -340,3 +340,57 @@ export async function backupToOneDrive(supabase, onProgress, tablesOverride) {
   onProgress?.(failed.length === 0 ? "Záloha dokončena ✓" : `Záloha dokončena s chybami (${failed.length}/${tables.length})`, 100);
   return { folder, failed, succeeded };
 }
+
+// ─── PLÁNOVANÁ AUTOMATICKÁ ZÁLOHA ─────────────────────────────────────────────
+// Appka nemá vlastní server/cron — zálohu proto spustí automaticky na pozadí
+// první zaměstnanec, který ten den appku otevře (prakticky jistota, protože se
+// appka používá denně kvůli docházce). Stav "poslední zálohy" se ukládá do
+// Supabase (ne jen do localStorage), ať je vidět napříč všemi zařízeními a ať
+// se záloha nespouští opakovaně, i když appku otevře víc lidí ve stejný den.
+const BACKUP_STATUS_KEY = "onedrive_last_backup";
+const BACKUP_LOCK_KEY = "onedrive_backup_lock";
+const LOCK_TTL_MS = 10 * 60 * 1000; // 10 min — kdyby záloha spadla uprostřed, zámek po chvíli sám vyprší
+
+export async function getLastBackupInfo(supabase) {
+  const { data } = await supabase.from(SETTINGS_TABLE).select("value").eq("key", BACKUP_STATUS_KEY).maybeSingle();
+  return data?.value || null;
+}
+
+// Zapíše stav poslední zálohy sdíleně (Supabase), ať ji vidí i ostatní
+// zaměstnanci/zařízení — volá se jak po automatické, tak po ruční záloze
+// (OneDrivePanel), aby se automatická záloha zbytečně nespouštěla znovu
+// týž den jen proto, že už ji někdo pustil ručně.
+export async function recordBackupStatus(supabase, result, auto = false) {
+  const today = new Date().toISOString().slice(0, 10);
+  await supabase.from(SETTINGS_TABLE).upsert({
+    key: BACKUP_STATUS_KEY,
+    value: { date: today, timestamp: new Date().toISOString(), folder: result.folder, succeeded: result.succeeded, failed: result.failed, auto },
+    updated_at: new Date().toISOString(),
+  });
+}
+
+// Volá se jednou při startu appky. Nic neudělá, pokud: OneDrive není
+// nastavené / sdílený účet není platný, dnešní záloha už proběhla, nebo právě
+// běží (zámek) v jiném prohlížeči. Běží potichu na pozadí — bez progress baru,
+// bez alertů; případné selhání se jen zapíše do stavu zálohy pro OneDrivePanel.
+export async function maybeAutoBackup(supabase) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const last = await getLastBackupInfo(supabase);
+    if (last?.date === today) return; // dnes už proběhla (automaticky i ručně)
+
+    const { data: lockRow } = await supabase.from(SETTINGS_TABLE).select("value").eq("key", BACKUP_LOCK_KEY).maybeSingle();
+    const lockedAt = lockRow?.value?.startedAt ? new Date(lockRow.value.startedAt).getTime() : 0;
+    if (lockedAt && Date.now() - lockedAt < LOCK_TTL_MS) return; // jiný prohlížeč právě zálohuje
+
+    await supabase.from(SETTINGS_TABLE).upsert({ key: BACKUP_LOCK_KEY, value: { startedAt: new Date().toISOString() }, updated_at: new Date().toISOString() });
+
+    const connected = isConnected() || await connectSharedAccount();
+    if (!connected) return; // OneDrive vůbec nepřipojené — nemá smysl zkoušet
+
+    const result = await backupToOneDrive(supabase);
+    await recordBackupStatus(supabase, result, true);
+  } catch (e) {
+    console.warn("Automatická záloha OneDrive selhala:", e.message);
+  }
+}
