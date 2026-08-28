@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import { uploadFileObject, zakazkaFolderPath, isConnected, getDirectDownloadUrl } from "./onedrive.js";
 import { tryOrQueue } from "./offlineQueue.js";
+import { compressImage } from "./imageUtils.js";
 
 const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#0369a1" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
 // Formátování peněžních částek jednotně s tisícovými oddělovači, jako všude jinde v appce.
@@ -558,8 +559,11 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     if (!files || files.length === 0) return;
     setFotoUploading(u => ({ ...u, [kategorie]: (u[kategorie] || 0) + files.length }));
     for (const f of files) {
+      // Fotka se před uploadem zmenší (imageUtils.js) — v terénu se šetří
+      // mobilní data a místo v úložišti, kvalita pro dokumentaci zůstane dost.
+      const compressed = await compressImage(f);
       const payload = {
-        file: f, contractId: activeCId, folder: zakazkaFolderPath(data._nazev, "Fotky"),
+        file: compressed, contractId: activeCId, folder: zakazkaFolderPath(data._nazev, "Fotky"),
         date: new Date().toISOString().slice(0, 10), category: kategorie, uploadedBy: currentUser?.employeeId || null,
       };
       try {

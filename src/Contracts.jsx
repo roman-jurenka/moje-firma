@@ -2,6 +2,7 @@ import { isConnected, uploadFileObject, getDirectDownloadUrl } from "./onedrive.
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import { tryOrQueue } from "./offlineQueue.js";
+import { compressImage } from "./imageUtils.js";
 
 // Čitelné zobrazení data pro uživatele — den v týdnu, den, měsíc slovem, rok (bez pomlček).
 const DNY_ZKR = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
@@ -802,8 +803,11 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   async function uploadPhoto(contractId, file, description) {
     const contract = contracts.find(c => c.id === contractId);
     const folderName = (contract?.name || String(contractId)).replace(/[/\\?%*:|"<>]/g, "_");
+    // Fotka se před uploadem zmenší (imageUtils.js) — v terénu se šetří
+    // mobilní data a místo v úložišti, kvalita pro dokumentaci zůstane dost.
+    const compressed = await compressImage(file);
     const payload = {
-      file, contractId, folder: `FirmaCRM/Zakázky/${folderName}/Fotky`,
+      file: compressed, contractId, folder: `FirmaCRM/Zakázky/${folderName}/Fotky`,
       date: today(), description, uploadedBy: currentUser?.employeeId || null,
     };
     try {

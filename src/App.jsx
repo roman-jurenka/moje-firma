@@ -12,6 +12,7 @@ import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportI
 import { handleOAuthCallback, isConnected, uploadFileObject } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
+import { compressImage } from "./imageUtils.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -4912,9 +4913,10 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
   const uploadPhoto = async (file) => {
     if (!file || !detailEmp) return;
     setUploading(true);
-    const ext = file.name.split(".").pop();
+    const compressed = await compressImage(file, { maxDim: 800 });
+    const ext = compressed.name.split(".").pop();
     const path = `${detailEmp.id}.${ext}`;
-    const { error } = await supabase.storage.from("employee-photos").upload(path, file, { upsert: true });
+    const { error } = await supabase.storage.from("employee-photos").upload(path, compressed, { upsert: true });
     if (!error) {
       const { data: { publicUrl } } = supabase.storage.from("employee-photos").getPublicUrl(path);
       await supabase.from("employees").update({ photo_url: publicUrl }).eq("id", detailEmp.id);
@@ -7642,8 +7644,11 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     setAttPhotoUploading(true);
     const contract = contractOpts.find(c => c.id === contractIdVal);
     const folderName = (contract?.name || String(contractIdVal)).replace(/[/\\?%*:|"<>]/g, "_");
+    // Fotka se před uploadem zmenší (imageUtils.js) — v terénu se šetří
+    // mobilní data a místo v úložišti, kvalita pro dokumentaci zůstane dost.
+    const compressed = await compressImage(file);
     const payload = {
-      file, contractId: contractIdVal, folder: `FirmaCRM/Zakázky/${folderName}/Fotky`,
+      file: compressed, contractId: contractIdVal, folder: `FirmaCRM/Zakázky/${folderName}/Fotky`,
       date: todayStr, description: "Docházka " + todayStr, uploadedBy: currentUser?.employeeId || null,
     };
     try {
