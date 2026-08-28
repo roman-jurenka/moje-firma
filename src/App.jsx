@@ -7393,6 +7393,20 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const viewMonthHours = empRecords.reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
   const todayRecord = attendance.find(a => a.employeeId === effectiveEmpId && a.date === todayStr);
 
+  // Výchozí "poslední zakázka" — když ještě dnes nemám žádný záznam, appka
+  // předvyplní zakázku podle mého posledního minulého záznamu, ať nemusím
+  // pokaždé znovu vybírat totéž, když jsem několik dní za sebou na jedné
+  // zakázce. Jen předvyplnění (dá se kdykoliv přepsat), nic se tím neukládá.
+  useEffect(() => {
+    if (todayRecord || ciContractId) return;
+    const lastWithContract = attendance
+      .filter(a => a.employeeId === effectiveEmpId && a.contract_id && a.date < todayStr)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (lastWithContract) setCiContractId(String(lastWithContract.contract_id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveEmpId, todayRecord]);
+
   // Tichá synchronizace — bez alertu, spouští se automaticky
   const syncCostEntriesQuiet = async (attList) => {
     const list = attList || attendance;
@@ -7829,6 +7843,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 <div>
                   <div style={S.statLabel}>Odpracováno</div>
                   <div style={{ fontSize: 26, fontWeight: 800, color: "#0369a1" }}>{fmtHours(todayEffective)}</div>
+                  <div style={{ fontSize: 10, color: "#475569" }}>už po odečtu 1 h pauzy</div>
                 </div>
               )}
             </div>
