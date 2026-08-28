@@ -4540,6 +4540,8 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
       notes_warning: emp.notes_warning || "",
       hourly_rate_cost: emp.hourly_rate_cost || "",
       hourly_rate_client: emp.hourly_rate_client || "",
+      vacation_days: emp.vacation_days ?? 20,
+      vacation_used: emp.vacation_used ?? 0,
     });
     loadAccess(emp);
   };
@@ -4553,10 +4555,19 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
       specialization: editField.specialization, notes_warning: editField.notes_warning,
       hourly_rate_cost: Number(editField.hourly_rate_cost) || 0,
       hourly_rate_client: Number(editField.hourly_rate_client) || 0,
+      vacation_days: Number(editField.vacation_days) || 0,
+      vacation_used: Number(editField.vacation_used) || 0,
     };
     await supabase.from("employees").update(upd).eq("id", detailEmp.id);
     // RPC záloha pro hourly_rate — obchází schema cache
     await supabase.rpc("set_employee_rates", { emp_id: detailEmp.id, rate_cost: upd.hourly_rate_cost, rate_client: upd.hourly_rate_client });
+    // Dovolená se zaměstnanci zobrazuje i podle jeho vlastního přihlašovacího
+    // profilu (currentUser.vacationDays, nastaveno při loginu) — ať se změna
+    // z HR promítne i tam, dopisuje se stejná hodnota i do profiles (pokud
+    // zaměstnanec už má založený přístup do appky).
+    if (accessProfile) {
+      await supabase.from("profiles").update({ vacation_days: upd.vacation_days, vacation_used: upd.vacation_used }).eq("employee_id", detailEmp.id);
+    }
     setEmployees(employees.map(e => e.id === detailEmp.id ? { ...e, ...upd, start: editField.start } : e));
     setDetailEmp({ ...detailEmp, ...upd, start: editField.start });
   };
@@ -4763,6 +4774,18 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                   <select style={S.select} value={editField.status || "Aktivní"} onChange={e => setEditField({ ...editField, status: e.target.value })}>
                     {["Aktivní", "Dovolená", "Nemocenská", "Ukončen"].map(s => <option key={s}>{s}</option>)}
                   </select>
+                </div>
+                {/* Dovolenou dřív šlo upravit jen přímo v databázi — pole se
+                    v appce jen zobrazovalo. Audit appky, bod 11. */}
+                <div>
+                  <label style={S.label}>Dovolená celkem (dní/rok)</label>
+                  <input type="number" min="0" style={S.input} value={editField.vacation_days ?? 20}
+                    onChange={e => setEditField({ ...editField, vacation_days: e.target.value })} />
+                </div>
+                <div>
+                  <label style={S.label}>Dovolená vyčerpáno (dní)</label>
+                  <input type="number" min="0" style={S.input} value={editField.vacation_used ?? 0}
+                    onChange={e => setEditField({ ...editField, vacation_used: e.target.value })} />
                 </div>
               </div>
             </div>
@@ -5796,7 +5819,7 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
 // ─── REPORTY ──────────────────────────────────────────────────────────────────
 
 function Reports({ customers, deals, invoices, costs, employees, projects, contracts, costEntries, dnMaterialCost, dnMaterialClient }) {
-  const [period, setPeriod] = useState("2026");
+  const [period, setPeriod] = useState(String(new Date().getFullYear()));
   const [cashflowEntries, setCashflowEntries] = useState([]);
 
   // Náklady se dnes vedou na třech nezávislých místech (Náklady, náklady
@@ -5808,12 +5831,27 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
       .then(({ data }) => setCashflowEntries(data || []));
   }, []);
 
-  const totalRevenue = invoices.filter(i => i.status === "Zaplacena").reduce((s, i) => s + i.amount, 0);
+  // Přepínač roku dřív nic nedělal — nabízel jen "2026" a všechny výpočty
+  // pod ním počítaly se všemi daty bez ohledu na to, co je vybrané (audit
+  // appky, bod 10). Roky v přepínači se teď berou z reálných dat (kdy byly
+  // vystaveny faktury / zapsány náklady), vždy doplněné o aktuální rok, a
+  // příjmy/náklady/graf se skutečně filtrují podle vybraného roku.
+  const availableYears = [...new Set([
+    String(new Date().getFullYear()),
+    ...invoices.map(i => i.issued?.slice(0, 4)).filter(Boolean),
+    ...costs.map(c => c.date?.slice(0, 4)).filter(Boolean),
+    ...(costEntries || []).map(e => e.date?.slice(0, 4)).filter(Boolean),
+  ])].sort((a, b) => b.localeCompare(a));
+
+  const totalRevenue = invoices.filter(i => i.status === "Zaplacena" && i.issued?.startsWith(period)).reduce((s, i) => s + i.amount, 0);
   // Stejná logika jako na Dashboardu — firemní náklady + náklady zakázek,
   // Finanční tok záměrně vynechán kvůli riziku dvojího počítání (viz
-  // komentář u totalCosts v Dashboard()).
-  const genCosts = costs.reduce((s, c) => s + c.amount, 0);
-  const jobCosts = (costEntries || []).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0) + (dnMaterialCost || 0);
+  // komentář u totalCosts v Dashboard()). Filtrováno podle vybraného roku;
+  // dnMaterialCost/dnMaterialClient (marže dodacích listů) jsou zatím jen
+  // celofiremní součet za celou dobu — dodací listy nemají zapsané datum,
+  // takže je nejde rozpočítat po letech.
+  const genCosts = costs.filter(c => c.date?.startsWith(period)).reduce((s, c) => s + c.amount, 0);
+  const jobCosts = (costEntries || []).filter(e => (e.date || "").startsWith(period)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0) + (dnMaterialCost || 0);
   const totalCosts = genCosts + jobCosts;
   // Zisk zahrnuje i marži z dodacích listů (viz stejná oprava v Dashboard()
   // a v contractProfit() v Contracts.jsx) — jinak se náklad materiálu z
@@ -5825,9 +5863,10 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
   const conversionRate = deals.length > 0 ? Math.round((wonDeals.length / deals.length) * 100) : 0;
   const avgDealValue = wonDeals.length > 0 ? Math.round(wonDeals.reduce((s, d) => s + d.value, 0) / wonDeals.length) : 0;
 
-  // Monthly revenue vs costs
+  // Monthly revenue vs costs — podle vybraného roku v přepínači (dřív bylo
+  // "2026" napevno v kódu bez ohledu na to, co bylo vybrané).
   const monthlyChart = MONTHS.map((m, i) => {
-    const monthStr = `2026-${String(i + 1).padStart(2, "0")}`;
+    const monthStr = `${period}-${String(i + 1).padStart(2, "0")}`;
     const rev = invoices.filter(inv => inv.status === "Zaplacena" && inv.issued?.startsWith(monthStr)).reduce((s, inv) => s + inv.amount, 0);
     const cost = costs.filter(c => c.date.startsWith(monthStr)).reduce((s, c) => s + c.amount, 0)
       + (costEntries || []).filter(e => (e.date || "").startsWith(monthStr)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
@@ -5836,12 +5875,12 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
 
   const maxVal = Math.max(...monthlyChart.map(m => Math.max(m.revenue, m.costs)), 1);
 
-  // Top zákazníci dle faktur
+  // Top zákazníci dle faktur — za vybraný rok
   const topCustomers = customers.map(c => ({
     ...c,
-    revenue: invoices.filter(i => i.customerId === c.id && i.status === "Zaplacena").reduce((s, i) => s + i.amount, 0),
-    invoiceCount: invoices.filter(i => i.customerId === c.id).length,
-  })).sort((a, b) => b.revenue - a.revenue);
+    revenue: invoices.filter(i => i.customerId === c.id && i.status === "Zaplacena" && i.issued?.startsWith(period)).reduce((s, i) => s + i.amount, 0),
+    invoiceCount: invoices.filter(i => i.customerId === c.id && i.issued?.startsWith(period)).length,
+  })).filter(c => c.revenue > 0 || c.invoiceCount > 0).sort((a, b) => b.revenue - a.revenue);
 
   // Pipeline hodnota dle fáze
   const pipelineByStage = STAGES.map(stage => ({
@@ -5873,7 +5912,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
       <div style={S.header}>
         <h1 style={S.h1}>📈 Analytika & reporty</h1>
         <div style={{ display: "flex", gap: 8 }}>
-          {["2026"].map(y => (
+          {availableYears.map(y => (
             <button key={y} style={{ ...S.btn(period === y ? "#0369a1" : "#e2e8f0"), border: "1px solid #e2e8f0" }} onClick={() => setPeriod(y)}>{y}</button>
           ))}
         </div>
@@ -5883,7 +5922,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {[
           { label: "Celkový zisk", value: fmtKc(profit), sub: `Marže ${margin}%`, color: profit >= 0 ? "#34d399" : "#f87171" },
-          { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena").length} faktur`, color: "#0369a1" },
+          { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena" && i.issued?.startsWith(period)).length} faktur`, color: "#0369a1" },
           { label: "Náklady", value: fmtKc(totalCosts), sub: `firemní ${fmtKc(genCosts)} + zakázky ${fmtKc(jobCosts)} (vč. dodacích listů)`, color: "#f87171" },
           { label: "Konverzní poměr", value: `${conversionRate}%`, sub: `Ø deal ${fmtKc(avgDealValue)}`, color: "#f59e0b" },
         ].map(k => (
