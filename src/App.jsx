@@ -6568,7 +6568,10 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
         {/* Náklady podle zakázky — napříč Náklady / náklady zakázky / Finanční tok */}
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4, fontSize: 14 }}>🔧 Náklady podle zakázky (napříč evidencemi)</div>
-          <div style={{ fontSize: 11, color: "#475569", marginBottom: 16 }}>Součet z modulu Náklady, nákladů zakázky a Finančního toku — jen zakázky, kde je alespoň jedna položka přiřazená.</div>
+          <div style={{ fontSize: 11, color: "#475569", marginBottom: 10 }}>Součet z modulu Náklady, nákladů zakázky a Finančního toku — jen zakázky, kde je alespoň jedna položka přiřazená.</div>
+          <div style={{ fontSize: 11, color: "#f59e0b", background: "#f59e0b1a", border: "1px solid #f59e0b44", borderRadius: 8, padding: "8px 10px", marginBottom: 16 }}>
+            ⚠️ Číslo jen sečte tři nezávislé evidence, nekontroluje mezi nimi duplicity — pokud se stejný výdaj zapsal ručně na dvou místech (např. materiál ze skladu se sám propíše do „Náklady zakázky a stejná faktura se zvlášť naskenuje do Finančního toku), započítá se dvakrát. Když částka u zakázky vypadá podezřele vysoko, zkontroluj rozpad níž (Náklady / Náklady zakázky / Finanční tok).
+          </div>
           {contractsWithCosts.length === 0 && <div style={{ fontSize: 12, color: "#334155" }}>Zatím žádné náklady přiřazené k zakázce. Přiřaď zakázku při zápisu v Nákladech nebo Finančním toku.</div>}
           {contractsWithCosts.map(r => (
             <div key={r.contract.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #e2e8f0" }}>
