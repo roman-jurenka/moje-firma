@@ -365,6 +365,8 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const [contractPhotos, setContractPhotos] = useState([]); // fotky nahrané přímo u zakázky (záložka Zakázky)
   const [contractInvoices, setContractInvoices] = useState([]); // skutečné faktury k zakázce (modul Fakturace)
   const [contractCostEntries, setContractCostEntries] = useState([]); // skutečné náklady zakázky (záložka Náklady)
+  const [contractDeliveryNotes, setContractDeliveryNotes] = useState([]); // dodací listy zakázky (materiál + marže)
+  const [contractDNItems, setContractDNItems] = useState([]); // položky dodacích listů
   const [contractBudget, setContractBudget] = useState(null); // plánovaný rozpočet a cena ze Zakázky
   const [savedSnapshot, setSavedSnapshot] = useState(null); // poslední uložený stav — pro varování při odchodu s neuloženými změnami
   const [linkedCustomer, setLinkedCustomer] = useState(null); // zákazník napojený na zakázku (z modulu Zákazníci)
@@ -381,11 +383,20 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   // z nich jen dopočítají — nic se neukládá jako zamrzlý snímek.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!activeCId) { setContractInvoices([]); setContractCostEntries([]); setContractBudget(null); return; }
+    if (!activeCId) { setContractInvoices([]); setContractCostEntries([]); setContractDeliveryNotes([]); setContractDNItems([]); setContractBudget(null); return; }
     supabase.from("invoices").select("id, number, amount, status, issued, due, invoice_type").eq("contract_id", activeCId).order("issued", { ascending: false })
       .then(({ data: d }) => setContractInvoices(d || []));
     supabase.from("contract_cost_entries").select("cost_type, amount_cost, quantity, unit_price_cost").eq("contract_id", activeCId)
       .then(({ data: d }) => setContractCostEntries(d || []));
+    supabase.from("delivery_notes").select("id, margin").eq("contract_id", activeCId)
+      .then(({ data: d }) => {
+        const notes = d || [];
+        setContractDeliveryNotes(notes);
+        const ids = notes.map(n => n.id);
+        if (ids.length === 0) { setContractDNItems([]); return; }
+        supabase.from("delivery_note_items").select("delivery_note_id, quantity, unit_price").in("delivery_note_id", ids)
+          .then(({ data: di }) => setContractDNItems(di || []));
+      });
     supabase.from("contracts").select("price, budget_prace, budget_material, budget_doprava").eq("id", activeCId).single()
       .then(({ data: d }) => setContractBudget(d || null));
   }, [activeCId]);
@@ -396,11 +407,21 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   // faktur k zakázce místo ručního zadání.
   const costOf = (e) => e.amount_cost != null ? Number(e.amount_cost) : Number(e.quantity || 1) * Number(e.unit_price_cost || 0);
   const sumCostBy = (typ) => contractCostEntries.filter(e => e.cost_type === typ).reduce((s, e) => s + costOf(e), 0);
-  const skutMaterial = sumCostBy("materiál"), skutPrace = sumCostBy("práce"), skutDoprava = sumCostBy("doprava");
+  // Materiál z dodacích listů se dřív do marže zakázky vůbec nepočítal (ani
+  // náklad, ani prodejní cena) — stejná chyba, jaká byla opravena v
+  // Contracts.jsx u contractProfit(). Tady se počítá symetricky: náklad jde
+  // do skutMaterial, prodejní cena (náklad + marže dodacího listu) jde do
+  // skutProdej, aby marže ze zakázky odpovídala skutečnosti.
+  const dnMaterialCost = contractDNItems.reduce((s, i) => s + Number(i.quantity || 1) * Number(i.unit_price || 0), 0);
+  const dnMaterialClient = contractDeliveryNotes.reduce((s, n) => {
+    const cost = contractDNItems.filter(i => i.delivery_note_id === n.id).reduce((sum, i) => sum + Number(i.quantity || 1) * Number(i.unit_price || 0), 0);
+    return s + cost * (1 + Number(n.margin || 30) / 100);
+  }, 0);
+  const skutMaterial = sumCostBy("materiál") + dnMaterialCost, skutPrace = sumCostBy("práce"), skutDoprava = sumCostBy("doprava");
   const skutCelkem = skutMaterial + skutPrace + skutDoprava;
   const vydaneFaktury = contractInvoices.filter(i => (i.invoice_type || "vydaná") === "vydaná" && i.status !== "Storno");
   const fakturovano = vydaneFaktury.reduce((s, i) => s + Number(i.amount || 0), 0);
-  const skutProdej = fakturovano || Number(contractBudget?.price) || 0;
+  const skutProdej = (fakturovano || Number(contractBudget?.price) || 0) + dnMaterialClient;
   const skutMarzeKc = skutProdej ? skutProdej - skutCelkem : null;
   const skutMarzePct = skutProdej ? Math.round((skutMarzeKc / skutProdej) * 1000) / 10 : null;
   const planMaterial = Number(contractBudget?.budget_material) || 0;

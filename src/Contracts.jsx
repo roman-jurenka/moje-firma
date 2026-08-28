@@ -468,7 +468,11 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   function contractProfit(contract) {
     const s = contractSums(contract.id);
     const totalCost = s.prace + s.material + s.doprava + s.vicePrace + s.viceMaterial + s.viceDoprava;
-    const totalRevenue = Number(contract.price || 0) + s.viceClient;
+    // s.material už obsahuje dnMaterialCost (náklad z dodacích listů), takže do
+    // tržeb musí symetricky přibýt i dnMaterialClient (prodejní cena materiálu
+    // z dodacích listů) — jinak byl zisk uměle nižší přesně o marži z dodacích
+    // listů, protože náklad se počítal, ale odpovídající výnos ne.
+    const totalRevenue = Number(contract.price || 0) + s.viceClient + s.dnMaterialClient;
     return { totalCost, totalRevenue, profit: totalRevenue - totalCost };
   }
 
