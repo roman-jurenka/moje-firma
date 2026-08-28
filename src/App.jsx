@@ -712,6 +712,14 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     window.addEventListener("openSheet", handler);
     return () => window.removeEventListener("openSheet", handler);
   }, []);
+
+  // Obecný event pro přepnutí hlavní záložky odjinud (např. tlačítko
+  // "Otevřít modul Fakturace" na záložce Faktury u zakázky v Contracts.jsx).
+  useEffect(() => {
+    const handler = (e) => { if (e.detail?.tab) setTab(e.detail.tab); };
+    window.addEventListener("gotoTab", handler);
+    return () => window.removeEventListener("gotoTab", handler);
+  }, []);
   const [customers, setCustomers] = useState([]);
   const [deals, setDeals] = useState([]);
   const [communication, setCommunication] = useState([]);

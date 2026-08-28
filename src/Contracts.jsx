@@ -198,6 +198,7 @@ const S = {
   modalBox: { background: "#ffffff", borderRadius: 16, padding: 28, width: 500, maxWidth: "92vw", boxSizing: "border-box", border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
   th:       { textAlign: "left", padding: "8px 10px", fontSize: 11, color: "#475569", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" },
   td:       { padding: "10px 10px", fontSize: 13, borderBottom: "1px solid #e2e8f0", color: "#475569" },
+  table:    { width: "100%", borderCollapse: "collapse" },
   tag:      (c) => ({ background: c + "22", color: c, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700, display: "inline-block" }),
   badge:    (c) => ({ background: c + "22", color: c, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }),
   statCard: (c) => ({ background: "#ffffff", borderRadius: 12, padding: "16px 20px", border: `1px solid ${c}33`, boxShadow: "0 1px 4px #0000000a" }),
@@ -361,6 +362,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   // Výchozí pohled skryje dokončené/fakturované zakázky, ať se v seznamu neztrácí
   // rozpracovaná práce — přes filtr "Vše" jdou samozřejmě zobrazit i ty.
   const [filterStatus, setFilterStatus] = useState("aktivní");
+  const [sortBy, setSortBy] = useState("newest");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
   const closeModal = () => setModal(null);
   const [deliveryNotes, setDeliveryNotes] = useState([]);
   const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
@@ -368,12 +372,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const [vehicleLog, setVehicleLog] = useState([]);
   const [dayPlan, setDayPlan] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [invoices, setInvoices] = useState([]); // vystavené faktury (jen pro záložku "Faktury" na kartě zakázky)
 
   // ── Load ──
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [c, e, p, t, att, bs, msgs, globalTasksData, dn, dni, vl, dp, proj] = await Promise.all([
+      const [c, e, p, t, att, bs, msgs, globalTasksData, dn, dni, vl, dp, proj, inv] = await Promise.all([
         supabase.from("contracts").select("*").order("id"),
         supabase.from("contract_cost_entries").select("*").order("date"),
         supabase.from("contract_photos").select("*").order("date"),
@@ -387,9 +392,11 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         supabase.from("vehicle_log").select("*").order("date"),
         supabase.from("project_day_plan").select("*").order("date"),
         supabase.from("projects").select("*").order("id"),
+        supabase.from("invoices").select("id, number, amount, status, issued, due, invoice_type, contract_id").order("issued", { ascending: false }),
       ]);
       setContracts(c.data || []);
       setEntries(e.data || []);
+      setInvoices(inv.data || []);
       setPhotos(p.data || []);
       setCtasks(t.data || []);
       setAttendance((att.data || []).map(x => ({ ...x, employeeId: x.employee_id, contractId: x.contract_id })));
@@ -858,7 +865,20 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       : filterStatus === "aktivní" ? (c.status !== "Dokončena" && c.status !== "Fakturována")
       : c.status === filterStatus;
     return matchSearch && matchStatus;
+  }).sort((a, b) => {
+    if (sortBy === "newest") return b.id - a.id;
+    if (sortBy === "oldest") return a.id - b.id;
+    if (sortBy === "name") return (a.name || "").localeCompare(b.name || "", "cs");
+    if (sortBy === "value") return Number(b.price || 0) - Number(a.price || 0);
+    if (sortBy === "profit") return contractProfit(b).profit - contractProfit(a).profit;
+    return 0;
   });
+
+  // Stránkování — dřív se vykresloval celý (u firmy s roky provozu už
+  // stovky) seznam najednou, což appku na starším telefonu v terénu
+  // zbytečně zpomalovalo. Při změně filtru/hledání/řazení se vrací na stránku 1.
+  const totalPages = Math.max(1, Math.ceil(visibleContracts.length / PAGE_SIZE));
+  const pageContracts = visibleContracts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <>
@@ -889,9 +909,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
           style={{ ...S.input, marginBottom: 0, flex: 1, fontSize: 13 }}
           placeholder="🔍 Hledat zakázku..."
           value={searchQ}
-          onChange={e => setSearchQ(e.target.value)} />
+          onChange={e => { setSearchQ(e.target.value); setPage(1); }} />
         {["aktivní","vše","Nová","Probíhá","Dokončena","Fakturována"].map(s => (
-          <button key={s} onClick={() => setFilterStatus(s)}
+          <button key={s} onClick={() => { setFilterStatus(s); setPage(1); }}
             style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid", fontSize: 12, cursor: "pointer", fontWeight: filterStatus === s ? 700 : 400,
               background: filterStatus === s ? "#0369a1" : "#e2e8f0",
               color: filterStatus === s ? "#fff" : "#64748b",
@@ -899,6 +919,14 @@ export default function Contracts({ customers, employees, currentUser, initialDe
             {s === "vše" ? "Vše" : s === "aktivní" ? "Aktivní" : s}
           </button>
         ))}
+        <select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}
+          style={{ ...S.select, marginBottom: 0, width: 170, fontSize: 12 }}>
+          <option value="newest">Řadit: Nejnovější</option>
+          <option value="oldest">Řadit: Nejstarší</option>
+          <option value="name">Řadit: Název A-Z</option>
+          <option value="value">Řadit: Hodnota</option>
+          <option value="profit">Řadit: Zisk</option>
+        </select>
       </div>
 
       {/* SEZNAM ZAKÁZEK */}
@@ -915,7 +943,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         </div>
       )}
 
-      {visibleContracts.map(contract => {
+      {pageContracts.map(contract => {
         const cust = customers.find(c => c.id === contract.customer_id);
         const sums = contractSums(contract.id);
         const { totalCost, totalRevenue, profit } = contractProfit(contract);
@@ -932,6 +960,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         const contVehicleLog = vehicleLog.filter(v => v.contract_id === contract.id);
         const contDayPlan = dayPlan.filter(d => d.contract_id === contract.id);
         const contProject = projects.find(p => p.contract_id === contract.id);
+        const contInvoices = invoices.filter(i => i.contract_id === contract.id);
         const sc = STATUS_COLORS[contract.status] || STATUS_COLORS["Nová"];
 
         return (
@@ -1015,7 +1044,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 {view === "prehled" && (<>
                 {/* TABS */}
                 <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2e8f0", marginBottom: 20 }}>
-                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
+                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["faktury",`📄 Faktury (${contInvoices.length})`], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
                     <button key={t} onClick={() => setTab(contract.id, t)}
                       style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #0369a1" : "2px solid transparent", color: tab === t ? "#0369a1" : "#475569", padding: "8px 16px", fontSize: 13, cursor: "pointer", fontWeight: tab === t ? 600 : 400 }}>
                       {label}
@@ -1189,6 +1218,44 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                   />
                 )}
 
+                {/* TAB: FAKTURY — skutečně vystavené faktury vázané na tuto zakázku
+                    (na rozdíl od "K fakturaci", což jsou jen podklady/mzdy).
+                    Vystavuje se v modulu Fakturace, tady se jen zobrazuje přehled. */}
+                {tab === "faktury" && (
+                  <div>
+                    {contInvoices.length === 0 && (
+                      <div style={{ color: "#475569", fontSize: 13, padding: "16px 0" }}>
+                        K téhle zakázce zatím žádná faktura nebyla vystavena. Vystavíš ji v modulu Fakturace (jde i rovnou ze zakázky).
+                      </div>
+                    )}
+                    {contInvoices.length > 0 && (
+                      <table style={S.table}>
+                        <thead><tr>{["Číslo", "Typ", "Vystaveno", "Splatnost", "Částka", "Stav"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                        <tbody>
+                          {contInvoices.map(inv => {
+                            const stColor = inv.status === "Zaplacena" ? "#34d399" : inv.status === "Po splatnosti" ? "#f87171" : inv.status === "Storno" ? "#64748b" : "#f59e0b";
+                            return (
+                              <tr key={inv.id}>
+                                <td style={{ ...S.td, fontWeight: 700, color: "#1A1A1A" }}>{inv.number}</td>
+                                <td style={{ ...S.td, fontSize: 12 }}>{inv.invoice_type === "přijatá" ? "Přijatá" : "Vydaná"}</td>
+                                <td style={{ ...S.td, fontSize: 12 }}>{fmtDateCz(inv.issued)}</td>
+                                <td style={{ ...S.td, fontSize: 12 }}>{fmtDateCz(inv.due)}</td>
+                                <td style={{ ...S.td, fontWeight: 700 }}>{fmtKc(inv.amount)}</td>
+                                <td style={S.td}><span style={{ background: stColor + "22", color: stColor, border: `1px solid ${stColor}44`, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{inv.status}</span></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                    <button
+                      style={{ ...S.btn("#0369a1"), marginTop: 14 }}
+                      onClick={() => window.dispatchEvent(new CustomEvent("gotoTab", { detail: { tab: "invoices" } }))}>
+                      🧾 Otevřít modul Fakturace
+                    </button>
+                  </div>
+                )}
+
                 {/* TAB: ZAMĚSTNANCI */}
                 {tab === "zamestnanci" && (
                   <EmployeesTab attendance={contAttendance} employees={employees} contracts={contracts} contractId={contract.id} />
@@ -1349,6 +1416,15 @@ export default function Contracts({ customers, employees, currentUser, initialDe
           </div>
         );
       })}
+
+      {/* STRÁNKOVÁNÍ */}
+      {totalPages > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, margin: "20px 0" }}>
+          <button style={S.btn(page === 1 ? "#e2e8f0" : "#64748b")} disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>← Předchozí</button>
+          <span style={{ fontSize: 13, color: "#475569" }}>Stránka {page} z {totalPages} ({visibleContracts.length} zakázek)</span>
+          <button style={S.btn(page === totalPages ? "#e2e8f0" : "#64748b")} disabled={page === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Další →</button>
+        </div>
+      )}
 
       {/* ── MODÁLY ── */}
       {modal?.type === "newContract" && (
