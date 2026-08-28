@@ -3217,6 +3217,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
   const [threadDeal, setThreadDeal] = useState(null);
   const [threadContract, setThreadContract] = useState(null);
   const [newMsg, setNewMsg] = useState("");
+  const [commSearch, setCommSearch] = useState("");
 
   const save = async () => {
     if (!newC.note) return;
@@ -3261,21 +3262,33 @@ function Communication({ communication, setCommunication, customers, deals, cont
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); setThreadDeal(null); setThreadContract(null); }}
             style={{ ...S.btn(tab === t.id ? "#0369a1" : "#0E3B5E"), padding: "7px 16px", fontSize: 12 }}>
             {t.label}
           </button>
         ))}
+        {!threadDeal && !threadContract && (
+          <input value={commSearch} onChange={e => setCommSearch(e.target.value)}
+            placeholder="🔍 Hledat podle zákazníka, firmy nebo textu…"
+            style={{ ...S.select, marginBottom: 0, flex: 1, minWidth: 200, maxWidth: 320, marginLeft: "auto", padding: "6px 12px" }} />
+        )}
       </div>
 
-      {/* TAB: deals — vlákna příležitostí */}
+      {/* TAB: deals — vlákna příležitostí, seřazená podle poslední aktivity */}
       {tab === "deals" && !threadDeal && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 12 }}>
-          {(deals || []).map(deal => {
-            const msgs = dealMsgs.filter(m => m.deal_id === deal.id);
-            if (msgs.length === 0) return null;
+          {(deals || [])
+            .map(deal => ({ deal, msgs: dealMsgs.filter(m => m.deal_id === deal.id) }))
+            .filter(({ msgs }) => msgs.length > 0)
+            .filter(({ deal, msgs }) => {
+              if (!commSearch.trim()) return true;
+              const q = commSearch.trim().toLowerCase();
+              return (deal.name || "").toLowerCase().includes(q) || msgs.some(m => (m.message || "").toLowerCase().includes(q));
+            })
+            .sort((a, b) => new Date(b.msgs[0].created_at) - new Date(a.msgs[0].created_at))
+            .map(({ deal, msgs }) => {
             const last = msgs[0];
             return (
               <div key={deal.id} style={{ ...S.card, cursor: "pointer" }} onClick={() => { setThreadDeal(deal); setNewMsg(""); }}>
@@ -3311,12 +3324,19 @@ function Communication({ communication, setCommunication, customers, deals, cont
         </div>
       )}
 
-      {/* TAB: contracts — vlákna zakázek */}
+      {/* TAB: contracts — vlákna zakázek, seřazená podle poslední aktivity */}
       {tab === "contracts" && !threadContract && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 12 }}>
-          {(contracts || []).map(contract => {
-            const msgs = contractMsgs.filter(m => m.contract_id === contract.id);
-            if (msgs.length === 0) return null;
+          {(contracts || [])
+            .map(contract => ({ contract, msgs: contractMsgs.filter(m => m.contract_id === contract.id) }))
+            .filter(({ msgs }) => msgs.length > 0)
+            .filter(({ contract, msgs }) => {
+              if (!commSearch.trim()) return true;
+              const q = commSearch.trim().toLowerCase();
+              return (contract.name || "").toLowerCase().includes(q) || msgs.some(m => (m.message || "").toLowerCase().includes(q));
+            })
+            .sort((a, b) => new Date(b.msgs[0].created_at) - new Date(a.msgs[0].created_at))
+            .map(({ contract, msgs }) => {
             const last = msgs[0];
             return (
               <div key={contract.id} style={{ ...S.card, cursor: "pointer" }} onClick={() => { setThreadContract(contract); setNewMsg(""); }}>
@@ -3354,9 +3374,20 @@ function Communication({ communication, setCommunication, customers, deals, cont
 
       {/* TAB: Vše — sjednocená časová osa (log + zprávy k dealům + zprávy k zakázkám) */}
       {tab === "all" && (() => {
-        const unified = getCustomerCommunication({ communication, dealMsgs, contractMsgs, deals, contracts });
+        const unifiedAll = getCustomerCommunication({ communication, dealMsgs, contractMsgs, deals, contracts });
+        // Hledání se dřív nedalo použít vůbec — zobrazovalo se natvrdo jen
+        // posledních 100 záznamů bez možnosti najít starší. Teď se filtr
+        // aplikuje nejdřív a limit 100 platí až na výsledek hledání.
+        const unified = commSearch.trim()
+          ? unifiedAll.filter(m => {
+              const cust = customers.find(cu => cu.id === m.customerId);
+              const q = commSearch.trim().toLowerCase();
+              return (cust?.name || "").toLowerCase().includes(q) || (cust?.company || "").toLowerCase().includes(q) || (m.text || "").toLowerCase().includes(q);
+            })
+          : unifiedAll;
         return (
           <div style={S.card}>
+            {commSearch.trim() && <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>{unified.length} nalezeno</div>}
             {unified.slice(0, 100).map(m => {
               const cust = customers.find(cu => cu.id === m.customerId);
               const dotColor = m.kind === "deal" ? "#0369a1" : m.kind === "contract" ? "#34d399" : (m.label === "Email" ? "#0369a1" : m.label === "Hovor" ? "#34d399" : "#f59e0b");
@@ -3380,9 +3411,16 @@ function Communication({ communication, setCommunication, customers, deals, cont
       })()}
 
       {/* TAB: komunikační log — jen starý ruční log (bez zpráv k dealům/zakázkám) */}
-      {tab === "log" && (
+      {tab === "log" && (() => {
+        const filteredLog = communication.filter(c => {
+          if (!commSearch.trim()) return true;
+          const cust = customers.find(cu => cu.id === c.customerId);
+          const q = commSearch.trim().toLowerCase();
+          return (cust?.name || "").toLowerCase().includes(q) || (cust?.company || "").toLowerCase().includes(q) || (c.note || "").toLowerCase().includes(q);
+        });
+        return (
         <div style={S.card}>
-          {communication.map(c => {
+          {filteredLog.map(c => {
             const cust = customers.find(cu => cu.id === c.customerId);
             return (
               <div key={c.id} style={S.commItem}>
@@ -3398,9 +3436,10 @@ function Communication({ communication, setCommunication, customers, deals, cont
               </div>
             );
           })}
-          {communication.length === 0 && <Empty />}
+          {filteredLog.length === 0 && <Empty />}
         </div>
-      )}
+        );
+      })()}
 
       {modal?.type === "addComm" && (
         <div style={S.modal}><div style={S.modalBox}>
