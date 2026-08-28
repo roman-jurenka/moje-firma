@@ -5,6 +5,7 @@ import { uploadFileObject, zakazkaFolderPath, isConnected, getDirectDownloadUrl 
 const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#0369a1" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
 // Formátování peněžních částek jednotně s tisícovými oddělovači, jako všude jinde v appce.
 const fmtKc = (v) => { const n = Number(v); return (!v || isNaN(n)) ? "—" : n.toLocaleString("cs-CZ") + " Kč"; };
+const fmtDateSheet = (v) => { if (!v) return "—"; try { return new Date(v + "T00:00:00").toLocaleDateString("cs-CZ"); } catch { return v; } };
 export const FOTO_KATEGORIE = ["Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"];
 const SEKCE = [
   { id: "zakaznik",  icon: "👤", label: "Zákazník",         barva: "#6366f1" },
@@ -182,7 +183,7 @@ const FIELD_LABELS = {
   fakturace: { zalohaFaktura: "Č. faktury (záloha)", zalohaKc: "Částka zálohy (Kč)", zalohaDatum: "Datum splatnosti zálohy", zalohaUhrazena: "Záloha uhrazena", doplatekFaktura: "Č. faktury (doplatek)", doplatekKc: "Částka doplatku (Kč)", doplatekDatum: "Datum splatnosti doplatku", doplatekUhrazen: "Doplatek uhrazen", poznamka: "Poznámka" },
 };
 
-function buildSheetHtmlBody(data, contractPhotos) {
+function buildSheetHtmlBody(data, contractPhotos, contractInvoices, liveBilance) {
   const parts = [];
 
   parts.push(`<div style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:2px;">${escHtml(data._nazev || "Zakázka")}</div>
@@ -233,18 +234,29 @@ function buildSheetHtmlBody(data, contractPhotos) {
   parts.push(simple("montaz"));
   parts.push(simple("predani"));
   parts.push(simple("dotace"));
-  parts.push(simple("fakturace"));
 
   {
-    const b = data.bilance || {};
+    const invoices = contractInvoices || [];
+    let html = invoices.length === 0
+      ? `<div style="color:#64748b;font-size:11px;">Zatím žádná faktura k této zakázce</div>`
+      : invoices.map(inv => pdfField(
+          `${inv.number} (${inv.invoice_type === "přijatá" ? "přijatá" : "vydaná"})`,
+          `${inv.status} · splatnost ${fmtDateSheet(inv.due)} · ${fmtKc(inv.amount)}`
+        )).join("");
+    html += pdfField("Poznámka", (data.fakturace || {}).poznamka);
+    parts.push(pdfSection(SEKCE.find(s => s.id === "fakturace"), html));
+  }
+
+  {
+    const b = liveBilance || {};
     const rows = [["Materiál", "planMaterialNaklad", "skutMaterialNaklad"], ["Práce", "planPraceNaklad", "skutPraceNaklad"], ["Doprava", "planDopravaNaklad", "skutDopravaNaklad"], ["Celkem náklad", "planCelkemNaklad", "skutCelkemNaklad"], ["Prodejní cena (bez DPH)", "planProdejBezDph", "skutProdejBezDph"]];
     let html = `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
       <tr><th style="text-align:left;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#475569;">Položka</th><th style="text-align:right;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#0369a1;">Plán</th><th style="text-align:right;padding:4px 6px;border-bottom:1px solid #cbd5e1;color:#10b981;">Skutečnost</th></tr>
       ${rows.map(([l, pk, sk]) => `<tr><td style="padding:4px 6px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:4px 6px;text-align:right;border-bottom:1px solid #f1f5f9;">${fmtKc(b[pk])}</td><td style="padding:4px 6px;text-align:right;border-bottom:1px solid #f1f5f9;">${fmtKc(b[sk])}</td></tr>`).join("")}
     </table>`;
-    html += pdfField("Marže plán", (b.planMarzePct || "—") + " % / " + fmtKc(b.planMarzeKc));
-    html += pdfField("Marže skutečnost", (b.skutMarzePct || "—") + " % / " + fmtKc(b.skutMarzeKc));
-    html += pdfField("Poznámky k odchylkám", b.odchylkaPoznamka);
+    html += pdfField("Marže plán", (b.planMarzePct ?? "—") + " % / " + fmtKc(b.planMarzeKc));
+    html += pdfField("Marže skutečnost", (b.skutMarzePct ?? "—") + " % / " + fmtKc(b.skutMarzeKc));
+    html += pdfField("Poznámky k odchylkám", (data.bilance || {}).odchylkaPoznamka);
     parts.push(pdfSection(SEKCE.find(s => s.id === "bilance"), html));
   }
 
@@ -304,7 +316,7 @@ function buildSheetHtmlBody(data, contractPhotos) {
   return `<div style="font-family:'DM Sans',Arial,sans-serif;padding:28px;background:#fff;color:#0f172a;">${parts.join("")}</div>`;
 }
 
-async function exportSheetPdf(data, contractPhotos) {
+async function exportSheetPdf(data, contractPhotos, contractInvoices, liveBilance) {
   const [{ jsPDF }, html2canvasMod] = await Promise.all([
     safeImportSheet(() => import("jspdf")), safeImportSheet(() => import("html2canvas")),
   ]);
@@ -316,7 +328,7 @@ async function exportSheetPdf(data, contractPhotos) {
   el.style.top = "0";
   el.style.width = `${(595.27 * 4 / 3).toFixed(2)}px`;
   el.style.background = "#fff";
-  el.innerHTML = buildSheetHtmlBody(data, contractPhotos);
+  el.innerHTML = buildSheetHtmlBody(data, contractPhotos, contractInvoices, liveBilance);
 
   document.body.appendChild(el);
   try {
@@ -350,8 +362,10 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const [sheetId, setSheetId] = useState(null);
   const [fotoUploading, setFotoUploading] = useState({}); // { [kategorie]: pocetVeFrontě }
   const [docUploading, setDocUploading] = useState(null);  // klíč dokumentu, který se právě nahrává
-  const [nakladySyncing, setNakladySyncing] = useState(false);
   const [contractPhotos, setContractPhotos] = useState([]); // fotky nahrané přímo u zakázky (záložka Zakázky)
+  const [contractInvoices, setContractInvoices] = useState([]); // skutečné faktury k zakázce (modul Fakturace)
+  const [contractCostEntries, setContractCostEntries] = useState([]); // skutečné náklady zakázky (záložka Náklady)
+  const [contractBudget, setContractBudget] = useState(null); // plánovaný rozpočet a cena ze Zakázky
   const [savedSnapshot, setSavedSnapshot] = useState(null); // poslední uložený stav — pro varování při odchodu s neuloženými změnami
   const [linkedCustomer, setLinkedCustomer] = useState(null); // zákazník napojený na zakázku (z modulu Zákazníci)
   const [pdfExporting, setPdfExporting] = useState(false);
@@ -359,6 +373,51 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
   const isDirty = () => data && savedSnapshot !== null && JSON.stringify(data) !== savedSnapshot;
   const confirmLeave = () => !isDirty() || confirm("V zakázkovém listu máš neuložené změny. Opravdu odejít bez uložení?");
   const goBack = () => { if (!confirmLeave()) return; setData(null); setActiveCId(null); setSavedSnapshot(null); setLinkedCustomer(null); };
+
+  // Fakturace a Ekonomika v zakázkovém listu dřív byly ručně přepisovaná
+  // čísla, oddělená od skutečných faktur a od živého výpočtu marže v
+  // Zakázkách — snadno se rozjela od reality. Teď se při každém otevření
+  // listu natáhnou živá data (faktury, náklady zakázky, plán) a sekce se
+  // z nich jen dopočítají — nic se neukládá jako zamrzlý snímek.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!activeCId) { setContractInvoices([]); setContractCostEntries([]); setContractBudget(null); return; }
+    supabase.from("invoices").select("id, number, amount, status, issued, due, invoice_type").eq("contract_id", activeCId).order("issued", { ascending: false })
+      .then(({ data: d }) => setContractInvoices(d || []));
+    supabase.from("contract_cost_entries").select("cost_type, amount_cost, quantity, unit_price_cost").eq("contract_id", activeCId)
+      .then(({ data: d }) => setContractCostEntries(d || []));
+    supabase.from("contracts").select("price, budget_prace, budget_material, budget_doprava").eq("id", activeCId).single()
+      .then(({ data: d }) => setContractBudget(d || null));
+  }, [activeCId]);
+
+  // Živý dopočet plánu a skutečnosti — stejná logika jako záložka Finance
+  // v Zakázkách (contract_cost_entries = skutečné náklady, budget_* =
+  // plán), jen prodejní cena skutečnosti se navíc bere ze součtu vydaných
+  // faktur k zakázce místo ručního zadání.
+  const costOf = (e) => e.amount_cost != null ? Number(e.amount_cost) : Number(e.quantity || 1) * Number(e.unit_price_cost || 0);
+  const sumCostBy = (typ) => contractCostEntries.filter(e => e.cost_type === typ).reduce((s, e) => s + costOf(e), 0);
+  const skutMaterial = sumCostBy("materiál"), skutPrace = sumCostBy("práce"), skutDoprava = sumCostBy("doprava");
+  const skutCelkem = skutMaterial + skutPrace + skutDoprava;
+  const vydaneFaktury = contractInvoices.filter(i => (i.invoice_type || "vydaná") === "vydaná" && i.status !== "Storno");
+  const fakturovano = vydaneFaktury.reduce((s, i) => s + Number(i.amount || 0), 0);
+  const skutProdej = fakturovano || Number(contractBudget?.price) || 0;
+  const skutMarzeKc = skutProdej ? skutProdej - skutCelkem : null;
+  const skutMarzePct = skutProdej ? Math.round((skutMarzeKc / skutProdej) * 1000) / 10 : null;
+  const planMaterial = Number(contractBudget?.budget_material) || 0;
+  const planPrace = Number(contractBudget?.budget_prace) || 0;
+  const planDoprava = Number(contractBudget?.budget_doprava) || 0;
+  const planCelkem = planMaterial + planPrace + planDoprava;
+  const planProdej = Number(contractBudget?.price) || 0;
+  const planMarzeKc = planProdej ? planProdej - planCelkem : null;
+  const planMarzePct = planProdej ? Math.round((planMarzeKc / planProdej) * 1000) / 10 : null;
+  const liveBilance = {
+    planMaterialNaklad: planMaterial, planPraceNaklad: planPrace, planDopravaNaklad: planDoprava, planCelkemNaklad: planCelkem, planProdejBezDph: planProdej,
+    planMarzeKc, planMarzePct,
+    skutMaterialNaklad: skutMaterial, skutPraceNaklad: skutPrace, skutDopravaNaklad: skutDoprava, skutCelkemNaklad: skutCelkem, skutProdejBezDph: skutProdej,
+    skutMarzeKc, skutMarzePct,
+  };
+  const fmtDate = fmtDateSheet;
+  const INV_STAV_BARVA = { Zaplacena: "#16a34a", Čeká: "#f59e0b", "Po splatnosti": "#ef4444", Storno: "#64748b" };
 
   // Fotky uložené u zakázky (contract_photos) se mají zobrazit i v zakázkovém listu
   useEffect(() => {
@@ -460,7 +519,7 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     if (!data) return;
     setPdfExporting(true);
     try {
-      await exportSheetPdf(data, contractPhotos);
+      await exportSheetPdf(data, contractPhotos, contractInvoices, liveBilance);
     } catch (e) {
       alert("Export PDF selhal: " + e.message);
     } finally {
@@ -546,70 +605,6 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
     }
   };
 
-  // ─── Propsat plán i skutečnost (contracts = plán, contract_cost_entries = skutečnost) ─
-  const nacistSkutecneNaklady = async (silent = false) => {
-    if (!activeCId) return;
-    const b = data.bilance || {};
-    const maZaplneno = [
-      b.skutMaterialNaklad, b.skutPraceNaklad, b.skutDopravaNaklad, b.skutCelkemNaklad,
-      b.planMaterialNaklad, b.planPraceNaklad, b.planDopravaNaklad, b.planCelkemNaklad,
-    ].some(v => v);
-    if (silent && maZaplneno) return; // tiché auto-obnovení nepřepisuje už vyplněná data
-    if (!silent && maZaplneno && !confirm("Přepsat ručně zadané náklady daty z modulu Zakázky a Náklady?")) return;
-
-    setNakladySyncing(true);
-    try {
-      const [{ data: entries, error: entriesErr }, { data: contract, error: contractErr }] = await Promise.all([
-        supabase.from("contract_cost_entries").select("cost_type, amount_cost, quantity, unit_price_cost").eq("contract_id", activeCId),
-        supabase.from("contracts").select("price, budget_prace, budget_material, budget_doprava").eq("id", activeCId).single(),
-      ]);
-      if (entriesErr) throw entriesErr;
-      if (contractErr) throw contractErr;
-
-      // amount_cost bývá u řady záznamů prázdné (nepočítá ho DB) — spočti fallbackem jako v Zakázkách
-      const costOf = (e) => e.amount_cost != null ? Number(e.amount_cost) : Number(e.quantity || 1) * Number(e.unit_price_cost || 0);
-      const sum = (typ) => (entries || []).filter(e => e.cost_type === typ).reduce((s, e) => s + costOf(e), 0);
-      const material = sum("materiál"), prace = sum("práce"), doprava = sum("doprava");
-      const celkem = material + prace + doprava;
-      // Dokud není zadaná skutečná prodejní cena (po fakturaci), počítej marži proti plánované ceně ze zakázky
-      const prodej = Number(data.bilance.skutProdejBezDph) || Number(contract?.price) || 0;
-      const marzeKc = prodej ? prodej - celkem : null;
-      const marzePct = prodej ? Math.round((marzeKc / prodej) * 1000) / 10 : null;
-
-      const planMaterial = Number(contract?.budget_material) || 0;
-      const planPrace = Number(contract?.budget_prace) || 0;
-      const planDoprava = Number(contract?.budget_doprava) || 0;
-      const planCelkem = planMaterial + planPrace + planDoprava;
-      const planProdej = Number(contract?.price) || 0;
-      const planMarzeKc = planProdej ? planProdej - planCelkem : null;
-      const planMarzePct = planProdej ? Math.round((planMarzeKc / planProdej) * 1000) / 10 : null;
-
-      setData(d => ({ ...d, bilance: {
-        ...d.bilance,
-        skutMaterialNaklad: String(material),
-        skutPraceNaklad: String(prace),
-        skutDopravaNaklad: String(doprava),
-        skutCelkemNaklad: String(celkem),
-        ...(marzeKc !== null ? { skutMarzeKc: String(marzeKc), skutMarzePct: String(marzePct) } : {}),
-        planMaterialNaklad: String(planMaterial),
-        planPraceNaklad: String(planPrace),
-        planDopravaNaklad: String(planDoprava),
-        planCelkemNaklad: String(planCelkem),
-        ...(planProdej ? { planProdejBezDph: String(planProdej) } : {}),
-        ...(planMarzeKc !== null ? { planMarzeKc: String(planMarzeKc), planMarzePct: String(planMarzePct) } : {}),
-      } }));
-    } catch (e) {
-      if (!silent) alert("Načtení nákladů selhalo: " + e.message);
-    } finally {
-      setNakladySyncing(false);
-    }
-  };
-
-  // Po otevření listu tiše doplň náklady/plán, pokud ještě nejsou vyplněné
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (activeCId) nacistSkutecneNaklady(true);
-  }, [activeCId]);
 
   // Seznam listů (výběr zakázky)
   const filteredSheets = sheets.filter(s => !search || (s.data?._nazev || "").toLowerCase().includes(search.toLowerCase()));
@@ -1002,27 +997,39 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
           </div>
         </div>
 
-        {/* FAKTURACE */}
+        {/* FAKTURACE — živý seznam skutečných faktur k zakázce, ne ruční přepis */}
         <div id="s-fakturace" style={S.card(false,"#F5821F")}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="fakturace")} stav={st.fakturace||"Čeká"} onStav={v=>updStav("fakturace",v)}/>
           <div style={S.body}>
-            <div style={{fontSize:11,fontWeight:700,color:"#F5821F",textTransform:"uppercase",marginBottom:8}}>Záloha</div>
-            <EF label="Číslo faktury"  value={data.fakturace.zalohaFaktura}  onChange={v=>upd("fakturace","zalohaFaktura",v)} mono/>
-            <EF label="Částka (Kč)"   value={data.fakturace.zalohaKc}       onChange={v=>upd("fakturace","zalohaKc",v)}/>
-            <EF label="Datum splat."  value={data.fakturace.zalohaDatum}    onChange={v=>upd("fakturace","zalohaDatum",v)}/>
-            <EF label="Uhrazena"      value={data.fakturace.zalohaUhrazena} onChange={v=>upd("fakturace","zalohaUhrazena",v)}/>
-            <div style={S.div}/>
-            <div style={{fontSize:11,fontWeight:700,color:"#F5821F",textTransform:"uppercase",marginBottom:8}}>Doplatek</div>
-            <EF label="Číslo faktury"  value={data.fakturace.doplatekFaktura}  onChange={v=>upd("fakturace","doplatekFaktura",v)} mono/>
-            <EF label="Částka (Kč)"   value={data.fakturace.doplatekKc}       onChange={v=>upd("fakturace","doplatekKc",v)}/>
-            <EF label="Datum splat."  value={data.fakturace.doplatekDatum}    onChange={v=>upd("fakturace","doplatekDatum",v)}/>
-            <EF label="Uhrazen"       value={data.fakturace.doplatekUhrazen} onChange={v=>upd("fakturace","doplatekUhrazen",v)}/>
+            {contractInvoices.length===0 ? (
+              <div style={{fontSize:12,color:"#64748b",marginBottom:12}}>Zatím žádná faktura k této zakázce. Vystaví se v modulu Fakturace (jde i rovnou ze zakázky).</div>
+            ) : (
+              <div style={{marginBottom:12}}>
+                {contractInvoices.map(inv=>{
+                  const barva = INV_STAV_BARVA[inv.status] || "#64748b";
+                  return (
+                    <div key={inv.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #e2e8f0"}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:"#1A1A1A"}}>{inv.number}</div>
+                        <div style={{fontSize:11,color:"#64748b"}}>{inv.invoice_type==="přijatá"?"Přijatá":"Vydaná"} · splatnost {fmtDate(inv.due)}</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#1A1A1A"}}>{fmtKc(inv.amount)}</div>
+                        <span style={{fontSize:10,fontWeight:700,color:barva,background:barva+"22",borderRadius:5,padding:"1px 7px"}}>{inv.status}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div style={S.div}/>
             <EF label="Poznámka"      value={data.fakturace.poznamka}        onChange={v=>upd("fakturace","poznamka",v)} multi/>
           </div>
         </div>
 
-        {/* EKONOMICKÁ BILANCE */}
+        {/* EKONOMICKÁ BILANCE — živě dopočtená z faktur, nákladů zakázky a
+            rozpočtu; nic tu není ruční přepis, který by se mohl rozejít od
+            skutečnosti v Zakázkách. */}
         <div id="s-bilance" style={{...S.card(false,"#10b981"),maxWidth:340,minWidth:340}}>
           <SekceHeader sekce={SEKCE.find(s=>s.id==="bilance")} stav={st.bilance||"Čeká"} onStav={v=>updStav("bilance",v)}/>
           <div style={S.body}>
@@ -1036,8 +1043,8 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                 {[["Materiál","planMaterialNaklad","skutMaterialNaklad"],["Práce","planPraceNaklad","skutPraceNaklad"],["Doprava","planDopravaNaklad","skutDopravaNaklad"],["Celkem náklad","planCelkemNaklad","skutCelkemNaklad"],["Prodejní cena (bez DPH)","planProdejBezDph","skutProdejBezDph"]].map(([l,pk,sk])=>(
                   <tr key={l} style={{borderBottom:"1px solid #e2e8f0"}}>
                     <td style={{padding:"6px 8px",fontSize:12,color:"#64748b"}}>{l}</td>
-                    <td style={{padding:"6px 8px",fontSize:12,color:"#0369a1",textAlign:"right"}}>{fmtKc(data.bilance[pk])}</td>
-                    <td style={{padding:"6px 8px",fontSize:12,color:"#10b981",textAlign:"right"}}>{fmtKc(data.bilance[sk])}</td>
+                    <td style={{padding:"6px 8px",fontSize:12,color:"#0369a1",textAlign:"right"}}>{fmtKc(liveBilance[pk])}</td>
+                    <td style={{padding:"6px 8px",fontSize:12,color:"#10b981",textAlign:"right"}}>{fmtKc(liveBilance[sk])}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1045,31 +1052,21 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
             <div style={{background:"#f8fafc",borderRadius:8,padding:12,marginBottom:12,display:"flex",gap:12}}>
               <div style={{flex:1,textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#475569",marginBottom:3}}>PLÁN</div>
-                <div style={{fontSize:18,fontWeight:800,color:"#0369a1"}}>{data.bilance.planMarzePct||"—"} %</div>
-                <div style={{fontSize:11,color:"#475569"}}>{fmtKc(data.bilance.planMarzeKc)}</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#0369a1"}}>{liveBilance.planMarzePct??"—"} %</div>
+                <div style={{fontSize:11,color:"#475569"}}>{fmtKc(liveBilance.planMarzeKc)}</div>
               </div>
               <div style={{width:1,background:"#e2e8f0"}}/>
               <div style={{flex:1,textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#475569",marginBottom:3}}>SKUTEČNOST</div>
-                <div style={{fontSize:18,fontWeight:800,color:"#10b981"}}>{data.bilance.skutMarzePct||"—"} %</div>
-                <div style={{fontSize:11,color:"#475569"}}>{fmtKc(data.bilance.skutMarzeKc)}</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#10b981"}}>{liveBilance.skutMarzePct??"—"} %</div>
+                <div style={{fontSize:11,color:"#475569"}}>{fmtKc(liveBilance.skutMarzeKc)}</div>
               </div>
             </div>
-            <div style={S.div}/>
-            <button style={{...S.btn("#10b981"),width:"100%",marginBottom:12}} onClick={nacistSkutecneNaklady} disabled={nakladySyncing}>
-              {nakladySyncing?"⏳ Načítám...":"🔄 Načíst plán ze Zakázky a skutečnost z Nákladů"}
-            </button>
-            <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8}}>Zadat skutečné náklady</div>
             <div style={{background:"#10b98114",border:"1px solid #10b98144",borderRadius:7,padding:"6px 10px",marginBottom:10,fontSize:11,color:"#0f766e"}}>
-              Toto je platná (autoritativní) prodejní cena zakázky — dokud tu není vyplněná, počítá se marže jen orientačně z plánované ceny na zakázce.
+              {fakturovano
+                ? `Skutečná prodejní cena je součet ${vydaneFaktury.length} vydan${vydaneFaktury.length===1?"é":"ých"} faktur k této zakázce (${fmtKc(fakturovano)}).`
+                : "Zatím nevystavena žádná faktura — skutečnost se počítá orientačně z plánované ceny na zakázce."}
             </div>
-            <EF label="Prodejní cena – skutečnost (Kč, bez DPH)" value={data.bilance.skutProdejBezDph} onChange={v=>upd("bilance","skutProdejBezDph",v)}/>
-            <EF label="Materiál skutečný (Kč)"  value={data.bilance.skutMaterialNaklad} onChange={v=>upd("bilance","skutMaterialNaklad",v)}/>
-            <EF label="Práce skutečná (Kč)"     value={data.bilance.skutPraceNaklad}    onChange={v=>upd("bilance","skutPraceNaklad",v)}/>
-            <EF label="Doprava skutečná (Kč)"   value={data.bilance.skutDopravaNaklad}  onChange={v=>upd("bilance","skutDopravaNaklad",v)}/>
-            <EF label="Celkem náklad (Kč)"      value={data.bilance.skutCelkemNaklad}   onChange={v=>upd("bilance","skutCelkemNaklad",v)}/>
-            <EF label="Marže skutečná (%)"      value={data.bilance.skutMarzePct}       onChange={v=>upd("bilance","skutMarzePct",v)}/>
-            <EF label="Marže skutečná (Kč)"     value={data.bilance.skutMarzeKc}        onChange={v=>upd("bilance","skutMarzeKc",v)}/>
             <div style={S.div}/>
             <EF label="Poznámky k odchylkám"    value={data.bilance.odchylkaPoznamka}   onChange={v=>upd("bilance","odchylkaPoznamka",v)} multi/>
           </div>
