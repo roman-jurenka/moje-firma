@@ -1918,21 +1918,32 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
     });
   };
 
-  // Náklady se v appce vedou na třech nezávislých místech: obecné firemní
+  // Náklady se v appce vedou na několika nezávislých místech: obecné firemní
   // náklady (tady, "Náklady"), náklady konkrétní zakázky (práce/materiál/
-  // doprava v Zakázkách) a ruční Finanční tok (skutečné pohyby na účtu).
-  // Do hlavního čísla "Náklady"/"Zisk" počítáme prvních dvě — obecné firemní
-  // náklady a náklady zakázek — protože appka náklady v praxi zapisuje
-  // hlavně u zakázek a bez nich bylo číslo zisku zavádějící podhodnocené.
-  // Finanční tok záměrně nepřičítáme: je to spíš "co prošlo účtem" než
-  // "co nás to stálo" a hrozilo by dvojí počítání stejného výdaje (jednou
-  // jako náklad zakázky, podruhé jako pohyb na účtu při placení).
+  // doprava v Zakázkách), přijaté faktury od dodavatelů (Fakturace) a ruční
+  // Finanční tok (skutečné pohyby na účtu). Do hlavního čísla "Náklady"/
+  // "Zisk" počítáme první tři — obecné firemní náklady, náklady zakázek a
+  // přijaté faktury — protože appka náklady v praxi zapisuje hlavně u
+  // zakázek a bez nich bylo číslo zisku zavádějící podhodnocené. Přijatá
+  // faktura (např. souhrnná faktura od dodavatele materiálu na víc zakázek
+  // najednou) se počítá celá jako firemní náklad bez ohledu na to, jestli má
+  // přiřazenou jednu zakázku — rozpad na konkrétní zakázky řeší samostatně
+  // dodací listy vypsané u jednotlivých zakázek. Pozor: pokud se stejný
+  // nákup zapíše ručně i do "Náklady", počítal by se dvakrát — každý nákup
+  // patří jen na jedno místo. Finanční tok záměrně nepřičítáme: je to spíš
+  // "co prošlo účtem" než "co nás to stálo" a hrozilo by dvojí počítání
+  // stejného výdaje (jednou jako náklad, podruhé jako pohyb na účtu při
+  // placení).
+  const receivedInvoicesCost = (invoices || []).filter(i => i.invoice_type === "přijatá" && i.status !== "Storno")
+    .reduce((s, i) => s + (Number(i.amount) || 0) + (Number(i.tax) || 0), 0);
   const jobCosts = (costEntries || []).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0) + (dnMaterialCost || 0);
-  const totalCosts = costs.reduce((s, c) => s + c.amount, 0) + jobCosts;
+  const totalCosts = costs.reduce((s, c) => s + c.amount, 0) + jobCosts + receivedInvoicesCost;
   const todayStr = fmt(new Date());
   const thisMonth = todayStr.slice(0, 7);
   const thisMonthJobCosts = (costEntries || []).filter(e => (e.date || "").startsWith(thisMonth)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
-  const thisMonthCosts = costs.filter(c => c.date.startsWith(thisMonth)).reduce((s, c) => s + c.amount, 0) + thisMonthJobCosts;
+  const thisMonthReceivedInvoices = (invoices || []).filter(i => i.invoice_type === "přijatá" && i.status !== "Storno" && (i.issued || "").startsWith(thisMonth))
+    .reduce((s, i) => s + (Number(i.amount) || 0) + (Number(i.tax) || 0), 0);
+  const thisMonthCosts = costs.filter(c => c.date.startsWith(thisMonth)).reduce((s, c) => s + c.amount, 0) + thisMonthJobCosts + thisMonthReceivedInvoices;
   // Zisk počítá i marži z dodacích listů (prodejní cena materiálu nad rámec
   // nákladu) — dřív se do nákladů promítl jen náklad z dodacích listů (přes
   // jobCosts výše), ale odpovídající výnos ne, takže byl zisk podhodnocený.
@@ -1971,7 +1982,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
   const stats = [
     { label: "Zákazníci", value: customers.length, color: "#0369a1" },
     { label: "Zaplaceno (příjmy)", value: fmtKc(totalRevenue), color: "#34d399" },
-    { label: "Náklady celkem", value: fmtKc(totalCosts), color: "#f87171", sub: `firemní ${fmtKc(costs.reduce((s, c) => s + c.amount, 0))} + zakázky ${fmtKc(jobCosts)} (vč. dodacích listů)` },
+    { label: "Náklady celkem", value: fmtKc(totalCosts), color: "#f87171", sub: `firemní ${fmtKc(costs.reduce((s, c) => s + c.amount, 0))} + zakázky ${fmtKc(jobCosts)} (vč. dodacích listů) + přijaté faktury ${fmtKc(receivedInvoicesCost)}` },
     { label: "Zisk", value: fmtKc(profit), color: profit >= 0 ? "#34d399" : "#f87171", sub: dnMaterialClient ? `vč. marže z dodacích listů ${fmtKc(dnMaterialClient)}` : undefined },
     { label: "Náklady tento měsíc", value: fmtKc(thisMonthCosts), color: "#f59e0b" },
     { label: "Produkty skladu", value: products.length, color: "#0369a1" },
@@ -5849,15 +5860,17 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
   ])].sort((a, b) => b.localeCompare(a));
 
   const totalRevenue = invoices.filter(i => i.status === "Zaplacena" && i.issued?.startsWith(period)).reduce((s, i) => s + i.amount, 0);
-  // Stejná logika jako na Dashboardu — firemní náklady + náklady zakázek,
-  // Finanční tok záměrně vynechán kvůli riziku dvojího počítání (viz
-  // komentář u totalCosts v Dashboard()). Filtrováno podle vybraného roku;
-  // dnMaterialCost/dnMaterialClient (marže dodacích listů) jsou zatím jen
-  // celofiremní součet za celou dobu — dodací listy nemají zapsané datum,
-  // takže je nejde rozpočítat po letech.
+  // Stejná logika jako na Dashboardu — firemní náklady + náklady zakázek +
+  // přijaté faktury od dodavatelů, Finanční tok záměrně vynechán kvůli
+  // riziku dvojího počítání (viz komentář u totalCosts v Dashboard()).
+  // Filtrováno podle vybraného roku; dnMaterialCost/dnMaterialClient (marže
+  // dodacích listů) jsou zatím jen celofiremní součet za celou dobu —
+  // dodací listy nemají zapsané datum, takže je nejde rozpočítat po letech.
   const genCosts = costs.filter(c => c.date?.startsWith(period)).reduce((s, c) => s + c.amount, 0);
   const jobCosts = (costEntries || []).filter(e => (e.date || "").startsWith(period)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0) + (dnMaterialCost || 0);
-  const totalCosts = genCosts + jobCosts;
+  const receivedInvoicesCost = invoices.filter(i => i.invoice_type === "přijatá" && i.status !== "Storno" && i.issued?.startsWith(period))
+    .reduce((s, i) => s + (Number(i.amount) || 0) + (Number(i.tax) || 0), 0);
+  const totalCosts = genCosts + jobCosts + receivedInvoicesCost;
   // Zisk zahrnuje i marži z dodacích listů (viz stejná oprava v Dashboard()
   // a v contractProfit() v Contracts.jsx) — jinak se náklad materiálu z
   // dodacích listů počítal, ale odpovídající výnos ne.
@@ -5874,7 +5887,8 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
     const monthStr = `${period}-${String(i + 1).padStart(2, "0")}`;
     const rev = invoices.filter(inv => inv.status === "Zaplacena" && inv.issued?.startsWith(monthStr)).reduce((s, inv) => s + inv.amount, 0);
     const cost = costs.filter(c => c.date.startsWith(monthStr)).reduce((s, c) => s + c.amount, 0)
-      + (costEntries || []).filter(e => (e.date || "").startsWith(monthStr)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0);
+      + (costEntries || []).filter(e => (e.date || "").startsWith(monthStr)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0)
+      + invoices.filter(inv => inv.invoice_type === "přijatá" && inv.status !== "Storno" && inv.issued?.startsWith(monthStr)).reduce((s, inv) => s + (Number(inv.amount) || 0) + (Number(inv.tax) || 0), 0);
     return { month: m, revenue: rev, costs: cost, profit: rev - cost };
   });
 
@@ -5928,7 +5942,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
         {[
           { label: "Celkový zisk", value: fmtKc(profit), sub: `Marže ${margin}%`, color: profit >= 0 ? "#34d399" : "#f87171" },
           { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena" && i.issued?.startsWith(period)).length} faktur`, color: "#0369a1" },
-          { label: "Náklady", value: fmtKc(totalCosts), sub: `firemní ${fmtKc(genCosts)} + zakázky ${fmtKc(jobCosts)} (vč. dodacích listů)`, color: "#f87171" },
+          { label: "Náklady", value: fmtKc(totalCosts), sub: `firemní ${fmtKc(genCosts)} + zakázky ${fmtKc(jobCosts)} (vč. dodacích listů) + přijaté faktury ${fmtKc(receivedInvoicesCost)}`, color: "#f87171" },
           { label: "Konverzní poměr", value: `${conversionRate}%`, sub: `Ø deal ${fmtKc(avgDealValue)}`, color: "#f59e0b" },
         ].map(k => (
           <div key={k.label} style={S.statCard(k.color)}>
