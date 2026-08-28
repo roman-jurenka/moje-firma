@@ -47,6 +47,25 @@ const PRAZDNA_NABIDKA = () => ({
 // Celkovým MD se násobí práce; doprava se násobí jen počtem dní (stejná
 // cesta, ať jede kdokoliv). Materiál je samostatný — nenásobí se vůbec,
 // je to prostě celková částka materiálu na daný řádek.
+// Samostatná (bezstavová) verze výpočtu celkové ceny nabídky — používá se
+// pro KPI v seznamu nabídek, kde nechceme znovu procházet celý editor.
+function computeQuoteTotals(qdata) {
+  const d = qdata || {};
+  const sazbaMd = d?.interni?.sazbaMd || 0;
+  const radky = d?.interni?.radky || [];
+  const polozky = d?.interni?.polozky || [];
+  const radkyV = radky.map(r => radekVypocet(r, sazbaMd));
+  const celkemPolozkyMd = polozky.reduce((s, p) => s + (Number(p.md) || 0), 0);
+  const celkemPolozkyKc = celkemPolozkyMd * sazbaMd;
+  const celkemDoprava = radkyV.reduce((s, v) => s + v.doprava, 0);
+  const celkemMaterial = radkyV.reduce((s, v) => s + v.material, 0);
+  const celkemPrace = radkyV.reduce((s, v) => s + v.laborKc, 0) + celkemPolozkyKc;
+  const celkemNaklad = celkemDoprava + celkemMaterial + celkemPrace;
+  const cilovaZadana = d?.zakaznik?.cilovaCena;
+  const cilovaCena = cilovaZadana !== "" && cilovaZadana != null ? Number(cilovaZadana) : Math.round(celkemNaklad * 1.25);
+  return { celkemNaklad, cilovaCena };
+}
+
 const radekVypocet = (r, sazbaMd) => {
   const dny = Number(r.pocetMd) || 0;
   const lide = Number(r.pocetLidi) || 1;
@@ -110,23 +129,53 @@ function InterniTabulka({ radky, setRadky, sazbaMd }) {
 }
 
 // ─── Samostatné položky (revize, dokumentace, cokoli mimo fáze) ─────────────
-function PolozkyTabulka({ polozky, setPolozky, sazbaMd }) {
+// historicke = ploché pole položek ze VŠECH dřívějších nabídek (napříč typy,
+// tedy i mimo FVE — servis, hromosvody, elektroinstalace...), aby appka
+// mohla při psaní napovědět, kolik MD podobná položka trvala naposledy,
+// místo aby se to pokaždé odhadovalo od nuly.
+function PolozkyTabulka({ polozky, setPolozky, sazbaMd, historicke }) {
+  const [suggestFor, setSuggestFor] = useState(null); // id řádku, u kterého se zrovna napovídá
   const update = (id, key, value) => setPolozky(polozky.map(p => p.id === id ? { ...p, [key]: value } : p));
   const remove = (id) => setPolozky(polozky.filter(p => p.id !== id));
   const add = () => setPolozky([...polozky, { id: uid(), nazev: "", md: "" }]);
 
+  const findSuggestions = (text) => {
+    if (!text || text.length < 2 || !historicke?.length) return [];
+    const q = text.toLowerCase();
+    const matches = historicke.filter(h => h.nazev?.toLowerCase().includes(q));
+    const byName = new Map();
+    matches.forEach(h => byName.set(h.nazev.toLowerCase(), h)); // poslední v pořadí (od nejnovější nabídky) vyhraje
+    return [...byName.values()].slice(0, 6);
+  };
+
   return (
     <div style={{ marginTop: 18 }}>
-      <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Samostatné položky (mimo fáze výše) — např. revize, dokumentace, zaškolení.</div>
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Samostatné položky (mimo fáze výše) — např. revize, dokumentace, zaškolení. Při psaní appka napoví z dřívějších nabídek, kolik MD podobná položka trvala.</div>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead><tr><th style={S.th}>Název položky</th><th style={S.th}>MD</th><th style={S.th}>Cena</th><th style={S.th}></th></tr></thead>
         <tbody>
           {polozky.map(p => {
             const md = Number(p.md) || 0;
             const cena = md * (Number(sazbaMd) || 0);
+            const suggestions = suggestFor === p.id ? findSuggestions(p.nazev) : [];
             return (
               <tr key={p.id}>
-                <td style={S.td}><input style={{ ...S.input, marginBottom: 0 }} placeholder="např. Revize, Dokumentace..." value={p.nazev} onChange={e => update(p.id, "nazev", e.target.value)} /></td>
+                <td style={{ ...S.td, position: "relative" }}>
+                  <input style={{ ...S.input, marginBottom: 0 }} placeholder="např. Revize, Dokumentace..." value={p.nazev}
+                    onChange={e => { update(p.id, "nazev", e.target.value); setSuggestFor(p.id); }}
+                    onBlur={() => setTimeout(() => setSuggestFor(s => s === p.id ? null : s), 150)} />
+                  {suggestions.length > 0 && (
+                    <div style={{ position: "absolute", zIndex: 99, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, minWidth: 220, top: "100%", boxShadow: "0 4px 16px #0000001a" }}>
+                      {suggestions.map((h, i) => (
+                        <div key={i} style={{ padding: "7px 11px", cursor: "pointer", fontSize: 12, display: "flex", justifyContent: "space-between", gap: 10, borderBottom: "1px solid #f1f5f9" }}
+                          onClick={() => { update(p.id, "nazev", h.nazev); update(p.id, "md", h.md); setSuggestFor(null); }}>
+                          <span style={{ color: "#1A1A1A", fontWeight: 500 }}>{h.nazev}</span>
+                          <span style={{ color: "#475569", flexShrink: 0 }}>{h.md} MD</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
                 <td style={S.td}><input type="number" style={{ ...S.input, marginBottom: 0, width: 90 }} value={p.md} onChange={e => update(p.id, "md", e.target.value)} /></td>
                 <td style={{ ...S.td, color: "#f87171", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtKc(cena)}</td>
                 <td style={S.td}><button onClick={() => remove(p.id)} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11 }}>✕</button></td>
@@ -211,6 +260,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const [data, setData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [typeFilter, setTypeFilter] = useState("vse");
+  const [statusFilter, setStatusFilter] = useState("vse");
 
   useEffect(() => {
     supabase.from("quotes").select("*").order("updated_at", { ascending: false }).then(({ data: d }) => setQuotes(d || []));
@@ -298,6 +348,24 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     if (activeId === id) closeQuote();
   };
 
+  // Duplikace nabídky — ušetří přepisování celého interního nacenění, když
+  // je nová poptávka hodně podobná nějaké dřívější (typický případ: stejná
+  // sestava FVE u jiného zákazníka). Kopie vždy začíná jako "Návrh" a bez
+  // vazby na obchodní případ, ať omylem nevznikne dojem, že jde o tu samou
+  // nabídku, která už třeba byla odeslaná/schválená.
+  const duplicateQuote = async (q) => {
+    const row = {
+      name: (q.name || "Nabídka") + " (kopie)",
+      customer_id: q.customer_id,
+      status: "Návrh",
+      type: q.type,
+      data: q.data,
+      updated_at: new Date().toISOString(),
+    };
+    const { data: inserted } = await supabase.from("quotes").insert(row).select().single();
+    if (inserted) setQuotes([inserted, ...quotes]);
+  };
+
   const convertToDeal = async () => {
     if (!activeId) { alert("Nejdřív nabídku uložte."); return; }
     if (!onConvertToDeal) return;
@@ -358,9 +426,22 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
 
   const filtered = quotes
     .filter(q => !search || (q.name || "").toLowerCase().includes(search.toLowerCase()))
-    .filter(q => typeFilter === "vse" || q.type === typeFilter || (typeFilter === "bez" && !q.type));
+    .filter(q => typeFilter === "vse" || q.type === typeFilter || (typeFilter === "bez" && !q.type))
+    .filter(q => statusFilter === "vse" || q.status === statusFilter);
 
   const typeBadgeColor = (id) => ({ FVE: "#f59e0b", HRM: "#a78bfa", ELK: "#0369a1", SRV: "#34d399" }[id] || "#475569");
+  const statusColor = (s) => ({ "Návrh": "#64748b", "Odesláno": "#0369a1", "Schváleno": "#34d399", "Zamítnuto": "#ef4444" }[s] || "#64748b");
+
+  // KPI nad seznamem — kolik nabídek je rozpracovaných/schválených a jaká je
+  // hodnota otevřené pipeline (bez zamítnutých), ať je vidět stav bez klikání
+  // do každé nabídky zvlášť.
+  const kpiSchvaleno = quotes.filter(q => q.status === "Schváleno");
+  const kpiOtevreno = quotes.filter(q => q.status !== "Zamítnuto");
+  const kpiHodnotaOtevrenych = kpiOtevreno.reduce((s, q) => s + computeQuoteTotals(q.data).cilovaCena, 0);
+
+  // Historie samostatných položek napříč VŠEMI nabídkami (i mimo FVE) — pro
+  // ceník/napovídání v PolozkyTabulka.
+  const historickePolozky = quotes.flatMap(q => (q.data?.interni?.polozky || []).filter(p => p.nazev));
 
   // ─── SEZNAM NABÍDEK ──────────────────────────────────────────────────────
   if (!data) {
@@ -371,9 +452,26 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           <button style={S.btn()} onClick={newQuote}>+ Nová nabídka</button>
         </div>
         <p style={{ color: "#475569", fontSize: 13, marginBottom: 18 }}>Interní nacenění po MD (člověko-dnech) + rozvrh po dnech + volné sekce pro zákazníka. Následně překlop na obchodní případ.</p>
+
+        {/* KPI */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 18 }}>
+          <div style={S.card}>
+            <div style={S.label}>Celkem nabídek</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#0369a1" }}>{quotes.length}</div>
+          </div>
+          <div style={S.card}>
+            <div style={S.label}>Schváleno</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#34d399" }}>{kpiSchvaleno.length}</div>
+          </div>
+          <div style={S.card}>
+            <div style={S.label}>Hodnota otevřené pipeline</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b" }}>{fmtKc(kpiHodnotaOtevrenych)}</div>
+          </div>
+        </div>
+
         <input style={{ ...S.input, marginBottom: 16, maxWidth: 340 }} placeholder="Hledat nabídku..." value={search} onChange={e => setSearch(e.target.value)} />
 
-        <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
           {[["vse", "Vše"], ...JOB_TYPES.map(t => [t.id, t.label]), ["bez", "Bez typu"]].map(([k, l]) => (
             <button key={k} onClick={() => setTypeFilter(k)}
               style={{
@@ -382,6 +480,20 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
                 padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer",
               }}>
               {l}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+          {["vse", "Návrh", "Odesláno", "Schváleno", "Zamítnuto"].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              style={{
+                background: statusFilter === s ? statusColor(s === "vse" ? "" : s) : "#f8fafc",
+                color: statusFilter === s ? "#fff" : "#475569",
+                border: "1px solid " + (statusFilter === s ? statusColor(s === "vse" ? "" : s) : "#e2e8f0"), borderRadius: 8,
+                padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              }}>
+              {s === "vse" ? "Všechny stavy" : s}
             </button>
           ))}
         </div>
@@ -401,10 +513,16 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
                         {q.type}
                       </span>
                     )}
+                    <span style={{ background: statusColor(q.status) + "22", color: statusColor(q.status), border: "1px solid " + statusColor(q.status), borderRadius: 6, padding: "1px 8px", fontSize: 10, fontWeight: 700 }}>
+                      {q.status}
+                    </span>
                   </div>
-                  <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{cust ? cust.name : "bez zákazníka"} · {q.status}</div>
+                  <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{cust ? cust.name : "bez zákazníka"} · {fmtKc(computeQuoteTotals(q.data).cilovaCena)}</div>
                 </div>
-                <button onClick={e => { e.stopPropagation(); deleteQuote(q.id); }} style={{ ...S.btn("#ef4444"), padding: "5px 12px", fontSize: 11 }}>✕</button>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button onClick={e => { e.stopPropagation(); duplicateQuote(q); }} title="Duplikovat nabídku" style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 11 }}>📋 Duplikovat</button>
+                  <button onClick={e => { e.stopPropagation(); deleteQuote(q.id); }} style={{ ...S.btn("#ef4444"), padding: "5px 12px", fontSize: 11 }}>✕</button>
+                </div>
               </div>
             );
           })}
@@ -471,6 +589,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           polozky={data.interni.polozky}
           setPolozky={polozky => setData({ ...data, interni: { ...data.interni, polozky } })}
           sazbaMd={sazbaMd}
+          historicke={historickePolozky}
         />
         <div style={{ marginTop: 14, display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13 }}>
           <div><span style={{ color: "#475569" }}>Celkem MD: </span><b style={{ color: "#a78bfa" }}>{Math.round(celkemMd * 100) / 100}</b></div>
