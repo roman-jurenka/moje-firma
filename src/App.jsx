@@ -2333,12 +2333,52 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
   const [newC, setNewC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník" });
   const [editC, setEditC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník" });
   const [showArchived, setShowArchived] = useState(false);
+  const [typeFilter, setTypeFilter] = useState("Vše");
+  const [tagFilter, setTagFilter] = useState("Vše");
+  const [sortBy, setSortBy] = useState("name");
+  const [exportBusy, setExportBusy] = useState(false);
   const archivedCount = customers.filter(c => c.archived).length;
-  const filtered = customers.filter(c =>
-    !!c.archived === showArchived &&
-    ((c.name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (c.company || "").toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = customers
+    .filter(c =>
+      !!c.archived === showArchived &&
+      ((c.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (c.company || "").toLowerCase().includes(search.toLowerCase())) &&
+      (typeFilter === "Vše" || c.customer_type === typeFilter) &&
+      (tagFilter === "Vše" || c.tag === tagFilter)
+    )
+    .map(c => ({ ...c, _invCount: invoices.filter(inv => inv.customerId === c.id).length }))
+    .sort((a, b) => {
+      if (sortBy === "invoices") return b._invCount - a._invCount;
+      if (sortBy === "newest") return (b.created_at || "").localeCompare(a.created_at || "");
+      if (sortBy === "company") return (a.company || "").localeCompare(b.company || "", "cs");
+      return (a.name || "").localeCompare(b.name || "", "cs");
+    });
+
+  const handleExportCustomers = async () => {
+    setExportBusy(true);
+    try {
+      const XLSX = await import("xlsx");
+      const rows = filtered.map(c => {
+        const custInv = invoices.filter(inv => inv.customerId === c.id && inv.status !== "Storno");
+        const invoiced = custInv.reduce((s, i) => s + (Number(i.amount) || 0) + (Number(i.tax) || 0), 0);
+        const openDeals = deals.filter(d => d.customerId === c.id && d.stage !== "Vyhráno" && d.stage !== "Prohráno").length;
+        return {
+          "Jméno": c.name || "", "Typ": c.customer_type || "", "Firma": c.company || "",
+          "Email": c.email || "", "Telefon": c.phone || "", "Štítek": c.tag || "",
+          "Počet faktur": custInv.length, "Celkem fakturováno": invoiced, "Otevřené poptávky": openDeals,
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [{ wch: 22 }, { wch: 14 }, { wch: 22 }, { wch: 26 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 16 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Zákazníci");
+      XLSX.writeFile(wb, `Zakaznici-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (e) {
+      alert("Export se nepodařil: " + (e?.message || e));
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   const save = async () => {
     if (!newC.name) return;
@@ -2396,13 +2436,36 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
     <>
       <div style={S.header}>
         <h1 style={S.h1}>Zákazníci</h1>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <input style={S.search} placeholder="🔍 Hledat..." value={search} onChange={e => setSearch(e.target.value)} />
           <button style={showArchived ? S.btn("#334155") : S.btnGhost} onClick={() => setShowArchived(!showArchived)}>
             {showArchived ? "← Zpět na aktivní" : `🗑️ Smazaní (${archivedCount})`}
           </button>
           {!showArchived && <button style={S.btn()} onClick={() => setModal({ type: "addCustomer" })}>+ Přidat</button>}
         </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 170, padding: "8px 12px" }}>
+          {["Vše", "Koncový zákazník", "Firma"].map(t => <option key={t}>{t}</option>)}
+        </select>
+        <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 150, padding: "8px 12px" }}>
+          {["Vše", "Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 190, padding: "8px 12px" }}>
+          <option value="name">Řadit: Jméno (A–Z)</option>
+          <option value="company">Řadit: Firma (A–Z)</option>
+          <option value="invoices">Řadit: Počet faktur</option>
+          <option value="newest">Řadit: Nejnovější</option>
+        </select>
+        {(typeFilter !== "Vše" || tagFilter !== "Vše") && (
+          <button onClick={() => { setTypeFilter("Vše"); setTagFilter("Vše"); }} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
+            ✕ Zrušit filtr
+          </button>
+        )}
+        <button disabled={exportBusy || filtered.length === 0} onClick={handleExportCustomers} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
+          {exportBusy ? "…" : "📊 Export do Excelu"}
+        </button>
+        <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>{filtered.length} z {customers.filter(c => !!c.archived === showArchived).length}</span>
       </div>
       <div style={S.card}>
         <table style={S.table}>
@@ -2501,6 +2564,8 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
         const custTasks = (tasks || []).filter(t => t.customerId === c.id);
         const custOpenTasks = custTasks.filter(t => !t.done);
         const CONTRACT_STATUS_COLOR = { "Příprava": "#f59e0b", "Probíhá": "#0369a1", "Dokončeno": "#34d399", "Pozastaveno": "#ef4444" };
+        const custInvoicedTotal = custInv.filter(i => i.status !== "Storno").reduce((s, i) => s + (Number(i.amount) || 0) + (Number(i.tax) || 0), 0);
+        const custOpenDealsCount = custDeals.filter(d => d.stage !== "Vyhráno" && d.stage !== "Prohráno").length;
         return (
           <div style={S.modal} onClick={closeModal}>
             <div style={{ ...S.modalBox, width: 600 }} onClick={e => e.stopPropagation()}>
@@ -2510,6 +2575,16 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
                 {c.email && <a href={`mailto:${c.email}`} style={{ color: "#0369a1" }}>{c.email}</a>}
                 {c.phone && <span> · <a href={`tel:${c.phone}`} style={{ color: "#16a34a" }}>📞 {c.phone}</a></span>}
                 {c.email_contact && c.email_contact !== c.email && <span> · <a href={`mailto:${c.email_contact}`} style={{ color: "#a78bfa" }}>✉️ {c.email_contact}</a></span>}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>Celkem fakturováno</div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: "#1A1A1A" }}>{fmtKc(custInvoicedTotal)}</div>
+                </div>
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>Otevřené poptávky</div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: "#1A1A1A" }}>{custOpenDealsCount}</div>
+                </div>
               </div>
               <div style={{ marginBottom: 16, display: "flex", gap: 8 }}>
                 {!c.archived && (
