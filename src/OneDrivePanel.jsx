@@ -14,6 +14,8 @@ export default function OneDrivePanel({ supabase }) {
   const [lastBackup, setLastBackup] = useState(localStorage.getItem("od_last_backup"));
   const [error, setError] = useState(null);
   const [checking, setChecking] = useState(!isConnected());
+  const [backupResult, setBackupResult] = useState(null); // { folder, failed, succeeded } — poslední zálohu, ať je vidět, co se případně nepovedlo
+  const [retrying, setRetrying] = useState(false);
 
   // Pokud tenhle prohlížeč ještě nemá vlastní přihlášení, zkus načíst firemní sdílený účet
   useEffect(() => {
@@ -37,18 +39,56 @@ export default function OneDrivePanel({ supabase }) {
 
   const handleBackup = async () => {
     setError(null);
+    setBackupResult(null);
     setProgress({ msg: "Připravuji zálohu...", pct: 0 });
     try {
-      const folder = await backupToOneDrive(supabase, (msg, pct) => setProgress({ msg, pct }));
+      const result = await backupToOneDrive(supabase, (msg, pct) => setProgress({ msg, pct }));
       const now = new Date().toLocaleString("cs-CZ");
       localStorage.setItem("od_last_backup", now);
       setLastBackup(now);
-      setProgress({ msg: `✓ Záloha uložena do ${folder}`, pct: 100 });
-      setTimeout(() => setProgress(null), 4000);
+      setBackupResult(result);
+      if (result.failed.length === 0) {
+        setProgress({ msg: `✓ Záloha uložena do ${result.folder}`, pct: 100 });
+        setTimeout(() => setProgress(null), 4000);
+      } else {
+        // Dřív appka i tady hlásila "hotovo" bez ohledu na to, že se část
+        // tabulek nenahrála — teď se selhání ukáže jako varování se seznamem
+        // toho, co konkrétně chybí, místo falešně zeleného "100 % hotovo".
+        setProgress(null);
+      }
     } catch (e) {
       setError(e.message);
       setProgress(null);
     }
+  };
+
+  // Zkusí znovu nahrát jen tabulky, které se minule nepovedly — ať se
+  // nemusí spouštět celá záloha znovu jen kvůli jedné selhané tabulce.
+  const handleRetryFailed = async () => {
+    if (!backupResult?.failed?.length) return;
+    setRetrying(true);
+    setError(null);
+    try {
+      const failedTables = backupResult.failed.map(f => f.table);
+      const result = await backupToOneDrive(supabase, (msg, pct) => setProgress({ msg, pct }), failedTables);
+      const now = new Date().toLocaleString("cs-CZ");
+      localStorage.setItem("od_last_backup", now);
+      setLastBackup(now);
+      setBackupResult(prev => ({
+        folder: result.folder,
+        failed: result.failed,
+        succeeded: [...(prev?.succeeded || []), ...result.succeeded],
+      }));
+      if (result.failed.length === 0) {
+        setProgress({ msg: `✓ Doplněno — záloha je teď kompletní`, pct: 100 });
+        setTimeout(() => setProgress(null), 4000);
+      } else {
+        setProgress(null);
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+    setRetrying(false);
   };
 
   return (
@@ -99,6 +139,29 @@ export default function OneDrivePanel({ supabase }) {
                 <div style={{ background: "#e2e8f0", borderRadius: 6, height: 8, overflow: "hidden" }}>
                   <div style={{ background: "#10b981", height: "100%", width: `${progress.pct}%`, transition: "width 0.4s" }} />
                 </div>
+              </div>
+            )}
+
+            {/* Souhrn poslední zálohy — hlavně to, co se NEpovedlo, ať to appka
+                nezamlčí za falešně zeleným "hotovo" (audit appky, bod 8) */}
+            {!progress && backupResult && backupResult.failed.length > 0 && (
+              <div style={{ marginTop: 14, background: "#fee2e244", border: "1px solid #ef444444", borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c", marginBottom: 6 }}>
+                  ⚠️ Záloha dokončena jen částečně — {backupResult.failed.length} z {backupResult.failed.length + backupResult.succeeded.length} tabulek se nenahrálo
+                </div>
+                <ul style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 12, color: "#7f1d1d" }}>
+                  {backupResult.failed.map(f => (
+                    <li key={f.table}><strong>{f.table}</strong> — {f.message}</li>
+                  ))}
+                </ul>
+                <button style={S.btn("#ef4444")} onClick={handleRetryFailed} disabled={retrying}>
+                  {retrying ? "⏳ Zkouším znovu..." : "🔁 Zkusit znovu jen chybějící"}
+                </button>
+              </div>
+            )}
+            {!progress && backupResult && backupResult.failed.length === 0 && backupResult.succeeded.length > 0 && (
+              <div style={{ marginTop: 14, fontSize: 12, color: "#16a34a" }}>
+                ✓ Všech {backupResult.succeeded.length} tabulek se nahrálo v pořádku.
               </div>
             )}
           </div>

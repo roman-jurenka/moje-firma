@@ -300,11 +300,17 @@ function toCSV(rows) {
   return [keys.join(","), ...rows.map(r => keys.map(k => escape(r[k])).join(","))].join("\n");
 }
 
-export async function backupToOneDrive(supabase, onProgress) {
+// Vrací { folder, failed, succeeded } místo pouhé cesty ke složce — dřív se
+// chyba jednotlivé tabulky jen tiše zalogovala do konzole a záloha se i tak
+// nahlásila jako "100 % hotovo", takže nikdo netušil, že část dat na
+// OneDrive ve skutečnosti nedorazila (audit appky, bod 8). Volající (viz
+// OneDrivePanel.jsx) teď z výsledku pozná přesně, co se nepovedlo, místo
+// falešného zeleného "hotovo".
+export async function backupToOneDrive(supabase, onProgress, tablesOverride) {
   const date = new Date().toISOString().slice(0, 10);
   const folder = `${FOLDER_ROOT}/Zálohy/${date}`;
 
-  const tables = [
+  const tables = tablesOverride || [
     "contracts", "employees", "attendance", "contract_cost_entries",
     "customers", "deals", "tasks", "invoices", "delivery_notes",
     "delivery_note_items", "harmonogram", "products",
@@ -312,20 +318,25 @@ export async function backupToOneDrive(supabase, onProgress) {
 
   onProgress?.("Připravuji zálohu...", 0);
 
+  const failed = [];
+  const succeeded = [];
   for (let i = 0; i < tables.length; i++) {
     const table = tables[i];
     onProgress?.(`Exportuji ${table}...`, Math.round((i / tables.length) * 90));
     try {
-      const { data } = await supabase.from(table).select("*");
+      const { data, error } = await supabase.from(table).select("*");
+      if (error) throw error;
       const csv = toCSV(data || []);
       const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }); // BOM pro Excel
       const buffer = await blob.arrayBuffer();
       await uploadFile(folder, `${table}.csv`, buffer, "text/csv");
+      succeeded.push(table);
     } catch (e) {
       console.warn(`Záloha tabulky ${table} selhala:`, e.message);
+      failed.push({ table, message: e.message });
     }
   }
 
-  onProgress?.("Záloha dokončena ✓", 100);
-  return `${FOLDER_ROOT}/Zálohy/${date}`;
+  onProgress?.(failed.length === 0 ? "Záloha dokončena ✓" : `Záloha dokončena s chybami (${failed.length}/${tables.length})`, 100);
+  return { folder, failed, succeeded };
 }
