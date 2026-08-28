@@ -6079,6 +6079,19 @@ function Costs({ costs, setCosts, contracts, modal, setModal, closeModal }) {
 function Reports({ customers, deals, invoices, costs, employees, projects, contracts, costEntries, dnMaterialCost, dnMaterialClient }) {
   const [period, setPeriod] = useState(String(new Date().getFullYear()));
   const [cashflowEntries, setCashflowEntries] = useState([]);
+  // Vlastní rozsah období — dřív šlo vybírat jen celé roky. Když je zapnutý,
+  // filtruje se podle skutečného data od-do místo prefixu roku; měsíční graf
+  // (vázaný na jeden kalendářní rok) se v tomhle režimu skryje a nahradí ho
+  // souhrn za zvolené období.
+  const [customRange, setCustomRange] = useState(false);
+  const [customFrom, setCustomFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
+  const [customTo, setCustomTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const inSelectedPeriod = (dateStr) => {
+    if (!dateStr) return false;
+    if (customRange) return dateStr >= customFrom && dateStr <= customTo;
+    return dateStr.startsWith(period);
+  };
+  const [exportBusy, setExportBusy] = useState(false);
 
   // Náklady se dnes vedou na třech nezávislých místech (Náklady, náklady
   // zakázky v Zakázkách, Finanční tok) — fáze 1 propojení: souhrn napříč
@@ -6101,16 +6114,17 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
     ...(costEntries || []).map(e => e.date?.slice(0, 4)).filter(Boolean),
   ])].sort((a, b) => b.localeCompare(a));
 
-  const totalRevenue = invoices.filter(i => i.status === "Zaplacena" && i.issued?.startsWith(period)).reduce((s, i) => s + i.amount, 0);
+  const totalRevenue = invoices.filter(i => i.status === "Zaplacena" && inSelectedPeriod(i.issued)).reduce((s, i) => s + i.amount, 0);
   // Stejná logika jako na Dashboardu — firemní náklady + náklady zakázek +
   // přijaté faktury od dodavatelů, Finanční tok záměrně vynechán kvůli
   // riziku dvojího počítání (viz komentář u totalCosts v Dashboard()).
-  // Filtrováno podle vybraného roku; dnMaterialCost/dnMaterialClient (marže
-  // dodacích listů) jsou zatím jen celofiremní součet za celou dobu —
-  // dodací listy nemají zapsané datum, takže je nejde rozpočítat po letech.
-  const genCosts = costs.filter(c => c.date?.startsWith(period)).reduce((s, c) => s + c.amount, 0);
-  const jobCosts = (costEntries || []).filter(e => (e.date || "").startsWith(period)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0) + (dnMaterialCost || 0);
-  const receivedInvoicesCost = invoices.filter(i => i.invoice_type === "přijatá" && i.status !== "Storno" && i.issued?.startsWith(period))
+  // Filtrováno podle vybraného období (rok, nebo vlastní rozsah od-do);
+  // dnMaterialCost/dnMaterialClient (marže dodacích listů) jsou zatím jen
+  // celofiremní součet za celou dobu — dodací listy nemají zapsané datum,
+  // takže je nejde rozpočítat po období.
+  const genCosts = costs.filter(c => inSelectedPeriod(c.date)).reduce((s, c) => s + c.amount, 0);
+  const jobCosts = (costEntries || []).filter(e => inSelectedPeriod(e.date)).reduce((s, e) => s + (Number(e.amount_cost) || 0), 0) + (dnMaterialCost || 0);
+  const receivedInvoicesCost = invoices.filter(i => i.invoice_type === "přijatá" && i.status !== "Storno" && inSelectedPeriod(i.issued))
     .reduce((s, i) => s + (Number(i.amount) || 0) + (Number(i.tax) || 0), 0);
   const totalCosts = genCosts + jobCosts + receivedInvoicesCost;
   // Zisk zahrnuje i marži z dodacích listů (viz stejná oprava v Dashboard()
@@ -6136,11 +6150,11 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
 
   const maxVal = Math.max(...monthlyChart.map(m => Math.max(m.revenue, m.costs)), 1);
 
-  // Top zákazníci dle faktur — za vybraný rok
+  // Top zákazníci dle faktur — za vybrané období
   const topCustomers = customers.map(c => ({
     ...c,
-    revenue: invoices.filter(i => i.customerId === c.id && i.status === "Zaplacena" && i.issued?.startsWith(period)).reduce((s, i) => s + i.amount, 0),
-    invoiceCount: invoices.filter(i => i.customerId === c.id && i.issued?.startsWith(period)).length,
+    revenue: invoices.filter(i => i.customerId === c.id && i.status === "Zaplacena" && inSelectedPeriod(i.issued)).reduce((s, i) => s + i.amount, 0),
+    invoiceCount: invoices.filter(i => i.customerId === c.id && inSelectedPeriod(i.issued)).length,
   })).filter(c => c.revenue > 0 || c.invoiceCount > 0).sort((a, b) => b.revenue - a.revenue);
 
   // Pipeline hodnota dle fáze
@@ -6172,10 +6186,53 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
     <>
       <div style={S.header}>
         <h1 style={S.h1}>📈 Analytika & reporty</h1>
-        <div style={{ display: "flex", gap: 8 }}>
-          {availableYears.map(y => (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {!customRange && availableYears.map(y => (
             <button key={y} style={{ ...S.btn(period === y ? "#0369a1" : "#e2e8f0"), border: "1px solid #e2e8f0" }} onClick={() => setPeriod(y)}>{y}</button>
           ))}
+          <button onClick={() => setCustomRange(r => !r)} style={{ ...S.btn(customRange ? "#0369a1" : "#e2e8f0"), border: "1px solid #e2e8f0" }}>
+            📅 Vlastní rozsah
+          </button>
+          {customRange && (
+            <>
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 150, padding: "8px 10px" }} />
+              <span style={{ color: "#64748b" }}>–</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 150, padding: "8px 10px" }} />
+            </>
+          )}
+          <button disabled={exportBusy} onClick={async () => {
+            setExportBusy(true);
+            try {
+              const XLSX = await import("xlsx");
+              const periodLabel = customRange ? `${customFrom} – ${customTo}` : period;
+              const summaryRows = [
+                { "Ukazatel": "Období", "Hodnota": periodLabel },
+                { "Ukazatel": "Celkový zisk", "Hodnota": profit },
+                { "Ukazatel": "Marže (%)", "Hodnota": margin },
+                { "Ukazatel": "Příjmy", "Hodnota": totalRevenue },
+                { "Ukazatel": "Náklady celkem", "Hodnota": totalCosts },
+                { "Ukazatel": "  z toho firemní náklady", "Hodnota": genCosts },
+                { "Ukazatel": "  z toho náklady zakázek (vč. dodacích listů)", "Hodnota": jobCosts },
+                { "Ukazatel": "  z toho přijaté faktury", "Hodnota": receivedInvoicesCost },
+                { "Ukazatel": "Konverzní poměr obchodních případů (%)", "Hodnota": conversionRate },
+              ];
+              const custRows = topCustomers.map(c => ({ "Zákazník": c.name, "Příjmy": c.revenue, "Počet faktur": c.invoiceCount }));
+              const wb = XLSX.utils.book_new();
+              const ws1 = XLSX.utils.json_to_sheet(summaryRows);
+              ws1["!cols"] = [{ wch: 42 }, { wch: 16 }];
+              XLSX.utils.book_append_sheet(wb, ws1, "Souhrn");
+              const ws2 = XLSX.utils.json_to_sheet(custRows);
+              ws2["!cols"] = [{ wch: 26 }, { wch: 14 }, { wch: 14 }];
+              XLSX.utils.book_append_sheet(wb, ws2, "Top zákazníci");
+              XLSX.writeFile(wb, `Report-${periodLabel.replace(/\s/g, "")}.xlsx`);
+            } catch (e) {
+              alert("Export se nepodařil: " + (e?.message || e));
+            } finally {
+              setExportBusy(false);
+            }
+          }} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
+            {exportBusy ? "…" : "📊 Export do Excelu"}
+          </button>
         </div>
       </div>
 
@@ -6183,7 +6240,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {[
           { label: "Celkový zisk", value: fmtKc(profit), sub: `Marže ${margin}%`, color: profit >= 0 ? "#34d399" : "#f87171" },
-          { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena" && i.issued?.startsWith(period)).length} faktur`, color: "#0369a1" },
+          { label: "Příjmy", value: fmtKc(totalRevenue), sub: `${invoices.filter(i => i.status === "Zaplacena" && inSelectedPeriod(i.issued)).length} faktur`, color: "#0369a1" },
           { label: "Náklady", value: fmtKc(totalCosts), sub: `firemní ${fmtKc(genCosts)} + zakázky ${fmtKc(jobCosts)} (vč. dodacích listů) + přijaté faktury ${fmtKc(receivedInvoicesCost)}`, color: "#f87171" },
           { label: "Konverzní poměr", value: `${conversionRate}%`, sub: `Ø deal ${fmtKc(avgDealValue)}`, color: "#f59e0b" },
         ].map(k => (
@@ -6195,7 +6252,12 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
         ))}
       </div>
 
-      {/* Graf příjmy vs náklady */}
+      {/* Graf příjmy vs náklady — vázaný na jeden kalendářní rok, u vlastního rozsahu nedává smysl */}
+      {customRange ? (
+        <div style={{ ...S.card, marginBottom: 20, textAlign: "center", color: "#475569", fontSize: 13, padding: "24px 16px" }}>
+          📅 Měsíční graf je dostupný jen pro celý rok. KPI výše ale odpovídají zvolenému rozsahu {customFrom} – {customTo}.
+        </div>
+      ) : (
       <div style={{ ...S.card, marginBottom: 20 }}>
         <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4, fontSize: 14 }}>Příjmy vs. Náklady — měsíčně</div>
         <div style={{ fontSize: 11, color: "#475569", marginBottom: 16 }}>Zelená = příjmy · Červená = náklady · Tečky = zisk/ztráta</div>
@@ -6227,6 +6289,7 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
           ))}
         </div>
       </div>
+      )}
 
       <div style={S.grid2}>
         {/* Top zákazníci */}
