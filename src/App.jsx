@@ -1415,7 +1415,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "profile" && <Profile
           currentUser={currentUser} attendance={attendance} employees={employees} tasks={tasks}
         />}
-        {tab === "permissions" && <PermissionsPanel />}
+        {tab === "permissions" && <PermissionsPanel currentUser={currentUser} />}
 
         {/* ── NOTIFIKACE ── */}
         {tab === "notifications" && (
@@ -8961,7 +8961,7 @@ function Profile({ currentUser, attendance, employees, tasks }) {
 // ─── KNIHA JÍZD ──────────────────────────────────────────────────────────────
 
 // ─── OPRÁVNĚNÍ — kdo vidí jaké záložky a kdo smí zapisovat km ────────────────
-function PermissionsPanel() {
+function PermissionsPanel({ currentUser }) {
   const [profiles, setProfiles] = useState([]);
   const [perms, setPerms] = useState({}); // profile_id -> { can_edit_km, nav_override }
   const [loading, setLoading] = useState(true);
@@ -8982,7 +8982,21 @@ function PermissionsPanel() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, []);
 
+  // Pojistka proti self-lockoutu: admin appku spravuje sám (Roman nemá
+  // přímý přístup do Supabase), takže kdyby si tady omylem odebral roli
+  // admin a byl jediný, appka by neměla žádný způsob, jak si tu roli vrátit
+  // zpět — musel by zásah přímo v databázi. Totéž pro skrytí vlastní
+  // záložky Oprávnění.
   const changeRole = async (profileId, role) => {
+    const target = profiles.find(p => p.id === profileId);
+    const isSelf = currentUser?.authId && String(profileId) === String(currentUser.authId);
+    if (isSelf && target?.role === "admin" && role !== "admin") {
+      const otherAdmins = profiles.filter(p => p.id !== profileId && p.role === "admin").length;
+      if (otherAdmins === 0) {
+        alert("Nejde si sám sobě odebrat roli admin, pokud jsi jediný admin ve firmě — appka by tím ztratila správce a nešlo by to odsud vrátit zpět. Nejdřív nastav roli admin i někomu dalšímu.");
+        return;
+      }
+    }
     setSavingId(profileId);
     await supabase.from("profiles").update({ role }).eq("id", profileId);
     setProfiles(ps => ps.map(p => p.id === profileId ? { ...p, role } : p));
@@ -9003,7 +9017,13 @@ function PermissionsPanel() {
   const toggleNav = (profile, navId) => {
     const roleDefault = ROLES[profile.role]?.nav || [];
     const current = perms[profile.id]?.nav_override || roleDefault;
-    const next = current.includes(navId) ? current.filter(n => n !== navId) : [...current, navId];
+    const isSelf = currentUser?.authId && String(profile.id) === String(currentUser.authId);
+    const willRemove = current.includes(navId);
+    if (isSelf && navId === "permissions" && willRemove) {
+      alert("Nejde si sám sobě skrýt záložku Oprávnění — přišel bys o jediný způsob, jak si ji odsud zase vrátit zpět. Pokud potřebuješ omezit přístup, ať to nastaví jiný admin.");
+      return;
+    }
+    const next = willRemove ? current.filter(n => n !== navId) : [...current, navId];
     upsertPerm(profile.id, { nav_override: next });
   };
 
