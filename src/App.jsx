@@ -4432,6 +4432,25 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
   const [newMov, setNewMov] = useState({ product_name: "", quantity: "", unit: "ks", movement_type: "in", contract_id: "", vehicle: "", from_location: "Sklad", to_location: "", note: "" });
   const [movSuggestions, setMovSuggestions] = useState([]);
 
+  // Hledání + řazení ve Skladových zásobách — u širšího sortimentu (elektro
+  // materiál, desítky až stovky položek) bylo bez hledání těžké najít
+  // konkrétní produkt jinak než scrollováním celé tabulky.
+  const [stockSearch, setStockSearch] = useState("");
+  const [stockSort, setStockSort] = useState("name");
+  const visibleProducts = products
+    .filter(p => !stockSearch || `${p.name} ${p.sku || ""} ${p.category || ""}`.toLowerCase().includes(stockSearch.toLowerCase()))
+    .slice()
+    .sort((a, b) => {
+      if (stockSort === "stock_asc") return (a.stock || 0) - (b.stock || 0);
+      if (stockSort === "stock_desc") return (b.stock || 0) - (a.stock || 0);
+      if (stockSort === "low_first") {
+        const aLow = a.stock <= (a.minStock || a.min_stock || 0) ? 0 : 1;
+        const bLow = b.stock <= (b.minStock || b.min_stock || 0) ? 0 : 1;
+        return aLow - bLow || (a.name || "").localeCompare(b.name || "");
+      }
+      return (a.name || "").localeCompare(b.name || "");
+    });
+
   useEffect(() => {
     supabase.from("warehouse_movements").select("*").order("created_at", { ascending: false }).limit(100)
       .then(({ data }) => { setMovements(data || []); setLoadingMov(false); });
@@ -4609,11 +4628,24 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
               <div key={s.label} style={S.statCard(s.color)}><div style={S.statLabel}>{s.label}</div><div style={S.statValue(s.color)}>{s.value}</div></div>
             ))}
           </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            <input style={{ ...S.input, marginBottom: 0, maxWidth: 260 }} placeholder="🔍 Hledat produkt, SKU, kategorii…" value={stockSearch} onChange={e => setStockSearch(e.target.value)} />
+            <select style={{ ...S.select, marginBottom: 0, maxWidth: 200 }} value={stockSort} onChange={e => setStockSort(e.target.value)}>
+              <option value="name">Řadit: podle názvu</option>
+              <option value="low_first">Řadit: nízký stav první</option>
+              <option value="stock_asc">Řadit: nejméně skladem</option>
+              <option value="stock_desc">Řadit: nejvíc skladem</option>
+            </select>
+            {stockSearch && <button style={S.btnGhost} onClick={() => setStockSearch("")}>✕ Zrušit hledání</button>}
+          </div>
           <div style={S.card}>
             <table style={S.table}>
               <thead><tr>{["", "Produkt", "SKU", "Kat.", "Nákupní", "Prodejní", "Skladem", "Min.", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
               <tbody>
-                {products.map(p => {
+                {visibleProducts.length === 0 && (
+                  <tr><td colSpan={9} style={{ ...S.td, textAlign: "center", color: "#64748b" }}>Žádný produkt neodpovídá hledání.</td></tr>
+                )}
+                {visibleProducts.map(p => {
                   const low = p.stock <= (p.minStock || p.min_stock || 0);
                   const img = p.image_url || (p.emas_code ? `https://www.emas.cz/media/cache/product_image/img/product/${p.emas_code}.jpg` : null);
                   return (
