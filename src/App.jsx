@@ -6815,6 +6815,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
   const [filterEmp, setFilterEmp] = useState(isAdmin ? "all" : String(currentUser?.id));
   const [eventSearch, setEventSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [editEventId, setEditEventId] = useState(null); // null = přidání nové události, id = úprava existující
   const [detailEvent, setDetailEvent] = useState(null);
   const [form, setForm] = useState({
     date: fmt(today), work_type: "Zakázka", title: "",
@@ -6995,22 +6996,58 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
       employee_name: emp ? emp.name : currentUser.name,
       contract_id: form.contract_id ? Number(form.contract_id) : null,
     };
-    const { data } = await supabase.from("calendar_events").insert(payload).select().single();
-    if (data) {
-      setCalendarEvents(prev => [...prev, data]);
-      // Vlastní akce (přihlášený uživatel = přiřazený zaměstnanec) se rovnou
-      // pošle do jeho Outlooku, pokud má připojení — cizí přiřazení se dotáhnou
-      // až přes tlačítko Synchronizovat na straně toho, komu patří.
+    if (editEventId) {
+      const existing = calendarEvents.find(e => e.id === editEventId);
+      const { error } = await supabase.from("calendar_events").update(payload).eq("id", editEventId);
+      if (error) { alert("Úpravu se nepodařilo uložit: " + error.message); return; }
+      const updated = { ...existing, ...payload };
+      setCalendarEvents(prev => prev.map(e => e.id === editEventId ? updated : e));
+      // Outlook PATCH namísto nové akce — pushCalendarEvent podle
+      // outlook_event_id sám pozná, že se má existující akce jen upravit.
       if (outlookConn && String(payload.employee_id) === String(currentUser.id)) {
         try {
-          const outlookId = await outlookCal.pushCalendarEvent(data);
-          await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", data.id);
-          setCalendarEvents(prev => prev.map(e => e.id === data.id ? { ...e, outlook_event_id: outlookId } : e));
+          const outlookId = await outlookCal.pushCalendarEvent(updated);
+          if (outlookId !== updated.outlook_event_id) {
+            await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", editEventId);
+            setCalendarEvents(prev => prev.map(e => e.id === editEventId ? { ...e, outlook_event_id: outlookId } : e));
+          }
         } catch (e) { console.error("Outlook push selhal:", e); }
+      }
+    } else {
+      const { data } = await supabase.from("calendar_events").insert(payload).select().single();
+      if (data) {
+        setCalendarEvents(prev => [...prev, data]);
+        // Vlastní akce (přihlášený uživatel = přiřazený zaměstnanec) se rovnou
+        // pošle do jeho Outlooku, pokud má připojení — cizí přiřazení se dotáhnou
+        // až přes tlačítko Synchronizovat na straně toho, komu patří.
+        if (outlookConn && String(payload.employee_id) === String(currentUser.id)) {
+          try {
+            const outlookId = await outlookCal.pushCalendarEvent(data);
+            await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", data.id);
+            setCalendarEvents(prev => prev.map(e => e.id === data.id ? { ...e, outlook_event_id: outlookId } : e));
+          } catch (e) { console.error("Outlook push selhal:", e); }
+        }
       }
     }
     setShowAdd(false);
+    setEditEventId(null);
     setForm({ date: fmt(today), work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", employee_id: currentUser?.id || "" });
+  };
+
+  // Předvyplní formulář daty existující události a otevře stejný modal jako
+  // "Přidat událost" — dřív šlo z detailu jen Smazat, takže i drobná oprava
+  // (překlep v adrese, špatný čas) znamenala smazat a založit celou akci
+  // znovu (a ztratit propojení s Outlookem).
+  const startEditEvent = (ev) => {
+    setForm({
+      date: ev.date || fmt(today), work_type: ev.work_type || "Zakázka", title: ev.title || "",
+      customer_name: ev.customer_name || "", customer_company: ev.customer_company || "", address: ev.address || "",
+      contact_name: ev.contact_name || "", contact_phone: ev.contact_phone || "", work_description: ev.work_description || "",
+      contract_id: ev.contract_id ? String(ev.contract_id) : "", employee_id: ev.employee_id || currentUser?.id || "",
+    });
+    setEditEventId(ev.id);
+    setDetailEvent(null);
+    setShowAdd(true);
   };
 
   const deleteEvent = async (id) => {
@@ -7085,7 +7122,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
             </span>
             <button onClick={nextMonth} style={{ ...S.btnGhost, padding: "6px 12px" }}>›</button>
           </div>
-          <button onClick={() => { setShowAdd(true); }} style={S.btn()}>+ Přidat událost</button>
+          <button onClick={() => { setEditEventId(null); setShowAdd(true); }} style={S.btn()}>+ Přidat událost</button>
         </div>
       </div>
 
@@ -7212,9 +7249,9 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
 
       {/* ADD MODAL */}
       {showAdd && (
-        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowAdd(false)}>
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => { setShowAdd(false); setEditEventId(null); }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 520, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 700 }}>Přidat událost do kalendáře</h3>
+            <h3 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 700 }}>{editEventId ? "Upravit událost" : "Přidat událost do kalendáře"}</h3>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div>
@@ -7291,7 +7328,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
 
             <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
               <button onClick={saveEvent} style={{ ...S.btn(), flex: 1 }}>Uložit</button>
-              <button onClick={() => setShowAdd(false)} style={{ ...S.btnGhost, flex: 1 }}>Zrušit</button>
+              <button onClick={() => { setShowAdd(false); setEditEventId(null); }} style={{ ...S.btnGhost, flex: 1 }}>Zrušit</button>
             </div>
           </div>
         </div>
@@ -7302,6 +7339,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
         const wt = WORK_TYPES[detailEvent.work_type] || WORK_TYPES["Zakázka"];
         const mapsUrl = detailEvent.address ? `https://mapy.cz/zakladni?q=${encodeURIComponent(detailEvent.address)}` : null;
         const canDelete = isAdmin || detailEvent.employee_id === currentUser?.id;
+        const canEdit = isAdmin || detailEvent.employee_id === currentUser?.id;
         return (
           <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setDetailEvent(null)}>
             <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 460, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
@@ -7348,6 +7386,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
               )}
 
               <div style={{ display: "flex", gap: 10 }}>
+                {canEdit && <button onClick={() => startEditEvent(detailEvent)} style={{ ...S.btn(), flex: 1 }}>✏️ Upravit</button>}
                 {canDelete && <button onClick={() => deleteEvent(detailEvent.id)} style={{ ...S.btn("#ef4444"), flex: 1 }}>🗑 Smazat</button>}
                 <button onClick={() => setDetailEvent(null)} style={{ ...S.btnGhost, flex: 1 }}>Zavřít</button>
               </div>
