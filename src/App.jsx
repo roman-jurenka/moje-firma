@@ -6582,6 +6582,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [filterEmp, setFilterEmp] = useState(isAdmin ? "all" : String(currentUser?.id));
+  const [eventSearch, setEventSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [detailEvent, setDetailEvent] = useState(null);
   const [form, setForm] = useState({
@@ -6668,19 +6669,27 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
     setShowIcsLink(true);
   };
 
-  // Rychlé zadání — napíšu zkratkovitě, appka to rozpozná a rovnou uloží
-  // (bez potvrzování), přiřazené vždy mně. Díky auto-syncu výše se to samo
-  // dotáhne i do mého Outlooku/iPhone kalendáře.
+  // Rychlé zadání — napíšu zkratkovitě, appka to rozpozná a před uložením
+  // ukáže náhled (datum, typ, zákazník, kontakt), ať jde chybu v rozpoznání
+  // ještě opravit nebo zadání zrušit, místo aby se rovnou uložilo naslepo.
+  // Uloží se vždy pod mě, díky auto-syncu výše se to samo dotáhne i do
+  // mého Outlooku/iPhone kalendáře.
   const [quickText, setQuickText] = useState("");
   const [quickToast, setQuickToast] = useState("");
+  const [quickPreview, setQuickPreview] = useState(null);
   // { customer, linkedEventId } — po Rychlém zadání appka nabídne doplnění
   // údajů zákazníka (nový, nebo starší s mezerami v profilu).
   const [completingCustomer, setCompletingCustomer] = useState(null);
 
-  const quickAddSave = async () => {
+  const quickPreviewParse = () => {
     const text = quickText.trim();
     if (!text || !currentUser?.id) return;
-    const parsed = parseShorthandEvent(text, { customers, todayDate: new Date() });
+    setQuickPreview(parseShorthandEvent(text, { customers, todayDate: new Date() }));
+  };
+
+  const quickAddSave = async () => {
+    const parsed = quickPreview;
+    if (!parsed || !currentUser?.id) return;
     const emp = employees.find(e => e.id === Number(currentUser.id));
     const { customer, unmatchedNameGuess, unmatchedPhoneGuess, ...eventFields } = parsed;
     const payload = {
@@ -6693,6 +6702,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
     if (error) { alert("Nepodařilo se uložit: " + error.message); return; }
     setCalendarEvents(prev => [...prev, data]);
     setQuickText("");
+    setQuickPreview(null);
     setQuickToast(`✅ Uloženo: ${parsed.date} · ${parsed.work_type}${parsed.customer_name ? " · " + parsed.customer_name : ""}`);
     setTimeout(() => setQuickToast(""), 5000);
 
@@ -6788,18 +6798,35 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
 
   return (
     <div style={{ padding: 24 }}>
-      {/* Rychlé zadání — pro rychlé psaní z mobilu, zkratkovitě, rovnou uloží */}
+      {/* Rychlé zadání — pro rychlé psaní z mobilu, zkratkovitě; před uložením ukáže náhled rozpoznaného záznamu */}
       <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             value={quickText}
-            onChange={e => setQuickText(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && quickAddSave()}
+            onChange={e => { setQuickText(e.target.value); setQuickPreview(null); }}
+            onKeyDown={e => e.key === "Enter" && quickPreviewParse()}
             placeholder="⚡ Rychlé zadání: např. „zítra Novák servis, 604123456, 9-13“"
             style={{ ...S.input, marginBottom: 0, flex: 1, minWidth: 220 }}
           />
-          <button onClick={quickAddSave} style={S.btn()}>Uložit</button>
+          <button onClick={quickPreviewParse} style={S.btn()}>Zkontrolovat</button>
         </div>
+        {quickPreview && (
+          <div style={{ marginTop: 10, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6, letterSpacing: 0.5, fontWeight: 700 }}>NÁHLED — ZKONTROLUJ A ULOŽ</div>
+            <div style={{ fontSize: 13, color: "#1A1A1A", display: "flex", flexDirection: "column", gap: 3 }}>
+              <div><b>{fmtDateCz(quickPreview.date)}</b> · {quickPreview.work_type}</div>
+              <div>{quickPreview.title}</div>
+              {(quickPreview.customer_name || quickPreview.customer_company) && (
+                <div style={{ color: "#475569" }}>👤 {quickPreview.customer_name}{quickPreview.customer_company ? ` (${quickPreview.customer_company})` : ""}{!quickPreview.customer && <span style={{ color: "#f59e0b" }}> — nový kontakt</span>}</div>
+              )}
+              {quickPreview.contact_phone && <div style={{ color: "#475569" }}>📞 {quickPreview.contact_phone}</div>}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button onClick={quickAddSave} style={{ ...S.btn("#16a34a"), padding: "6px 14px", fontSize: 12 }}>✅ Uložit</button>
+              <button onClick={() => setQuickPreview(null)} style={{ ...S.btnGhost, padding: "6px 14px", fontSize: 12 }}>✕ Zrušit / upravit text</button>
+            </div>
+          </div>
+        )}
         {quickToast && <div style={{ marginTop: 8, fontSize: 12, color: "#15803d", fontWeight: 600 }}>{quickToast}</div>}
       </div>
 
@@ -6810,6 +6837,9 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1A1A1A" }}>📅 Kalendář</h2>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <input value={eventSearch} onChange={e => setEventSearch(e.target.value)}
+            placeholder="🔍 Hledat podle zákazníka…"
+            style={{ ...S.input, marginBottom: 0, width: 200 }} />
           {isAdmin && (
             <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)}
               style={{ ...S.input, marginBottom: 0, width: "auto", minWidth: 160 }}>
@@ -6827,6 +6857,31 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
           <button onClick={() => { setShowAdd(true); }} style={S.btn()}>+ Přidat událost</button>
         </div>
       </div>
+
+      {/* Hledání podle zákazníka — napříč všemi měsíci, ne jen aktuálně zobrazeným */}
+      {eventSearch.trim() && (() => {
+        const q = eventSearch.trim().toLowerCase();
+        const matches = visibleEvents.filter(e =>
+          (e.customer_name || "").toLowerCase().includes(q) ||
+          (e.customer_company || "").toLowerCase().includes(q) ||
+          (e.title || "").toLowerCase().includes(q)
+        ).sort((a, b) => (a.date || "").localeCompare(b.date || "")).slice(0, 30);
+        return (
+          <div style={{ ...S.card, marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>{matches.length} nalezeno</div>
+            {matches.length === 0 ? <Empty /> : matches.map(e => (
+              <div key={e.id} onClick={() => {
+                const d = new Date(e.date);
+                setViewYear(d.getFullYear()); setViewMonth(d.getMonth());
+                setDetailEvent(e); setEventSearch("");
+              }} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #e2e8f0", cursor: "pointer" }}>
+                <span style={{ fontSize: 13, color: "#1A1A1A" }}>{e.title}{e.customer_name ? " — " + e.customer_name : ""}</span>
+                <span style={{ fontSize: 12, color: "#64748b" }}>{fmtDateCz(e.date)}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Osobní Outlook připojení */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
