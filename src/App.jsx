@@ -3470,6 +3470,57 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
   const [taskPhotos, setTaskPhotos] = useState([]); // [{url, name}]
   const [detailTask, setDetailTask] = useState(null);
   const [lightboxUrl, setLightboxUrl] = useState(null);
+  const [quickTaskText, setQuickTaskText] = useState("");
+  const [quickTaskToast, setQuickTaskToast] = useState("");
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // Rychlé zadání — jako u Kalendáře/Rychlé poptávky: appka z volného textu
+  // pozná termín (dnes/zítra/den v týdnu/DD.MM.), prioritu (klíčová slova
+  // nebo "!!!") a přiřazeného zaměstnance (jméno v textu). Dřív šel úkol
+  // zadat jen přes formulář s 9+ poli.
+  const quickAddTask = async () => {
+    const text = quickTaskText.trim();
+    if (!text) return;
+    const parsed = parseShorthandTask(text, { employees, todayDate: new Date() });
+    const row_data = {
+      title: parsed.title, due: parsed.due || null, priority: parsed.priority, done: false,
+      created_by: currentUser?.name || "?", assigned_to: parsed.assignedTo || "",
+    };
+    const { data: row, error } = await supabase.from("tasks").insert(row_data).select().single();
+    if (error) { alert("Nepodařilo se uložit úkol: " + error.message); return; }
+    setTasks(prev => [...prev, { ...row, customerId: row.customer_id }]);
+    if (parsed.assignedTo) {
+      const notif = { user_name: parsed.assignedTo, title: "Nový úkol", message: `${currentUser?.name || "?"} ti zadal: ${parsed.title}`, link_type: "task", link_id: row.id };
+      const { data: n } = await supabase.from("notifications").insert(notif).select().single();
+      if (n && setNotifications) setNotifications(prev => [n, ...prev]);
+    }
+    setQuickTaskText("");
+    setQuickTaskToast(`✅ Uloženo${parsed.due ? " · termín " + fmtDateCz(parsed.due) : ""}${parsed.assignedTo ? " · " + parsed.assignedTo : ""}${parsed.priority !== "Střední" ? " · " + parsed.priority : ""}`);
+    setTimeout(() => setQuickTaskToast(""), 5000);
+  };
+
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const bulkMarkDone = async (done) => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    await supabase.from("tasks").update({ done }).in("id", ids);
+    setTasks(prev => prev.map(t => ids.includes(t.id) ? { ...t, done } : t));
+    setSelectedIds(new Set());
+  };
+
+  const bulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    if (!confirm(`Opravdu smazat ${ids.length} vybraných úkolů?`)) return;
+    await supabase.from("tasks").delete().in("id", ids);
+    setTasks(prev => prev.filter(t => !ids.includes(t.id)));
+    setSelectedIds(new Set());
+  };
 
   // Osobní Outlook připojení (stejné jako v kalendáři) — úkoly přiřazené mně
   // se posílají do Microsoft To Do, jednosměrně z appky ven.
@@ -3611,6 +3662,24 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
     <>
       <div style={S.header}><h1 style={S.h1}>Úkoly & připomínky</h1><button style={S.btn()} onClick={() => setModal({ type: "addTask" })}>+ Přidat</button></div>
 
+      {/* Rychlé zadání — pro zápis za pár vteřin, bez formuláře s 9 poli */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            value={quickTaskText}
+            onChange={e => setQuickTaskText(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && quickAddTask()}
+            placeholder="⚡ Rychlý úkol: např. „Objednat materiál pro Honzu zítra !!!“"
+            style={{ ...S.input, marginBottom: 0, flex: 1, minWidth: 220 }}
+          />
+          <button onClick={quickAddTask} style={S.btn()}>Uložit</button>
+        </div>
+        <div style={{ fontSize: 12, color: "#475569", marginTop: 6 }}>
+          Appka z textu pozná termín (dnes/zítra/den v týdnu/datum), prioritu (!!! nebo slovo jako "urgentní") a přiřazeného kolegu podle jména.
+        </div>
+        {quickTaskToast && <div style={{ marginTop: 6, fontSize: 12, color: "#15803d", fontWeight: 600 }}>{quickTaskToast}</div>}
+      </div>
+
       <div style={{ display: "flex", gap: 6, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
         {[["all", "Vše"], ["open", "Otevřené"], ["mine", "Moje"], ["done", "Hotové"]].map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)}
@@ -3632,9 +3701,19 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "8px 14px", marginBottom: 12 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#0369a1" }}>Vybráno: {selectedIds.size}</span>
+          <button onClick={() => bulkMarkDone(true)} style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12 }}>✓ Označit hotovo</button>
+          <button onClick={() => bulkMarkDone(false)} style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12 }}>○ Označit nehotovo</button>
+          <button onClick={bulkDelete} style={{ ...S.btn("#ef4444"), padding: "5px 12px", fontSize: 12 }}>🗑️ Smazat</button>
+          <button onClick={() => setSelectedIds(new Set())} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 12, marginLeft: "auto" }}>✕ Zrušit výběr</button>
+        </div>
+      )}
+
       <div style={S.card}>
         <table style={S.table}>
-          <thead><tr>{["", "Úkol", "Zákazník", "Zakázka / Deal", "Termín", "Zadal", "Priorita"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["", "", "Úkol", "Zákazník", "Zakázka / Deal", "Termín", "Zadal", "Priorita"].map((h, i) => <th key={i} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.map(t => {
               const cust = customers.find(c => c.id === (t.customerId || t.customer_id));
@@ -3642,6 +3721,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
               const deal  = (deals || []).find(d => d.id === t.deal_id);
               return (
                 <tr key={t.id} style={{ opacity: t.done ? 0.4 : 1, cursor: "pointer" }} onClick={() => setDetailTask(t)}>
+                  <td style={S.td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} style={{ accentColor: "#0369a1" }} /></td>
                   <td style={S.td} onClick={e => e.stopPropagation()}><input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} style={{ accentColor: "#0369a1" }} /></td>
                   <td style={{ ...S.td, textDecoration: t.done ? "line-through" : "none", color: "#1A1A1A", fontWeight: 500 }}>
                     {t.title}
@@ -6459,6 +6539,41 @@ function parseShorthandDeal(rawText, { customers }) {
   }
 
   return { phone, value, customer, newCustomerName, description: description || rawText };
+}
+
+function findShorthandEmployee(rawText, employees) {
+  const norm = stripDiacritics(rawText.toLowerCase());
+  let best = null, bestScore = 0;
+  for (const e of employees || []) {
+    if (!e.name) continue;
+    const words = stripDiacritics(e.name.toLowerCase()).split(/\s+/).filter(w => w.length >= 3);
+    let score = 0;
+    for (const w of words) {
+      const esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp("\\b" + esc + "\\b").test(norm)) score += w.length;
+    }
+    if (score > bestScore) { best = e; bestScore = score; }
+  }
+  return best;
+}
+
+// ─── Rychlé zadání úkolu — jako u Kalendáře/Rychlé poptávky, ale bez
+// automatického "dnes": termín se doplní, jen když text obsahuje rozpoznatelný
+// datumový výraz (dnes/zítra/pozítří/den v týdnu/DD.MM.) — jinak zůstane
+// prázdný, protože spousta úkolů nemá pevný termín.
+function parseShorthandTask(rawText, { employees, todayDate }) {
+  const noDia = stripDiacritics(rawText.toLowerCase());
+  let priority = "Střední";
+  if (/!!!/.test(rawText) || /\b(urgentni|dulezite|vysoka priorita|asap|hned)\b/.test(noDia)) priority = "Vysoká";
+  else if (/\b(nizka priorita|az bude cas|neni spech)\b/.test(noDia)) priority = "Nízká";
+
+  const hasDateHint = /\bdnes\b|\bzitra\b|\bpozitri\b|\b\d{1,2}\.\s*\d{1,2}\.?/.test(noDia)
+    || CZ_WEEKDAYS_FULL.some(w => new RegExp("\\b" + stripDiacritics(w).toLowerCase() + "\\b").test(noDia));
+  const due = hasDateHint ? parseShorthandDate(noDia, todayDate) : "";
+
+  const assignee = findShorthandEmployee(rawText, employees);
+
+  return { title: rawText.trim(), due, priority, assignedTo: assignee?.name || "" };
 }
 
 function CalendarModule({ currentUser, employees, contracts, customers, setCustomers, tasks, invoices, calendarEvents, setCalendarEvents, setTab }) {
