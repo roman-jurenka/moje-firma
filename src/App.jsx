@@ -1225,6 +1225,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             {visibleNav.filter(n => n.group === g).map(n => (
               <div key={n.id} style={S.navItem(tab === n.id)} onClick={() => { setTab(n.id); setSearch(""); setSidebarOpen(false); }}>
                 <i className={`ti ${n.icon}`} style={{ fontSize: 16, width: 18, textAlign: "center" }} aria-hidden="true"></i> {n.label}
+                {n.id === "ai" && (
+                  <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: "#f59e0b", background: "#f59e0b22", border: "1px solid #f59e0b44", borderRadius: 5, padding: "1px 6px" }}>mimo provoz</span>
+                )}
               </div>
             ))}
           </div>
@@ -6091,154 +6094,29 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
 
 // ─── AI ASISTENT ──────────────────────────────────────────────────────────────
 
-function AIAssistant({ customers, deals, invoices, costs, employees, projects, tasks, communication }) {
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content: "Ahoj! Jsem váš AI asistent pro firemní systém. Mám přístup ke všem datům — zákazníkům, dealům, fakturám, nákladům, zaměstnancům i projektům. Na co se chcete zeptat? 💼"
-    }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const suggestions = [
-    "Který zákazník nám přinesl nejvíce příjmů?",
-    "Jaký je aktuální stav pipeline?",
-    "Napiš follow-up email pro Jana Nováka",
-    "Shrň stav projektů a jejich čerpání rozpočtu",
-    "Jaké jsou naše největší nákladové položky?",
-    "Kteří zaměstnanci jsou na dovolené?",
-  ];
-
-  const buildContext = () => `
-Jsi AI asistent integrovaný do firemního CRM+ERP systému. Máš přístup k těmto datům:
-
-ZÁKAZNÍCI (${customers.length}):
-${customers.map(c => `- ${c.name} (${c.company}), email: ${c.email}, štítek: ${c.tag}`).join("\n")}
-
-OBCHODNÍ PŘÍLEŽITOSTI (${deals.length}):
-${deals.map(d => {
-  const c = customers.find(cu => cu.id === d.customerId);
-  return `- "${d.name}" — ${d.stage}, hodnota: ${d.value.toLocaleString()} Kč, zákazník: ${c?.name || "—"}`;
-}).join("\n")}
-
-FAKTURY (${invoices.length}):
-${invoices.map(i => {
-  const c = customers.find(cu => cu.id === i.customerId);
-  return `- ${i.number}: ${i.amount.toLocaleString()} Kč, stav: ${i.status}, zákazník: ${c?.name || "—"}, splatnost: ${i.due}`;
-}).join("\n")}
-
-NÁKLADY (${costs.length} položek, celkem ${costs.reduce((s, c) => s + c.amount, 0).toLocaleString()} Kč):
-${costs.map(c => `- ${c.date} | ${c.category}: ${c.description} — ${c.amount.toLocaleString()} Kč`).join("\n")}
-
-ZAMĚSTNANCI (${employees.length}):
-${employees.map(e => `- ${e.name}, ${e.position} (${e.department}), plat: ${e.salary.toLocaleString()} Kč, stav: ${e.status}`).join("\n")}
-
-PROJEKTY (${projects.length}):
-${projects.map(p => {
-  const c = customers.find(cu => cu.id === p.customerId);
-  return `- "${p.name}": ${p.status}, postup: ${p.progress}%, rozpočet: ${p.budget.toLocaleString()} Kč, čerpáno: ${p.spent.toLocaleString()} Kč, deadline: ${p.deadline}, zákazník: ${c?.name || "—"}`;
-}).join("\n")}
-
-ÚKOLY (${tasks.filter(t => !t.done).length} otevřených):
-${tasks.filter(t => !t.done).map(t => `- "${t.title}", termín: ${t.due}, priorita: ${t.priority}`).join("\n")}
-
-Odpovídej vždy v češtině. Buď konkrétní, stručný a praktický. Pokud tě žádají o napsání emailu nebo textu, napiš ho kompletně. Používej čísla z dat výše.
-`;
-
-  const send = async (text) => {
-    const userMsg = text || input.trim();
-    if (!userMsg || loading) return;
-    setInput("");
-    const newMessages = [...messages, { role: "user", content: userMsg }];
-    setMessages(newMessages);
-    setLoading(true);
-
-    try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: buildContext(),
-          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-        }),
-      });
-      const data = await res.json();
-      const reply = data.content?.map(b => b.text || "").join("") || "Omlouvám se, nepodařilo se získat odpověď.";
-      setMessages([...newMessages, { role: "assistant", content: reply }]);
-    } catch (e) {
-      setMessages([...newMessages, { role: "assistant", content: "⚠️ Chyba připojení k AI. Zkuste to prosím znovu." }]);
-    }
-    setLoading(false);
-  };
-
-  const messagesEndRef = { current: null };
-
+// AI asistent dřív vypadal jako hotová funkce (chat, návrhy otázek), ale
+// volal Anthropic API napřímo z prohlížeče bez API klíče a bez serverové
+// vrstvy, která by ho doplnila — každý dotaz tak vždy skončil chybou, aniž
+// by to bylo z UI poznat. Než bude mít appka backend, který klíč bezpečně
+// doplní, modul se místo nefunkčního chatu jasně označuje jako mimo provoz
+// (audit appky, bod 1).
+function AIAssistant() {
   return (
     <>
       <div style={S.header}>
         <div>
           <h1 style={S.h1}>🤖 AI Asistent</h1>
-          <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>Má přístup ke všem datům systému · Powered by Claude</div>
+          <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>Dočasně mimo provoz</div>
         </div>
-        <button style={{ ...S.btnGhost, fontSize: 12 }} onClick={() => setMessages([{ role: "assistant", content: "Ahoj! Jsem váš AI asistent. Na co se chcete zeptat? 💼" }])}>Vymazat chat</button>
       </div>
 
-      {/* Rychlé návrhy */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
-        {suggestions.map(s => (
-          <button key={s} onClick={() => send(s)}
-            style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#475569", cursor: "pointer", transition: "all 0.15s" }}
-            onMouseEnter={e => { e.target.style.borderColor = "#0369a1"; e.target.style.color = "#fff"; }}
-            onMouseLeave={e => { e.target.style.borderColor = "#e2e8f0"; e.target.style.color = "#64748b"; }}>
-            {s}
-          </button>
-        ))}
+      <div style={{ ...S.card, textAlign: "center", padding: "48px 32px" }}>
+        <div style={{ fontSize: 40, marginBottom: 14 }}>🚧</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#1A1A1A", marginBottom: 8 }}>AI asistent je momentálně mimo provoz</div>
+        <div style={{ fontSize: 13, color: "#475569", maxWidth: 460, margin: "0 auto", lineHeight: 1.6 }}>
+          Tenhle modul zatím chybí bezpečné napojení na AI (potřebuje serverovou část, která doplní přístupový klíč — appka ho z bezpečnostních důvodů nemůže mít přímo v prohlížeči). Dokud to nebude hotové, sem se raději nezadávejte — nic by se neodeslalo.
+        </div>
       </div>
-
-      {/* Chat okno */}
-      <div style={{ ...S.card, height: 440, overflowY: "auto", marginBottom: 16, display: "flex", flexDirection: "column", gap: 16, padding: 20 }}>
-        {messages.map((m, i) => (
-          <div key={i} style={{ display: "flex", gap: 12, flexDirection: m.role === "user" ? "row-reverse" : "row", alignItems: "flex-start" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: m.role === "user" ? "#0369a1" : "#e2e8f0", border: m.role === "assistant" ? "1px solid #e2e8f0" : "none", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
-              {m.role === "user" ? "👤" : "🤖"}
-            </div>
-            <div style={{ maxWidth: "75%", background: m.role === "user" ? "#0369a133" : "#e2e8f0", border: `1px solid ${m.role === "user" ? "#6366f155" : "#e2e8f0"}`, borderRadius: m.role === "user" ? "16px 4px 16px 16px" : "4px 16px 16px 16px", padding: "12px 16px" }}>
-              <div style={{ fontSize: 13, color: "#1A1A1A", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{m.content}</div>
-            </div>
-          </div>
-        ))}
-        {loading && (
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#e2e8f0", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>🤖</div>
-            <div style={{ background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: "4px 16px 16px 16px", padding: "14px 18px" }}>
-              <div style={{ display: "flex", gap: 5 }}>
-                {[0, 1, 2].map(j => (
-                  <div key={j} style={{ width: 7, height: 7, borderRadius: "50%", background: "#0369a1", animation: `pulse 1.2s ease-in-out ${j * 0.2}s infinite` }} />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Input */}
-      <div style={{ display: "flex", gap: 10 }}>
-        <input
-          style={{ ...S.input, marginBottom: 0, flex: 1, fontSize: 14, padding: "12px 16px" }}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
-          placeholder="Zeptejte se na cokoliv o vašem byznysu... (Enter pro odeslání)"
-          disabled={loading}
-        />
-        <button style={{ ...S.btn(), padding: "12px 22px", fontSize: 15, opacity: loading ? 0.5 : 1 }} onClick={() => send()} disabled={loading}>
-          ➤
-        </button>
-      </div>
-      <style>{`@keyframes pulse { 0%,100%{opacity:0.3;transform:scale(0.8)} 50%{opacity:1;transform:scale(1)} }`}</style>
     </>
   );
 }
