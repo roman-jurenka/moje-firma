@@ -8,11 +8,12 @@
 //  - Supabase a ostatní API — NIKDY necachujeme, ať se v appce neukážou stará data.
 //    (Zápisy bez signálu řeší fronta v offlineQueue.js.)
 
-const VERSION = "v4";
+const VERSION = "v5";
 const SHELL_CACHE = `proudos-shell-${VERSION}`;
 const ASSET_CACHE = `proudos-assets-${VERSION}`;
 const CDN_CACHE = `proudos-cdn-${VERSION}`;
-const KEEP = [SHELL_CACHE, ASSET_CACHE, CDN_CACHE];
+const SIGNAL_CACHE = "proudos-signal"; // předává appce „otevři rychlou obrazovku“ po klepnutí na notifikaci
+const KEEP = [SHELL_CACHE, ASSET_CACHE, CDN_CACHE, SIGNAL_CACHE];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -114,18 +115,27 @@ self.addEventListener("notificationclick", (event) => {
   let url = (event.notification.data && event.notification.data.url) || "/";
   if (event.action === "odchod") url = "/?rychle=odchod";
   else if (event.action === "fotky") url = "/?rychle=fotky";
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      for (const c of list) {
-        if ("focus" in c) {
-          // appka už běží: řekneme jí, co má otevřít (URL se u běžícího okna měnit nedá spolehlivě)
-          c.postMessage({ type: "otevri", url });
-          return c.focus();
-        }
+  let akce = null;
+  try { akce = new URL(url, self.location.origin).searchParams.get("rychle"); } catch { /* bez akce */ }
+
+  event.waitUntil((async () => {
+    // Spolehlivý signál pro appku: iOS u openWindow často zahodí ?rychle=… a zprávu do
+    // uspané appky nemusí doručit, proto ho uložíme do cache, odkud si ho appka sama vyzvedne.
+    if (akce) {
+      try {
+        const cache = await caches.open(SIGNAL_CACHE);
+        await cache.put("/__rychle", new Response(JSON.stringify({ v: akce, t: Date.now() }), { headers: { "content-type": "application/json" } }));
+      } catch { /* bez signálu se aspoň otevře appka */ }
+    }
+    const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of list) {
+      if ("focus" in c) {
+        c.postMessage({ type: "otevri", url });
+        return c.focus();
       }
-      return self.clients.openWindow(url);
-    })
-  );
+    }
+    return self.clients.openWindow(url);
+  })());
 });
 
 // Diagnostika z modulu Hlášení: appka se zeptá, jaká verze service workeru běží.
