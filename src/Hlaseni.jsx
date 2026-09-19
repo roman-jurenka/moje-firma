@@ -444,6 +444,7 @@ function KanalyTab({ nast, onSave, onInfo, onRefresh }) {
   const [stav, setStav] = useState("zjistuji"); // zjistuji | nepodporuje | nainstalovat | zamitnuto | vypnuto | zapnuto
   const [odbery, setOdbery] = useState([]);
   const [busy, setBusy] = useState(null);
+  const [diag, setDiag] = useState(null);
 
   const nactiOdbery = useCallback(async () => {
     const { data } = await supabase.from("push_odbery").select("id,endpoint,zarizeni,created_at,posledni_uspech").order("created_at", { ascending: false });
@@ -467,7 +468,6 @@ function KanalyTab({ nast, onSave, onInfo, onRefresh }) {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     zjistiStav();
     nactiOdbery();
   }, [zjistiStav, nactiOdbery]);
@@ -540,6 +540,60 @@ function KanalyTab({ nast, onSave, onInfo, onRefresh }) {
     onRefresh();
   };
 
+  // Diagnostika: co na tomto zařízení skutečně běží a umí se zobrazit notifikace?
+  const diagnostika = async () => {
+    setBusy("diag"); onInfo(null);
+    const radky = [];
+    try {
+      radky.push(`Zařízení: ${nazevZarizeni()}`);
+      radky.push(`Nainstalováno na plochu: ${jeNainstalovana() ? "ano" : "ne"}`);
+      radky.push(`Oprávnění oznámení: ${"Notification" in window ? Notification.permission : "nepodporováno"}`);
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) radky.push("Service worker: NENÍ zaregistrovaný");
+      else {
+        const sw = reg.active;
+        radky.push(`Service worker: ${sw ? sw.state : "žádný aktivní"}`);
+        const verze = await new Promise((resolve) => {
+          if (!sw) return resolve(null);
+          const t = setTimeout(() => resolve(null), 1500);
+          navigator.serviceWorker.addEventListener("message", function h(e) {
+            if (e.data?.type === "verze") { clearTimeout(t); navigator.serviceWorker.removeEventListener("message", h); resolve(e.data.verze); }
+          });
+          sw.postMessage({ type: "verze" });
+        });
+        radky.push(verze ? `Verze service workeru: ${verze} (aktuální)` : "Verze service workeru: STARÁ (neodpovídá) – použij „Opravit oznámení“");
+        const sub = await reg.pushManager.getSubscription();
+        radky.push(`Přihlášení k push: ${sub ? "ano" : "ne"}`);
+        if (Notification.permission === "granted") {
+          try {
+            await reg.showNotification("Místní test", { body: "Tuhle notifikaci vytvořilo přímo zařízení, bez serveru.", icon: "/icons/icon-192.png", tag: "mistni-test" });
+            radky.push("Místní test odeslán – uvidíš banner? Pokud ne, jde o nastavení oznámení v telefonu (Nastavení → Oznámení → ProudOS, Soustředění).");
+          } catch (e) { radky.push("Místní test selhal: " + (e?.message || e)); }
+        }
+      }
+    } catch (e) {
+      radky.push("Chyba: " + (e?.message || e));
+    }
+    setDiag(radky);
+    setBusy(null);
+  };
+
+  // Tvrdý reset: zruší push, service worker i cache a stránku načte znovu (pak stačí znovu zapnout).
+  const opravit = async () => {
+    if (!window.confirm("Zruší se oznámení na tomto zařízení a appka se načte znovu. Potom je znovu zapneš tlačítkem „Zapnout na tomto zařízení“. Pokračovat?")) return;
+    setBusy("oprava");
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      if (sub) { await supabase.from("push_odbery").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    } catch { /* i při chybě stránku načteme znovu */ }
+    window.location.reload();
+  };
+
   const stavText = {
     zjistuji: "Zjišťuji stav…",
     nepodporuje: "Tento prohlížeč push notifikace nepodporuje.",
@@ -566,6 +620,15 @@ function KanalyTab({ nast, onSave, onInfo, onRefresh }) {
           {stav === "zapnuto" && <button style={btnGhost} disabled={!!busy} onClick={vypnoutZarizeni}>{busy === "vypnout" ? "Vypínám…" : "Vypnout na tomto zařízení"}</button>}
           <button style={btnGhost} disabled={!!busy || odbery.length === 0} onClick={() => test("webpush")}>{busy === "test-webpush" ? "Odesílám…" : "Poslat test"}</button>
         </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <button style={{ ...btnGhost, color: "#475569", borderColor: "#cbd5e1" }} disabled={!!busy} onClick={diagnostika}>{busy === "diag" ? "Zjišťuji…" : "Diagnostika tohoto zařízení"}</button>
+          <button style={{ ...btnGhost, color: "#b45309", borderColor: "#f59e0b" }} disabled={!!busy} onClick={opravit}>Opravit oznámení (reset)</button>
+        </div>
+        {diag && (
+          <div style={{ marginTop: 10, fontSize: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 10, color: "#334155", lineHeight: 1.6 }}>
+            {diag.map((r, i) => <div key={i}>{r}</div>)}
+          </div>
+        )}
         {odbery.length > 0 && (
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>Zařízení s push</div>

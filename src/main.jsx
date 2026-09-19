@@ -59,6 +59,11 @@ createRoot(document.getElementById('root')).render(
 // Service worker jen v produkci (ve vývoji by cachování jen překáželo).
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // Appka z plochy iPhonu se po návratu z pozadí sama neaktualizuje – vynutíme kontrolu nové verze.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+    }).catch(() => {});
   });
 }
