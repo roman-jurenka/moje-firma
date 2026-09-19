@@ -709,12 +709,34 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     const zpracuj = (v) => { if (v === "fotky") setTab("fotoupload"); else if (v) setRychle(true); };
     const p = new URLSearchParams(window.location.search).get("rychle");
     if (p) { zpracuj(p); window.history.replaceState(null, "", window.location.pathname); }
+    // Klepnutí na notifikaci: service worker uloží signál do cache (spolehlivější než zpráva/URL na iOS).
+    const signal = async () => {
+      try {
+        const c = await caches.open("proudos-signal");
+        const r = await c.match("/__rychle");
+        if (!r) return;
+        await c.delete("/__rychle");
+        const { v, t } = await r.json();
+        if (Date.now() - t < 120000) zpracuj(v);
+      } catch { /* cache není k dispozici */ }
+    };
+    signal();
+    const naPopredi = () => { if (document.visibilityState === "visible") signal(); };
+    document.addEventListener("visibilitychange", naPopredi);
+    window.addEventListener("focus", signal);
+    window.addEventListener("pageshow", signal);
     const h = (e) => {
       if (e.data?.type !== "otevri") return;
       try { zpracuj(new URL(e.data.url, window.location.origin).searchParams.get("rychle") || "odchod"); } catch { /* neplatná adresa */ }
+      signal();
     };
     navigator.serviceWorker?.addEventListener("message", h);
-    return () => navigator.serviceWorker?.removeEventListener("message", h);
+    return () => {
+      document.removeEventListener("visibilitychange", naPopredi);
+      window.removeEventListener("focus", signal);
+      window.removeEventListener("pageshow", signal);
+      navigator.serviceWorker?.removeEventListener("message", h);
+    };
   }, []);
   const [sheetContractId, setSheetContractId] = useState(null);
   const [sheetContractName, setSheetContractName] = useState("");
