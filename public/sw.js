@@ -8,7 +8,7 @@
 //  - Supabase a ostatní API — NIKDY necachujeme, ať se v appce neukážou stará data.
 //    (Zápisy bez signálu řeší fronta v offlineQueue.js.)
 
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL_CACHE = `proudos-shell-${VERSION}`;
 const ASSET_CACHE = `proudos-assets-${VERSION}`;
 const CDN_CACHE = `proudos-cdn-${VERSION}`;
@@ -93,24 +93,35 @@ self.addEventListener("push", (event) => {
   } catch {
     data = { title: "ProudOS", body: event.data ? event.data.text() : "" };
   }
-  event.waitUntil(
-    self.registration.showNotification(data.title || "ProudOS", {
-      body: data.body || "",
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-96.png",
-      tag: data.tag || undefined,
-      data: { url: data.url || "/" },
-    })
-  );
+  const opts = {
+    body: data.body || "",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-96.png",
+    tag: data.tag || undefined,
+    data: { url: data.url || "/" },
+  };
+  // Notifikace o odpracovaném čase: stejný tag = přepíše se předchozí, aktualizace jsou tiché,
+  // na Androidu/desktopu zůstává na očích a má tlačítka (iOS tlačítka v notifikaci nepodporuje).
+  if (data.tag) opts.renotify = !data.silent;
+  if (data.silent) opts.silent = true;
+  if (data.trvale) opts.requireInteraction = true;
+  if (Array.isArray(data.actions) && data.actions.length) opts.actions = data.actions.slice(0, 2);
+  event.waitUntil(self.registration.showNotification(data.title || "ProudOS", opts));
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/";
+  let url = (event.notification.data && event.notification.data.url) || "/";
+  if (event.action === "odchod") url = "/?rychle=odchod";
+  else if (event.action === "fotky") url = "/?rychle=fotky";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const c of list) {
-        if ("focus" in c) return c.focus();
+        if ("focus" in c) {
+          // appka už běží: řekneme jí, co má otevřít (URL se u běžícího okna měnit nedá spolehlivě)
+          c.postMessage({ type: "otevri", url });
+          return c.focus();
+        }
       }
       return self.clients.openWindow(url);
     })
