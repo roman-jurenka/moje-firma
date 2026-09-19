@@ -8,7 +8,7 @@
 //  - Supabase a ostatní API — NIKDY necachujeme, ať se v appce neukážou stará data.
 //    (Zápisy bez signálu řeší fronta v offlineQueue.js.)
 
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL_CACHE = `proudos-shell-${VERSION}`;
 const ASSET_CACHE = `proudos-assets-${VERSION}`;
 const CDN_CACHE = `proudos-cdn-${VERSION}`;
@@ -115,4 +115,11 @@ self.addEventListener("notificationclick", (event) => {
       return self.clients.openWindow(url);
     })
   );
+});
+
+// Diagnostika z modulu Hlášení: appka se zeptá, jaká verze service workeru běží.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "verze" && event.source) {
+    event.source.postMessage({ type: "verze", verze: VERSION });
+  }
 });
