@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { supabase } from "./supabase.js";
+import { VAPID_PUBLIC, urlB64ToUint8Array, jeIOS, jeNainstalovana, nazevZarizeni } from "./pushUtil.js";
 
 // ─── Modul Hlášení ─────────────────────────────────────────────────────────
 // Nastavení push upozornění na telefon (Pushover a/nebo vlastní push v aplikaci). Admin tady definuje pravidla
@@ -422,24 +423,6 @@ function NastaveniTab({ nast, onSave }) {
 
 // ─── Kanály (Pushover + push v aplikaci) ─────────────────────────────────
 
-const VAPID_PUBLIC = "BK6bPI9m_AcJ-7plYhzN9-Md2Kl29UZdCSG3NziUu7e2xwWjXglBp2pxGo823MqEiTYTStetazJu6sqY9HLTeoI";
-
-function urlB64ToUint8Array(b64) {
-  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
-  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
-  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
-}
-
-const jeIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-const jeNainstalovana = () => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
-
-function nazevZarizeni() {
-  const ua = navigator.userAgent;
-  const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "Zařízení";
-  const br = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "prohlížeč";
-  return `${os} · ${br}${jeNainstalovana() ? " (appka)" : ""}`;
-}
-
 function KanalyTab({ nast, onSave, onInfo, onRefresh }) {
   const [stav, setStav] = useState("zjistuji"); // zjistuji | nepodporuje | nainstalovat | zamitnuto | vypnuto | zapnuto
   const [odbery, setOdbery] = useState([]);
@@ -650,6 +633,23 @@ function KanalyTab({ nast, onSave, onInfo, onRefresh }) {
           {nast.pushover ? "Kanál je zapnutý" : "Kanál je vypnutý"}
         </div>
         <button style={btnGhost} disabled={!!busy} onClick={() => test("pushover")}>{busy === "test-pushover" ? "Odesílám…" : "Poslat test"}</button>
+      </div>
+
+      <div style={card}>
+        <div style={cardLabel}>Docházka na pozadí (zaměstnanci)</div>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+          Po zapsání příchodu dostane zaměstnanec v telefonu jednu notifikaci „V práci od 7:03 · odpracováno 4 h 30 min“, která se sama přepisuje. Klepnutím se otevře rychlá obrazovka s tlačítky Zapsat odchod a Nahrát fotky. Po odchodu se přepíše závěrečnou zprávou. Každý zaměstnanec si upozornění zapne ve svém profilu (Můj profil → Upozornění v telefonu).
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, marginBottom: 10 }}>
+          <Switch on={nast.dochazka_zapnuto !== false} onChange={(v) => onSave({ dochazka_zapnuto: v })} />
+          {nast.dochazka_zapnuto !== false ? "Zapnuto" : "Vypnuto"}
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          Čas v notifikaci obnovit každých
+          <select value={nast.dochazka_interval_min || 30} onChange={(e) => onSave({ dochazka_interval_min: Number(e.target.value) })} style={selectS}>
+            {[15, 30, 60].map((m) => <option key={m} value={m}>{m} minut</option>)}
+          </select>
+        </label>
       </div>
     </div>
   );

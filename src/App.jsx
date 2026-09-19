@@ -8,6 +8,8 @@ import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
 import HlaseniModule from "./Hlaseni.jsx";
+import RychlaObrazovka from "./RychlaObrazovka.jsx";
+import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
@@ -430,14 +432,14 @@ const NAV = [
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 
 const S = {
-  app: { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", display: "flex" },
+  app: { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100dvh", color: "#1A1A1A", display: "flex" },
   sidebar: (open) => ({ width: 220, background: "#0E3B5E", padding: "0", display: "flex", flexDirection: "column", position: "fixed", top: 0, bottom: 0, left: 0, overflowY: "auto", boxShadow: "2px 0 8px #0000001a", zIndex: 200, transition: "transform 0.25s ease" }),
   logo: { padding: "22px 20px 16px", fontSize: 19, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px", borderBottom: "1px solid rgba(255,255,255,0.12)" },
   logoA: { color: "#fff" },
   logoB: { color: "#F5821F" },
   groupLabel: { padding: "16px 20px 4px", fontSize: 10, color: "#7C97AC", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 },
   navItem: (a) => ({ padding: "9px 16px", margin: "2px 10px", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 500, color: a ? "#fff" : "#B9CBDA", background: a ? "rgba(255,255,255,0.14)" : "transparent", transition: "all 0.12s" }),
-  main: { marginLeft: 0, padding: "28px 32px", flex: 1, minHeight: "100vh" },
+  main: { marginLeft: 0, padding: "28px 32px", flex: 1, minHeight: "100dvh" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 },
   h1: { fontSize: 24, fontWeight: 700, color: "#1A1A1A", margin: 0 },
   btn: (c = "#F5C518") => ({ background: c, color: c === "#F5C518" ? "#1A1A1A" : "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
@@ -701,6 +703,19 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
 
 function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [tab, setTab] = useState("dashboard");
+  // Rychlá obrazovka (Odchod / Fotky) – otevírá ji klepnutí na notifikaci o odpracovaném čase (?rychle=…)
+  const [rychle, setRychle] = useState(false);
+  useEffect(() => {
+    const zpracuj = (v) => { if (v === "fotky") setTab("fotoupload"); else if (v) setRychle(true); };
+    const p = new URLSearchParams(window.location.search).get("rychle");
+    if (p) { zpracuj(p); window.history.replaceState(null, "", window.location.pathname); }
+    const h = (e) => {
+      if (e.data?.type !== "otevri") return;
+      try { zpracuj(new URL(e.data.url, window.location.origin).searchParams.get("rychle") || "odchod"); } catch { /* neplatná adresa */ }
+    };
+    navigator.serviceWorker?.addEventListener("message", h);
+    return () => navigator.serviceWorker?.removeEventListener("message", h);
+  }, []);
   const [sheetContractId, setSheetContractId] = useState(null);
   const [sheetContractName, setSheetContractName] = useState("");
 
@@ -1014,7 +1029,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   return (
     <>
       <button
-        onClick={() => setTheme(t => t === "light" ? "dark" : "light")}
+        className="pwa-top-btn" onClick={() => setTheme(t => t === "light" ? "dark" : "light")}
         title={theme === "light" ? "Přepnout na tmavý motiv" : "Přepnout na světlý motiv"}
         style={{
           position: "fixed", top: 14, right: 16, zIndex: 500,
@@ -1027,7 +1042,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         <i className={`ti ${theme === "light" ? "ti-moon" : "ti-sun"}`} aria-hidden="true"></i>
       </button>
       <button
-        onClick={() => setGSearchOpen(o => !o)}
+        className="pwa-top-btn" onClick={() => setGSearchOpen(o => !o)}
         title="Hledat" aria-label="Hledat napříč appkou"
         style={{
           position: "fixed", top: 14, right: 62, zIndex: 500,
@@ -1041,7 +1056,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       </button>
       {(!isOnline || offlineQueueItems.length > 0) && (
         <button
-          onClick={() => retryOfflineQueueNow()}
+          className="pwa-top-btn" onClick={() => retryOfflineQueueNow()}
           title={!isOnline ? "Appka je offline — zápisy se ukládají do zařízení a odešlou se samy po obnovení signálu" : "Klikni pro okamžité odeslání čekajících záznamů"}
           style={{
             position: "fixed", top: 14, right: 106, zIndex: 500,
@@ -1116,6 +1131,15 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           hamburgerem, takže bez tohohle by ho terénní pracovník musel nejdřív
           otevřít. Palcem dosažitelné tlačítko vpravo dole, viditelné jen na
           mobilu (viz .mobile-checkin-fab v <style> níže). */}
+      {rychle && (
+        <RychlaObrazovka
+          todayRecord={todayRecord}
+          jmeno={currentUser.name}
+          onZapsat={checkin}
+          onFotky={() => { setRychle(false); setTab("fotoupload"); }}
+          onClose={() => setRychle(false)}
+        />
+      )}
       {myEmpId && (
         <button className="mobile-checkin-fab" onClick={checkin}
           style={{
@@ -1134,7 +1158,19 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         /* Boční menu je na obou velikostech schované mimo obrazovku, dokud na něj
            nenajedete myší (desktop, přes úzký proužek u levého okraje) nebo ho
            neotevřete hamburgerem (mobil). Obsah proto nikdy nerezervuje 220px. */
-        .sidebar-nav { transform: translateX(-100%); }
+        .sidebar-nav { transform: translateX(-100%); padding-top: env(safe-area-inset-top) !important; padding-bottom: env(safe-area-inset-bottom) !important; }
+        /* iPhone: appka spuštěná z ikony na ploše jede přes celou obrazovku i pod výřez a home indikátor
+           (viewport-fit=cover), proto vše pevně umístěné odsazujeme o bezpečné okraje. Mimo iPhone jsou
+           env() hodnoty 0, takže se nic nemění. */
+        .pwa-top-btn { top: calc(14px + env(safe-area-inset-top)) !important; }
+        .pwa-top-left { top: calc(10px + env(safe-area-inset-top)) !important; }
+        .safe-top-strip { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: #0E3B5E; z-index: 600; pointer-events: none; }
+        /* Spodní navigační lišta jako v nativní appce (jen mobil) */
+        .mobile-tabbar { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 140; background: #0E3B5E; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -2px 12px #0003; }
+        .mobile-tabbar-item { flex: 1; min-width: 0; background: none; border: none; color: #B9CBDA; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px 6px; font-size: 10.5px; font-weight: 600; font-family: inherit; cursor: pointer; }
+        .mobile-tabbar-item i { font-size: 22px; }
+        .mobile-tabbar-item span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .mobile-tabbar-item.active { color: #F5821F; }
         .sidebar-nav.open { transform: translateX(0); }
         /* Tmavý motiv: invertujeme celou plochu filtrem, ale obrázky (fotky ze
            zakázek, loga apod.) invertujeme podruhé, aby zůstaly v přirozených
@@ -1150,7 +1186,11 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           .hamburger-btn { display: flex !important; }
           .mobile-checkin-fab { display: flex !important; }
           .sidebar-close { display: flex !important; }
-          .main-content { padding: 60px 12px 24px !important; }
+          .main-content { padding: calc(60px + env(safe-area-inset-top)) 12px calc(84px + env(safe-area-inset-bottom)) !important; }
+          .mobile-tabbar { display: flex; }
+          /* plovoucí tlačítka nad lištou: příchod/odchod vlevo, rychlé menu vpravo */
+          .mobile-checkin-fab { left: 12px !important; right: auto !important; bottom: calc(72px + env(safe-area-inset-bottom)) !important; }
+          .radial-fab { right: 14px !important; bottom: calc(72px + env(safe-area-inset-bottom)) !important; }
           .sidebar-hover-zone { display: none !important; }
 
           /* Grid layouts → single column */
@@ -1206,7 +1246,22 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
         }
       `}</style>
-      <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} style={{ display: "none", position: "fixed", top: 10, left: 10, zIndex: 300, background: "#0E3B5E", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 22, color: "#fff", alignItems: "center", justifyContent: "center" }}><i className="ti ti-menu-2" aria-hidden="true"></i></button>
+      <button className="hamburger-btn pwa-top-left" onClick={() => setSidebarOpen(true)} style={{ display: "none", position: "fixed", top: 10, left: 10, zIndex: 300, background: "#0E3B5E", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 22, color: "#fff", alignItems: "center", justifyContent: "center" }}><i className="ti ti-menu-2" aria-hidden="true"></i></button>
+      <div className="safe-top-strip" aria-hidden="true" />
+      {/* Spodní navigační lišta (jen mobil): 4 nejčastější sekce podle oprávnění + "Více" otevře celé menu */}
+      <nav className="mobile-tabbar" aria-label="Hlavní navigace">
+        {["dashboard", "contracts", "tasks", "attendance", "fotoupload", "calendar", "customers", "invoices"]
+          .map(id => visibleNav.find(n => n.id === id)).filter(Boolean).slice(0, 4)
+          .map(n => (
+            <button key={n.id} className={`mobile-tabbar-item${tab === n.id ? " active" : ""}`}
+              onClick={() => { setTab(n.id); setSearch(""); setSidebarOpen(false); }}>
+              <i className={`ti ${n.icon}`} aria-hidden="true"></i><span>{n.label}</span>
+            </button>
+          ))}
+        <button className="mobile-tabbar-item" onClick={() => setSidebarOpen(true)}>
+          <i className="ti ti-menu-2" aria-hidden="true"></i><span>Více</span>
+        </button>
+      </nav>
       {/* Úzký proužek u levého okraje — najetím myší na desktopu vyjede menu */}
       <div className="sidebar-hover-zone" onMouseEnter={() => setSidebarOpen(true)}
         style={{ position: "fixed", top: 0, bottom: 0, left: 0, width: 14, zIndex: 199 }} />
@@ -1691,7 +1746,7 @@ function RadialMenu({ currentUser, tab, setTab }) {
           </div>
         </div>
       )}
-      <div style={{ position: "fixed", right: 28, bottom: 28, zIndex: 999, width: 56, height: 56 }}>
+      <div className="radial-fab" style={{ position: "fixed", right: 28, bottom: 28, zIndex: 999, width: 56, height: 56 }}>
         <button onClick={() => { if (open) close(); else setOpen(true); }} title={open ? "Zavřít" : (centerNav?.label || "Rychlé menu")}
           aria-label={open ? "Zavřít rychlé menu" : "Otevřít rychlé menu"}
           style={{
@@ -8960,6 +9015,8 @@ function Profile({ currentUser, attendance, employees, tasks }) {
           </div>
         </div>
       </div>
+
+      <PushKarta style={{ marginBottom: 20 }} />
 
       <div style={S.card}>
         <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14 }}>✅ Moje otevřené úkoly ({myOpenTasks.length})</div>
