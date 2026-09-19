@@ -7,6 +7,7 @@ import Pricing from "./Pricing.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
+import HlaseniModule from "./Hlaseni.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
@@ -171,7 +172,7 @@ const AUTH_USERS = [
 ];
 
 const ROLES = {
-  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","finance","reports","ai","attendance","calendar","knjiga","onedrive","permissions","podpisy","profile"] },
+  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","finance","reports","ai","attendance","calendar","knjiga","onedrive","permissions","hlaseni","podpisy","profile"] },
   manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","projects","costs","finance","reports","ai","attendance","calendar","knjiga","podpisy","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
   employee: { label: "Zaměstnanec",   color: "#0369a1", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
@@ -423,6 +424,7 @@ const NAV = [
   { id: "podpisy", label: "Podpisy", icon: "ti-signature", group: "Osobní" },
   { id: "profile", label: "Můj profil", icon: "ti-user-circle", group: "Osobní" },
   { id: "permissions", label: "Oprávnění", icon: "ti-lock", group: "ERP" },
+  { id: "hlaseni", label: "Hlášení", icon: "ti-bell-ringing", group: "ERP" },
 ];
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
@@ -1374,6 +1376,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "finance" && <FinanceModule currentUser={currentUser} employees={employees} contracts={contracts} />}
 
         {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} />}
+
+        {tab === "hlaseni" && <HlaseniModule currentUser={currentUser} />}
 
         {tab === "reports" && <Reports
           customers={customers} deals={deals} invoices={invoices}
