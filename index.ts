@@ -6,6 +6,7 @@
 // Volání:
 //   - pg_cron každých 5 minut: hlavička x-cron-secret (tajemství z Vaultu), body {"akce":"tick"}
 //     -> ranní souhrn v nastavených časech + okamžitá upozornění (mimo klidné hodiny)
+//   - docházka na pozadí: akce "dochazka" (trigger na attendance + tick) posílá zaměstnancům notifikaci s odpracovaným časem
 //   - aplikace (jen přihlášený admin, JWT): akce "test" (volitelně kanal: pushover|webpush), "nahled", "souhrn_ted"
 //
 // Kanály (přepínače v hlaseni_nastaveni):
@@ -102,18 +103,22 @@ async function initVapid() {
   return true
 }
 
-// Web Push na všechna zařízení adminů, která si notifikace zapnula. Neplatné odběry (404/410) mažeme.
-async function webPush(title: string, message: string, priority: number) {
-  if (!(await initVapid())) return { ok: false, chyba: 'Chybí VAPID klíče (RPC hlaseni_vapid).' }
-  const { data: odb, error } = await db.from('push_odbery').select('id, endpoint, p256dh, auth, profiles!inner(role)').eq('profiles.role', 'admin')
-  if (error) return { ok: false, chyba: `Načtení odběrů: ${error.message}` }
-  if (!odb?.length) return { ok: false, chyba: 'Žádné zařízení nemá zapnuté notifikace v aplikaci.' }
-  const payload = JSON.stringify({ title: title.slice(0, 120), body: message.slice(0, 900), url: APP_URL })
+type Odber = { id: number; endpoint: string; p256dh: string; auth: string }
+type PushPayload = {
+  title: string; body: string; url?: string
+  tag?: string; silent?: boolean; trvale?: boolean
+  actions?: { action: string; title: string }[]
+}
+
+// Odešle payload na dané odběry. Neplatné odběry (404/410) mažeme.
+async function odesliOdberum(odb: Odber[], payload: PushPayload, priority: number) {
+  if (!odb.length) return { ok: false, chyba: 'Žádné zařízení nemá zapnuté notifikace v aplikaci.' }
+  const data = JSON.stringify({ ...payload, title: payload.title.slice(0, 120), body: payload.body.slice(0, 900), url: payload.url || APP_URL })
   let ok = 0
   const chyby: string[] = []
-  for (const o of odb as { id: number; endpoint: string; p256dh: string; auth: string }[]) {
+  for (const o of odb) {
     try {
-      await webpush.sendNotification({ endpoint: o.endpoint, keys: { p256dh: o.p256dh, auth: o.auth } }, payload, { TTL: 3600, urgency: priority > 0 ? 'high' : 'normal' })
+      await webpush.sendNotification({ endpoint: o.endpoint, keys: { p256dh: o.p256dh, auth: o.auth } }, data, { TTL: 3600, urgency: priority > 0 ? 'high' : 'normal' })
       ok++
       await db.from('push_odbery').update({ posledni_uspech: new Date().toISOString() }).eq('id', o.id)
     } catch (e) {
@@ -125,7 +130,23 @@ async function webPush(title: string, message: string, priority: number) {
   return ok ? { ok: true, chyba: null } : { ok: false, chyba: chyby.join('; ') || 'Všechna zařízení mají neplatný odběr (odstraněno) – zapni notifikace na telefonu znovu.' }
 }
 
-type Nastaveni = { pushover: boolean; webpush: boolean; [k: string]: unknown }
+// Web Push na všechna zařízení adminů, která si notifikace zapnula.
+async function webPush(title: string, message: string, priority: number) {
+  if (!(await initVapid())) return { ok: false, chyba: 'Chybí VAPID klíče (RPC hlaseni_vapid).' }
+  const { data: odb, error } = await db.from('push_odbery').select('id, endpoint, p256dh, auth, profiles!inner(role)').eq('profiles.role', 'admin')
+  if (error) return { ok: false, chyba: `Načtení odběrů: ${error.message}` }
+  return odesliOdberum((odb || []) as Odber[], { title, body: message }, priority)
+}
+
+// Web Push na zařízení jednoho profilu (zaměstnance).
+async function webPushProfil(profileId: string, payload: PushPayload) {
+  if (!(await initVapid())) return { ok: false, chyba: 'Chybí VAPID klíče (RPC hlaseni_vapid).' }
+  const { data: odb, error } = await db.from('push_odbery').select('id, endpoint, p256dh, auth').eq('profile_id', profileId)
+  if (error) return { ok: false, chyba: `Načtení odběrů: ${error.message}` }
+  return odesliOdberum((odb || []) as Odber[], payload, 0)
+}
+
+type Nastaveni = { pushover: boolean; webpush: boolean; dochazka_zapnuto?: boolean; dochazka_interval_min?: number; [k: string]: unknown }
 
 // Pošle zprávu všemi zapnutými kanály; úspěch = aspoň jeden kanál doručil.
 async function posli(nast: Nastaveni, title: string, message: string, priorita: number) {
@@ -268,6 +289,87 @@ async function odesliOkamzita(nast: Nastaveni, rules: Rule[], nowLocal: string) 
   return { odeslano }
 }
 
+// ── Docházka na pozadí ──────────────────────────────────────────────────────
+// Zaměstnanec s otevřeným příchodem dostane notifikaci „V práci od 7:03“, která se
+// každých X minut přepisuje (stejný tag) novým odpracovaným časem. Po zapsání odchodu
+// se přepíše závěrečnou zprávou. Spouští ji trigger na tabulce attendance (hned)
+// a pg_cron tick (každých 5 min).
+
+const dnesMs = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))
+const absMin = (d: string, hm: string) => dnesMs(d) / 60000 + toMin(hm.slice(0, 5))
+const trvaniText = (min: number) => { const m = Math.max(0, Math.round(min)); const h = Math.floor(m / 60); return h ? `${h} h ${String(m % 60).padStart(2, '0')} min` : `${m} min` }
+
+async function dochazkaTick(nast: { dochazka_zapnuto?: boolean; dochazka_interval_min?: number }) {
+  if (nast.dochazka_zapnuto === false) return { stav: 'vypnuto' }
+  const { date, hm } = pragueNow()
+  const nowAbs = absMin(date, hm)
+  const interval = Math.min(240, Math.max(5, nast.dochazka_interval_min || 30))
+  const vcera = new Date(dnesMs(date) - 86400_000).toISOString().slice(0, 10)
+
+  const { data: odb } = await db.from('push_odbery').select('profile_id, profiles!inner(employee_id)')
+  const profilZaznamu = new Map<number, string>()
+  for (const o of (odb || []) as unknown as { profile_id: string; profiles: { employee_id: number | null } | { employee_id: number | null }[] }[]) {
+    const pr = Array.isArray(o.profiles) ? o.profiles[0] : o.profiles
+    if (pr?.employee_id != null) profilZaznamu.set(Number(pr.employee_id), o.profile_id)
+  }
+  if (!profilZaznamu.size) return { stav: 'nikdo', odeslano: 0 }
+
+  const { data: rows } = await db.from('attendance').select('id, employee_id, date, checkin, checkout').gte('date', vcera).not('checkin', 'is', null)
+  const cesta = 'https://moje-firma.vercel.app/?rychle='
+  const akceTl = [{ action: 'odchod', title: 'Zapsat odchod' }, { action: 'fotky', title: 'Nahrát fotky' }]
+  let odeslano = 0
+
+  for (const r of (rows || []) as { id: number; employee_id: number; date: string; checkin: string; checkout: string | null }[]) {
+    const profil = profilZaznamu.get(Number(r.employee_id))
+    if (!profil) continue
+    const start = absMin(r.date, r.checkin)
+    const { data: ex } = await db.from('dochazka_push').select('*').eq('attendance_id', r.id).maybeSingle()
+
+    if (r.checkout) {
+      // odchod zapsán -> závěrečná zpráva (jen když předtím běžela notifikace)
+      if (!ex || ex.stav !== 'bezi') continue
+      const { data: claimed } = await db.from('dochazka_push').update({ stav: 'konec', posledni_at: new Date().toISOString() }).eq('attendance_id', r.id).eq('stav', 'bezi').select('attendance_id')
+      if (!claimed?.length) continue
+      let konec = absMin(r.date, r.checkout); if (konec < start) konec += 1440
+      await webPushProfil(profil, { title: `Odchod zapsán ${r.checkout.slice(0, 5)}`, body: `Dnes odpracováno ${trvaniText(konec - start)}.`, tag: 'dochazka', url: APP_URL })
+      odeslano++
+      continue
+    }
+
+    const elapsed = nowAbs - start
+    if (elapsed < 0) continue
+
+    if (elapsed >= 720) {
+      // 12 h a víc bez odchodu – jednou upozornit a přestat
+      if (ex?.stav === 'zapomenuto' || ex?.stav === 'konec') continue
+      if (!ex) {
+        const { error } = await db.from('dochazka_push').insert({ attendance_id: r.id, employee_id: r.employee_id, stav: 'zapomenuto' })
+        if (error) continue
+      } else {
+        const { data: claimed } = await db.from('dochazka_push').update({ stav: 'zapomenuto', posledni_at: new Date().toISOString() }).eq('attendance_id', r.id).eq('stav', 'bezi').select('attendance_id')
+        if (!claimed?.length) continue
+      }
+      await webPushProfil(profil, { title: 'Nezapomněl jsi zapsat odchod?', body: `Příchod ${r.checkin.slice(0, 5)} je stále otevřený (${trvaniText(elapsed)}).`, tag: 'dochazka', trvale: true, url: cesta + 'odchod', actions: akceTl })
+      odeslano++
+      continue
+    }
+
+    const zprava = { title: `V práci od ${r.checkin.slice(0, 5)}`, body: `Odpracováno ${trvaniText(elapsed)}. Klepni pro odchod nebo fotky.`, tag: 'dochazka', trvale: true, url: cesta + 'odchod', actions: akceTl }
+    if (!ex) {
+      const { error } = await db.from('dochazka_push').insert({ attendance_id: r.id, employee_id: r.employee_id })
+      if (error) continue // souběžný běh už start odeslal
+      await webPushProfil(profil, zprava)
+      odeslano++
+    } else if (ex.stav === 'bezi' && Date.now() - new Date(ex.posledni_at).getTime() >= (interval - 2) * 60_000) {
+      const { data: claimed } = await db.from('dochazka_push').update({ posledni_at: new Date().toISOString() }).eq('attendance_id', r.id).eq('stav', 'bezi').eq('posledni_at', ex.posledni_at).select('attendance_id')
+      if (!claimed?.length) continue
+      await webPushProfil(profil, { ...zprava, silent: true })
+      odeslano++
+    }
+  }
+  return { stav: 'ok', odeslano }
+}
+
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -298,6 +400,8 @@ Deno.serve(async (req) => {
       return json(res.ok ? { status: 'odeslano' } : { status: 'chyba', chyba: res.chyba }, 200)
     }
 
+    if (akce === 'dochazka') return json({ status: 'ok', dochazka: await dochazkaTick(nast) })
+
     if (akce === 'nahled') {
       const rules = await nactiPravidla()
       const out = []
@@ -316,9 +420,10 @@ Deno.serve(async (req) => {
     }
 
     if (akce === 'tick') {
-      if (!nast.zapnuto) return json({ status: 'vypnuto' })
-      const rules = await nactiPravidla()
       const vysledek: Record<string, unknown> = {}
+      vysledek.dochazka = await dochazkaTick(nast).catch((e) => ({ chyba: (e as Error).message }))
+      if (!nast.zapnuto) return json({ status: 'vypnuto', ...vysledek })
+      const rules = await nactiPravidla()
 
       // 1) Souhrny v nastavených časech (dohnání zmeškaného běhu max. 60 min po nastaveném čase)
       for (const cas of (nast.souhrn_casy || []) as string[]) {
