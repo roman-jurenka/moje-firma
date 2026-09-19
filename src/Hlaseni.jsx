@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, Fragment } from "react";
 import { supabase } from "./supabase.js";
 
 // ─── Modul Hlášení ─────────────────────────────────────────────────────────
-// Nastavení push upozornění (Pushover) na telefon. Admin tady definuje pravidla
+// Nastavení push upozornění na telefon (Pushover a/nebo vlastní push v aplikaci). Admin tady definuje pravidla
 // (co hlídat, jak často, jak důležité) + časy ranního souhrnu a klidné hodiny.
 //
 // Odesílání dělá Edge Function `hlaseni-odeslat`, kterou každých 5 minut spouští
@@ -35,8 +35,8 @@ const KANAL_LABEL = { souhrn: "Souhrn", rucne: "Ruční souhrn", okamzite: "Okam
 const fmtCas = (iso) => new Date(iso).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
 
 // Zavolá Edge Function; chybu vrátí jako text (i když funkce odpověděla 4xx/5xx).
-async function volej(akce) {
-  const { data, error } = await supabase.functions.invoke("hlaseni-odeslat", { body: { akce } });
+async function volej(akce, extra = {}) {
+  const { data, error } = await supabase.functions.invoke("hlaseni-odeslat", { body: { akce, ...extra } });
   if (error) {
     let msg = error.message;
     try { const j = await error.context.json(); msg = j.chyba || msg; } catch { /* zůstane obecná zpráva */ }
@@ -151,7 +151,7 @@ export default function HlaseniModule({ currentUser }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>Hlášení</div>
-          <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>Push upozornění na telefon přes Pushover — co, kdy a jak důležité.</div>
+          <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>Push upozornění na telefon — co, kdy a jak důležité.</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button style={btnGhost} disabled={!!busy} onClick={zkusebni}>{busy === "test" ? "Odesílám…" : "Poslat zkušební zprávu"}</button>
@@ -174,8 +174,8 @@ export default function HlaseniModule({ currentUser }) {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {[["pravidla", "Pravidla"], ["nastaveni", "Časy a klid"], ["historie", "Historie"]].map(([id, l]) => (
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        {[["pravidla", "Pravidla"], ["nastaveni", "Časy a klid"], ["kanaly", "Kanály"], ["historie", "Historie"]].map(([id, l]) => (
           <button key={id} onClick={() => setTab(id)} style={tab === id ? tabOn : tabOff}>{l}</button>
         ))}
       </div>
@@ -199,6 +199,8 @@ export default function HlaseniModule({ currentUser }) {
       )}
 
       {tab === "nastaveni" && nast && <NastaveniTab nast={nast} onSave={ulozNast} />}
+
+      {tab === "kanaly" && nast && <KanalyTab nast={nast} onSave={ulozNast} onInfo={setInfo} onRefresh={nacti} />}
 
       {tab === "historie" && <HistorieTab zpravy={zpravy} />}
 
@@ -413,6 +415,178 @@ function NastaveniTab({ nast, onSave }) {
       <div>
         <button style={btnPrimary} onClick={uloz}>Uložit časy</button>
         {ulozeno && <span style={{ marginLeft: 10, fontSize: 13, color: "#059669" }}>✓ Uloženo</span>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Kanály (Pushover + push v aplikaci) ─────────────────────────────────
+
+const VAPID_PUBLIC = "BK6bPI9m_AcJ-7plYhzN9-Md2Kl29UZdCSG3NziUu7e2xwWjXglBp2pxGo823MqEiTYTStetazJu6sqY9HLTeoI";
+
+function urlB64ToUint8Array(b64) {
+  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+const jeIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const jeNainstalovana = () => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+function nazevZarizeni() {
+  const ua = navigator.userAgent;
+  const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "Zařízení";
+  const br = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "prohlížeč";
+  return `${os} · ${br}${jeNainstalovana() ? " (appka)" : ""}`;
+}
+
+function KanalyTab({ nast, onSave, onInfo, onRefresh }) {
+  const [stav, setStav] = useState("zjistuji"); // zjistuji | nepodporuje | nainstalovat | zamitnuto | vypnuto | zapnuto
+  const [odbery, setOdbery] = useState([]);
+  const [busy, setBusy] = useState(null);
+
+  const nactiOdbery = useCallback(async () => {
+    const { data } = await supabase.from("push_odbery").select("id,endpoint,zarizeni,created_at,posledni_uspech").order("created_at", { ascending: false });
+    setOdbery(data || []);
+  }, []);
+
+  const zjistiStav = useCallback(async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      // iPhone v Safari (mimo appku z plochy) push API vůbec neukazuje
+      setStav(jeIOS() && !jeNainstalovana() ? "nainstalovat" : "nepodporuje");
+      return;
+    }
+    if (Notification.permission === "denied") { setStav("zamitnuto"); return; }
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      setStav(sub && Notification.permission === "granted" ? "zapnuto" : "vypnuto");
+    } catch {
+      setStav("vypnuto");
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    zjistiStav();
+    nactiOdbery();
+  }, [zjistiStav, nactiOdbery]);
+
+  // Důležité: Notification.requestPermission se musí zavolat přímo v kliknutí (iOS jinak odmítne).
+  const zapnoutZarizeni = async () => {
+    setBusy("zapnout"); onInfo(null);
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        setStav(perm === "denied" ? "zamitnuto" : "vypnuto");
+        onInfo({ ok: false, text: "Oznámení nebyla povolena. Povol je v Nastavení telefonu → Oznámení → ProudOS." });
+        setBusy(null);
+        return;
+      }
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, rej) => setTimeout(() => rej(new Error("Service worker není aktivní. Push funguje jen v nainstalované/produkční verzi aplikace.")), 8000)),
+      ]);
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC) });
+      const j = sub.toJSON();
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user?.id) throw new Error("Nejsi přihlášený.");
+      const { error } = await supabase.from("push_odbery").upsert(
+        { profile_id: u.user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, zarizeni: nazevZarizeni() },
+        { onConflict: "endpoint" }
+      );
+      if (error) throw new Error(error.message);
+      if (!nast.webpush) await onSave({ webpush: true });
+      setStav("zapnuto");
+      await nactiOdbery();
+      onInfo({ ok: true, text: "Push v aplikaci je na tomto zařízení zapnutý. Zkus tlačítko „Poslat test“." });
+    } catch (e) {
+      onInfo({ ok: false, text: "Zapnutí se nepovedlo: " + (e?.message || e) });
+    }
+    setBusy(null);
+  };
+
+  const vypnoutZarizeni = async () => {
+    setBusy("vypnout"); onInfo(null);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      if (sub) {
+        await supabase.from("push_odbery").delete().eq("endpoint", sub.endpoint);
+        await sub.unsubscribe();
+      }
+      setStav("vypnuto");
+      await nactiOdbery();
+    } catch (e) {
+      onInfo({ ok: false, text: "Vypnutí se nepovedlo: " + (e?.message || e) });
+    }
+    setBusy(null);
+  };
+
+  const smazOdber = async (o) => {
+    await supabase.from("push_odbery").delete().eq("id", o.id);
+    await nactiOdbery();
+    zjistiStav();
+  };
+
+  const test = async (kanal) => {
+    setBusy("test-" + kanal); onInfo(null);
+    const r = await volej("test", { kanal });
+    onInfo(r?.status === "odeslano"
+      ? { ok: true, text: "Zkušební zpráva odeslána. Mrkni na telefon." }
+      : { ok: false, text: "Odeslání se nepovedlo: " + (r?.chyba || "neznámá chyba") });
+    setBusy(null);
+    onRefresh();
+  };
+
+  const stavText = {
+    zjistuji: "Zjišťuji stav…",
+    nepodporuje: "Tento prohlížeč push notifikace nepodporuje.",
+    nainstalovat: "Na iPhonu fungují push notifikace jen v aplikaci přidané na plochu. V Safari klepni na Sdílet (čtvereček se šipkou) → „Přidat na plochu“, otevři ProudOS z ikony na ploše a vrať se sem.",
+    zamitnuto: "Oznámení jsou v tomto zařízení zakázaná. Povol je v Nastavení telefonu → Oznámení → ProudOS (u počítače: ikona zámku vedle adresy).",
+    vypnuto: "Na tomto zařízení je push vypnutý.",
+    zapnuto: "Na tomto zařízení je push zapnutý.",
+  }[stav];
+
+  return (
+    <div style={{ display: "grid", gap: 14, maxWidth: 560 }}>
+      <div style={card}>
+        <div style={cardLabel}>Push v aplikaci (doporučeno)</div>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>Vlastní notifikace přímo z ProudOS, bez cizí aplikace a bez poplatků. Na iPhonu vyžaduje aplikaci přidanou na plochu (iOS 16.4+).</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, marginBottom: 10 }}>
+          <Switch on={!!nast.webpush} onChange={(v) => onSave({ webpush: v })} />
+          {nast.webpush ? "Kanál je zapnutý" : "Kanál je vypnutý"}
+        </div>
+        <div style={{ fontSize: 13, padding: 10, borderRadius: 8, background: stav === "zapnuto" ? "#ecfdf5" : stav === "zamitnuto" || stav === "nepodporuje" ? "#fef2f2" : "#f1f5f9", color: "#334155", marginBottom: 10 }}>
+          {stavText}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {(stav === "vypnuto") && <button style={btnPrimary} disabled={!!busy} onClick={zapnoutZarizeni}>{busy === "zapnout" ? "Zapínám…" : "Zapnout na tomto zařízení"}</button>}
+          {stav === "zapnuto" && <button style={btnGhost} disabled={!!busy} onClick={vypnoutZarizeni}>{busy === "vypnout" ? "Vypínám…" : "Vypnout na tomto zařízení"}</button>}
+          <button style={btnGhost} disabled={!!busy || odbery.length === 0} onClick={() => test("webpush")}>{busy === "test-webpush" ? "Odesílám…" : "Poslat test"}</button>
+        </div>
+        {odbery.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>Zařízení s push</div>
+            {odbery.map((o) => (
+              <div key={o.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "6px 0", borderTop: "1px solid #f1f5f9" }}>
+                <span>{o.zarizeni || "Zařízení"} <span style={{ color: "#94a3b8", fontSize: 11 }}>· od {fmtCas(o.created_at)}</span></span>
+                <button onClick={() => smazOdber(o)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }} title="Odebrat">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={card}>
+        <div style={cardLabel}>Pushover</div>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>Externí služba (jednorázově cca 5 USD za zařízení). Vyžaduje klíče PUSHOVER_TOKEN a PUSHOVER_USER v Supabase → Edge Functions → Secrets. Když používáš push v aplikaci, Pushover nepotřebuješ.</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, marginBottom: 10 }}>
+          <Switch on={!!nast.pushover} onChange={(v) => onSave({ pushover: v })} />
+          {nast.pushover ? "Kanál je zapnutý" : "Kanál je vypnutý"}
+        </div>
+        <button style={btnGhost} disabled={!!busy} onClick={() => test("pushover")}>{busy === "test-pushover" ? "Odesílám…" : "Poslat test"}</button>
       </div>
     </div>
   );
