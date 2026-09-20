@@ -83,3 +83,25 @@ export default function RychlaObrazovka({ todayRecord, jmeno, onZapsat, onFotky,
     </div>
   );
 }
+
+// Pruh na úvodní obrazovce: když je příchod otevřený, hned na očích čas + 2 tlačítka
+// (záloha pro případ, že se po klepnutí na notifikaci rychlá obrazovka neotevře sama).
+export function PracePruh({ todayRecord, onOtevrit, onFotky }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(t);
+  }, []);
+  const min = now.getHours() * 60 + now.getMinutes() - hmToMin(todayRecord.checkin);
+  const btn = { border: "none", borderRadius: 10, padding: "12px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer", flex: 1, minWidth: 130 };
+  return (
+    <div style={{ background: "linear-gradient(135deg,#0E3B5E,#0a2a44)", color: "#fff", borderRadius: 14, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontSize: 13, opacity: 0.8 }}>V práci od {hm(todayRecord.checkin)}</div>
+      <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 12 }}>{trvani(min)}</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button onClick={onOtevrit} style={{ ...btn, background: "#F5C518", color: "#1A1A1A" }}>Zapsat odchod</button>
+        <button onClick={onFotky} style={{ ...btn, background: "#ffffff1f", color: "#fff", border: "1px solid #ffffff40" }}>Nahrát fotky</button>
+      </div>
+    </div>
+  );
+}

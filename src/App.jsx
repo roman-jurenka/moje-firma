@@ -8,7 +8,7 @@ import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
 import HlaseniModule from "./Hlaseni.jsx";
-import RychlaObrazovka from "./RychlaObrazovka.jsx";
+import RychlaObrazovka, { PracePruh } from "./RychlaObrazovka.jsx";
 import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel } from "./invoicingUtils.js";
@@ -720,21 +720,30 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         if (Date.now() - t < 120000) zpracuj(v);
       } catch { /* cache není k dispozici */ }
     };
-    signal();
-    const naPopredi = () => { if (document.visibilityState === "visible") signal(); };
+    // Signál může do cache dorazit o zlomek sekundy později než appka vyskočí do popředí (iOS) – chvíli se proto ptáme opakovaně.
+    let poll = null;
+    const spust = () => {
+      signal();
+      clearInterval(poll);
+      let n = 0;
+      poll = setInterval(() => { signal(); if (++n >= 15) clearInterval(poll); }, 1000);
+    };
+    spust();
+    const naPopredi = () => { if (document.visibilityState === "visible") spust(); };
     document.addEventListener("visibilitychange", naPopredi);
-    window.addEventListener("focus", signal);
-    window.addEventListener("pageshow", signal);
+    window.addEventListener("focus", spust);
+    window.addEventListener("pageshow", spust);
     const h = (e) => {
       if (e.data?.type !== "otevri") return;
       try { zpracuj(new URL(e.data.url, window.location.origin).searchParams.get("rychle") || "odchod"); } catch { /* neplatná adresa */ }
-      signal();
+      spust();
     };
     navigator.serviceWorker?.addEventListener("message", h);
     return () => {
+      clearInterval(poll);
       document.removeEventListener("visibilitychange", naPopredi);
-      window.removeEventListener("focus", signal);
-      window.removeEventListener("pageshow", signal);
+      window.removeEventListener("focus", spust);
+      window.removeEventListener("pageshow", spust);
       navigator.serviceWorker?.removeEventListener("message", h);
     };
   }, []);
@@ -1353,6 +1362,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       <div className="main-content" style={S.main}>
 
         {/* ── DASHBOARD ── */}
+        {tab === "dashboard" && myEmpId && todayRecord && !todayRecord.checkout && (
+          <PracePruh todayRecord={todayRecord} onOtevrit={() => setRychle(true)} onFotky={() => setTab("fotoupload")} />
+        )}
         {tab === "dashboard" && (currentUser?.role === "employee" || currentUser?.role === "hr"
           ? <EmployeeDashboard
               currentUser={currentUser} attendance={attendance} tasks={tasks} setTasks={setTasks}
