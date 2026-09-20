@@ -314,12 +314,12 @@ async function dochazkaTick(nast: { dochazka_zapnuto?: boolean; dochazka_interva
   }
   if (!profilZaznamu.size) return { stav: 'nikdo', odeslano: 0 }
 
-  const { data: rows } = await db.from('attendance').select('id, employee_id, date, checkin, checkout').gte('date', vcera).not('checkin', 'is', null)
+  const { data: rows } = await db.from('attendance').select('id, employee_id, date, checkin, checkout, created_at').gte('date', vcera).not('checkin', 'is', null)
   const cesta = 'https://moje-firma.vercel.app/?rychle='
   const akceTl = [{ action: 'odchod', title: 'Zapsat odchod' }, { action: 'fotky', title: 'Nahrát fotky' }]
   let odeslano = 0
 
-  for (const r of (rows || []) as { id: number; employee_id: number; date: string; checkin: string; checkout: string | null }[]) {
+  for (const r of (rows || []) as { id: number; employee_id: number; date: string; checkin: string; checkout: string | null; created_at: string | null }[]) {
     const profil = profilZaznamu.get(Number(r.employee_id))
     if (!profil) continue
     const start = absMin(r.date, r.checkin)
@@ -336,7 +336,12 @@ async function dochazkaTick(nast: { dochazka_zapnuto?: boolean; dochazka_interva
       continue
     }
 
-    const elapsed = nowAbs - start
+    let elapsed = nowAbs - start
+    // Appka bere „dnešek“ podle UTC, takže mezi 0:00 a 2:00 uloží příchod s datem předchozího dne (o 24 h víc).
+    if (elapsed >= 1380 && r.created_at) {
+      const zVytvoreni = (Date.now() - new Date(r.created_at).getTime()) / 60000
+      if (Math.abs(elapsed - 1440 - zVytvoreni) < 90) elapsed -= 1440
+    }
     if (elapsed < 0) continue
 
     if (elapsed >= 720) {
