@@ -15,9 +15,66 @@ const hmToMin = (t) => {
 };
 const hm = (t) => String(t || "").slice(0, 5);
 
-export default function RychlaObrazovka({ todayRecord, jmeno, onZapsat, onFotky, onClose }) {
+
+// Naposledy použité zakázky (jen v tomto zařízení) – ať je nahoře ta, na které se právě pracuje.
+const POSLEDNI_KLIC = "proudos-posledni-zakazky";
+const nactiPosledni = () => {
+  try { const v = JSON.parse(localStorage.getItem(POSLEDNI_KLIC) || "[]"); return Array.isArray(v) ? v.map(String) : []; } catch { return []; }
+};
+const ulozPosledni = (id) => {
+  try {
+    const dalsi = [String(id), ...nactiPosledni().filter((x) => x !== String(id))].slice(0, 5);
+    localStorage.setItem(POSLEDNI_KLIC, JSON.stringify(dalsi));
+  } catch { /* úložiště není k dispozici */ }
+};
+
+// Celoobrazový výběr zakázky s hledáním (velké cíle pro klepnutí palcem).
+function VyberZakazky({ zakazky, hodnota, onVyber, onZavrit }) {
+  const [q, setQ] = useState("");
+  const slova = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const posledni = nactiPosledni();
+  const razene = [...zakazky].sort((a, b) => {
+    const ia = posledni.indexOf(String(a.id)), ib = posledni.indexOf(String(b.id));
+    if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    return String(a.name || "").localeCompare(String(b.name || ""), "cs");
+  });
+  const nalezene = slova.length ? razene.filter((z) => slova.every((w) => String(z.name || "").toLowerCase().includes(w))) : razene;
+  const radek = { width: "100%", textAlign: "left", background: "#ffffff14", color: "#fff", border: "1px solid #ffffff2e", borderRadius: 12, padding: "14px 14px", fontSize: 16, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 2100, background: "#0a2a44", color: "#fff", display: "flex", flexDirection: "column",
+      padding: "calc(env(safe-area-inset-top) + 16px) 20px calc(env(safe-area-inset-bottom) + 16px)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ fontSize: 18, fontWeight: 800 }}>Zakázka, na které dnes pracuješ</div>
+        <button onClick={onZavrit} aria-label="Zpět" style={{ background: "#ffffff22", border: "none", color: "#fff", width: 40, height: 40, borderRadius: 20, fontSize: 20, cursor: "pointer" }}>✕</button>
+      </div>
+      <input
+        value={q} onChange={(e) => setQ(e.target.value)} placeholder="Hledat zakázku…" autoFocus
+        style={{ width: "100%", boxSizing: "border-box", padding: "14px", fontSize: 16, borderRadius: 12, border: "1px solid #ffffff40", background: "#ffffff1a", color: "#fff", marginBottom: 12, outline: "none" }}
+      />
+      <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start" }}>
+        {hodnota && (
+          <button onClick={() => onVyber(null)} style={{ ...radek, background: "transparent", color: "#ffb4b4", borderColor: "#ffb4b455" }}>Bez zakázky (zrušit výběr)</button>
+        )}
+        {nalezene.length === 0 && <div style={{ opacity: 0.7, padding: 12 }}>Nic nenalezeno.</div>}
+        {nalezene.map((z) => (
+          <button key={z.id} onClick={() => onVyber(z.id)}
+            style={{ ...radek, ...(String(z.id) === String(hodnota) ? { background: "#F5C518", color: "#1A1A1A", borderColor: "#F5C518" } : {}) }}>
+            {z.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function RychlaObrazovka({ todayRecord, jmeno, zakazky = [], onZakazka, onZapsat, onFotky, onClose }) {
   const [now, setNow] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
+  const [vyberOtevren, setVyberOtevren] = useState(false);
+  // Před zapsáním příchodu ještě není kam zakázku uložit – držíme ji tady a předáme při zápisu příchodu.
+  const [lokalni, setLokalni] = useState(null);
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 15000);
     return () => clearInterval(t);
@@ -28,9 +85,23 @@ export default function RychlaObrazovka({ todayRecord, jmeno, onZapsat, onFotky,
   const hotovo = !!todayRecord && !!todayRecord.checkout;
   const odpracovano = todayRecord ? (hotovo ? hmToMin(todayRecord.checkout) - hmToMin(todayRecord.checkin) : nowMin - hmToMin(todayRecord.checkin)) : 0;
 
+  const zakazkaId = todayRecord ? (todayRecord.contract_id ?? null) : lokalni;
+  const zakazka = zakazkaId != null ? zakazky.find((z) => String(z.id) === String(zakazkaId)) : null;
+
   const zapsat = async () => {
     setBusy(true);
-    try { await onZapsat(); } finally { setBusy(false); }
+    try { await onZapsat(otevrena ? undefined : (lokalni != null ? Number(lokalni) : undefined)); } finally { setBusy(false); }
+  };
+
+  const vyber = async (id) => {
+    setVyberOtevren(false);
+    const cid = id == null ? null : Number(id);
+    if (cid != null) ulozPosledni(cid);
+    if (todayRecord) {
+      if (onZakazka) await onZakazka(cid);
+    } else {
+      setLokalni(cid);
+    }
   };
 
   const velke = { width: "100%", border: "none", borderRadius: 16, padding: "20px 16px", fontSize: 19, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 };
@@ -69,6 +140,13 @@ export default function RychlaObrazovka({ todayRecord, jmeno, onZapsat, onFotky,
       </div>
 
       <div style={{ display: "grid", gap: 12, maxWidth: 480, width: "100%", margin: "0 auto" }}>
+        <button onClick={() => setVyberOtevren(true)} style={{ ...velke, fontSize: 16, fontWeight: 700, padding: "16px", background: zakazka ? "#ffffff26" : "transparent", color: "#fff", border: `1px ${zakazka ? "solid" : "dashed"} #ffffff55`, justifyContent: "space-between", textAlign: "left" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <i className="ti ti-briefcase" aria-hidden="true"></i>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{zakazka ? zakazka.name : (zakazkaId != null ? "Zakázka #" + zakazkaId : "Vybrat zakázku")}</span>
+          </span>
+          <i className="ti ti-chevron-right" aria-hidden="true"></i>
+        </button>
         {!hotovo && (
           <button disabled={busy} onClick={zapsat} style={{ ...velke, background: otevrena ? "#F5C518" : "#34d399", color: "#1A1A1A" }}>
             <i className={`ti ${otevrena ? "ti-player-stop" : "ti-player-play"}`} aria-hidden="true"></i>
@@ -80,6 +158,7 @@ export default function RychlaObrazovka({ todayRecord, jmeno, onZapsat, onFotky,
           Nahrát fotky
         </button>
       </div>
+      {vyberOtevren && <VyberZakazky zakazky={zakazky} hodnota={zakazkaId} onVyber={vyber} onZavrit={() => setVyberOtevren(false)} />}
     </div>
   );
 }

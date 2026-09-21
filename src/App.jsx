@@ -1108,19 +1108,32 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     if (willBeDone) spawnNextRecurrence(task, setTasks);
   };
 
-  const checkin = async () => {
+  // Volitelný parametr: ID zakázky vybrané na rychlé obrazovce před zapsáním příchodu.
+  // (Tlačítko FAB volá checkin jako onClick, proto bereme jen číslo, ne event.)
+  const checkin = async (contractId) => {
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     if (todayRecord) {
       await supabase.from("attendance").update({ checkout: time }).eq("id", todayRecord.id);
       setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, checkout: time } : a));
     } else {
+      const novy = { employee_id: myEmpId, date: todayStr, checkin: time, checkout: null };
+      if (typeof contractId === "number" && Number.isFinite(contractId)) novy.contract_id = contractId;
       const { data: row } = await supabase.from("attendance")
-        .insert({ employee_id: myEmpId, date: todayStr, checkin: time, checkout: null })
+        .insert(novy)
         .select().single();
       if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
     }
   };
+
+  // Zakázka dnešního záznamu docházky (výběr z rychlé obrazovky po klepnutí na notifikaci).
+  const nastavDnesniZakazku = async (cid) => {
+    if (!todayRecord) return;
+    const { error } = await supabase.from("attendance").update({ contract_id: cid }).eq("id", todayRecord.id);
+    if (error) { alert("Zakázku se nepodařilo uložit: " + error.message); return; }
+    setAttendance(prev => prev.map(a => a.id === todayRecord.id ? { ...a, contract_id: cid } : a));
+  };
+  const zakazkyProRychlou = (contracts || []).filter(c => !c.status || c.status === "Nová" || c.status === "Probíhá");
 
   return (
     <>
@@ -1259,6 +1272,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         <RychlaObrazovka
           todayRecord={todayRecord}
           jmeno={currentUser.name}
+          zakazky={zakazkyProRychlou}
+          onZakazka={nastavDnesniZakazku}
           onZapsat={checkin}
           onFotky={() => { setRychle(false); setTab("fotoupload"); }}
           onClose={() => setRychle(false)}

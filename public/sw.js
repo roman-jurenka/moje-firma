@@ -8,7 +8,7 @@
 //  - Supabase a ostatní API — NIKDY necachujeme, ať se v appce neukážou stará data.
 //    (Zápisy bez signálu řeší fronta v offlineQueue.js.)
 
-const VERSION = "v5";
+const VERSION = "v6";
 const SHELL_CACHE = `proudos-shell-${VERSION}`;
 const ASSET_CACHE = `proudos-assets-${VERSION}`;
 const CDN_CACHE = `proudos-cdn-${VERSION}`;
@@ -94,12 +94,20 @@ self.addEventListener("push", (event) => {
   } catch {
     data = { title: "ProudOS", body: event.data ? event.data.text() : "" };
   }
+  // Druh notifikace o docházce – klepnutí ji jinak systém smaže, my ji proto po klepnutí tiše obnovíme.
+  const titulek = data.title || "ProudOS";
+  const zacatek = /^V práci od (\d{1,2}):(\d{2})/.exec(titulek);
+  const kind = data.tag === "dochazka" ? (zacatek ? "bezi" : /^Nezapomněl/.test(titulek) ? "zapomenuto" : null) : null;
   const opts = {
     body: data.body || "",
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-96.png",
     tag: data.tag || undefined,
-    data: { url: data.url || "/" },
+    data: {
+      url: data.url || "/", kind, titulek, body: data.body || "", tag: data.tag || null,
+      od: zacatek ? `${zacatek[1].padStart(2, "0")}:${zacatek[2]}` : null,
+      trvale: !!data.trvale, actions: Array.isArray(data.actions) ? data.actions.slice(0, 2) : [],
+    },
   };
   // Notifikace o odpracovaném čase: stejný tag = přepíše se předchozí, aktualizace jsou tiché,
   // na Androidu/desktopu zůstává na očích a má tlačítka (iOS tlačítka v notifikaci nepodporuje).
@@ -107,11 +115,33 @@ self.addEventListener("push", (event) => {
   if (data.silent) opts.silent = true;
   if (data.trvale) opts.requireInteraction = true;
   if (Array.isArray(data.actions) && data.actions.length) opts.actions = data.actions.slice(0, 2);
-  event.waitUntil(self.registration.showNotification(data.title || "ProudOS", opts));
+  event.waitUntil(self.registration.showNotification(titulek, opts));
 });
+
+// Tiše obnoví notifikaci o probíhající práci s aktuálním časem (stejný tag = nahradí se, žádný zvuk).
+async function obnovNotifikaci(d) {
+  if (!d || !d.kind || !d.tag) return;
+  let titulek = d.titulek, body = d.body;
+  if (d.kind === "bezi" && d.od) {
+    const [h, m] = d.od.split(":").map(Number);
+    const ted = new Date();
+    let min = ted.getHours() * 60 + ted.getMinutes() - (h * 60 + m);
+    if (min < 0) min += 1440; // práce přes půlnoc
+    const hod = Math.floor(min / 60);
+    body = `Odpracováno ${hod ? `${hod} h ${String(min % 60).padStart(2, "0")} min` : `${min} min`}. Klepni pro odchod nebo fotky.`;
+  }
+  const opts = {
+    body, icon: "/icons/icon-192.png", badge: "/icons/icon-96.png", tag: d.tag,
+    silent: true, renotify: false, requireInteraction: !!d.trvale,
+    data: d,
+  };
+  if (d.actions && d.actions.length) opts.actions = d.actions;
+  try { await self.registration.showNotification(titulek, opts); } catch { /* systém obnovení nepovolil */ }
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const puvodni = event.notification.data || null;
   let url = (event.notification.data && event.notification.data.url) || "/";
   if (event.action === "odchod") url = "/?rychle=odchod";
   else if (event.action === "fotky") url = "/?rychle=fotky";
@@ -119,6 +149,8 @@ self.addEventListener("notificationclick", (event) => {
   try { akce = new URL(url, self.location.origin).searchParams.get("rychle"); } catch { /* bez akce */ }
 
   event.waitUntil((async () => {
+    // Notifikace o docházce nemá po klepnutí zmizet – hned ji tiše zobrazíme znovu (návrat z rychlé obrazovky).
+    await obnovNotifikaci(puvodni);
     // Spolehlivý signál pro appku: iOS u openWindow často zahodí ?rychle=… a zprávu do
     // uspané appky nemusí doručit, proto ho uložíme do cache, odkud si ho appka sama vyzvedne.
     if (akce) {
