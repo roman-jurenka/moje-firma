@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
-import { PRAZDNA_FVE, applyPreset } from "./fvePresets.js";
-import { DRUHY_SERVISU, textyNabidky, ukonyZCfg } from "./nabidkaTexty.js";
+import { PRAZDNA_FVE, applyPreset, POLOZKY_NOVE_INSTALACE, zapnutePolozkyNoveInstalace } from "./fvePresets.js";
+import { DRUHY_SERVISU, UKON_DOPRAVA, textyNabidky, ukonyZCfg, cenaUkonu, soucetUkonu, ukonBezCeny, seznamyPodleTypu, maSeznamNoveFve } from "./nabidkaTexty.js";
 import NabidkaNahled from "./NabidkaNahled.jsx";
 
 // ─── FVE kalkulačka — přesně podle Excelu "Kalkulačka sestav" ──────────────
@@ -40,18 +40,23 @@ function Sel({ list, value, onChange, style }) {
 
 // Servisní úkony (jen SRV) — co přesně se bude dělat. Nejčastější se
 // přidají jedním kliknutím s předvyplněným popisem, jde přidat i vlastní.
-// V nabídce se vypíšou v tabulce "Co pro Vás provedeme" (úkon | počet ks | popis).
+// V nabídce se vypíšou v tabulce "Co pro Vás provedeme" (úkon | počet ks |
+// popis | cena). Cena servisu = součet úkonů (cena za kus × ks), materiál
+// v kalkulaci níže u servisu slouží jen k popisu stávající soustavy.
 const noveIdUkonu = () => `u${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
 
-function ServisUkony({ ukony, onChange, S }) {
+function ServisUkony({ ukony, onChange, dph, S }) {
   const pridat = (u) => onChange([...ukony, { id: noveIdUkonu(), ...u }]);
   const upravit = (id, patch) => onChange(ukony.map((u) => (u.id === id ? { ...u, ...patch } : u)));
   const smazat = (id) => onChange(ukony.filter((u) => u.id !== id));
   const chybi = !ukony.some((u) => (u.nazev || "").trim());
+  const bezCeny = ukony.filter(ukonBezCeny).length;
+  const soucet = soucetUkonu(ukony);
+  const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("cs-CZ") + " Kč";
   return (
     <div style={{ background: "#eff6ff", border: `1px solid ${chybi ? "#fca5a5" : "#bfdbfe"}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16 }}>
       <div style={{ fontWeight: 700, fontSize: 13, color: "#1e3a8a", marginBottom: 2 }}>Co se bude provádět (úkony servisu)</div>
-      <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>Každý úkon se v nabídce vypíše i s popisem. Popis můžeš upravit. Stávající soustavu (panely, střídač, baterie…) zadej do materiálu níže — v nabídce z ní bude specifikace.</div>
+      <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>Každý úkon se v nabídce vypíše s popisem a cenou. <b>Cena servisu = součet úkonů</b> (cena za kus bez DPH × ks). Stávající soustavu (panely, střídač, baterie…) zadej do materiálu níže — v nabídce z ní bude specifikace, <b>do ceny se nepočítá</b>. Náhradní díly zadej jako úkon (např. „Výměna pojistky“ s cenou).</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: ukony.length ? 10 : 6 }}>
         {DRUHY_SERVISU.map((d) => {
           const uz = ukony.some((u) => u.typ === d.id);
@@ -60,22 +65,45 @@ function ServisUkony({ ukony, onChange, S }) {
               onClick={() => pridat({ typ: d.id, nazev: d.label, popis: d.popis })}>+ {d.label}</button>
           );
         })}
+        <button disabled={ukony.some((u) => u.typ === UKON_DOPRAVA.typ)} style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12, opacity: ukony.some((u) => u.typ === UKON_DOPRAVA.typ) ? 0.45 : 1 }}
+          onClick={() => pridat({ ...UKON_DOPRAVA })}>+ {UKON_DOPRAVA.nazev}</button>
         <button style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12 }} onClick={() => pridat({ typ: "vlastni", nazev: "", popis: "" })}>+ Vlastní úkon</button>
       </div>
       {ukony.map((u) => (
-        <div key={u.id} style={{ display: "grid", gridTemplateColumns: "220px 80px 1fr auto", gap: 8, marginBottom: 8, alignItems: "start" }}>
+        <div key={u.id} style={{ display: "grid", gridTemplateColumns: "200px 70px 1fr 130px auto", gap: 8, marginBottom: 8, alignItems: "start" }}>
           <input style={{ ...S.input, marginBottom: 0 }} placeholder="Název úkonu, např. Výměna pojistek" value={u.nazev} onChange={(e) => upravit(u.id, { nazev: e.target.value })} />
           <input type="number" min="0" style={{ ...S.input, marginBottom: 0 }} placeholder="ks" title="Počet ks (nepovinné)" value={u.ks ?? ""} onChange={(e) => upravit(u.id, { ks: e.target.value })} />
           <textarea style={{ ...S.input, marginBottom: 0, minHeight: 38, resize: "vertical" }} placeholder="Co přesně se udělá" value={u.popis} onChange={(e) => upravit(u.id, { popis: e.target.value })} />
+          <div>
+            <input type="number" min="0" style={{ ...S.input, marginBottom: 0, borderColor: ukonBezCeny(u) ? "#f87171" : undefined }} placeholder="Kč/ks bez DPH" title="Cena za kus bez DPH" value={u.cena ?? ""} onChange={(e) => upravit(u.id, { cena: e.target.value })} />
+            {!ukonBezCeny(u) && String(u.ks ?? "").trim() !== "" && Number(u.ks) !== 1 && <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>celkem {fmt(cenaUkonu(u))}</div>}
+          </div>
           <button style={{ ...S.btnGhost, padding: "6px 10px" }} title="Odebrat úkon" onClick={() => smazat(u.id)}>✕</button>
         </div>
       ))}
       {chybi && <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>Zatím není zadaný žádný úkon — nabídka by neříkala, co se bude dělat.</div>}
+      {bezCeny > 0 && <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>{bezCeny === 1 ? "1 úkon nemá" : `${bezCeny} úkony nemají`} vyplněnou cenu — počítá se jako 0 Kč.</div>}
+      {ukony.length > 0 && (
+        <div style={{ marginTop: 8, fontSize: 13, color: "#1e3a8a" }}>
+          Cena servisu: <b>{fmt(soucet)}</b> bez DPH · <b>{fmt(Math.round(soucet * (1 + dph)))}</b> s DPH {Math.round(dph * 100)} %
+        </div>
+      )}
     </div>
   );
 }
 
-export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave }) {
+// U servisu a rozšíření je cílová cena nabídky (seznam nabídek, obchodní
+// případ) vždy stejná jako cena v nabídce pro zákazníka — synchronizuje se
+// automaticky. Samostatná komponenta, ať je hook mimo podmíněný return.
+function SyncCilovaCena({ cena, aktualni, onSync }) {
+  useEffect(() => {
+    if (!onSync || !Number.isFinite(cena)) return;
+    if (String(Math.round(cena)) !== String(aktualni ?? "")) onSync(Math.round(cena));
+  }, [cena, aktualni, onSync]);
+  return null;
+}
+
+export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave, cilovaCena }) {
   const cfg = value || PRAZDNA_FVE();
   const set = (patch) => onChange({ ...cfg, ...patch });
   const setItem = (key, patch) => onChange({ ...cfg, [key]: { ...cfg[key], ...patch } });
@@ -291,14 +319,29 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   (cfg.customRows || [])
     .filter((r) => (r.name || "").trim() && Number(r.qty) > 0)
     .forEach((r) => radkyNabidky.push({ label: "Další položka", hodnota: r.name.trim(), ks: String(r.qty) }));
+  // Cena v nabídce: u servisu součet úkonů (zaokrouhleno jen na celé Kč),
+  // u rozšíření cena z kalkulace (po dotaci, je-li zapnutá).
+  const cenaNabidkyBezDph = jobType === "SRV" ? soucetUkonu(ukonyNabidky) : null;
+  const cenaNabidkySDph = jobType === "SRV"
+    ? Math.round(cenaNabidkyBezDph * (1 + dph))
+    : (cfg.dotaceOn ? cenaPoDotaci : cenaDphRounded);
+  const cenaNabidkyBezDphFinal = jobType === "SRV" ? cenaNabidkyBezDph : Math.round(cenaNabidkySDph / (1 + dph));
   const textyNahledu = maNahled ? textyNabidky({
     jobType,
     ukony: ukonyNabidky,
     radky: radkyNabidky,
     vykonKwp: vykonFve,
     bateriKwh,
-    cenaText: fmtNum(cenaDphRounded) + " Kč",
+    cenaText: fmtNum(cenaNabidkySDph) + " Kč",
   }) : null;
+  // Nabídka z dřívějška může mít zapnuté položky nové instalace FVE nebo
+  // její seznam "co je v ceně" — upozornit a nabídnout opravu jedním klikem.
+  const polozkyNoveFve = maNahled && jobType === "FVR" ? zapnutePolozkyNoveInstalace(cfg) : [];
+  const seznamNoveFve = maNahled && maSeznamNoveFve(cfg);
+  const opravitNaSluzbu = () => set({
+    ...(jobType === "FVR" ? POLOZKY_NOVE_INSTALACE : {}),
+    ...(seznamNoveFve ? seznamyPodleTypu(jobType) : {}),
+  });
 
   const selStyle = { ...S.select, marginBottom: 0 };
   const qtyStyle = { ...S.input, marginBottom: 0, width: 70 };
@@ -342,7 +385,20 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       </div>
       <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Materiál, práce, služby, dotace a provize se počítají stejně jako v excelové kalkulačce sestav. Ceník je natažený z databáze.</div>
 
-      {jobType === "SRV" && <ServisUkony ukony={ukonyZCfg(cfg)} onChange={(ukony) => set({ ukony })} S={S} />}
+      {maNahled && (polozkyNoveFve.length > 0 || seznamNoveFve) && (
+        <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7f1d1d" }}>
+          <b>⚠️ Tahle nabídka má nastavení pro novou instalaci FVE:</b>{" "}
+          {[...polozkyNoveFve, seznamNoveFve && "seznam „Co je v ceně“ (Dodávka FVE, Instalace FVE, připojení k DS…)"].filter(Boolean).join(", ")}.
+          {jobType === "FVR" && polozkyNoveFve.length > 0 && " Tyhle položky se počítají do ceny."}
+          <div style={{ marginTop: 8 }}>
+            <button style={{ ...S.btn("#dc2626"), padding: "5px 12px", fontSize: 12 }} onClick={opravitNaSluzbu}>
+              Nastavit pro {jobType === "SRV" ? "servis" : "rozšíření"}
+            </button>
+            <span style={{ marginLeft: 8, color: "#991b1b" }}>(vynuluje je a dá výchozí seznam pro {jobType === "SRV" ? "servis" : "rozšíření"}; pak zkontroluj cenu)</span>
+          </div>
+        </div>
+      )}
+      {jobType === "SRV" && <ServisUkony ukony={ukonyZCfg(cfg)} onChange={(ukony) => set({ ukony })} dph={dph} S={S} />}
       {jobType === "FVR" && (
         <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7c2d12" }}>
           <b>Rozšíření FVE:</b> do materiálu níže zadávej jen to, co se <b>přidává</b> (např. 8 panelů, 1 baterie). V nabídce se z toho udělá seznam „Co se bude přidávat“ včetně přidaného výkonu.
@@ -549,8 +605,14 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}><div style={S.label}>Výkon / Baterie</div><div style={{ fontSize: 14, fontWeight: 700 }}>{Math.round(vykonFve * 10) / 10} kWp / {Math.round(bateriKwh * 10) / 10} kWh</div></div>
       </div>
 
+      {jobType === "SRV" && (
+        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: "#1e3a8a" }}>
+          U servisu je cena nabídky <b>součet úkonů: {fmtKc(cenaNabidkySDph)} s DPH</b>. Čísla výše (materiál z popisu soustavy) se do nabídky nepočítají.
+        </div>
+      )}
+      {maNahled && <SyncCilovaCena cena={cenaNabidkySDph} aktualni={cilovaCena} onSync={onUseAsTarget} />}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {onUseAsTarget && (
+        {onUseAsTarget && !maNahled && (
           <button style={S.btn("#F5C518")} onClick={() => onUseAsTarget(cfg.dotaceOn ? cenaPoDotaci : cenaDphRounded)}>
             ➡️ Použít jako cílovou cenu pro zákazníka
           </button>
@@ -565,8 +627,10 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           texty={textyNahledu}
           ukony={ukonyNabidky}
           onUkonyChange={(ukony) => set({ ukony })}
-          cenaSDph={cenaDphRounded}
+          cenaSDph={cenaNabidkySDph}
+          cenaBezDph={cenaNabidkyBezDphFinal}
           dphPct={Math.round(dph * 100)}
+          seznamNoveFve={seznamNoveFve}
           zahrnuto={(cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text)}
           nezahrnuto={(cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text)}
           upravy={cfg.nahled}

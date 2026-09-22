@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { supabase } from "./supabase.js";
 import FveCalculator from "./FveCalculator.jsx";
-import { PRAZDNA_FVE, applyPreset } from "./fvePresets.js";
+import { vychoziSluzba } from "./fvePresets.js";
 
 const S = {
   app:      { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px 28px" },
@@ -796,7 +796,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           servisované soustavy a vygenerování servisní nabídky (Word) */}
       {(type === "FVE" || type === "FVR" || type === "SRV") && (
         <FveCalculator
-          value={data.fve || ((type === "FVR" || type === "SRV") ? applyPreset(PRAZDNA_FVE(), "servis") : null)}
+          value={data.fve || ((type === "FVR" || type === "SRV") ? vychoziSluzba(type) : null)}
           onChange={(fve) => setData({ ...data, fve })}
           currentUser={currentUser}
           S={S}
@@ -804,6 +804,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           customerName={customers.find((c) => c.id === Number(customerId))?.name}
           jobType={type}
           onSave={save}
+          cilovaCena={data.zakaznik.cilovaCena}
           onUseAsTarget={(kc) => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: String(Math.round(kc)) } })}
         />
       )}
@@ -868,7 +869,10 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>To, co uvidí zákazník: vlastní pojmenované sekce a jejich cena, bez vnitřního rozpisu hodin a nákladů.</div>
         <div style={{ maxWidth: 260, marginBottom: 14 }}>
           <label style={S.label}>Cílová prodejní cena celkem (Kč) <span style={{ textTransform: "none" }}>— prázdné = návrh {fmtKc(Math.round(celkemNaklad * 1.25))}</span></label>
-          <input type="number" style={S.input} placeholder={String(Math.round(celkemNaklad * 1.25))} value={data.zakaznik.cilovaCena} onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: e.target.value } })} />
+          <input type="number" style={S.input} placeholder={String(Math.round(celkemNaklad * 1.25))} value={data.zakaznik.cilovaCena}
+            disabled={type === "SRV" || type === "FVR"} title={type === "SRV" || type === "FVR" ? "U servisu a rozšíření se bere automaticky z nabídky pro zákazníka" : undefined}
+            onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: e.target.value } })} />
+          {(type === "SRV" || type === "FVR") && <div style={{ fontSize: 11, color: "#475569", marginTop: -6 }}>Bere se automaticky z nabídky pro zákazníka (kalkulace výše).</div>}
         </div>
         <SekceTabulka sekce={data.zakaznik.sekce} setSekce={sekce => setData({ ...data, zakaznik: { ...data.zakaznik, sekce } })} />
         <div style={{ marginTop: 12, fontSize: 13 }}>

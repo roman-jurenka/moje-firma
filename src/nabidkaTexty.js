@@ -34,6 +34,40 @@ export function ukonyZCfg(cfg) {
     .map((d) => ({ id: d.id, typ: d.id, nazev: d.label, popis: d.popis }));
 }
 
+// Doprava jde přidat jako úkon (má svou cenu), ale do nadpisu a úvodu se nepíše.
+export const UKON_DOPRAVA = { typ: "doprava", nazev: "Doprava", popis: "Doprava na místo a zpět." };
+
+// Cena servisu = součet úkonů: cena za kus (Kč bez DPH) × počet ks
+// (prázdný počet = 1). Úkon bez vyplněné ceny se počítá jako 0 a hlásí se.
+export const cenaUkonu = (u) => (Number(u?.cena) || 0) * (String(u?.ks ?? "").trim() === "" ? 1 : Number(u.ks) || 0);
+export const soucetUkonu = (ukony) => (ukony || []).reduce((s, u) => s + cenaUkonu(u), 0);
+export const ukonBezCeny = (u) => (u?.nazev || "").trim() !== "" && String(u?.cena ?? "").trim() === "";
+
+// Výchozí "co je / není v ceně" pro servis a rozšíření. Dřív se omylem
+// přebíral seznam pro novou instalaci FVE (Dodávka FVE, Instalace FVE,
+// připojení k DS…), což u servisu slibovalo věci, které se nedělají.
+const VYCHOZI_SEZNAMY = {
+  SRV: {
+    zahrnuto: ["Provedení úkonů uvedených v nabídce", "Předání a vysvětlení výsledků"],
+    nezahrnuto: ["Materiál a náhradní díly, které nejsou uvedeny v nabídce", "Odstranění závad zjištěných během servisu — naceníme zvlášť po dohodě"],
+  },
+  FVR: {
+    zahrnuto: ["Dodávka komponent uvedených v nabídce", "Montáž a zapojení", "Nastavení a zprovoznění rozšířené elektrárny", "Předání a vysvětlení obsluhy"],
+    nezahrnuto: ["Úpravy stávající instalace, které nejsou uvedeny v nabídce"],
+  },
+};
+export function seznamyPodleTypu(jobType) {
+  const s = VYCHOZI_SEZNAMY[jobType];
+  if (!s) return {};
+  const p = jobType.toLowerCase();
+  return {
+    zahrnutoItems: s.zahrnuto.map((text, i) => ({ id: `${p}z${i + 1}`, text, checked: true })),
+    nezahrnutoItems: s.nezahrnuto.map((text, i) => ({ id: `${p}n${i + 1}`, text, checked: true })),
+  };
+}
+// Má nabídka pořád zaškrtnuté položky z výchozího seznamu pro novou FVE?
+export const maSeznamNoveFve = (cfg) => (cfg?.zahrnutoItems || []).some((it) => /^z\d+$/.test(it.id) && it.checked);
+
 const fmtCislo = (n) => (Math.round((Number(n) || 0) * 10) / 10).toString().replace(".", ",");
 
 const FIRMA = "Jsme elektrikářská firma Jurenka Elektro — elektroinstalace i fotovoltaiku děláme sami, bez zprostředkování subdodavatelů.";
@@ -46,7 +80,7 @@ const FIRMA = "Jsme elektrikářská firma Jurenka Elektro — elektroinstalace 
  *        (u SRV stávající soustava, u FVR to, co se přidává)
  * @param {number} [p.vykonKwp]  výkon panelů v řádcích (u FVR přidávaný)
  * @param {number} [p.bateriKwh] kapacita baterií v řádcích (u FVR přidávaná)
- * @param {string} p.cenaText  hotová cena k zobrazení, např. "18 500 Kč"
+ * @param {string} [p.cenaText]  hotová cena k zobrazení (jen FVR), např. "18 500 Kč"
  */
 export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, bateriKwh = 0, cenaText }) {
   if (jobType === "FVR") {
@@ -80,11 +114,11 @@ export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, ba
 
   // SRV — úkony (co se bude dělat) + specifikace stávající soustavy
   const platne = ukony
-    .map((u) => ({ nazev: (u.nazev || "").trim(), popis: (u.popis || "").trim(), ks: String(u.ks ?? "").trim() }))
+    .map((u) => ({ typ: u.typ, nazev: (u.nazev || "").trim(), popis: (u.popis || "").trim(), ks: String(u.ks ?? "").trim() }))
     .filter((u) => u.nazev || u.popis)
-    .map((u) => ({ nazev: u.nazev || "Úkon", popis: u.popis || "[doplnit popis]", ks: u.ks }));
+    .map((u) => ({ typ: u.typ, nazev: u.nazev || "Úkon", popis: u.popis || "[doplnit popis]", ks: u.ks }));
   const ukonyDoc = platne.length ? platne : [{ nazev: "Rozsah prací", popis: "[doplnit — co se bude provádět]", ks: "" }];
-  const nazvy = platne.map((u) => u.nazev);
+  const nazvy = platne.filter((u) => u.typ !== UKON_DOPRAVA.typ).map((u) => u.nazev);
 
   const podnadpis = [nazvy.length ? nazvy.join(" · ") : "Servis fotovoltaické elektrárny"];
   if (vykonKwp > 0) podnadpis.push(`výkon ${fmtCislo(vykonKwp)} kWp`);
@@ -96,7 +130,7 @@ export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, ba
   if (vykonKwp > 0) specRadky.push({ label: "Instalovaný výkon FVE", hodnota: `${fmtCislo(vykonKwp)} kWp`, ks: "" });
   specRadky.push(...radky);
   if (specRadky.length === 0) specRadky.push({ label: "Parametry soustavy", hodnota: "[doplnit]", ks: "" });
-  specRadky.push({ label: "Cena servisu", hodnota: cenaText, ks: "" });
+  // cena servisu je v tabulce úkonů (součet úkonů), ne ve specifikaci soustavy
 
   return {
     nadpis: "SERVISNÍ NABÍDKA",

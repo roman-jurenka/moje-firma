@@ -1,3 +1,4 @@
+import { seznamyPodleTypu } from "./nabidkaTexty.js";
 // ─── Výchozí konfigurace a šablony FVE kalkulačky ───────────────────────────
 // Odděleno od FveCalculator.jsx, protože ten soubor smí exportovat jen
 // komponentu (Fast Refresh / react-refresh/only-export-components) — tohle
@@ -59,6 +60,27 @@ const PRESETY = {
   servis: { panel: ["Bez panelů", 0], konstrukce: ["Bez konstrukce", 0], stridac: ["Bez střídače", 0], baterie: ["Bez baterie", 0], bms: ["Bez BMS", 0], backup: ["Bez Back-up", 0], wallbox: ["Bez Back-up", 0], regulace: ["Bez regulace", 0], mdElektro: 0, mdStrecha: 0, marze: 0.45, dph: 0.21 },
 };
 
+// Položky kalkulace, které patří jen k nové instalaci FVE. U servisu a
+// rozšíření se dřív omylem přebíraly z PRAZDNA_FVE (dotace, připojení k DS,
+// úprava ELMR, 200 km dopravy, revize, provize 6 400 Kč…) a nafukovaly cenu.
+export const POLOZKY_NOVE_INSTALACE = {
+  dotaceOn: false, svcDotace: 0, svcDs: 0, svcDopravaKm: 0, svcRevize: 0,
+  elmr: "Bez úpravy", zakladniProvize: 0,
+};
+// Popis pro upozornění v kalkulaci: které z těch položek má nabídka zapnuté.
+export function zapnutePolozkyNoveInstalace(cfg) {
+  const c = cfg || {};
+  return [
+    c.dotaceOn && "dotace",
+    Number(c.svcDotace) > 0 && "vyřízení dotace",
+    Number(c.svcDs) > 0 && "vyřízení připojení k DS",
+    Number(c.svcDopravaKm) > 0 && `doprava ${c.svcDopravaKm} km`,
+    Number(c.svcRevize) > 0 && "revize",
+    c.elmr && c.elmr !== "Bez úpravy" && "úprava ELMR",
+    Number(c.zakladniProvize) > 0 && "základní provize OZ",
+  ].filter(Boolean);
+}
+
 export const applyPreset = (cfg, key) => {
   const p = PRESETY[key];
   if (!p) return { ...cfg, preset: key };
@@ -74,3 +96,17 @@ export const applyPreset = (cfg, key) => {
   if (p.regulace) next.regulace = { name: p.regulace[0], qty: p.regulace[1] };
   return next;
 };
+
+// Výchozí kalkulace pro servis (SRV) a rozšíření (FVR): prázdná sestava,
+// bez položek nové instalace a s vlastním seznamem "co je / není v ceně".
+// Co je u konkrétní zakázky potřeba (doprava, revize, práce…), se přidá ručně.
+export function vychoziSluzba(jobType) {
+  const cfg = applyPreset(PRAZDNA_FVE(), "servis");
+  return {
+    ...cfg,
+    ...POLOZKY_NOVE_INSTALACE,
+    rozvadecDc: { ...cfg.rozvadecDc, qty: 0 },
+    ostatniFixed: { ...cfg.ostatniFixed, qty: 0 },
+    ...seznamyPodleTypu(jobType),
+  };
+}

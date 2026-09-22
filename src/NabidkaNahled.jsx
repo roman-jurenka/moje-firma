@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase.js";
+import { cenaUkonu, ukonBezCeny } from "./nabidkaTexty.js";
 
 // ─── Náhled nabídky pro zákazníka (servis SRV a rozšíření FVR) ────────────
 // Nabídka se skládá přímo v appce: texty jsou předvyplněné podle typu
@@ -56,6 +57,10 @@ const CSS = `
 .nb-tab td.nb-ks, .nb-tab th.nb-ks { text-align: center; width: 13%; font-weight: 700; }
 .nb-tab td.nb-v { font-weight: 700; }
 .nb-tab tr.nb-cena td { font-size: 11pt; }
+.nb-tab td.nb-kc, .nb-tab th.nb-kc { text-align: right; width: 16%; white-space: nowrap; font-weight: 700; }
+.nb-tab tr.nb-soucet td { border-bottom: none; padding-top: 1.2mm; padding-bottom: 1.2mm; }
+.nb-tab tr.nb-soucet td.nb-l2 { text-align: right; color: #5B6472; }
+.nb-tab tr.nb-soucet-hl td { font-size: 12pt; color: #16324F; border-top: 1.5px solid #16324F; }
 .nb-drobne { font-size: 9pt; font-style: italic; color: #5B6472; margin: 2mm 0 0; }
 .nb-dva { display: flex; gap: 6mm; }
 .nb-dva > div { flex: 1; }
@@ -123,7 +128,7 @@ function Upravitelne({ hodnota, vychozi, onZmena, className, placeholder }) {
 const Chybi = ({ co }) => <span className="nb-chybi">doplnit: {co}</span>;
 
 export default function NabidkaNahled({
-  texty, ukony, onUkonyChange, cenaSDph, dphPct, zahrnuto, nezahrnuto,
+  texty, ukony, onUkonyChange, cenaSDph, cenaBezDph, dphPct, zahrnuto, nezahrnuto, seznamNoveFve,
   upravy, onUpravy, customerName, oz, isAdmin, onSave, S,
 }) {
   const [nastaveni, setNastaveni] = useState(PRAZDNE_NASTAVENI);
@@ -182,6 +187,8 @@ export default function NabidkaNahled({
     !zarukaMaterial && "záruka na materiál",
     !zarukaPrace && "záruka na práci",
     texty.maUkony && !(ukony || []).some((x) => (x.nazev || "").trim()) && "úkony servisu",
+    texty.maUkony && (ukony || []).some(ukonBezCeny) && "cena u některého úkonu",
+    seznamNoveFve && "„Co je v ceně“ má položky pro novou instalaci FVE (oprav v kalkulaci)",
   ].filter(Boolean);
 
   const tisk = () => {
@@ -296,18 +303,22 @@ export default function NabidkaNahled({
             <div className="nb-sekce">
               <div className="nb-h">Co pro Vás provedeme</div>
               <table className="nb-tab">
-                <thead><tr><th>ÚKON</th><th className="nb-ks">POČET KS</th><th>POPIS</th></tr></thead>
+                <thead><tr><th>ÚKON</th><th className="nb-ks">POČET KS</th><th>POPIS</th><th className="nb-kc">CENA BEZ DPH</th></tr></thead>
                 <tbody>
                   {platneUkony.length === 0 && (
-                    <tr><td className="nb-l">Rozsah prací</td><td className="nb-ks"></td><td className="nb-v"><Chybi co="úkony zadej v kalkulaci výše" /></td></tr>
+                    <tr><td className="nb-l">Rozsah prací</td><td className="nb-ks"></td><td className="nb-v"><Chybi co="úkony zadej v kalkulaci výše" /></td><td className="nb-kc"></td></tr>
                   )}
                   {platneUkony.map((x) => (
                     <tr key={x.id}>
                       <td className="nb-l"><span key={x.nazev} contentEditable suppressContentEditableWarning onBlur={(e) => upravUkon(x.id, { nazev: e.currentTarget.innerText.trim() })}>{x.nazev}</span></td>
                       <td className="nb-ks">{x.ks ?? ""}</td>
                       <td className="nb-v"><span key={x.popis} contentEditable suppressContentEditableWarning onBlur={(e) => upravUkon(x.id, { popis: e.currentTarget.innerText.trim() })}>{x.popis}</span></td>
+                      <td className="nb-kc">{ukonBezCeny(x) ? <Chybi co="cena" /> : fmtKc(cenaUkonu(x))}</td>
                     </tr>
                   ))}
+                  <tr className="nb-soucet"><td colSpan={3} className="nb-l2">Cena celkem bez DPH</td><td className="nb-kc">{fmtKc(cenaBezDph)}</td></tr>
+                  <tr className="nb-soucet"><td colSpan={3} className="nb-l2">DPH {dphPct} %</td><td className="nb-kc">{fmtKc(cenaSDph - cenaBezDph)}</td></tr>
+                  <tr className="nb-soucet nb-soucet-hl"><td colSpan={3} className="nb-l2" style={{ color: "#16324F", fontWeight: 700 }}>Cena celkem s DPH</td><td className="nb-kc">{fmtKc(cenaSDph)}</td></tr>
                 </tbody>
               </table>
             </div>
@@ -324,7 +335,7 @@ export default function NabidkaNahled({
               <thead><tr><th>POLOŽKA</th><th className="nb-ks">POČET KS</th><th>TYP / POPIS</th></tr></thead>
               <tbody>
                 {texty.specRadky.map((r, i) => (
-                  <tr key={i} className={i === texty.specRadky.length - 1 ? "nb-cena" : ""}>
+                  <tr key={i} className={/^Cena/.test(r.label) ? "nb-cena" : ""}>
                     <td className="nb-l">{r.label}</td>
                     <td className="nb-ks">{r.ks}</td>
                     <td className="nb-v">{r.hodnota === "[doplnit]" ? <Chybi co="zadej v kalkulaci výše" /> : r.hodnota}</td>
