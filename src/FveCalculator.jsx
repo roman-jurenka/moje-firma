@@ -232,7 +232,9 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
 
   // Servisní nabídka pro zákazníka (typ SRV) — jako Word dokument podle
   // vlastní firemní šablony (public/templates/nabidka_servis_sablona.docx,
-  // vychází z rozvržení Nabidka_vzor_Jurenka_Elektro.docx). U SRV se tímhle
+  // vychází z rozvržení Nabidka_vzor_Jurenka_Elektro.docx; záhlaví s logem
+  // a zápatí s firemními údaji jsou převzaté z nabidka_fve_sablona.docx,
+  // takže jsou pevně v šabloně a appka je nevyplňuje). U SRV se tímhle
   // nahrazuje jednoduchý HTML tisk — jde rovnou hotový dokument k odeslání.
   // Šablona používá «pole» místo {pole} (viz delimiters níže) a pole, pro
   // která appka nemá data (platnost nabídky, záloha, záruční lhůty…), se
@@ -273,10 +275,6 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         dph: `s DPH ${Math.round(dph * 100)}%`,
         zahrnuto: (cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
         nezahrnuto: (cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
-        sidloFirmy: "Riegrova 394/17, 779 00 Olomouc",
-        ico: "19147813",
-        telefon: "+420 702 172 622",
-        email: "info@jurenkaelektro.cz",
       });
 
       const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
