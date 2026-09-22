@@ -4,6 +4,7 @@ import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { PRAZDNA_FVE, applyPreset } from "./fvePresets.js";
 import { DRUHY_SERVISU, textyNabidky, ukonyZCfg } from "./nabidkaTexty.js";
+import NabidkaNahled from "./NabidkaNahled.jsx";
 
 // ─── FVE kalkulačka — přesně podle Excelu "Kalkulačka sestav" ──────────────
 // Materiál/práce/služby se vybírají z ceníku (tabulka fve_cenik_items),
@@ -74,7 +75,7 @@ function ServisUkony({ ukony, onChange, S }) {
   );
 }
 
-export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType }) {
+export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave }) {
   const cfg = value || PRAZDNA_FVE();
   const set = (patch) => onChange({ ...cfg, ...patch });
   const setItem = (key, patch) => onChange({ ...cfg, [key]: { ...cfg[key], ...patch } });
@@ -84,6 +85,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const [savingCenik, setSavingCenik] = useState(false);
   const [newZahrnuto, setNewZahrnuto] = useState("");
   const [newNezahrnuto, setNewNezahrnuto] = useState("");
+  const [nahledOtevren, setNahledOtevren] = useState(false);
   const isAdmin = currentUser?.role === "admin";
 
   const loadCenik = () => {
@@ -268,82 +270,35 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     }
   };
 
-  // Word nabídka pro servis (SRV) a rozšíření FVE (FVR) — společná firemní
-  // šablona public/templates/nabidka_servis_sablona.docx (rozvržení podle
-  // Nabidka_vzor_Jurenka_Elektro.docx, záhlaví s logem a zápatí z
-  // nabidka_fve_sablona.docx). Co se do ní napíše podle typu (nadpis, úvod,
-  // kroky…), je v nabidkaTexty.js. Specifikace = komponenty s množstvím > 0:
-  // u SRV popisují stávající soustavu (revize, diagnostika, čištění panelů),
-  // u FVR to, co se přidává. Pole bez dat v appce (platnost nabídky, záloha,
-  // záruční lhůty…) se vyplní "[doplnit]" — nic si nevymýšlíme.
+  // Nabídka pro servis (SRV) a rozšíření FVE (FVR) — skládá se jako náhled
+  // přímo v appce (NabidkaNahled.jsx), texty podle typu z nabidkaTexty.js.
+  // Specifikace = komponenty s množstvím > 0: u SRV stávající soustava
+  // (revize, diagnostika, čištění panelů), u FVR to, co se přidává.
   const RADEK_LABELS = {
     panel: "Fotovoltaické panely", konstrukce: "Konstrukce", stridac: "Střídač", baterie: "Baterie",
     bms: "BMS", rozvadecDc: "Rozvaděč DC", ostatniFixed: "Ostatní elektro materiál", backup: "Back-up",
     wallbox: "Wallbox / nabíjení EV", regulace: "Regulace", bojler: "Bojler",
   };
-  const generateServisWordOffer = async () => {
-    const ukony = ukonyZCfg(cfg);
-    if (jobType === "SRV" && !ukony.some((u) => (u.nazev || "").trim())
-      && !window.confirm("V nabídce není zadaný žádný úkon, takže zákazník neuvidí, co se bude dělat. Vygenerovat i tak?")) return;
-    try {
-      const res = await fetch("/templates/nabidka_servis_sablona.docx");
-      if (!res.ok) throw new Error("Šablona nenalezena");
-      const buf = await res.arrayBuffer();
-      const zip = new PizZip(buf);
-      const doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-        delimiters: { start: "«", end: "»" },
-        nullGetter: () => "[doplnit]",
-      });
-
-      const radky = matRows
-        .filter(([, , cfgItem]) => Number(cfgItem?.qty) > 0)
-        .map(([key, item, cfgItem]) => ({
-          label: RADEK_LABELS[key] || key,
-          hodnota: key === "baterie" && bateriKwh > 0 ? `${item.name} (celkem ${fmtCz(bateriKwh)} kWh)` : item.name,
-          ks: String(cfgItem.qty),
-        }));
-      (cfg.customRows || [])
-        .filter((r) => (r.name || "").trim() && Number(r.qty) > 0)
-        .forEach((r) => radky.push({ label: "Další položka", hodnota: r.name.trim(), ks: String(r.qty) }));
-
-      doc.render({
-        ...textyNabidky({
-          jobType,
-          ukony,
-          radky,
-          vykonKwp: vykonFve,
-          bateriKwh,
-          cenaText: fmtNum(cenaDphRounded) + " Kč",
-        }),
-        tvarJmenoOZ: currentUser?.name || "",
-        tvarEmailOZ: currentUser?.email || "",
-        tvarTelefonOZ: "+420 702 172 622",
-        dph: `s DPH ${Math.round(dph * 100)}%`,
-        zahrnuto: (cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
-        nezahrnuto: (cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
-      });
-
-      const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-      const now = new Date();
-      const datumStr = `${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}`;
-      const jmenoPrijmeni = (customerName || quoteName || "Zakaznik").replace(/[^\p{L}\p{N} ]+/gu, "").trim().replace(/\s+/g, "_");
-      const fileName = `${jobType === "FVR" ? "ROZSIRENI" : "SERVIS"}_${jmenoPrijmeni}_${datumStr}.docx`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
-      alert("Nepodařilo se vygenerovat nabídku ve Wordu: " + (err?.message || err));
-    }
-  };
+  const maNahled = jobType === "SRV" || jobType === "FVR";
+  const ukonyNabidky = ukonyZCfg(cfg);
+  const radkyNabidky = matRows
+    .filter(([, , cfgItem]) => Number(cfgItem?.qty) > 0)
+    .map(([key, item, cfgItem]) => ({
+      label: RADEK_LABELS[key] || key,
+      hodnota: key === "baterie" && bateriKwh > 0 ? `${item.name} (celkem ${fmtCz(bateriKwh)} kWh)` : item.name,
+      ks: String(cfgItem.qty),
+    }));
+  (cfg.customRows || [])
+    .filter((r) => (r.name || "").trim() && Number(r.qty) > 0)
+    .forEach((r) => radkyNabidky.push({ label: "Další položka", hodnota: r.name.trim(), ks: String(r.qty) }));
+  const textyNahledu = maNahled ? textyNabidky({
+    jobType,
+    ukony: ukonyNabidky,
+    radky: radkyNabidky,
+    vykonKwp: vykonFve,
+    bateriKwh,
+    cenaText: fmtNum(cenaDphRounded) + " Kč",
+  }) : null;
 
   const selStyle = { ...S.select, marginBottom: 0 };
   const qtyStyle = { ...S.input, marginBottom: 0, width: 70 };
@@ -600,11 +555,29 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
             ➡️ Použít jako cílovou cenu pro zákazníka
           </button>
         )}
-        {jobType === "SRV" || jobType === "FVR"
-          ? <button style={S.btn("#0369a1")} onClick={generateServisWordOffer}>📄 {jobType === "SRV" ? "Vygenerovat servisní nabídku (Word)" : "Vygenerovat nabídku rozšíření (Word)"}</button>
+        {maNahled
+          ? <button style={S.btn("#0369a1")} onClick={() => setNahledOtevren((v) => !v)}>📝 {nahledOtevren ? "Skrýt náhled nabídky" : "Náhled nabídky pro zákazníka"}</button>
           : <button style={S.btn("#0369a1")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>}
       </div>
-      <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>Pro PDF: otevři stažený Word dokument a použij "Uložit jako → PDF" — appka umí přesně vyplnit šablonu, ale přesný převod na PDF (1:1 jako Word) neumí bez samotného Wordu/LibreOffice udělat.</div>
+      {!maNahled && <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>Pro PDF: otevři stažený Word dokument a použij "Uložit jako → PDF" — appka umí přesně vyplnit šablonu, ale přesný převod na PDF (1:1 jako Word) neumí bez samotného Wordu/LibreOffice udělat.</div>}
+      {maNahled && nahledOtevren && (
+        <NabidkaNahled
+          texty={textyNahledu}
+          ukony={ukonyNabidky}
+          onUkonyChange={(ukony) => set({ ukony })}
+          cenaSDph={cenaDphRounded}
+          dphPct={Math.round(dph * 100)}
+          zahrnuto={(cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text)}
+          nezahrnuto={(cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text)}
+          upravy={cfg.nahled}
+          onUpravy={(nahled) => set({ nahled })}
+          customerName={customerName}
+          oz={{ jmeno: currentUser?.name || "", email: currentUser?.email || "", telefon: "+420 702 172 622" }}
+          isAdmin={isAdmin}
+          onSave={onSave}
+          S={S}
+        />
+      )}
     </div>
   );
 }

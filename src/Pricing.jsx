@@ -803,6 +803,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           quoteName={name}
           customerName={customers.find((c) => c.id === Number(customerId))?.name}
           jobType={type}
+          onSave={save}
           onUseAsTarget={(kc) => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: String(Math.round(kc)) } })}
         />
       )}
