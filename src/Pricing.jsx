@@ -29,6 +29,19 @@ const JOB_TYPES = [
   { id: "SRV", label: "SRV — Servis" },
 ];
 
+// Číslo nabídky pro servis a rozšíření: N-{typ}-{rok}-{pořadí}, např.
+// N-SRV-2026-0001. Pořadí se počítá zvlášť pro každý typ a rok z čerstvých
+// dat v databázi (ne z lokálního stavu), duplicitu hlídá UNIQUE index
+// quotes_cislo_key (sql-cislo-nabidky.sql).
+const CISLOVANE_TYPY = ["SRV", "FVR"];
+async function dalsiCisloNabidky(typ) {
+  const prefix = `N-${typ}-${new Date().getFullYear()}-`;
+  const { data, error } = await supabase.from("quotes").select("cislo").like("cislo", `${prefix}%`);
+  if (error) throw error;
+  const max = (data || []).reduce((m, r) => Math.max(m, Number(String(r.cislo).slice(prefix.length)) || 0), 0);
+  return prefix + String(max + 1).padStart(4, "0");
+}
+
 const PRAZDNA_NABIDKA = () => ({
   interni: {
     sazbaMd: 3200,   // Kč / MD (člověko-den) — jednotná sazba pro celou nabídku
@@ -462,33 +475,51 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const save = async () => {
     if (!name.trim()) { alert("Zadejte název nabídky."); return; }
     setSaving(true);
-    const row = {
-      name: name.trim(),
-      customer_id: customerId ? Number(customerId) : null,
-      status,
-      type: type || null,
-      data,
-      updated_at: new Date().toISOString(),
-    };
-    if (activeId) {
-      const { error } = await supabase.from("quotes").update(row).eq("id", activeId);
+    // Servis a rozšíření dostanou při prvním uložení číslo nabídky a datum
+    // vystavení; pak už se nemění. Při kolizi čísla (dva lidé ukládají
+    // současně, hlídá UNIQUE index) se zkusí další volné číslo.
+    const puvodni = activeId ? quotes.find(q => q.id === activeId) : null;
+    const potrebaCislo = CISLOVANE_TYPY.includes(type) && !puvodni?.cislo;
+    for (let pokus = 0; pokus < 5; pokus++) {
+      const row = {
+        name: name.trim(),
+        customer_id: customerId ? Number(customerId) : null,
+        status,
+        type: type || null,
+        data,
+        updated_at: new Date().toISOString(),
+      };
+      if (potrebaCislo) {
+        try {
+          row.cislo = await dalsiCisloNabidky(type);
+        } catch (e) {
+          alert("Nepodařilo se přidělit číslo nabídky: " + (e?.message || e));
+          setSaving(false);
+          return;
+        }
+        row.vystaveno = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD v místním čase
+      }
+      let error;
+      let inserted = null;
+      if (activeId) {
+        ({ error } = await supabase.from("quotes").update(row).eq("id", activeId));
+      } else {
+        ({ data: inserted, error } = await supabase.from("quotes").insert(row).select().single());
+      }
       if (error) {
+        if (potrebaCislo && error.code === "23505") continue; // číslo mezitím obsadil někdo jiný
         alert("Nabídku se nepodařilo uložit: " + error.message);
         setSaving(false);
         return;
       }
-      setQuotes(quotes.map(q => q.id === activeId ? { ...q, ...row } : q));
-    } else {
-      const { data: inserted, error } = await supabase.from("quotes").insert(row).select().single();
-      if (error) {
-        alert("Nabídku se nepodařilo uložit: " + error.message);
-        setSaving(false);
-        return;
-      }
-      if (inserted) { setQuotes([inserted, ...quotes]); setActiveId(inserted.id); }
+      if (activeId) setQuotes(quotes.map(q => q.id === activeId ? { ...q, ...row } : q));
+      else if (inserted) { setQuotes([inserted, ...quotes]); setActiveId(inserted.id); }
+      setName(row.name);
+      savedSnapshotRef.current = JSON.stringify({ name: row.name, customerId, status, type, data });
+      setSaving(false);
+      return;
     }
-    setName(row.name);
-    savedSnapshotRef.current = JSON.stringify({ name: row.name, customerId, status, type, data });
+    alert("Nabídku se nepodařilo uložit: nepodařilo se přidělit volné číslo nabídky. Zkus to prosím znovu.");
     setSaving(false);
   };
 
@@ -748,7 +779,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
                       {q.status}
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{cust ? cust.name : "bez zákazníka"} · {fmtKc(computeQuoteTotals(q.data).cilovaCena)}</div>
+                  <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{q.cislo ? <b>{q.cislo} · </b> : ""}{cust ? cust.name : "bez zákazníka"} · {fmtKc(computeQuoteTotals(q.data).cilovaCena)}</div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button onClick={e => { e.stopPropagation(); duplicateQuote(q); }} title="Duplikovat nabídku" style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 11 }}>📋 Duplikovat</button>
@@ -802,6 +833,9 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           S={S}
           quoteName={name}
           customerName={customers.find((c) => c.id === Number(customerId))?.name}
+          customerAddress={customers.find((c) => c.id === Number(customerId))?.address}
+          cisloNabidky={quotes.find((q) => q.id === activeId)?.cislo}
+          vystaveno={quotes.find((q) => q.id === activeId)?.vystaveno}
           jobType={type}
           onSave={save}
           cilovaCena={data.zakaznik.cilovaCena}

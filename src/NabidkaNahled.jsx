@@ -14,7 +14,7 @@ const NASTAVENI_KEY = "nabidky_vychozi";
 
 // Výchozí hodnoty firmy — schválně prázdné, vyplní se jednou v nastavení.
 const PRAZDNE_NASTAVENI = {
-  platnost: "",       // např. "30 dní"
+  platnost: "",       // počet dní, např. "30" (starší "30 dní" se taky přečte)
   zalohaPct: "",      // např. 50 (0 = bez zálohy)
   zalohaKdy: "",      // např. "před zahájením prací"
   termin: "",         // např. "4 týdnů"
@@ -23,7 +23,7 @@ const PRAZDNE_NASTAVENI = {
 };
 
 const POLE_NASTAVENI = [
-  ["platnost", "Platnost nabídky", "např. 30 dní"],
+  ["platnost", "Platnost nabídky (dní)", "např. 30"],
   ["zalohaPct", "Záloha (%)", "např. 50, 0 = bez zálohy"],
   ["zalohaKdy", "Kdy se platí záloha", "např. před zahájením prací"],
   ["termin", "Termín provedení (do …)", "např. 4 týdnů"],
@@ -32,6 +32,12 @@ const POLE_NASTAVENI = [
 ];
 
 const fmtKc = (n) => Math.round(Number(n) || 0).toLocaleString("cs-CZ") + " Kč";
+const fmtDatum = (d) => d.toLocaleDateString("cs-CZ");
+// "2026-09-22" → Date v místním čase (bez posunu přes UTC)
+const zIso = (iso) => {
+  const [r, m, d] = String(iso).split("-").map(Number);
+  return r && m && d ? new Date(r, m - 1, d) : null;
+};
 
 const CSS = `
 .nb-page { width: 210mm; max-width: 100%; margin: 0 auto; background: #fff; color: #1A1A1A; font-family: Calibri, Carlito, "Segoe UI", Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; box-shadow: 0 2px 12px rgba(15,23,42,.15); }
@@ -129,7 +135,7 @@ const Chybi = ({ co }) => <span className="nb-chybi">doplnit: {co}</span>;
 
 export default function NabidkaNahled({
   texty, ukony, onUkonyChange, cenaSDph, cenaBezDph, dphPct, zahrnuto, nezahrnuto, seznamNoveFve,
-  upravy, onUpravy, customerName, oz, isAdmin, onSave, S,
+  upravy, onUpravy, customerName, adresa, cisloNabidky, vystaveno, oz, isAdmin, onSave, S,
 }) {
   const [nastaveni, setNastaveni] = useState(PRAZDNE_NASTAVENI);
   const [nastaveniNacteno, setNastaveniNacteno] = useState(false);
@@ -169,6 +175,14 @@ export default function NabidkaNahled({
   };
 
   const platnost = String(hodnota("platnost") ?? "").trim();
+  // Datum vystavení = kdy nabídka dostala číslo (první uložení); do té doby
+  // dnešek. Platnost jako konkrétní datum, když je zadaná počtem dní.
+  const datumVystaveni = zIso(vystaveno) || new Date();
+  const platnostDni = parseInt(platnost, 10);
+  const platiDo = Number.isFinite(platnostDni) && platnostDni > 0
+    ? new Date(datumVystaveni.getFullYear(), datumVystaveni.getMonth(), datumVystaveni.getDate() + platnostDni)
+    : null;
+  const adresaInstalace = String(adresa ?? "").trim();
   const zalohaRaw = hodnota("zalohaPct");
   const zalohaZadana = zalohaRaw !== "" && zalohaRaw != null && !Number.isNaN(Number(zalohaRaw));
   const zalohaPct = zalohaZadana ? Math.min(100, Math.max(0, Number(zalohaRaw))) : null;
@@ -180,6 +194,8 @@ export default function NabidkaNahled({
   const doplatekKc = cenaSDph - zalohaKc;
 
   const chybejici = [
+    !cisloNabidky && "číslo nabídky (přidělí se při uložení — klikni na Uložit)",
+    !adresaInstalace && "adresa instalace (vyplň v kalkulaci nebo u zákazníka)",
     !platnost && "platnost nabídky",
     zalohaPct == null && "výše zálohy",
     zalohaPct > 0 && !zalohaKdy && "kdy se platí záloha",
@@ -198,7 +214,7 @@ export default function NabidkaNahled({
     const obsah = el.querySelector(".nb-obsah").innerHTML;
     const paticka = el.querySelector(".nb-paticka").outerHTML;
     const origin = window.location.origin;
-    const html = `<!DOCTYPE html><html lang="cs"><head><meta charset="utf-8"><title>${texty.nadpis} – ${customerName || ""}</title>
+    const html = `<!DOCTYPE html><html lang="cs"><head><meta charset="utf-8"><title>${cisloNabidky ? cisloNabidky + " – " : ""}${texty.nadpis} – ${customerName || ""}</title>
       <base href="${origin}/"><style>${CSS}${CSS_TISK}</style></head><body>
       <div class="nb-print-hlavicka"><img src="${origin}/nabidka/hlavicka.png" alt=""></div>
       <div class="nb-print-paticka nb-page">${paticka}</div>
@@ -290,7 +306,17 @@ export default function NabidkaNahled({
         <div className="nb-obsah">
           <div className="nb-nadpis">{texty.nadpis}</div>
           <Upravitelne className="nb-podnadpis" hodnota={u.podnadpis} vychozi={texty.podnadpis} onZmena={(v) => nastav({ podnadpis: v })} />
-          <div className="nb-meta">{customerName ? `Pro: ${customerName} · ` : ""}{new Date().toLocaleDateString("cs-CZ")}</div>
+          <div className="nb-meta">
+            <div>
+              Nabídka č. <b>{cisloNabidky || <Chybi co="číslo se přidělí při uložení" />}</b>
+              {" · "}Vystaveno {fmtDatum(datumVystaveni)}
+              {platiDo && <> · Platí do <b>{fmtDatum(platiDo)}</b></>}
+            </div>
+            <div>
+              {customerName ? <>Pro: <b>{customerName}</b> · </> : ""}
+              Místo instalace: {adresaInstalace || <Chybi co="adresa" />}
+            </div>
+          </div>
 
           <p className="nb-p">Dobrý den,</p>
           <Upravitelne className="nb-p" hodnota={u.uvod} vychozi={texty.uvod} onZmena={(v) => nastav({ uvod: v })} />
@@ -344,7 +370,10 @@ export default function NabidkaNahled({
               </tbody>
             </table>
             <p className="nb-drobne">
-              Platnost nabídky je {platnost || <Chybi co="platnost" />} od doručení. Ceny jsou s DPH {dphPct} %.
+              {platiDo
+                ? <>Nabídka platí do {fmtDatum(platiDo)}.</>
+                : platnost ? <>Platnost nabídky: {platnost}.</> : <>Platnost nabídky: <Chybi co="platnost" />.</>}
+              {" "}Ceny jsou s DPH {dphPct} %.
             </p>
           </div>
 

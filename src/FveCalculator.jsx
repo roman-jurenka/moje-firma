@@ -103,7 +103,7 @@ function SyncCilovaCena({ cena, aktualni, onSync }) {
   return null;
 }
 
-export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave, cilovaCena }) {
+export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave, cilovaCena, cisloNabidky, vystaveno, customerAddress }) {
   const cfg = value || PRAZDNA_FVE();
   const set = (patch) => onChange({ ...cfg, ...patch });
   const setItem = (key, patch) => onChange({ ...cfg, [key]: { ...cfg[key], ...patch } });
@@ -636,6 +636,9 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           upravy={cfg.nahled}
           onUpravy={(nahled) => set({ nahled })}
           customerName={customerName}
+          adresa={cfg.adresaInstalace || customerAddress}
+          cisloNabidky={cisloNabidky}
+          vystaveno={vystaveno}
           oz={{ jmeno: currentUser?.name || "", email: currentUser?.email || "", telefon: "+420 702 172 622" }}
           isAdmin={isAdmin}
           onSave={onSave}
