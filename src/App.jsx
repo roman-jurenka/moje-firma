@@ -4041,8 +4041,16 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
   const logInvoiceEvent = (invoiceId, type, extra = {}) =>
     supabase.from("invoice_events").insert({ invoice_id: invoiceId, type, ...extra });
 
-  const saveFromFlow = async (f) => {
-    const invNum = nextInvNum(invoices);
+  // Číslo faktury se generuje z čerstvě natažených čísel přímo z databáze
+  // (ne z lokálního stavu appky, který může zaostávat, když ji má otevřenou
+  // víc lidí najednou) a při kolizi (dva lidé vystaví fakturu skoro
+  // současně, oba dostanou stejné volné číslo dřív, než se stihne uložit
+  // to první) appka automaticky zkusí další — DB navíc hlídá UNIQUE
+  // constraint na invoices.number, takže duplicitní číslo nikdy neprojde
+  // (audit-zakazky-fakturace.md, bod 2).
+  const saveFromFlow = async (f, attempt = 0) => {
+    const { data: freshNumbers } = await supabase.from("invoices").select("number");
+    const invNum = nextInvNum(freshNumbers || invoices);
     const { data: row, error } = await supabase.from("invoices").insert({
       number: invNum, customer_id: Number(f.customerId), amount: f.amount,
       tax: f.tax, status: f.status,
@@ -4053,7 +4061,14 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
       discount_percent: f.discountPercent || 0,
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
     }).select().single();
-    if (error) { alert("Fakturu se nepodařilo uložit: " + error.message); return; }
+    if (error) {
+      // 23505 = unique_violation — dvě faktury se srazily na stejném čísle;
+      // zkusíme to znovu s dalším volným číslem, uživatel si toho ani
+      // nevšimne. Po pár neúspěšných pokusech už to hlásíme jako chybu.
+      if (error.code === "23505" && attempt < 5) return saveFromFlow(f, attempt + 1);
+      alert("Fakturu se nepodařilo uložit: " + error.message);
+      return;
+    }
     if (row) {
       setInvoices([...invoices, { ...row, customerId: row.customer_id }]);
       logInvoiceEvent(row.id, "vystavena");
