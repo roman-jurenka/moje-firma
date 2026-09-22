@@ -545,23 +545,86 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     setConverting(false);
   };
 
-  // Nabídka pro zákazníka — jen sekce a celková cena, žádný vnitřní rozpis.
-  const printQuote = () => {
+  // Technický souhrn podle typu zakázky — vytáhne z interních dat to, co
+  // dává zákazníkovi smysl vidět (u HRM rozpis hromosvodu, u ELK rozsah
+  // prací, u FVE/FVR klíčové technické parametry). Nic ručně nepřepisuje —
+  // jde navíc k sekcím, které si uživatel sám vyplní v SekceTabulka.
+  const buildTypeSummaryHtml = async () => {
+    if (type === "HRM") {
+      const vsechny = (data.interni.radky || []).flatMap(r => r.kusovnik || []);
+      if (vsechny.length === 0) return "";
+      const grouped = {};
+      vsechny.forEach(it => {
+        const klic = (it.nazev || "—") + "|" + (it.jednotka || "ks");
+        if (!grouped[klic]) grouped[klic] = { nazev: it.nazev || "—", jednotka: it.jednotka || "ks", mnozstvi: 0 };
+        grouped[klic].mnozstvi += Number(it.mnozstvi) || 0;
+      });
+      const radky = Object.values(grouped);
+      if (radky.length === 0) return "";
+      return "<h2 style='margin-top:22px;font-size:15px;color:#111;font-weight:700'>Rozpis materiálu</h2>" +
+        "<table><thead><tr><th>Položka</th><th>Množství</th></tr></thead><tbody>" +
+        radky.map(r => `<tr><td>${r.nazev}</td><td>${r.mnozstvi} ${r.jednotka}</td></tr>`).join("") +
+        "</tbody></table>";
+    }
+    if (type === "ELK") {
+      const radky = data.interni.radky || [];
+      const sumBod = radky.filter(r => r.jednotka === "bod").reduce((s, r) => s + (Number(r.pocetMd) || 0), 0);
+      const sumHod = radky.filter(r => r.jednotka === "hod").reduce((s, r) => s + (Number(r.pocetMd) || 0), 0);
+      if (!sumBod && !sumHod) return "";
+      let radkyHtml = "";
+      if (sumBod) radkyHtml += `<tr><td>Počet bodů</td><td>${sumBod}</td></tr>`;
+      if (sumHod) radkyHtml += `<tr><td>Počet hodin</td><td>${sumHod}</td></tr>`;
+      return "<h2 style='margin-top:22px;font-size:15px;color:#111;font-weight:700'>Rozsah prací</h2>" +
+        "<table><thead><tr><th>Ukazatel</th><th>Hodnota</th></tr></thead><tbody>" + radkyHtml + "</tbody></table>";
+    }
+    if ((type === "FVE" || type === "FVR") && data.fve) {
+      const cfg = data.fve;
+      const { data: items } = await supabase.from("fve_cenik_items").select("*").eq("active", true);
+      const najdi = (kat, nazev) => (items || []).find(i => i.category === kat && i.name === nazev) || {};
+      const panel = najdi("panely", cfg.panel?.name);
+      const baterie = najdi("baterie", cfg.baterie?.name);
+      const stridac = najdi("stridace", cfg.stridac?.name);
+      const vykonFve = (panel.wp || 0) * (Number(cfg.panel?.qty) || 0) / 1000;
+      const bateriKwh = (baterie.kwh || 0) * (Number(cfg.baterie?.qty) || 0);
+      let radkyHtml = "";
+      if (vykonFve > 0) radkyHtml += `<tr><td>Instalovaný výkon</td><td>${Math.round(vykonFve * 10) / 10} kWp</td></tr>`;
+      if (Number(cfg.panel?.qty) > 0) radkyHtml += `<tr><td>Počet panelů</td><td>${cfg.panel.qty} ks</td></tr>`;
+      if (stridac.name) radkyHtml += `<tr><td>Střídač</td><td>${stridac.name}</td></tr>`;
+      radkyHtml += `<tr><td>Bateriové úložiště</td><td>${bateriKwh > 0 ? Math.round(bateriKwh * 100) / 100 + " kWh" : "bez baterie"}</td></tr>`;
+      if (!radkyHtml) return "";
+      return "<h2 style='margin-top:22px;font-size:15px;color:#111;font-weight:700'>Technická specifikace</h2>" +
+        "<table><thead><tr><th>Parametr</th><th>Hodnota</th></tr></thead><tbody>" + radkyHtml + "</tbody></table>";
+    }
+    return "";
+  };
+
+  // Nabídka pro zákazníka — technický souhrn podle typu (viz výše) + sekce +
+  // celková cena, žádný vnitřní rozpis nákladů. Rozložení (barva/nadpis) se
+  // liší podle typu zakázky, ať je hned vidět, o jaký druh práce jde.
+  const printQuote = async () => {
+    const w = window.open("", "_blank");
+    w.document.write("<!DOCTYPE html><html><body style='font-family:Arial,sans-serif;padding:32px;color:#64748b'>Připravuji nabídku…</body></html>");
     const cust = customers.find(c => c.id === Number(customerId));
+    const typeInfo = JOB_TYPES.find(t => t.id === type);
+    const accent = typeBadgeColor(type);
     const sekceHtml = data.zakaznik.sekce.length === 0 ? "" : `
+      <h2 style="margin-top:22px;font-size:15px;color:#111;font-weight:700">Nabízené položky</h2>
       <table><thead><tr><th>Položka</th><th>Cena</th></tr></thead><tbody>
       ${data.zakaznik.sekce.map(s => `<tr><td>${s.nazev || "—"}</td><td>${fmtKc(s.castka)}</td></tr>`).join("")}
       </tbody></table>`;
+    const typeSummaryHtml = await buildTypeSummaryHtml();
     const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Nabídka – " + name + "</title>" +
-      "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.total{font-size:20px;font-weight:bold;margin-top:18px;text-align:right}@media print{body{padding:16px}}</style>" +
+      "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px;border-left:6px solid " + accent + ";padding-left:12px}h2.top{font-size:13px;color:#555;font-weight:normal;margin-bottom:4px;padding-left:18px}.typebadge{display:inline-block;margin-left:18px;margin-bottom:20px;font-size:11px;font-weight:700;color:#fff;background:" + accent + ";padding:3px 10px;border-radius:10px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}.total{font-size:20px;font-weight:bold;margin-top:18px;text-align:right}@media print{body{padding:16px}}</style>" +
       "</head><body>" +
       "<h1>Nabídka – " + name + "</h1>" +
-      "<h2>" + (cust ? cust.name : "") + " · " + new Date().toLocaleDateString("cs-CZ") + "</h2>" +
+      "<h2 class='top'>" + (cust ? cust.name : "") + " · " + new Date().toLocaleDateString("cs-CZ") + "</h2>" +
+      "<span class='typebadge'>" + (typeInfo ? typeInfo.label : "") + "</span>" +
+      typeSummaryHtml +
       sekceHtml +
       "<div class='total'>Celková cena: " + fmtKc(cilovaCena) + "</div>" +
       (data.notes ? "<p style='margin-top:20px;white-space:pre-wrap;font-size:13px'>" + data.notes + "</p>" : "") +
       "<script>window.onload=function(){window.print();}</script></body></html>";
-    const w = window.open("", "_blank");
+    w.document.open();
     w.document.write(html);
     w.document.close();
   };
@@ -731,6 +794,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           S={S}
           quoteName={name}
           customerName={customers.find((c) => c.id === Number(customerId))?.name}
+          jobType={type}
           onUseAsTarget={(kc) => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: String(Math.round(kc)) } })}
         />
       )}

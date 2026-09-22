@@ -36,7 +36,7 @@ function Sel({ list, value, onChange, style }) {
   );
 }
 
-export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName }) {
+export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType }) {
   const cfg = value || PRAZDNA_FVE();
   const set = (patch) => onChange({ ...cfg, ...patch });
   const setItem = (key, patch) => onChange({ ...cfg, [key]: { ...cfg[key], ...patch } });
@@ -184,8 +184,12 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       const bateriStr = fmtCz(bateriKwh);
       const vykonVeta = vykonFve > 0 ? `${vykonStr} kWp${bateriKwh > 0 ? ` a bateriového úložiště ${bateriStr} kWh` : ""}` : "—";
       const rocniVynos = cfg.rocniVynosOverride || (vykonFve > 0 ? `${fmt1(vykonFve * 1.0)}–${fmt1(vykonFve * 1.1)}` : "");
+      // FVR (rozšíření stávající FVE) má jinou úvodní větu než FVE (nová
+      // instalace) — šablona teď má na tomto místě placeholder {fveVeta}.
+      const fveVeta = jobType === "FVR" ? "na rozšíření stávající fotovoltaické elektrárny" : "fotovoltaické elektrárny";
 
       doc.render({
+        fveVeta,
         vykonVeta,
         cisloOP: cfg.cisloOP || "—",
         adresaInstalace: cfg.adresaInstalace || customerName || "—",
