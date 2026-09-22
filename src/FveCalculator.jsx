@@ -86,34 +86,46 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const prace = { elektro: findItem(cenik.prace, "Elektro práce").cena, strecha: findItem(cenik.prace, "Střecha práce").cena, instalater: findItem(cenik.prace, "Instalatérské práce + materiál").cena };
   const sluzby = { dotace: findItem(cenik.sluzby, "Vyřízení dotace").cena, ds: findItem(cenik.sluzby, "Vyřízení připojení k DS").cena, doprava: findItem(cenik.sluzby, "Doprava (km z Prahy - Instalace a zpět)").cena, revize: findItem(cenik.sluzby, "Revize").cena };
 
+  // Řádky materiálu z ceníku — každý si může nést vlastní marži
+  // (cfgItem.marzeOverride, v procentech; prázdné/nezadané = použije se
+  // společná marže níže). Beze změny na jediném řádku vychází prodejní cena
+  // úplně stejně jako dřív (jedna marže na celý naklad).
   const matRows = [
-    ["panel", panel, cfg.panel.qty],
-    ["konstrukce", konstr, cfg.konstrukce.qty],
-    ["stridac", stridac, cfg.stridac.qty],
-    ["baterie", baterie, cfg.baterie.qty],
-    ["bms", bms, cfg.bms.qty],
-    ["rozvadecDc", rozvadecDc, cfg.rozvadecDc.qty],
-    ["ostatniFixed", ostatniFixed, cfg.ostatniFixed.qty],
-    ["backup", backup, cfg.backup.qty],
-    ["wallbox", wallbox, cfg.wallbox.qty],
-    ["regulace", regulace, cfg.regulace.qty],
-    ["bojler", bojler, cfg.bojler.qty],
+    ["panel", panel, cfg.panel],
+    ["konstrukce", konstr, cfg.konstrukce],
+    ["stridac", stridac, cfg.stridac],
+    ["baterie", baterie, cfg.baterie],
+    ["bms", bms, cfg.bms],
+    ["rozvadecDc", rozvadecDc, cfg.rozvadecDc],
+    ["ostatniFixed", ostatniFixed, cfg.ostatniFixed],
+    ["backup", backup, cfg.backup],
+    ["wallbox", wallbox, cfg.wallbox],
+    ["regulace", regulace, cfg.regulace],
+    ["bojler", bojler, cfg.bojler],
   ];
-  let nakladMat = matRows.reduce((s, [, it, qty]) => s + it.cena * (Number(qty) || 0), 0);
+  const marze = Number(cfg.marze) || 0;
+  const rowMarzeFrac = (cfgItem) => {
+    const ov = cfgItem?.marzeOverride;
+    return (ov === "" || ov == null) ? marze : (Number(ov) || 0) / 100;
+  };
+  const nakladMatRadky = matRows.reduce((s, [, it, cfgItem]) => s + it.cena * (Number(cfgItem.qty) || 0), 0);
+  const prodejMatRadky = matRows.reduce((s, [, it, cfgItem]) => s + it.cena * (Number(cfgItem.qty) || 0) * (1 + rowMarzeFrac(cfgItem)), 0);
   const zarukaCena = cfg.zaruka ? zarukaItem.cena : 0;
-  nakladMat += zarukaCena;
   const customTotal = (cfg.customRows || []).reduce((s, r) => s + (Number(r.qty) || 0) * (Number(r.cena) || 0), 0);
-  nakladMat += customTotal;
+  const nakladMat = nakladMatRadky + zarukaCena + customTotal;
 
   const nakladPrace = prace.elektro * (Number(cfg.mdElektro) || 0) + prace.strecha * (Number(cfg.mdStrecha) || 0) + prace.instalater * (Number(cfg.mdInstalater) || 0);
   const dopravaCena = (Number(cfg.svcDopravaKm) || 0) * sluzby.doprava * ((Number(cfg.mdElektro) || 0) + (Number(cfg.mdStrecha) || 0) / 2 + (Number(cfg.mdInstalater) || 0));
   const nakladSvc = sluzby.dotace * (Number(cfg.svcDotace) || 0) + sluzby.ds * (Number(cfg.svcDs) || 0) + dopravaCena + sluzby.revize * (Number(cfg.svcRevize) || 0) + elmr.cena + (Number(cfg.zakladniProvize) || 0);
 
   const naklad = nakladMat + nakladPrace + nakladSvc;
-  const marze = Number(cfg.marze) || 0;
   const dph = Number(cfg.dph) || 0;
   const sleva = Number(cfg.sleva) || 0;
-  const prodejniSDph = naklad * (1 + marze) * (1 + dph);
+  // Materiálové řádky se sčítají už s vlastní (případně přepsanou) marží;
+  // zbytek (záruka, vlastní řádky, práce, služby) pořád jede na společnou
+  // marži jako dřív — beze změny na řádcích je výsledek identický.
+  const nakladOstatni = zarukaCena + customTotal + nakladPrace + nakladSvc;
+  const prodejniSDph = (prodejMatRadky + nakladOstatni * (1 + marze)) * (1 + dph);
   const cenaDphRounded = Math.ceil(prodejniSDph / 1000) * 1000 - sleva;
 
   const vykonFve = (panel.wp || 0) * (Number(cfg.panel.qty) || 0) / 1000;
@@ -217,14 +229,36 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const selStyle = { ...S.select, marginBottom: 0 };
   const qtyStyle = { ...S.input, marginBottom: 0, width: 70 };
 
-  const row = (label, key, list, item, qty) => (
-    <tr key={key}>
-      <td style={S.td}>{label}</td>
-      <td style={S.td}><Sel list={list} value={item.name} onChange={(name) => setItem(key, { name })} style={selStyle} /></td>
-      <td style={S.td}><input type="number" min="0" style={qtyStyle} value={qty} onChange={(e) => setItem(key, { qty: e.target.value })} /></td>
-      <td style={{ ...S.td, textAlign: "right", color: "#475569", whiteSpace: "nowrap" }}>{fmtKc(item.cena * (Number(qty) || 0))}</td>
-    </tr>
-  );
+  const row = (label, key, list, item, cfgItem) => {
+    const qty = cfgItem.qty;
+    const cenaBezMarze = item.cena * (Number(qty) || 0);
+    const rowFrac = rowMarzeFrac(cfgItem);
+    const cenaSMarzi = cenaBezMarze * (1 + rowFrac);
+    const prepsano = cfgItem.marzeOverride !== "" && cfgItem.marzeOverride != null;
+    return (
+      <tr key={key}>
+        <td style={S.td}>{label}</td>
+        <td style={S.td}><Sel list={list} value={item.name} onChange={(name) => setItem(key, { name })} style={selStyle} /></td>
+        <td style={S.td}><input type="number" min="0" style={qtyStyle} value={qty} onChange={(e) => setItem(key, { qty: e.target.value })} /></td>
+        <td style={{ ...S.td, textAlign: "right", color: "#475569", whiteSpace: "nowrap" }}>{fmtKc(cenaBezMarze)}</td>
+        <td style={{ ...S.td, textAlign: "right", color: "#94a3b8", whiteSpace: "nowrap" }}>{fmtKc(item.cena)}</td>
+        <td style={{ ...S.td, textAlign: "right", whiteSpace: "nowrap" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
+            <input
+              type="number" min="0" max="100" step="1"
+              placeholder={String(Math.round(marze * 100))}
+              style={{ ...S.input, marginBottom: 0, width: 46, textAlign: "right", fontSize: 11, padding: "4px 5px", color: prepsano ? "#0369a1" : "#94a3b8" }}
+              value={cfgItem.marzeOverride ?? ""}
+              onChange={(e) => setItem(key, { marzeOverride: e.target.value })}
+              title="Marže pro tento řádek — prázdné = použije se společná marže"
+            />
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>%</span>
+            <b style={{ color: "#34d399" }}>{fmtKc(cenaSMarzi)}</b>
+          </div>
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <div style={S.card}>
@@ -346,27 +380,27 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
 
       <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Materiál</div>
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
-        <thead><tr><th style={S.th}>Řádek</th><th style={S.th}>Položka</th><th style={S.th}>Množ.</th><th style={S.th}>Cena</th></tr></thead>
+        <thead><tr><th style={S.th}>Řádek</th><th style={S.th}>Položka</th><th style={S.th}>Množ.</th><th style={S.th}>Cena bez marže</th><th style={S.th}>Cena za kus</th><th style={S.th}>Cena s marží ({Math.round(marze * 100)} %)</th></tr></thead>
         <tbody>
-          {row("Panely", "panel", cenik.panely, panel, cfg.panel.qty)}
-          {row("Konstrukce", "konstrukce", cenik.konstrukce, konstr, cfg.konstrukce.qty)}
-          {row("Střídač", "stridac", cenik.stridace, stridac, cfg.stridac.qty)}
+          {row("Panely", "panel", cenik.panely, panel, cfg.panel)}
+          {row("Konstrukce", "konstrukce", cenik.konstrukce, konstr, cfg.konstrukce)}
+          {row("Střídač", "stridac", cenik.stridace, stridac, cfg.stridac)}
           <tr>
-            <td style={S.td} colSpan={3}>
+            <td style={S.td} colSpan={5}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                 <input type="checkbox" checked={cfg.zaruka} onChange={(e) => set({ zaruka: e.target.checked })} /> + Záruka 10 let na střídač (0 % marže)
               </label>
             </td>
             <td style={{ ...S.td, textAlign: "right", color: "#475569" }}>{fmtKc(zarukaCena)}</td>
           </tr>
-          {row("Baterie", "baterie", cenik.baterie, baterie, cfg.baterie.qty)}
-          {row("BMS", "bms", cenik.bms, bms, cfg.bms.qty)}
-          {row("Rozvaděč DC", "rozvadecDc", cenik.rozvadec_dc, rozvadecDc, cfg.rozvadecDc.qty)}
-          {row("Ostatní elektro materiál", "ostatniFixed", cenik.ostatni, ostatniFixed, cfg.ostatniFixed.qty)}
-          {row("Back-up", "backup", cenik.ostatni, backup, cfg.backup.qty)}
-          {row("Wallbox / regulace navíc", "wallbox", cenik.ostatni, wallbox, cfg.wallbox.qty)}
-          {row("Regulace (AZrouter)", "regulace", cenik.regulace, regulace, cfg.regulace.qty)}
-          {row("Bojler", "bojler", cenik.bojlery, bojler, cfg.bojler.qty)}
+          {row("Baterie", "baterie", cenik.baterie, baterie, cfg.baterie)}
+          {row("BMS", "bms", cenik.bms, bms, cfg.bms)}
+          {row("Rozvaděč DC", "rozvadecDc", cenik.rozvadec_dc, rozvadecDc, cfg.rozvadecDc)}
+          {row("Ostatní elektro materiál", "ostatniFixed", cenik.ostatni, ostatniFixed, cfg.ostatniFixed)}
+          {row("Back-up", "backup", cenik.ostatni, backup, cfg.backup)}
+          {row("Wallbox / regulace navíc", "wallbox", cenik.ostatni, wallbox, cfg.wallbox)}
+          {row("Regulace (AZrouter)", "regulace", cenik.regulace, regulace, cfg.regulace)}
+          {row("Bojler", "bojler", cenik.bojlery, bojler, cfg.bojler)}
         </tbody>
       </table>
 
