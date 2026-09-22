@@ -39,7 +39,7 @@ function Sel({ list, value, onChange, style }) {
 
 // Servisní úkony (jen SRV) — co přesně se bude dělat. Nejčastější se
 // přidají jedním kliknutím s předvyplněným popisem, jde přidat i vlastní.
-// V nabídce se vypíšou v rámečku "Co pro Vás provedeme".
+// V nabídce se vypíšou v tabulce "Co pro Vás provedeme" (úkon | počet ks | popis).
 const noveIdUkonu = () => `u${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
 
 function ServisUkony({ ukony, onChange, S }) {
@@ -62,8 +62,9 @@ function ServisUkony({ ukony, onChange, S }) {
         <button style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12 }} onClick={() => pridat({ typ: "vlastni", nazev: "", popis: "" })}>+ Vlastní úkon</button>
       </div>
       {ukony.map((u) => (
-        <div key={u.id} style={{ display: "grid", gridTemplateColumns: "220px 1fr auto", gap: 8, marginBottom: 8, alignItems: "start" }}>
+        <div key={u.id} style={{ display: "grid", gridTemplateColumns: "220px 80px 1fr auto", gap: 8, marginBottom: 8, alignItems: "start" }}>
           <input style={{ ...S.input, marginBottom: 0 }} placeholder="Název úkonu, např. Výměna pojistek" value={u.nazev} onChange={(e) => upravit(u.id, { nazev: e.target.value })} />
+          <input type="number" min="0" style={{ ...S.input, marginBottom: 0 }} placeholder="ks" title="Počet ks (nepovinné)" value={u.ks ?? ""} onChange={(e) => upravit(u.id, { ks: e.target.value })} />
           <textarea style={{ ...S.input, marginBottom: 0, minHeight: 38, resize: "vertical" }} placeholder="Co přesně se udělá" value={u.popis} onChange={(e) => upravit(u.id, { popis: e.target.value })} />
           <button style={{ ...S.btnGhost, padding: "6px 10px" }} title="Odebrat úkon" onClick={() => smazat(u.id)}>✕</button>
         </div>

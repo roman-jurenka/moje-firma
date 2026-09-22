@@ -24,7 +24,7 @@ export const DRUHY_SERVISU = [
   },
 ];
 
-// Úkony uložené v nabídce: [{ id, typ, nazev, popis }]. Starší nabídky mají
+// Úkony uložené v nabídce: [{ id, typ, nazev, ks, popis }]. Starší nabídky mají
 // jen seznam zaškrtnutých druhů (cfg.druhServisu) — ty se převedou.
 export function ukonyZCfg(cfg) {
   if (Array.isArray(cfg?.ukony)) return cfg.ukony;
@@ -41,7 +41,7 @@ const FIRMA = "Jsme elektrikářská firma Jurenka Elektro — elektroinstalace 
 /**
  * @param {object} p
  * @param {"SRV"|"FVR"} p.jobType
- * @param {{nazev: string, popis: string}[]} [p.ukony]  servisní úkony (jen SRV)
+ * @param {{nazev: string, popis: string, ks?: string|number}[]} [p.ukony]  servisní úkony (jen SRV)
  * @param {{label: string, hodnota: string, ks: string}[]} [p.radky]  komponenty s množstvím > 0
  *        (u SRV stávající soustava, u FVR to, co se přidává)
  * @param {number} [p.vykonKwp]  výkon panelů v řádcích (u FVR přidávaný)
@@ -80,10 +80,10 @@ export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, ba
 
   // SRV — úkony (co se bude dělat) + specifikace stávající soustavy
   const platne = ukony
-    .map((u) => ({ nazev: (u.nazev || "").trim(), popis: (u.popis || "").trim() }))
+    .map((u) => ({ nazev: (u.nazev || "").trim(), popis: (u.popis || "").trim(), ks: String(u.ks ?? "").trim() }))
     .filter((u) => u.nazev || u.popis)
-    .map((u) => ({ nazev: u.nazev || "Úkon", popis: u.popis || "[doplnit popis]" }));
-  const ukonyDoc = platne.length ? platne : [{ nazev: "Rozsah prací", popis: "[doplnit — co se bude provádět]" }];
+    .map((u) => ({ nazev: u.nazev || "Úkon", popis: u.popis || "[doplnit popis]", ks: u.ks }));
+  const ukonyDoc = platne.length ? platne : [{ nazev: "Rozsah prací", popis: "[doplnit — co se bude provádět]", ks: "" }];
   const nazvy = platne.map((u) => u.nazev);
 
   const podnadpis = [nazvy.length ? nazvy.join(" · ") : "Servis fotovoltaické elektrárny"];
