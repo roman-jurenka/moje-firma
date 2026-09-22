@@ -3,6 +3,7 @@ import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { PRAZDNA_FVE, applyPreset } from "./fvePresets.js";
+import { DRUHY_SERVISU, textyNabidky } from "./nabidkaTexty.js";
 
 // ─── FVE kalkulačka — přesně podle Excelu "Kalkulačka sestav" ──────────────
 // Materiál/práce/služby se vybírají z ceníku (tabulka fve_cenik_items),
@@ -230,16 +231,19 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     }
   };
 
-  // Servisní nabídka pro zákazníka (typ SRV) — jako Word dokument podle
-  // vlastní firemní šablony (public/templates/nabidka_servis_sablona.docx,
-  // vychází z rozvržení Nabidka_vzor_Jurenka_Elektro.docx; záhlaví s logem
-  // a zápatí s firemními údaji jsou převzaté z nabidka_fve_sablona.docx,
-  // takže jsou pevně v šabloně a appka je nevyplňuje). U SRV se tímhle
-  // nahrazuje jednoduchý HTML tisk — jde rovnou hotový dokument k odeslání.
-  // Šablona používá «pole» místo {pole} (viz delimiters níže) a pole, pro
-  // která appka nemá data (platnost nabídky, záloha, záruční lhůty…), se
-  // v dokumentu vyplní jako "[doplnit]", ať je jasné, že to čeká na ruční
-  // doplnění — nic si nevymýšlíme.
+  // Word nabídka pro servis (SRV) a rozšíření FVE (FVR) — společná firemní
+  // šablona public/templates/nabidka_servis_sablona.docx (rozvržení podle
+  // Nabidka_vzor_Jurenka_Elektro.docx, záhlaví s logem a zápatí z
+  // nabidka_fve_sablona.docx). Co se do ní napíše podle typu (nadpis, úvod,
+  // kroky…), je v nabidkaTexty.js. Specifikace = komponenty s množstvím > 0:
+  // u SRV popisují stávající soustavu (revize, diagnostika, čištění panelů),
+  // u FVR to, co se přidává. Pole bez dat v appce (platnost nabídky, záloha,
+  // záruční lhůty…) se vyplní "[doplnit]" — nic si nevymýšlíme.
+  const RADEK_LABELS = {
+    panel: "Fotovoltaické panely", konstrukce: "Konstrukce", stridac: "Střídač", baterie: "Baterie",
+    bms: "BMS", rozvadecDc: "Rozvaděč DC", ostatniFixed: "Ostatní elektro materiál", backup: "Back-up",
+    wallbox: "Wallbox / nabíjení EV", regulace: "Regulace", bojler: "Bojler",
+  };
   const generateServisWordOffer = async () => {
     try {
       const res = await fetch("/templates/nabidka_servis_sablona.docx");
@@ -253,25 +257,30 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         nullGetter: () => "[doplnit]",
       });
 
-      const vykonStr = fmt1(vykonFve);
-      const bateriStr = fmtCz(bateriKwh);
-      const popisCasti = [];
-      if (vykonFve > 0) popisCasti.push(`výkon ${vykonStr} kWp`);
-      if (bateriKwh > 0) popisCasti.push(`baterie ${bateriStr} kWh`);
+      const radky = matRows
+        .filter(([, , cfgItem]) => Number(cfgItem?.qty) > 0)
+        .map(([key, item, cfgItem]) => ({
+          label: RADEK_LABELS[key] || key,
+          hodnota: key === "baterie" && bateriKwh > 0
+            ? `${cfgItem.qty}x ${item.name} (${fmtCz(bateriKwh)} kWh)`
+            : `${cfgItem.qty}x ${item.name}`,
+        }));
+      (cfg.customRows || [])
+        .filter((r) => (r.name || "").trim() && Number(r.qty) > 0)
+        .forEach((r) => radky.push({ label: r.name.trim(), hodnota: `${r.qty} ks` }));
 
       doc.render({
-        popisSpecifikace: popisCasti.join(" · "),
+        ...textyNabidky({
+          jobType,
+          druhServisu: cfg.druhServisu || [],
+          radky,
+          vykonKwp: vykonFve,
+          bateriKwh,
+          cenaText: fmtNum(cenaDphRounded) + " Kč",
+        }),
         tvarJmenoOZ: currentUser?.name || "",
         tvarEmailOZ: currentUser?.email || "",
         tvarTelefonOZ: "+420 702 172 622",
-        instalovanyVykon: vykonFve > 0 ? `${vykonStr} kWp` : "neuvedeno",
-        panely: cfg.panel.qty > 0 ? `${cfg.panel.qty}x ${panel.name}` : "neuvedeno",
-        stridac: cfg.stridac.qty > 0 ? `${cfg.stridac.qty}x ${stridac.name}` : "neuvedeno",
-        baterie: cfg.baterie.qty > 0 ? `${cfg.baterie.qty}x ${baterie.name} (${bateriStr}kWh)` : "Bez baterie",
-        acRozvadec: cfg.rozvadecDc.qty > 0 ? rozvadecDc.name : "neuvedeno",
-        regulace: cfg.regulace.qty > 0 ? regulace.name : "Bez regulace",
-        nabijeciStanice: cfg.wallbox.qty > 0 ? wallbox.name : "",
-        cenaCelkem: fmtNum(cenaDphRounded) + " Kč",
         dph: `s DPH ${Math.round(dph * 100)}%`,
         zahrnuto: (cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
         nezahrnuto: (cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
@@ -281,7 +290,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       const now = new Date();
       const datumStr = `${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}`;
       const jmenoPrijmeni = (customerName || quoteName || "Zakaznik").replace(/[^\p{L}\p{N} ]+/gu, "").trim().replace(/\s+/g, "_");
-      const fileName = `SERVIS_${jmenoPrijmeni}_${datumStr}.docx`;
+      const fileName = `${jobType === "FVR" ? "ROZSIRENI" : "SERVIS"}_${jmenoPrijmeni}_${datumStr}.docx`;
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -293,7 +302,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("Nepodařilo se vygenerovat servisní nabídku ve Wordu: " + (err?.message || err));
+      alert("Nepodařilo se vygenerovat nabídku ve Wordu: " + (err?.message || err));
     }
   };
 
@@ -338,6 +347,31 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         <button style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 11 }} onClick={() => setAdminOpen((v) => !v)}>⚙️ Ceník {isAdmin ? "(admin)" : ""}</button>
       </div>
       <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Materiál, práce, služby, dotace a provize se počítají stejně jako v excelové kalkulačce sestav. Ceník je natažený z databáze.</div>
+
+      {jobType === "SRV" && (
+        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 14px", marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#1e3a8a", marginBottom: 6 }}>Druh servisu</div>
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+            {DRUHY_SERVISU.map((d) => {
+              const vybrane = cfg.druhServisu || [];
+              const zapnuto = vybrane.includes(d.id);
+              return (
+                <label key={d.id} style={{ fontSize: 13, color: "#1A1A1A", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                  <input type="checkbox" checked={zapnuto}
+                    onChange={() => set({ druhServisu: zapnuto ? vybrane.filter((x) => x !== d.id) : [...vybrane, d.id] })} />
+                  {d.label}
+                </label>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>Promítne se do nadpisu a úvodu servisní nabídky. Do materiálu níže zadej stávající soustavu (panely, střídač, baterie…) — v nabídce se z ní udělá specifikace.</div>
+        </div>
+      )}
+      {jobType === "FVR" && (
+        <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7c2d12" }}>
+          <b>Rozšíření FVE:</b> do materiálu níže zadávej jen to, co se <b>přidává</b> (např. 8 panelů, 1 baterie). V nabídce se z toho udělá seznam „Co se bude přidávat“ včetně přidaného výkonu.
+        </div>
+      )}
 
       {adminOpen && (
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
@@ -545,8 +579,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
             ➡️ Použít jako cílovou cenu pro zákazníka
           </button>
         )}
-        {jobType === "SRV"
-          ? <button style={S.btn("#0369a1")} onClick={generateServisWordOffer}>📄 Vygenerovat servisní nabídku (Word)</button>
+        {jobType === "SRV" || jobType === "FVR"
+          ? <button style={S.btn("#0369a1")} onClick={generateServisWordOffer}>📄 {jobType === "SRV" ? "Vygenerovat servisní nabídku (Word)" : "Vygenerovat nabídku rozšíření (Word)"}</button>
           : <button style={S.btn("#0369a1")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>}
       </div>
       <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>Pro PDF: otevři stažený Word dokument a použij "Uložit jako → PDF" — appka umí přesně vyplnit šablonu, ale přesný převod na PDF (1:1 jako Word) neumí bez samotného Wordu/LibreOffice udělat.</div>
