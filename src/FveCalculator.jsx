@@ -3,7 +3,7 @@ import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { PRAZDNA_FVE, applyPreset } from "./fvePresets.js";
-import { DRUHY_SERVISU, textyNabidky } from "./nabidkaTexty.js";
+import { DRUHY_SERVISU, textyNabidky, ukonyZCfg } from "./nabidkaTexty.js";
 
 // ─── FVE kalkulačka — přesně podle Excelu "Kalkulačka sestav" ──────────────
 // Materiál/práce/služby se vybírají z ceníku (tabulka fve_cenik_items),
@@ -34,6 +34,42 @@ function Sel({ list, value, onChange, style }) {
     <select style={style} value={value} onChange={(e) => onChange(e.target.value)}>
       {(list || []).map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
     </select>
+  );
+}
+
+// Servisní úkony (jen SRV) — co přesně se bude dělat. Nejčastější se
+// přidají jedním kliknutím s předvyplněným popisem, jde přidat i vlastní.
+// V nabídce se vypíšou v rámečku "Co pro Vás provedeme".
+const noveIdUkonu = () => `u${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+
+function ServisUkony({ ukony, onChange, S }) {
+  const pridat = (u) => onChange([...ukony, { id: noveIdUkonu(), ...u }]);
+  const upravit = (id, patch) => onChange(ukony.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+  const smazat = (id) => onChange(ukony.filter((u) => u.id !== id));
+  const chybi = !ukony.some((u) => (u.nazev || "").trim());
+  return (
+    <div style={{ background: "#eff6ff", border: `1px solid ${chybi ? "#fca5a5" : "#bfdbfe"}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: "#1e3a8a", marginBottom: 2 }}>Co se bude provádět (úkony servisu)</div>
+      <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>Každý úkon se v nabídce vypíše i s popisem. Popis můžeš upravit. Stávající soustavu (panely, střídač, baterie…) zadej do materiálu níže — v nabídce z ní bude specifikace.</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: ukony.length ? 10 : 6 }}>
+        {DRUHY_SERVISU.map((d) => {
+          const uz = ukony.some((u) => u.typ === d.id);
+          return (
+            <button key={d.id} disabled={uz} style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12, opacity: uz ? 0.45 : 1 }}
+              onClick={() => pridat({ typ: d.id, nazev: d.label, popis: d.popis })}>+ {d.label}</button>
+          );
+        })}
+        <button style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12 }} onClick={() => pridat({ typ: "vlastni", nazev: "", popis: "" })}>+ Vlastní úkon</button>
+      </div>
+      {ukony.map((u) => (
+        <div key={u.id} style={{ display: "grid", gridTemplateColumns: "220px 1fr auto", gap: 8, marginBottom: 8, alignItems: "start" }}>
+          <input style={{ ...S.input, marginBottom: 0 }} placeholder="Název úkonu, např. Výměna pojistek" value={u.nazev} onChange={(e) => upravit(u.id, { nazev: e.target.value })} />
+          <textarea style={{ ...S.input, marginBottom: 0, minHeight: 38, resize: "vertical" }} placeholder="Co přesně se udělá" value={u.popis} onChange={(e) => upravit(u.id, { popis: e.target.value })} />
+          <button style={{ ...S.btnGhost, padding: "6px 10px" }} title="Odebrat úkon" onClick={() => smazat(u.id)}>✕</button>
+        </div>
+      ))}
+      {chybi && <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>Zatím není zadaný žádný úkon — nabídka by neříkala, co se bude dělat.</div>}
+    </div>
   );
 }
 
@@ -245,6 +281,9 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     wallbox: "Wallbox / nabíjení EV", regulace: "Regulace", bojler: "Bojler",
   };
   const generateServisWordOffer = async () => {
+    const ukony = ukonyZCfg(cfg);
+    if (jobType === "SRV" && !ukony.some((u) => (u.nazev || "").trim())
+      && !window.confirm("V nabídce není zadaný žádný úkon, takže zákazník neuvidí, co se bude dělat. Vygenerovat i tak?")) return;
     try {
       const res = await fetch("/templates/nabidka_servis_sablona.docx");
       if (!res.ok) throw new Error("Šablona nenalezena");
@@ -261,18 +300,17 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         .filter(([, , cfgItem]) => Number(cfgItem?.qty) > 0)
         .map(([key, item, cfgItem]) => ({
           label: RADEK_LABELS[key] || key,
-          hodnota: key === "baterie" && bateriKwh > 0
-            ? `${cfgItem.qty}x ${item.name} (${fmtCz(bateriKwh)} kWh)`
-            : `${cfgItem.qty}x ${item.name}`,
+          hodnota: key === "baterie" && bateriKwh > 0 ? `${item.name} (celkem ${fmtCz(bateriKwh)} kWh)` : item.name,
+          ks: String(cfgItem.qty),
         }));
       (cfg.customRows || [])
         .filter((r) => (r.name || "").trim() && Number(r.qty) > 0)
-        .forEach((r) => radky.push({ label: r.name.trim(), hodnota: `${r.qty} ks` }));
+        .forEach((r) => radky.push({ label: "Další položka", hodnota: r.name.trim(), ks: String(r.qty) }));
 
       doc.render({
         ...textyNabidky({
           jobType,
-          druhServisu: cfg.druhServisu || [],
+          ukony,
           radky,
           vykonKwp: vykonFve,
           bateriKwh,
@@ -348,25 +386,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       </div>
       <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Materiál, práce, služby, dotace a provize se počítají stejně jako v excelové kalkulačce sestav. Ceník je natažený z databáze.</div>
 
-      {jobType === "SRV" && (
-        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 14px", marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#1e3a8a", marginBottom: 6 }}>Druh servisu</div>
-          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-            {DRUHY_SERVISU.map((d) => {
-              const vybrane = cfg.druhServisu || [];
-              const zapnuto = vybrane.includes(d.id);
-              return (
-                <label key={d.id} style={{ fontSize: 13, color: "#1A1A1A", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                  <input type="checkbox" checked={zapnuto}
-                    onChange={() => set({ druhServisu: zapnuto ? vybrane.filter((x) => x !== d.id) : [...vybrane, d.id] })} />
-                  {d.label}
-                </label>
-              );
-            })}
-          </div>
-          <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>Promítne se do nadpisu a úvodu servisní nabídky. Do materiálu níže zadej stávající soustavu (panely, střídač, baterie…) — v nabídce se z ní udělá specifikace.</div>
-        </div>
-      )}
+      {jobType === "SRV" && <ServisUkony ukony={ukonyZCfg(cfg)} onChange={(ukony) => set({ ukony })} S={S} />}
       {jobType === "FVR" && (
         <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7c2d12" }}>
           <b>Rozšíření FVE:</b> do materiálu níže zadávej jen to, co se <b>přidává</b> (např. 8 panelů, 1 baterie). V nabídce se z toho udělá seznam „Co se bude přidávat“ včetně přidaného výkonu.
