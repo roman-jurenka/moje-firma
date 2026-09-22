@@ -162,6 +162,26 @@ export async function connectSharedAccount() {
 }
 
 // ─── TOKEN REFRESH ────────────────────────────────────────────────────────────
+// Uživatelsky srozumitelná hláška — nahrazuje syrový text od Microsoftu
+// (AADSTS70000, Trace ID, Correlation ID...), který appka dřív jen doslova
+// přeposílala do alert() okna bez jakéhokoli návodu, co s tím.
+const RECONNECT_MSG = "Připojení k OneDrive vypršelo — přihlas se prosím znovu v záložce ☁️ OneDrive.";
+
+// Když Microsoft odmítne token obnovit jako neplatný/expirovaný
+// (invalid_grant — sem spadá i AADSTS70000 "grant is expired"), dál ho
+// nemá smysl nabízet: appka by ho zkoušela pořád dokola a každý
+// zaměstnanec by narážel na stejnou chybu. Smažeme ho proto lokálně i ve
+// sdíleném úložišti (Supabase), ať appka rovnou ukáže "Nepřipojeno" a
+// nabídne tlačítko "Připojit OneDrive" místo opakované chyby.
+async function clearInvalidSharedToken() {
+  const wasShared = LS.get("shared_mode");
+  logout();
+  if (wasShared) {
+    try { await supabase.from(SETTINGS_TABLE).delete().eq("key", SHARED_KEY); }
+    catch (e) { console.warn("Nepodařilo se smazat neplatný sdílený OneDrive token:", e.message); }
+  }
+}
+
 async function getValidToken() {
   const expires = LS.get("token_expires") || 0;
   if (Date.now() < expires - 60000) return LS.get("access_token");
@@ -177,7 +197,16 @@ async function getValidToken() {
   });
   const res = await fetch(`${AUTH_BASE}/token`, { method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
   const data = await res.json();
-  if (data.error) throw new Error("Token refresh failed: " + data.error_description);
+  if (data.error) {
+    // invalid_grant = token už se obnovit nedá (mj. AADSTS70000) — vyčistíme
+    // ho (viz clearInvalidSharedToken výše) a appce dáme srozumitelnou
+    // hlášku místo syrového Microsoft textu.
+    if (data.error === "invalid_grant") {
+      await clearInvalidSharedToken();
+      throw new Error(RECONNECT_MSG);
+    }
+    throw new Error("Obnovení OneDrive tokenu selhalo: " + (data.error_description || data.error));
+  }
 
   LS.set("access_token", data.access_token);
   if (data.refresh_token) LS.set("refresh_token", data.refresh_token);
