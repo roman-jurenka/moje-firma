@@ -567,7 +567,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   // vyprázdní popis/množství/cena — pro rychlé hromadné zadání víc položek
   // za sebou (např. celý dodací list materiálu), bez otevírání modalu znovu.
   async function saveCostEntry(form, keepOpen) {
-    const { data: row } = await supabase.from("contract_cost_entries").insert({
+    const { data: row, error } = await supabase.from("contract_cost_entries").insert({
       contract_id:       form.contractId,
       cost_type:         form.costType,
       is_extra:          form.isExtra,
@@ -579,12 +579,17 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       unit_price_client: Number(form.unitPriceClient) || 0,
       employee_id:       form.employeeId ? Number(form.employeeId) : null,
     }).select().single();
+    // Appka dřív chybu uložení jen tiše zahodila — formulář se tvářil jako
+    // hotovo, i když položka do databáze vůbec nedorazila. Teď to nahlásíme
+    // a necháme AddEntryModal formulář otevřený, ať se dá zkusit znovu.
+    if (error) { alert("Nákladovou položku se nepodařilo uložit: " + error.message); throw error; }
     if (row) setEntries(prev => [...prev, row]);
     if (!keepOpen) closeModal();
   }
 
   // ── Smazat nákladovou položku ──
   async function deleteEntry(id) {
+    if (!window.confirm("Smazat tuto nákladovou položku?")) return;
     await supabase.from("contract_cost_entries").delete().eq("id", id);
     setEntries(entries.filter(e => e.id !== id));
   }
@@ -643,6 +648,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   }
 
   async function deleteDNItem(id) {
+    if (!window.confirm("Smazat tuto položku dodacího listu?")) return;
     await supabase.from("delivery_note_items").delete().eq("id", id);
     setDeliveryNoteItems(prev => prev.filter(i => i.id !== id));
   }
@@ -2075,7 +2081,16 @@ function NewContractModal({ customers, deal, currentUser, onSave, onClose }) {
   });
   const [codeAuto, setCodeAuto] = useState(true);
   const [codeLoading, setCodeLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  // Trim se kontroluje i tady, ne jen na blur inputu — název složený jen
+  // z mezer dřív klidně prošel (jen (f.name)), teď se odmítne.
+  const handleSubmit = async () => {
+    if (!f.name.trim()) { alert("Vyplň název zakázky."); return; }
+    setSaving(true);
+    try { await onSave(f); } finally { setSaving(false); }
+  };
 
   const onTypeChange = (type) => {
     set("type", type);
@@ -2170,7 +2185,7 @@ function NewContractModal({ customers, deal, currentUser, onSave, onClose }) {
         <textarea style={{ ...S.input, height: 70, resize: "vertical" }} value={f.notes} onChange={e => set("notes", e.target.value)} />
 
         <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-          <button style={S.btn()} onClick={() => { if (f.name) onSave(f); }}>Uložit zakázku</button>
+          <button style={S.btn()} disabled={saving} onClick={handleSubmit}>{saving ? "Ukládám…" : "Uložit zakázku"}</button>
           <button style={S.btnGhost} onClick={onClose}>Zrušit</button>
         </div>
       </div>
@@ -2191,6 +2206,7 @@ function AddEntryModal({ contractId, costType, isExtra, employees, allEntries, o
   const [f, setF] = useState(blank());
   const [savedCount, setSavedCount] = useState(0);
   const [suggestions, setSuggestions] = useState([]);
+  const [saving, setSaving] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   const isPrace = costType === "práce";
@@ -2215,13 +2231,28 @@ function AddEntryModal({ contractId, costType, isExtra, employees, allEntries, o
   const totalCost = (Number(f.quantity) || 0) * (Number(f.unitPriceCost) || 0);
   const totalClient = (Number(f.quantity) || 0) * (Number(f.unitPriceClient) || 0);
 
-  const handleSave = (keepOpen) => {
-    if (!f.description && !f.quantity) return;
-    onSave(f, keepOpen);
-    if (keepOpen) {
-      setSavedCount(n => n + 1);
-      setF(blank(f));
-      setSuggestions([]);
+  const handleSave = async (keepOpen) => {
+    // Dřív tahle podmínka (!description && !quantity) v praxi nikdy
+    // neplatila — množství má výchozí hodnotu "1", takže i prázdný popis
+    // s nulovou cenou vždycky prošel. Teď se skutečně vyžaduje popis a
+    // kladné množství.
+    if (!f.description.trim() || !(Number(f.quantity) > 0)) {
+      alert("Vyplň popis a množství větší než 0.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(f, keepOpen);
+      if (keepOpen) {
+        setSavedCount(n => n + 1);
+        setF(blank(f));
+        setSuggestions([]);
+      }
+    } catch {
+      // Chybu už uživateli ukázal saveCostEntry (alert) — formulář necháme
+      // beze změny, ať jde uložení zkusit znovu.
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -2312,9 +2343,9 @@ function AddEntryModal({ contractId, costType, isExtra, employees, allEntries, o
         )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button style={S.btn()} onClick={() => handleSave(false)}>Uložit</button>
-          <button style={S.btn("#34d399")} onClick={() => handleSave(true)} title="Uloží položku a nechá formulář otevřený pro další — pro rychlé zadání víc položek za sebou (např. celý dodací list)">
-            💾 Uložit a přidat další
+          <button style={S.btn()} disabled={saving} onClick={() => handleSave(false)}>{saving ? "Ukládám…" : "Uložit"}</button>
+          <button style={S.btn("#34d399")} disabled={saving} onClick={() => handleSave(true)} title="Uloží položku a nechá formulář otevřený pro další — pro rychlé zadání víc položek za sebou (např. celý dodací list)">
+            {saving ? "Ukládám…" : "💾 Uložit a přidat další"}
           </button>
           <button style={S.btnGhost} onClick={onClose}>{savedCount > 0 ? "Hotovo" : "Zrušit"}</button>
         </div>
