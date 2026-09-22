@@ -20,6 +20,7 @@ const fmtDateCz = (v) => {
 // stejného čísla, i kdyby je zakládali dva lidé současně).
 const TYPY_ZAKAZEK = [
   { id: "FVE", label: "FVE — Fotovoltaika" },
+  { id: "FVR", label: "FVR — FVE rozšíření" },
   { id: "HRM", label: "HRM — Hromosvody" },
   { id: "ELK", label: "ELK — Elektroinstalace" },
   { id: "SRV", label: "SRV — Servis" },
