@@ -230,6 +230,75 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     }
   };
 
+  // Servisní nabídka pro zákazníka (typ SRV) — jako Word dokument podle
+  // vlastní firemní šablony (public/templates/nabidka_servis_sablona.docx,
+  // vychází z rozvržení Nabidka_vzor_Jurenka_Elektro.docx). U SRV se tímhle
+  // nahrazuje jednoduchý HTML tisk — jde rovnou hotový dokument k odeslání.
+  // Šablona používá «pole» místo {pole} (viz delimiters níže) a pole, pro
+  // která appka nemá data (platnost nabídky, záloha, záruční lhůty…), se
+  // v dokumentu vyplní jako "[doplnit]", ať je jasné, že to čeká na ruční
+  // doplnění — nic si nevymýšlíme.
+  const generateServisWordOffer = async () => {
+    try {
+      const res = await fetch("/templates/nabidka_servis_sablona.docx");
+      if (!res.ok) throw new Error("Šablona nenalezena");
+      const buf = await res.arrayBuffer();
+      const zip = new PizZip(buf);
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters: { start: "«", end: "»" },
+        nullGetter: () => "[doplnit]",
+      });
+
+      const vykonStr = fmt1(vykonFve);
+      const bateriStr = fmtCz(bateriKwh);
+      const popisCasti = [];
+      if (vykonFve > 0) popisCasti.push(`výkon ${vykonStr} kWp`);
+      if (bateriKwh > 0) popisCasti.push(`baterie ${bateriStr} kWh`);
+
+      doc.render({
+        popisSpecifikace: popisCasti.join(" · "),
+        tvarJmenoOZ: currentUser?.name || "",
+        tvarEmailOZ: currentUser?.email || "",
+        tvarTelefonOZ: "+420 702 172 622",
+        instalovanyVykon: vykonFve > 0 ? `${vykonStr} kWp` : "neuvedeno",
+        panely: cfg.panel.qty > 0 ? `${cfg.panel.qty}x ${panel.name}` : "neuvedeno",
+        stridac: cfg.stridac.qty > 0 ? `${cfg.stridac.qty}x ${stridac.name}` : "neuvedeno",
+        baterie: cfg.baterie.qty > 0 ? `${cfg.baterie.qty}x ${baterie.name} (${bateriStr}kWh)` : "Bez baterie",
+        acRozvadec: cfg.rozvadecDc.qty > 0 ? rozvadecDc.name : "neuvedeno",
+        regulace: cfg.regulace.qty > 0 ? regulace.name : "Bez regulace",
+        nabijeciStanice: cfg.wallbox.qty > 0 ? wallbox.name : "",
+        cenaCelkem: fmtNum(cenaDphRounded) + " Kč",
+        dph: `s DPH ${Math.round(dph * 100)}%`,
+        zahrnuto: (cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
+        nezahrnuto: (cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
+        sidloFirmy: "Riegrova 394/17, 779 00 Olomouc",
+        ico: "19147813",
+        telefon: "+420 702 172 622",
+        email: "info@jurenkaelektro.cz",
+      });
+
+      const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const now = new Date();
+      const datumStr = `${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}`;
+      const jmenoPrijmeni = (customerName || quoteName || "Zakaznik").replace(/[^\p{L}\p{N} ]+/gu, "").trim().replace(/\s+/g, "_");
+      const fileName = `SERVIS_${jmenoPrijmeni}_${datumStr}.docx`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Nepodařilo se vygenerovat servisní nabídku ve Wordu: " + (err?.message || err));
+    }
+  };
+
   const selStyle = { ...S.select, marginBottom: 0 };
   const qtyStyle = { ...S.input, marginBottom: 0, width: 70 };
 
@@ -478,7 +547,9 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
             ➡️ Použít jako cílovou cenu pro zákazníka
           </button>
         )}
-        <button style={S.btn("#0369a1")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>
+        {jobType === "SRV"
+          ? <button style={S.btn("#0369a1")} onClick={generateServisWordOffer}>📄 Vygenerovat servisní nabídku (Word)</button>
+          : <button style={S.btn("#0369a1")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>}
       </div>
       <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>Pro PDF: otevři stažený Word dokument a použij "Uložit jako → PDF" — appka umí přesně vyplnit šablonu, ale přesný převod na PDF (1:1 jako Word) neumí bez samotného Wordu/LibreOffice udělat.</div>
     </div>

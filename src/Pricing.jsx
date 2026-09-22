@@ -785,10 +785,12 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         </div>
       </div>
 
-      {/* FVE KALKULAČKA — u FVE i FVR (rozšíření stávající instalace), přesně podle Excelu */}
-      {(type === "FVE" || type === "FVR") && (
+      {/* FVE KALKULAČKA — u FVE i FVR (rozšíření stávající instalace) přesně
+          podle Excelu; u SRV (servis stávající FVE) slouží k popisu
+          servisované soustavy a vygenerování servisní nabídky (Word) */}
+      {(type === "FVE" || type === "FVR" || type === "SRV") && (
         <FveCalculator
-          value={data.fve || (type === "FVR" ? applyPreset(PRAZDNA_FVE(), "servis") : null)}
+          value={data.fve || ((type === "FVR" || type === "SRV") ? applyPreset(PRAZDNA_FVE(), "servis") : null)}
           onChange={(fve) => setData({ ...data, fve })}
           currentUser={currentUser}
           S={S}
@@ -884,7 +886,8 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button style={S.btn("#34d399")} onClick={save} disabled={saving}>{saving ? "Ukládám…" : "💾 Uložit nabídku"}</button>
-          <button style={S.btnGhost} onClick={printQuote}>🖨️ Nabídka pro zákazníka</button>
+          {/* U SRV nahrazuje HTML tisk servisní nabídka (Word) v kalkulačce výše */}
+          {type !== "SRV" && <button style={S.btnGhost} onClick={printQuote}>🖨️ Nabídka pro zákazníka</button>}
           <button style={S.btnGhost} onClick={printInterni}>📊 Interní přehled (MD)</button>
           {activeId && <button style={S.btn("#F5C518")} disabled={converting} onClick={convertToDeal}>{converting ? "Převádím…" : "➡️ Převést na obchodní případ"}</button>}
         </div>
