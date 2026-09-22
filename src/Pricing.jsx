@@ -586,11 +586,17 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       const stridac = najdi("stridace", cfg.stridac?.name);
       const vykonFve = (panel.wp || 0) * (Number(cfg.panel?.qty) || 0) / 1000;
       const bateriKwh = (baterie.kwh || 0) * (Number(cfg.baterie?.qty) || 0);
+      const maPanely = Number(cfg.panel?.qty) > 0;
+      const maStridac = Number(cfg.stridac?.qty) > 0;
+      const maBaterii = Number(cfg.baterie?.qty) > 0 && bateriKwh > 0;
+      // Nic nevyplněno (prázdný "servis" preset apod.) — radši nezobrazit
+      // prázdnou/matoucí tabulku se samými "Bez ..." položkami z ceníku.
+      if (!vykonFve && !maPanely && !maStridac && !maBaterii) return "";
       let radkyHtml = "";
       if (vykonFve > 0) radkyHtml += `<tr><td>Instalovaný výkon</td><td>${Math.round(vykonFve * 10) / 10} kWp</td></tr>`;
-      if (Number(cfg.panel?.qty) > 0) radkyHtml += `<tr><td>Počet panelů</td><td>${cfg.panel.qty} ks</td></tr>`;
-      if (stridac.name) radkyHtml += `<tr><td>Střídač</td><td>${stridac.name}</td></tr>`;
-      radkyHtml += `<tr><td>Bateriové úložiště</td><td>${bateriKwh > 0 ? Math.round(bateriKwh * 100) / 100 + " kWh" : "bez baterie"}</td></tr>`;
+      if (maPanely) radkyHtml += `<tr><td>Počet panelů</td><td>${cfg.panel.qty} ks</td></tr>`;
+      if (maStridac) radkyHtml += `<tr><td>Střídač</td><td>${stridac.name}</td></tr>`;
+      if (maBaterii) radkyHtml += `<tr><td>Bateriové úložiště</td><td>${Math.round(bateriKwh * 100) / 100} kWh</td></tr>`;
       if (!radkyHtml) return "";
       return "<h2 style='margin-top:22px;font-size:15px;color:#111;font-weight:700'>Technická specifikace</h2>" +
         "<table><thead><tr><th>Parametr</th><th>Hodnota</th></tr></thead><tbody>" + radkyHtml + "</tbody></table>";
