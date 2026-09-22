@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import FveCalculator from "./FveCalculator.jsx";
 
@@ -259,6 +259,8 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const [type, setType] = useState("");
   const [data, setData] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const savedSnapshotRef = useRef(null);
   const [typeFilter, setTypeFilter] = useState("vse");
   const [statusFilter, setStatusFilter] = useState("vse");
 
@@ -277,25 +279,44 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     fve: d?.fve || null,
   });
 
+  const hasUnsavedChanges = () => {
+    if (savedSnapshotRef.current === null) return false;
+    return savedSnapshotRef.current !== JSON.stringify({ name, customerId, status, type, data });
+  };
+
+  const confirmDiscardChanges = () => {
+    if (!hasUnsavedChanges()) return true;
+    return confirm("Máte neuložené změny v nabídce. Opravdu chcete pokračovat bez uložení?");
+  };
+
   const openQuote = (q) => {
+    if (!confirmDiscardChanges()) return;
+    const cId = q.customer_id ? String(q.customer_id) : "";
+    const st = q.status || "Návrh";
+    const ty = q.type || "";
+    const normalized = normalize(q.data);
     setActiveId(q.id);
     setName(q.name);
-    setCustomerId(q.customer_id ? String(q.customer_id) : "");
-    setStatus(q.status || "Návrh");
-    setType(q.type || "");
-    setData(normalize(q.data));
+    setCustomerId(cId);
+    setStatus(st);
+    setType(ty);
+    setData(normalized);
+    savedSnapshotRef.current = JSON.stringify({ name: q.name, customerId: cId, status: st, type: ty, data: normalized });
   };
 
   const newQuote = () => {
+    if (!confirmDiscardChanges()) return;
+    const fresh = PRAZDNA_NABIDKA();
     setActiveId(null);
     setName("");
     setCustomerId("");
     setStatus("Návrh");
     setType("");
-    setData(PRAZDNA_NABIDKA());
+    setData(fresh);
+    savedSnapshotRef.current = JSON.stringify({ name: "", customerId: "", status: "Návrh", type: "", data: fresh });
   };
 
-  const closeQuote = () => { setActiveId(null); setData(null); };
+  const closeQuote = () => { setActiveId(null); setData(null); savedSnapshotRef.current = null; };
 
   // ── Výpočty ──
   const sazbaMd = data?.interni?.sazbaMd || 0;
@@ -332,12 +353,24 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       updated_at: new Date().toISOString(),
     };
     if (activeId) {
-      await supabase.from("quotes").update(row).eq("id", activeId);
+      const { error } = await supabase.from("quotes").update(row).eq("id", activeId);
+      if (error) {
+        alert("Nabídku se nepodařilo uložit: " + error.message);
+        setSaving(false);
+        return;
+      }
       setQuotes(quotes.map(q => q.id === activeId ? { ...q, ...row } : q));
     } else {
-      const { data: inserted } = await supabase.from("quotes").insert(row).select().single();
+      const { data: inserted, error } = await supabase.from("quotes").insert(row).select().single();
+      if (error) {
+        alert("Nabídku se nepodařilo uložit: " + error.message);
+        setSaving(false);
+        return;
+      }
       if (inserted) { setQuotes([inserted, ...quotes]); setActiveId(inserted.id); }
     }
+    setName(row.name);
+    savedSnapshotRef.current = JSON.stringify({ name: row.name, customerId, status, type, data });
     setSaving(false);
   };
 
@@ -369,18 +402,29 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const convertToDeal = async () => {
     if (!activeId) { alert("Nejdřív nabídku uložte."); return; }
     if (!onConvertToDeal) return;
+    setConverting(true);
     const cust = customers.find(c => c.id === Number(customerId));
-    const { data: dealRow } = await supabase.from("deals").insert({
+    const { data: dealRow, error } = await supabase.from("deals").insert({
       name, value: Math.round(cilovaCena), stage: "Nový",
       customer_id: customerId ? Number(customerId) : null,
       assigned_to: currentUser?.name || "",
       type: type || null,
     }).select().single();
+    if (error) {
+      alert("Nabídku se nepodařilo převést na obchodní případ: " + error.message);
+      setConverting(false);
+      return;
+    }
     if (dealRow) {
-      await supabase.from("quotes").update({ deal_id: dealRow.id, status: "Odesláno" }).eq("id", activeId);
-      setQuotes(quotes.map(q => q.id === activeId ? { ...q, deal_id: dealRow.id, status: "Odesláno" } : q));
+      const { error: updErr } = await supabase.from("quotes").update({ deal_id: dealRow.id, status: "Odesláno" }).eq("id", activeId);
+      if (updErr) {
+        alert("Obchodní případ vznikl, ale nabídku se nepodařilo označit jako odeslanou: " + updErr.message);
+      } else {
+        setQuotes(quotes.map(q => q.id === activeId ? { ...q, deal_id: dealRow.id, status: "Odesláno" } : q));
+      }
       onConvertToDeal(dealRow, cust);
     }
+    setConverting(false);
   };
 
   // Nabídka pro zákazníka — jen sekce a celková cena, žádný vnitřní rozpis.
@@ -534,7 +578,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   // ─── EDITOR NABÍDKY ──────────────────────────────────────────────────────
   return (
     <div style={S.app}>
-      <button onClick={closeQuote} style={{ ...S.btnGhost, padding: "6px 14px", marginBottom: 14 }}>← Zpět na seznam</button>
+      <button onClick={() => { if (confirmDiscardChanges()) closeQuote(); }} style={{ ...S.btnGhost, padding: "6px 14px", marginBottom: 14 }}>← Zpět na seznam</button>
 
       <div style={{ ...S.card, display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
         <div><label style={S.label}>Název nabídky</label><input style={S.input} value={name} onChange={e => setName(e.target.value)} placeholder="např. FVE Novák 9kWp" /></div>
@@ -648,7 +692,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           <button style={S.btn("#34d399")} onClick={save} disabled={saving}>{saving ? "Ukládám…" : "💾 Uložit nabídku"}</button>
           <button style={S.btnGhost} onClick={printQuote}>🖨️ Nabídka pro zákazníka</button>
           <button style={S.btnGhost} onClick={printInterni}>📊 Interní přehled (MD)</button>
-          {activeId && <button style={S.btn("#F5C518")} onClick={convertToDeal}>➡️ Převést na obchodní případ</button>}
+          {activeId && <button style={S.btn("#F5C518")} disabled={converting} onClick={convertToDeal}>{converting ? "Převádím…" : "➡️ Převést na obchodní případ"}</button>}
         </div>
       </div>
     </div>
