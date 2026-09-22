@@ -8,8 +8,6 @@ import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
 import HlaseniModule from "./Hlaseni.jsx";
-import RychlaObrazovka, { PracePruh } from "./RychlaObrazovka.jsx";
-import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
@@ -184,12 +182,6 @@ const ROLES = {
 const today = new Date();
 const fmt = (d) => d.toISOString().slice(0, 10);
 const pad = (n) => String(n).padStart(2, "0");
-// Poslední den měsíce ("2026-09" → "2026-09-30"). Dřív se do dotazů natvrdo psalo "-31",
-// což databáze u měsíců s méně dny odmítla (např. 2026-09-31) a seznam zůstal prázdný.
-const monthEnd = (ym) => {
-  const [y, m] = ym.split("-").map(Number);
-  return ym + "-" + pad(new Date(y, m, 0).getDate());
-};
 // Čitelné zobrazení data pro uživatele — den v týdnu, den, měsíc slovem, rok (bez pomlček).
 // fmt()/ISO řetězec zůstává beze změny pro ukládání a query, tohle je jen pro DISPLAY.
 const DNY_ZKR = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
@@ -709,50 +701,6 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
 
 function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [tab, setTab] = useState("dashboard");
-  // Rychlá obrazovka (Odchod / Fotky) – otevírá ji klepnutí na notifikaci o odpracovaném čase (?rychle=…)
-  const [rychle, setRychle] = useState(false);
-  useEffect(() => {
-    const zpracuj = (v) => { if (v === "fotky") setTab("fotoupload"); else if (v) setRychle(true); };
-    const p = new URLSearchParams(window.location.search).get("rychle");
-    if (p) { zpracuj(p); window.history.replaceState(null, "", window.location.pathname); }
-    // Klepnutí na notifikaci: service worker uloží signál do cache (spolehlivější než zpráva/URL na iOS).
-    const signal = async () => {
-      try {
-        const c = await caches.open("proudos-signal");
-        const r = await c.match("/__rychle");
-        if (!r) return;
-        await c.delete("/__rychle");
-        const { v, t } = await r.json();
-        if (Date.now() - t < 120000) zpracuj(v);
-      } catch { /* cache není k dispozici */ }
-    };
-    // Signál může do cache dorazit o zlomek sekundy později než appka vyskočí do popředí (iOS) – chvíli se proto ptáme opakovaně.
-    let poll = null;
-    const spust = () => {
-      signal();
-      clearInterval(poll);
-      let n = 0;
-      poll = setInterval(() => { signal(); if (++n >= 15) clearInterval(poll); }, 1000);
-    };
-    spust();
-    const naPopredi = () => { if (document.visibilityState === "visible") spust(); };
-    document.addEventListener("visibilitychange", naPopredi);
-    window.addEventListener("focus", spust);
-    window.addEventListener("pageshow", spust);
-    const h = (e) => {
-      if (e.data?.type !== "otevri") return;
-      try { zpracuj(new URL(e.data.url, window.location.origin).searchParams.get("rychle") || "odchod"); } catch { /* neplatná adresa */ }
-      spust();
-    };
-    navigator.serviceWorker?.addEventListener("message", h);
-    return () => {
-      clearInterval(poll);
-      document.removeEventListener("visibilitychange", naPopredi);
-      window.removeEventListener("focus", spust);
-      window.removeEventListener("pageshow", spust);
-      navigator.serviceWorker?.removeEventListener("message", h);
-    };
-  }, []);
   const [sheetContractId, setSheetContractId] = useState(null);
   const [sheetContractName, setSheetContractName] = useState("");
 
@@ -1168,15 +1116,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           hamburgerem, takže bez tohohle by ho terénní pracovník musel nejdřív
           otevřít. Palcem dosažitelné tlačítko vpravo dole, viditelné jen na
           mobilu (viz .mobile-checkin-fab v <style> níže). */}
-      {rychle && (
-        <RychlaObrazovka
-          todayRecord={todayRecord}
-          jmeno={currentUser.name}
-          onZapsat={checkin}
-          onFotky={() => { setRychle(false); setTab("fotoupload"); }}
-          onClose={() => setRychle(false)}
-        />
-      )}
       {myEmpId && (
         <button className="mobile-checkin-fab" onClick={checkin}
           style={{
@@ -1368,9 +1307,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       <div className="main-content" style={S.main}>
 
         {/* ── DASHBOARD ── */}
-        {tab === "dashboard" && myEmpId && todayRecord && !todayRecord.checkout && (
-          <PracePruh todayRecord={todayRecord} onOtevrit={() => setRychle(true)} onFotky={() => setTab("fotoupload")} />
-        )}
         {tab === "dashboard" && (currentUser?.role === "employee" || currentUser?.role === "hr"
           ? <EmployeeDashboard
               currentUser={currentUser} attendance={attendance} tasks={tasks} setTasks={setTasks}
@@ -9021,7 +8957,7 @@ function Profile({ currentUser, attendance, employees, tasks }) {
   const [kmThisMonth, setKmThisMonth] = useState(0);
   useEffect(() => {
     if (!currentUser?.employeeId) return;
-    supabase.from("vehicle_log").select("km_total").eq("employee_id", currentUser.employeeId).gte("date", nowM + "-01").lte("date", monthEnd(nowM))
+    supabase.from("vehicle_log").select("km_total").eq("employee_id", currentUser.employeeId).gte("date", nowM + "-01").lte("date", nowM + "-31")
       .then(({ data }) => setKmThisMonth((data || []).reduce((s, r) => s + (Number(r.km_total) || 0), 0)));
   }, [currentUser?.employeeId, nowM]);
 
@@ -9055,8 +8991,6 @@ function Profile({ currentUser, attendance, employees, tasks }) {
           </div>
         </div>
       </div>
-
-      <PushKarta style={{ marginBottom: 20 }} />
 
       <div style={S.card}>
         <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 14 }}>✅ Moje otevřené úkoly ({myOpenTasks.length})</div>
@@ -9281,8 +9215,6 @@ function KnihaJizd({ currentUser, employees, contracts }) {
 
   const RATE_PER_KM = 6.5; // Kč/km (paušál)
 
-  const dopravaDescription = (log) => `Doprava – ${log.vehicle}${log.employee_name ? " (" + log.employee_name + ")" : ""}`;
-
   const addDopravaCost = async (log, kmTotal) => {
     if (!log.contract_id) return;
     await supabase.from("contract_cost_entries").insert({
@@ -9290,7 +9222,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
       cost_type: "doprava",
       is_extra: false,
       date: log.date,
-      description: dopravaDescription(log),
+      description: `Doprava – ${log.vehicle} (${log.employee_name})`,
       quantity: kmTotal,
       unit: "km",
       unit_price_cost: RATE_PER_KM,
@@ -9317,114 +9249,6 @@ function KnihaJizd({ currentUser, employees, contracts }) {
     setEditKmLog(null);
   };
 
-  // ── Úprava celého záznamu (řidič, zakázka, km, poznámka) ───────────────────
-  // editLog: { id, empId, contractId, kmStart, kmEnd, kmTotal, note } — hodnoty jako řetězce z formuláře
-  const [editLog, setEditLog] = useState(null);
-  const [savingEdit, setSavingEdit] = useState(false);
-  const editLogRow = editLog ? logs.find(l => l.id === editLog.id) : null;
-
-  const openEditLog = (l) => setEditLog({
-    id: l.id,
-    empId: l.employee_id != null ? String(l.employee_id) : "",
-    contractId: l.contract_id != null ? String(l.contract_id) : "",
-    kmStart: l.km_start != null ? String(l.km_start) : "",
-    kmEnd: l.km_end != null ? String(l.km_end) : "",
-    kmTotal: l.km_total != null ? String(l.km_total) : "",
-    note: l.note || "",
-  });
-
-  // Start / konec / ujeto se navzájem dopočítávají (stejně jako ve formuláři "Nová jízda").
-  const editKmChange = (field, v) => setEditLog(e => {
-    const n = { ...e, [field]: v };
-    if (field === "kmTotal") {
-      if (v !== "" && n.kmEnd !== "") n.kmStart = String(Math.max(0, Number(n.kmEnd) - Number(v)));
-    } else if (n.kmStart !== "" && n.kmEnd !== "") {
-      n.kmTotal = String(Math.max(0, Number(n.kmEnd) - Number(n.kmStart)));
-    }
-    return n;
-  });
-
-  // Náklad na dopravu u zakázky (contract_cost_entries) nemá vazbu na záznam knihy jízd,
-  // proto ho hledáme podle zakázky + data + popisu + počtu km. Při změně zakázky/km/řidiče
-  // ho přepíšeme, při odebrání zakázky smažeme; ručně upravený náklad (jiné km) necháme být.
-  const findDopravaEntry = async (log) => {
-    if (!log.contract_id || !log.km_total) return null;
-    const { data } = await supabase.from("contract_cost_entries").select("id")
-      .eq("contract_id", log.contract_id).eq("cost_type", "doprava").eq("is_extra", false)
-      .eq("date", log.date).eq("description", dopravaDescription(log)).eq("quantity", log.km_total)
-      .limit(1);
-    return data && data[0] ? data[0] : null;
-  };
-
-  const syncDopravaCost = async (oldLog, newLog) => {
-    const oldEntry = await findDopravaEntry(oldLog);
-    const wanted = newLog.contract_id && Number(newLog.km_total) > 0;
-    if (!wanted) {
-      if (oldEntry) {
-        const { error } = await supabase.from("contract_cost_entries").delete().eq("id", oldEntry.id);
-        if (error) throw error;
-      }
-      return;
-    }
-    const fields = {
-      contract_id: newLog.contract_id,
-      date: newLog.date,
-      description: dopravaDescription(newLog),
-      quantity: newLog.km_total,
-      employee_id: newLog.employee_id,
-    };
-    if (oldEntry) {
-      const { error } = await supabase.from("contract_cost_entries").update(fields).eq("id", oldEntry.id);
-      if (error) throw error;
-    } else {
-      const { error } = await supabase.from("contract_cost_entries").insert({
-        ...fields, cost_type: "doprava", is_extra: false, unit: "km",
-        unit_price_cost: RATE_PER_KM, unit_price_client: RATE_PER_KM,
-      });
-      if (error) throw error;
-    }
-  };
-
-  const saveEditLog = async () => {
-    if (!editLog || !editLogRow) return;
-    const old = editLogRow;
-    let kmStart = old.km_start, kmEnd = old.km_end, kmTotal = old.km_total;
-    if (canEditKm && (editLog.kmStart !== "" || editLog.kmEnd !== "")) {
-      if (editLog.kmStart === "" || editLog.kmEnd === "") { alert("Vyplňte počáteční i konečný stav km."); return; }
-      kmStart = Number(editLog.kmStart);
-      kmEnd = Number(editLog.kmEnd);
-      if (!(kmEnd > kmStart)) { alert("Konečný stav km musí být větší než počáteční."); return; }
-      kmTotal = kmEnd - kmStart;
-    }
-    const empId = isHR ? (editLog.empId ? Number(editLog.empId) : null) : old.employee_id;
-    const empName = isHR ? (empId ? (employees.find(x => x.id === empId)?.name || old.employee_name) : null) : old.employee_name;
-    const contractId = editLog.contractId ? Number(editLog.contractId) : null;
-    const contractName = contractId
-      ? (contractList.find(c => c.id === contractId)?.name || (contractId === old.contract_id ? old.contract_name : null))
-      : null;
-    const patch = {
-      employee_id: empId, employee_name: empName,
-      contract_id: contractId, contract_name: contractName,
-      km_start: kmStart, km_end: kmEnd, km_total: kmTotal,
-      note: editLog.note.trim() || null,
-    };
-    setSavingEdit(true);
-    const { data: saved, error } = await supabase.from("vehicle_log").update(patch).eq("id", old.id).select().single();
-    if (error || !saved) {
-      setSavingEdit(false);
-      alert("Uložení se nepodařilo: " + (error?.message || "neznámá chyba"));
-      return;
-    }
-    setLogs(prev => prev.map(l => l.id === saved.id ? saved : l));
-    try {
-      await syncDopravaCost(old, saved);
-    } catch (e) {
-      alert("Záznam je uložený, ale náklad na dopravu u zakázky se nepodařilo upravit: " + (e?.message || e));
-    }
-    setSavingEdit(false);
-    setEditLog(null);
-  };
-
   const loadLogs = async () => {
     setLoading(true);
     let q = supabase.from("vehicle_log").select("*").order("date", { ascending: false });
@@ -9433,7 +9257,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
       const year = (filterMonth || fmt(new Date())).slice(0, 4);
       q = q.gte("date", year + "-01-01").lte("date", year + "-12-31");
     } else if (filterMonth) {
-      q = q.gte("date", filterMonth + "-01").lte("date", monthEnd(filterMonth));
+      q = q.gte("date", filterMonth + "-01").lte("date", filterMonth + "-31");
     }
     const { data } = await q;
     setLogs(data || []);
@@ -9591,43 +9415,6 @@ function KnihaJizd({ currentUser, employees, contracts }) {
         </div>
       )}
 
-      {/* Modal: úprava záznamu */}
-      {editLog && editLogRow && (
-        <div style={S.modal}>
-          <div style={{ ...S.modalBox, width: 480 }}>
-            <ModalHeader title={`Upravit jízdu – ${fmtDateCz(editLogRow.date)}`} onClose={() => setEditLog(null)} />
-            <div style={{ fontSize: 13, color: "#64748b", marginBottom: 14 }}>Vozidlo: <strong style={{ color: "#1A1A1A" }}>{editLogRow.vehicle}</strong></div>
-            {isHR && (
-              <div>
-                <label style={S.label}>Řidič / zaměstnanec</label>
-                <select style={S.select} value={editLog.empId} onChange={e => setEditLog({ ...editLog, empId: e.target.value })}>
-                  <option value="">— bez řidiče —</option>
-                  {(employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div>
-              <label style={S.label}>Zakázka</label>
-              <select style={S.select} value={editLog.contractId} onChange={e => setEditLog({ ...editLog, contractId: e.target.value })}>
-                <option value="">— bez zakázky —</option>
-                {editLogRow.contract_id != null && !contractList.some(c => c.id === editLogRow.contract_id) && (
-                  <option value={editLogRow.contract_id}>{editLogRow.contract_name || ("#" + editLogRow.contract_id)}</option>
-                )}
-                {contractList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-              <div><label style={S.label}>Stav km – start</label><input type="number" style={S.input} disabled={!canEditKm} value={editLog.kmStart} onChange={e => editKmChange("kmStart", e.target.value)} /></div>
-              <div><label style={S.label}>Stav km – konec</label><input type="number" style={S.input} disabled={!canEditKm} value={editLog.kmEnd} onChange={e => editKmChange("kmEnd", e.target.value)} /></div>
-              <div><label style={S.label}>Ujeto km</label><input type="number" style={{ ...S.input, background: "#e0f2fe", color: "#0369a1", fontWeight: 700 }} disabled={!canEditKm} value={editLog.kmTotal} onChange={e => editKmChange("kmTotal", e.target.value)} /></div>
-            </div>
-            <div><label style={S.label}>Poznámka</label><input style={S.input} placeholder="Účel jízdy..." value={editLog.note} onChange={e => setEditLog({ ...editLog, note: e.target.value })} /></div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>Náklad na dopravu u zakázky (6,5 Kč/km) se při uložení automaticky založí nebo upraví.</div>
-            <ModalActions onSave={saveEditLog} onClose={() => setEditLog(null)} saveLabel={savingEdit ? "Ukládám…" : "Uložit změny"} />
-          </div>
-        </div>
-      )}
-
       {/* Tabulka */}
       <div style={S.card}>
         {loading ? (
@@ -9680,8 +9467,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
                   <td style={{ ...S.td, fontWeight: 700, color: "#0369a1" }}>{l.km_total != null ? l.km_total?.toLocaleString("cs-CZ") + " km" : <span style={{ color: "#F5821F" }}>probíhá</span>}</td>
                   <td style={S.td}>{l.contract_name ? <span style={S.tag("#0369a1")}>{l.contract_name}</span> : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                   <td style={{ ...S.td, color: "#475569" }}>{l.note || "—"}</td>
-                  <td style={{ ...S.td, whiteSpace: "nowrap" }}>
-                    {(canEditKm || isHR) && <button style={{ ...S.btn("#0369a1"), padding: "3px 8px", fontSize: 11, marginRight: 6 }} title="Upravit záznam" onClick={() => openEditLog(l)}>✎ Upravit</button>}
+                  <td style={S.td}>
                     {isHR && <button style={{ ...S.btn("#ef4444"), padding: "3px 8px", fontSize: 11 }} onClick={() => deleteLog(l.id)}>✕</button>}
                   </td>
                 </tr>

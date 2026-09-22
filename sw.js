@@ -8,12 +8,11 @@
 //  - Supabase a ostatní API — NIKDY necachujeme, ať se v appce neukážou stará data.
 //    (Zápisy bez signálu řeší fronta v offlineQueue.js.)
 
-const VERSION = "v5";
+const VERSION = "v2";
 const SHELL_CACHE = `proudos-shell-${VERSION}`;
 const ASSET_CACHE = `proudos-assets-${VERSION}`;
 const CDN_CACHE = `proudos-cdn-${VERSION}`;
-const SIGNAL_CACHE = "proudos-signal"; // předává appce „otevři rychlou obrazovku“ po klepnutí na notifikaci
-const KEEP = [SHELL_CACHE, ASSET_CACHE, CDN_CACHE, SIGNAL_CACHE];
+const KEEP = [SHELL_CACHE, ASSET_CACHE, CDN_CACHE];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -94,53 +93,26 @@ self.addEventListener("push", (event) => {
   } catch {
     data = { title: "ProudOS", body: event.data ? event.data.text() : "" };
   }
-  const opts = {
-    body: data.body || "",
-    icon: "/icons/icon-192.png",
-    badge: "/icons/icon-96.png",
-    tag: data.tag || undefined,
-    data: { url: data.url || "/" },
-  };
-  // Notifikace o odpracovaném čase: stejný tag = přepíše se předchozí, aktualizace jsou tiché,
-  // na Androidu/desktopu zůstává na očích a má tlačítka (iOS tlačítka v notifikaci nepodporuje).
-  if (data.tag) opts.renotify = !data.silent;
-  if (data.silent) opts.silent = true;
-  if (data.trvale) opts.requireInteraction = true;
-  if (Array.isArray(data.actions) && data.actions.length) opts.actions = data.actions.slice(0, 2);
-  event.waitUntil(self.registration.showNotification(data.title || "ProudOS", opts));
+  event.waitUntil(
+    self.registration.showNotification(data.title || "ProudOS", {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-96.png",
+      tag: data.tag || undefined,
+      data: { url: data.url || "/" },
+    })
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  let url = (event.notification.data && event.notification.data.url) || "/";
-  if (event.action === "odchod") url = "/?rychle=odchod";
-  else if (event.action === "fotky") url = "/?rychle=fotky";
-  let akce = null;
-  try { akce = new URL(url, self.location.origin).searchParams.get("rychle"); } catch { /* bez akce */ }
-
-  event.waitUntil((async () => {
-    // Spolehlivý signál pro appku: iOS u openWindow často zahodí ?rychle=… a zprávu do
-    // uspané appky nemusí doručit, proto ho uložíme do cache, odkud si ho appka sama vyzvedne.
-    if (akce) {
-      try {
-        const cache = await caches.open(SIGNAL_CACHE);
-        await cache.put("/__rychle", new Response(JSON.stringify({ v: akce, t: Date.now() }), { headers: { "content-type": "application/json" } }));
-      } catch { /* bez signálu se aspoň otevře appka */ }
-    }
-    const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    for (const c of list) {
-      if ("focus" in c) {
-        c.postMessage({ type: "otevri", url });
-        return c.focus();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ("focus" in c) return c.focus();
       }
-    }
-    return self.clients.openWindow(url);
-  })());
-});
-
-// Diagnostika z modulu Hlášení: appka se zeptá, jaká verze service workeru běží.
-self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "verze" && event.source) {
-    event.source.postMessage({ type: "verze", verze: VERSION });
-  }
+      return self.clients.openWindow(url);
+    })
+  );
 });
