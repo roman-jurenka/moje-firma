@@ -4,6 +4,8 @@ import Contracts from "./Contracts.jsx";
 import ZakazkaSheet from "./ZakazkaSheet.jsx";
 import FotoUpload from "./FotoUpload.jsx";
 import Pricing from "./Pricing.jsx";
+import Prubeh from "./Prubeh.jsx";
+import KopieDochazky from "./KopieDochazky.jsx";
 import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
@@ -174,8 +176,8 @@ const AUTH_USERS = [
 ];
 
 const ROLES = {
-  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","warehouse","hr","projects","costs","finance","reports","ai","attendance","calendar","knjiga","onedrive","permissions","hlaseni","podpisy","profile"] },
-  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","contracts","tasks","invoices","projects","costs","finance","reports","ai","attendance","calendar","knjiga","podpisy","profile"] },
+  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","prubeh","contracts","tasks","invoices","warehouse","hr","projects","costs","finance","reports","ai","attendance","calendar","knjiga","onedrive","permissions","hlaseni","podpisy","profile"] },
+  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","prubeh","contracts","tasks","invoices","projects","costs","finance","reports","ai","attendance","calendar","knjiga","podpisy","profile"] },
   hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
   employee: { label: "Zaměstnanec",   color: "#0369a1", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
 };
@@ -413,6 +415,7 @@ const NAV = [
   { id: "pricing", label: "Nacenění", icon: "ti-calculator", group: "CRM" },
   { id: "deals", label: "Obchodní příp.", icon: "ti-briefcase", group: "CRM" },
   // { id: "communication", label: "Komunikace", icon: "ti-message-circle", group: "CRM" }, // odebráno — data zachována pro detail zákazníka
+  { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "CRM" },
   { id: "contracts", label: "Zakázky", icon: "ti-file-invoice", group: "CRM" },
   { id: "sheets", label: "Listy zakázek", icon: "ti-clipboard-list", group: "CRM" },
   { id: "fotoupload", label: "Nahrát fotky", icon: "ti-camera", group: "Osobní" },
@@ -789,6 +792,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [attendance, setAttendance] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [contractInitialDeal, setContractInitialDeal] = useState(null);
+  const [contractInitialId, setContractInitialId] = useState(null); // otevřít konkrétní zakázku (z Průběhu zakázek)
   const [costEntries, setCostEntries] = useState([]);
   const [deliveryNotes, setDeliveryNotes] = useState([]); // dodací listy (materiál s vlastní marží) — pro KPI zisku
   const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
@@ -801,6 +805,20 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("proudos-theme") || "light");
   useEffect(() => { localStorage.setItem("proudos-theme", theme); }, [theme]);
+  // Obnovit celou aplikaci: stáhne nejnovější verzi (service worker) a znovu
+  // načte všechna data. Neuložené změny na obrazovce by se ztratily → potvrzení.
+  const [obnovuji, setObnovuji] = useState(false);
+  const obnovitAplikaci = async () => {
+    if (!window.confirm("Obnovit celou aplikaci?\n\nNačte se nejnovější verze a čerstvá data. Neuložené změny na obrazovce se ztratí.")) return;
+    setObnovuji(true);
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration?.();
+      await reg?.update?.();
+    } catch (e) {
+      console.warn("Kontrola nové verze selhala:", e);
+    }
+    window.location.reload();
+  };
 
   // Věci, co čekají na pozornost (faktury po splatnosti, sklad pod minimem,
   // žádosti o úpravu docházky ke schválení) — zobrazují se v "Oznámení"
@@ -979,7 +997,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const dbAdd = async (table, data) => { const { data: row } = await supabase.from(table).insert(data).select().single(); return row; };
   const dbUpdate = async (table, id, data) => { await supabase.from(table).update(data).eq("id", id); };
   const dbDelete = async (table, id) => { await supabase.from(table).delete().eq("id", id); };
-  const allowedTabs = currentUser.navOverride || ROLES[currentUser.role]?.nav || [];
+  // Nová záložka Průběh zakázek: kdo má povolené Zakázky, vidí i ji (i s
+  // vlastním nastavením záložek v Oprávnění, kde by jinak chyběla).
+  const zakladTabs = currentUser.navOverride || ROLES[currentUser.role]?.nav || [];
+  const allowedTabs = zakladTabs.includes("contracts") && !zakladTabs.includes("prubeh") ? [...zakladTabs, "prubeh"] : zakladTabs;
   const visibleNav = NAV.filter(n => allowedTabs.includes(n.id));
   const groups = [...new Set(visibleNav.map(n => n.group))];
 
@@ -1080,6 +1101,19 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         <i className={`ti ${theme === "light" ? "ti-moon" : "ti-sun"}`} aria-hidden="true"></i>
       </button>
       <button
+        className="pwa-top-btn" onClick={obnovitAplikaci} disabled={obnovuji}
+        title="Obnovit celou aplikaci (nejnovější verze a data)" aria-label="Obnovit aplikaci"
+        style={{
+          position: "fixed", top: 14, right: 108, zIndex: 500,
+          width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
+          background: "#fff", color: "#0E3B5E", cursor: obnovuji ? "wait" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
+          boxShadow: "0 2px 8px #0002",
+        }}
+      >
+        <i className="ti ti-refresh" aria-hidden="true" style={obnovuji ? { animation: "app-spin 0.8s linear infinite" } : undefined}></i>
+      </button>
+      <button
         className="pwa-top-btn" onClick={() => setGSearchOpen(o => !o)}
         title="Hledat" aria-label="Hledat napříč appkou"
         style={{
@@ -1097,7 +1131,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           className="pwa-top-btn" onClick={() => retryOfflineQueueNow()}
           title={!isOnline ? "Appka je offline — zápisy se ukládají do zařízení a odešlou se samy po obnovení signálu" : "Klikni pro okamžité odeslání čekajících záznamů"}
           style={{
-            position: "fixed", top: 14, right: 106, zIndex: 500,
+            position: "fixed", top: 14, right: 154, zIndex: 500,
             display: "flex", alignItems: "center", gap: 6,
             height: 38, borderRadius: 19, border: "1px solid #f59e0b",
             background: "#fff7ed", color: "#b45309", cursor: "pointer",
@@ -1201,6 +1235,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
            (viewport-fit=cover), proto vše pevně umístěné odsazujeme o bezpečné okraje. Mimo iPhone jsou
            env() hodnoty 0, takže se nic nemění. */
         .pwa-top-btn { top: calc(14px + env(safe-area-inset-top)) !important; }
+        @keyframes app-spin { to { transform: rotate(360deg); } }
         .pwa-top-left { top: calc(10px + env(safe-area-inset-top)) !important; }
         .safe-top-strip { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: #0E3B5E; z-index: 600; pointer-events: none; }
         /* Spodní navigační lišta jako v nativní appce (jen mobil) */
@@ -1578,11 +1613,20 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           </div>
         )}
 
+        {/* ── PRŮBĚH ZAKÁZEK (Obchod → Back office → Realizace) ── */}
+        {tab === "prubeh" && <Prubeh
+          customers={customers} employees={employees} currentUser={currentUser}
+          onOtevritZakazku={(id) => { setContractInitialId(id); setTab("contracts"); }}
+          onOtevritNaceneni={() => setTab("pricing")}
+        />}
+
         {/* ── ZAKÁZKY ── */}
         {tab === "contracts" && <Contracts
           customers={customers} employees={employees}
           currentUser={currentUser}
           initialDeal={contractInitialDeal}
+          initialContractId={contractInitialId}
+          onClearInitialContract={() => setContractInitialId(null)}
         />}
         {tab === "sheets" && <ZakazkaSheet
           customers={customers}
@@ -7415,6 +7459,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [myRequests, setMyRequests] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [requestModal, setRequestModal] = useState(null);
+  const [kopieRec, setKopieRec] = useState(null); // záznam docházky, který se kopíruje dalším zaměstnancům
   const [monthSignModal, setMonthSignModal] = useState(null);
 
   useEffect(() => {
@@ -8370,6 +8415,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                   setRecordMaterials(prev => ({ ...prev, [rec.id]: data || [] }));
                                 }
                               }}>✏️ detail</button>
+                            {isHR && <button style={{ ...S.btnGhost, padding: "3px 8px", fontSize: 11 }} title="Zkopírovat tuto docházku dalším zaměstnancům (kdo zapomněl zapsat)" onClick={() => setKopieRec(rec)}>📋 kopírovat</button>}
                             {isHR && <button style={{ ...S.btn("#ef4444"), padding: "3px 8px", fontSize: 11 }} onClick={() => deleteRecord(rec.id)}>✕</button>}
                           </div>
                         </td>
@@ -8761,6 +8807,15 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       )}
 
       {/* MODAL: ŽÁDOST O ZÁPIS/ÚPRAVU PO UZAMČENÍ MĚSÍCE */}
+      {kopieRec && (
+        <KopieDochazky
+          zdroj={kopieRec} employees={employees} contracts={contractOpts} attendance={attendance}
+          spocitejHodiny={calcEffectiveHours} fmtHodiny={fmtHours} createCostEntry={createCostEntryFromAttendance}
+          mesicZamceny={(d) => currentUser.role !== "admin" && isMonthLocked(d)}
+          onHotovo={(nove, upravene) => setAttendance(prev => [...prev.map(a => upravene.find(u => u.id === a.id) || a), ...nove])}
+          onClose={() => setKopieRec(null)}
+        />
+      )}
       {requestModal && (
         <div style={{ position: "fixed", inset: 0, background: "#0009", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
           <div style={{ background: "#0E3B5E", borderRadius: 16, padding: "28px 32px", minWidth: 360, maxWidth: 460, width: "100%" }}>

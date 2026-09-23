@@ -344,7 +344,7 @@ function ContractKalendarWidget({ attendance, employees }) {
   );
 }
 
-export default function Contracts({ customers, employees, currentUser, initialDeal }) {
+export default function Contracts({ customers, employees, currentUser, initialDeal, initialContractId, onClearInitialContract }) {
   const [contracts, setContracts] = useState([]);
   const [entries, setEntries] = useState([]);       // contract_cost_entries
   const [billingSummaries, setBillingSummaries] = useState([]);
@@ -410,6 +410,12 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       setDayPlan(dp.data || []);
       setProjects(proj.data || []);
       setLoading(false);
+      // Přicházíme z Průběhu zakázek — rovnou najít a rozbalit tu zakázku.
+      if (initialContractId) {
+        const hledana = (c.data || []).find(row => row.id === initialContractId);
+        if (hledana) { setFilterStatus("vše"); setSearchQ(hledana.code || hledana.name || ""); setExpandedId(hledana.id); }
+        if (onClearInitialContract) onClearInitialContract();
+      }
       // Pokud přicházíme z Dealu — rovnou otevřeme modal pro novou zakázku,
       // ale jen když z něj ještě žádná zakázka nevznikla (jeden deal = max.
       // jedna zakázka; v DB je na to navíc unikátní index jako pojistka).
