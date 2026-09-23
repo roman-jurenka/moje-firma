@@ -286,8 +286,13 @@ export default function NabidkaNahled({
       .then(({ data }) => { if (!zruseno) setKontaktOz(data || null); });
     return () => { zruseno = true; };
   }, [oz.employeeId]);
-  const ozEmail = (kontaktOz?.email || oz.email || FIRMA_EMAIL).trim();
-  const ozTelefon = (kontaktOz?.phone || oz.telefon || FIRMA_TELEFON).trim();
+  const ozEmailVychozi = (kontaktOz?.email || oz.email || FIRMA_EMAIL).trim();
+  const ozTelefonVychozi = (kontaktOz?.phone || oz.telefon || FIRMA_TELEFON).trim();
+  // U konkrétní nabídky jde kontakt přepsat (např. nabídka za kolegu);
+  // prázdné pole = kontakt z karty zaměstnance, případně firemní.
+  const ozJmeno = String(u.ozJmeno ?? "").trim() || oz.jmeno || "";
+  const ozEmail = String(u.ozEmail ?? "").trim() || ozEmailVychozi;
+  const ozTelefon = String(u.ozTelefon ?? "").trim() || ozTelefonVychozi;
   // hodnota pro tuto nabídku: vlastní úprava, jinak výchozí z nastavení
   const hodnota = (k) => {
     const v = u[k];
@@ -466,6 +471,18 @@ export default function NabidkaNahled({
             </div>
           ))}
         </div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4, margin: "12px 0 6px" }}>
+          Kontakt obchodníka v této nabídce <span style={{ textTransform: "none", fontWeight: 400 }}>(prázdné = z karty zaměstnance{oz.employeeId ? "" : ", jinak firemní"})</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 10 }}>
+          {[["ozJmeno", "Jméno obchodníka", oz.jmeno || "jméno"], ["ozEmail", "E-mail", ozEmailVychozi], ["ozTelefon", "Telefon", ozTelefonVychozi]].map(([k, label, ph]) => (
+            <div key={k}>
+              <label style={S.label}>{label}</label>
+              <input style={inp} type={k === "ozEmail" ? "email" : k === "ozTelefon" ? "tel" : "text"} value={u[k] ?? ""} placeholder={ph}
+                onChange={(e) => nastav({ [k]: e.target.value === "" ? undefined : e.target.value })} />
+            </div>
+          ))}
+        </div>
 
         <div style={{ marginTop: 10 }}>
           <button style={{ ...S.btnGhost, padding: "4px 12px", fontSize: 12 }} onClick={() => { setNastaveniForm(nastaveni); setNastaveniOtevreno((v) => !v); }}>
@@ -520,7 +537,7 @@ export default function NabidkaNahled({
           <Upravitelne className="nb-p" hodnota={u.uvod} vychozi={texty.uvod} zaklad={u.uvod_zaklad} onZmena={upravText("uvod", texty.uvod)} />
           <Upravitelne className="nb-poznamka" hodnota={u.poznamka} vychozi={poznamkaVychozi || ""} placeholder="＋ Klikni a doplň vlastní poznámku (např. zjištěná závada, stav soustavy…) — prázdné se netiskne"
             onZmena={(v) => nastav({ poznamka: v || undefined })} />
-          <div className="nb-oz-jmeno">{oz.jmeno}</div>
+          <div className="nb-oz-jmeno">{ozJmeno}</div>
           <div className="nb-oz-kontakt">{[ozEmail, ozTelefon].filter(Boolean).join("   ·   ")}</div>
 
           <div className="nb-cenabox">
@@ -688,7 +705,7 @@ export default function NabidkaNahled({
               </div>
               <div>
                 <div className="nb-podpis-cara"></div>
-                Za Jurenka Elektro{oz.jmeno ? ` — ${oz.jmeno}` : ""}
+                Za Jurenka Elektro{ozJmeno ? ` — ${ozJmeno}` : ""}
               </div>
             </div>
           </div>
