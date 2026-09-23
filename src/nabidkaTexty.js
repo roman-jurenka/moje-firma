@@ -10,16 +10,19 @@ export const DRUHY_SERVISU = [
   {
     id: "revize",
     label: "Revize",
+    prinos: "aby byla bezpečná a měla platnou revizi",
     popis: "Revize elektrické instalace fotovoltaické elektrárny — kontrola, měření a vystavení revizní zprávy.",
   },
   {
     id: "diagnostika",
     label: "Diagnostika",
+    prinos: "abychom našli příčinu problému a vše zase fungovalo, jak má",
     popis: "Kontrola funkce elektrárny, vyčtení chyb a provozních dat ze střídače, měření panelových řetězců a zjištění příčiny případné závady.",
   },
   {
     id: "cisteni",
     label: "Čištění FVE panelů",
+    prinos: "aby panely znovu vyráběly naplno",
     popis: "Šetrné čištění povrchu fotovoltaických panelů od prachu a usazených nečistot, vizuální kontrola panelů.",
   },
 ];
@@ -70,7 +73,26 @@ export const maSeznamNoveFve = (cfg) => (cfg?.zahrnutoItems || []).some((it) => 
 
 const fmtCislo = (n) => (Math.round((Number(n) || 0) * 10) / 10).toString().replace(".", ",");
 
-const FIRMA = "Jsme elektrikářská firma Jurenka Elektro — elektroinstalace i fotovoltaiku děláme sami, bez zprostředkování subdodavatelů.";
+// Tři důvody důvěry — v nabídce jako pruh pod cenou (úvod mluví o zákazníkovi).
+export const DUVERA = [
+  { nadpis: "Zkušenost", text: "Elektroinstalacím a fotovoltaice se věnujeme dlouhodobě — víme, na co si dát pozor." },
+  { nadpis: "Individuální přístup", text: "Řešení i nabídku připravujeme na míru Vaší elektrárně a Vašim potřebám." },
+  { nadpis: "Vlastní tým", text: "Vše provedou naši technici, bez subdodavatelů — víte, s kým jednáte." },
+];
+
+// Změna připojení u distributora u rozšíření — někdy je potřeba a je v ceně,
+// někdy ne. Volí se u každé nabídky v kalkulaci a propíše se do "co je / není v ceně".
+export const ZMENA_PRIPOJENI = {
+  vcene: { label: "je v ceně", text: "Vyřízení změny připojení u distributora" },
+  mimo: { label: "není v ceně", text: "Vyřízení změny připojení u distributora (pokud ji distributor vyžaduje)" },
+};
+
+// Úkony, u kterých se nic nedodává — u nabídky jen s nimi nemá smysl
+// uvádět záruku na dodaný materiál (bod 10). Vlastní úkony (např. výměna
+// dílu) se berou jako úkony s materiálem.
+const BEZ_MATERIALU = ["revize", "diagnostika", "cisteni", "doprava"];
+export const ukonyMajiMaterial = (ukony) =>
+  (ukony || []).some((u) => (u.nazev || "").trim() && !BEZ_MATERIALU.includes(u.typ));
 
 /**
  * @param {object} p
@@ -80,9 +102,8 @@ const FIRMA = "Jsme elektrikářská firma Jurenka Elektro — elektroinstalace 
  *        (u SRV stávající soustava, u FVR to, co se přidává)
  * @param {number} [p.vykonKwp]  výkon panelů v řádcích (u FVR přidávaný)
  * @param {number} [p.bateriKwh] kapacita baterií v řádcích (u FVR přidávaná)
- * @param {string} [p.cenaText]  hotová cena k zobrazení (jen FVR), např. "18 500 Kč"
  */
-export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, bateriKwh = 0, cenaText }) {
+export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, bateriKwh = 0 }) {
   if (jobType === "FVR") {
     const plus = [];
     if (vykonKwp > 0) plus.push(`+${fmtCislo(vykonKwp)} kWp`);
@@ -92,15 +113,19 @@ export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, ba
     if (vykonKwp > 0) specRadky.push({ label: "Přidaný výkon FVE", hodnota: `+${fmtCislo(vykonKwp)} kWp`, ks: "" });
     specRadky.push(...radky);
     if (radky.length === 0) specRadky.push({ label: "Přidávané komponenty", hodnota: "[doplnit]", ks: "" });
-    specRadky.push({ label: "Cena rozšíření", hodnota: cenaText, ks: "" });
+    // cena rozšíření je v cenovém boxu pod úvodem, ne ve specifikaci
 
     return {
       nadpis: "CENOVÁ NABÍDKA",
       podnadpis: ["Rozšíření fotovoltaické elektrárny", ...plus].join(" · "),
-      uvod: `na základě Vaší poptávky Vám zasíláme nabídku na rozšíření Vaší stávající fotovoltaické elektrárny. ${FIRMA}`,
+      uvod: `na základě Vaší poptávky Vám posíláme nabídku na rozšíření Vaší fotovoltaické elektrárny${
+        vykonKwp > 0 && bateriKwh > 0 ? " — víc vlastní vyrobené energie a víc místa na její uložení na večer a noc"
+          : vykonKwp > 0 ? " — aby Vaše elektrárna vyrobila víc vlastní energie"
+            : bateriKwh > 0 ? " — abyste víc vlastní vyrobené energie uložili a využili i večer a v noci"
+              : ""}.`,
       maUkony: false,
       ukony: [],
-      zpracovani: "Nabídku jsme připravili podle Vašeho požadavku a údajů o Vaší stávající elektrárně. Najdete v ní přehled toho, co se bude přidávat, cenu rozšíření a podmínky provedení. Pokud Vám nabídka vyhovuje, stačí ji potvrdit — domluvíme termín a rozšíření provedeme. S případnými dotazy se na nás kdykoliv obraťte.",
+      zpracovani: "Nabídku jsme připravili na míru podle Vaší poptávky a údajů o Vaší stávající elektrárně. Níže najdete, co se bude přidávat, a podmínky provedení.",
       nadpisSpecifikace: "Co se bude přidávat",
       specRadky,
       nadpisPostup: "Jak probíhá rozšíření s Jurenka Elektro",
@@ -124,6 +149,11 @@ export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, ba
   if (vykonKwp > 0) podnadpis.push(`výkon ${fmtCislo(vykonKwp)} kWp`);
   if (bateriKwh > 0) podnadpis.push(`baterie ${fmtCislo(bateriKwh)} kWh`);
 
+  // Úvod začíná přínosem pro zákazníka (podle zvolených úkonů), ne firmou.
+  const prinosy = DRUHY_SERVISU.filter((d) => platne.some((u) => u.typ === d.id)).map((d) => d.prinos);
+  const prinosText = prinosy.length
+    ? prinosy.length === 1 ? prinosy[0] : prinosy.slice(0, -1).join(", ") + " a " + prinosy[prinosy.length - 1]
+    : "aby spolehlivě vyráběla a byla v bezpečném stavu";
   const uvodUkony = nazvy.length ? ` Konkrétně jde o: ${nazvy.map((n) => n.charAt(0).toLowerCase() + n.slice(1)).join(", ")}.` : "";
 
   const specRadky = [];
@@ -135,10 +165,10 @@ export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, ba
   return {
     nadpis: "SERVISNÍ NABÍDKA",
     podnadpis: podnadpis.join(" · "),
-    uvod: `na základě Vaší poptávky Vám zasíláme nabídku servisu Vaší fotovoltaické elektrárny.${uvodUkony} ${FIRMA}`,
+    uvod: `na základě Vaší poptávky Vám posíláme nabídku servisu Vaší fotovoltaické elektrárny — ${prinosText}.${uvodUkony}`,
     maUkony: true,
     ukony: ukonyDoc,
-    zpracovani: "Nabídku jsme připravili podle Vašeho požadavku a údajů o Vaší fotovoltaické elektrárně. Najdete v ní přesný rozsah prací, popis Vaší elektrárny, cenu servisu a podmínky provedení. Pokud Vám nabídka vyhovuje, stačí ji potvrdit — domluvíme termín a servis provedeme. S případnými dotazy se na nás kdykoliv obraťte.",
+    zpracovani: "Nabídku jsme připravili na míru podle Vaší poptávky a údajů o Vaší elektrárně. Níže najdete přesný rozsah prací, cenu a podmínky provedení.",
     nadpisSpecifikace: "Specifikace servisované fotovoltaické elektrárny",
     specRadky,
     nadpisPostup: "Jak probíhá servis s Jurenka Elektro",

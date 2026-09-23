@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase.js";
-import { cenaUkonu, ukonBezCeny } from "./nabidkaTexty.js";
+import { cenaUkonu, ukonBezCeny, ukonyMajiMaterial, DUVERA } from "./nabidkaTexty.js";
 
 // ─── Náhled nabídky pro zákazníka (servis SRV a rozšíření FVR) ────────────
 // Nabídka se skládá přímo v appce: texty jsou předvyplněné podle typu
@@ -80,6 +80,23 @@ const CSS = `
 .nb-krok img { width: 14mm; height: 14mm; display: block; margin: 0 auto 1.5mm; }
 .nb-krok-cislo { color: #E08A1E; font-weight: 700; font-size: 8pt; }
 .nb-sipka { width: 7mm; margin-top: 5.5mm; }
+.nb-cenabox { display: flex; justify-content: space-between; align-items: center; gap: 6mm; background: #F4F8FC; border: 1.5px solid #16324F; border-left: 5px solid #E08A1E; border-radius: 2mm; padding: 3.5mm 5mm; margin: 1mm 0 4mm; break-inside: avoid; page-break-inside: avoid; }
+.nb-cenabox-l { font-size: 9pt; color: #5B6472; line-height: 1.5; }
+.nb-cenabox-l b { color: #16324F; font-size: 10.5pt; }
+.nb-cenabox-r { text-align: right; }
+.nb-cenabox-cena { font-size: 20pt; font-weight: 700; color: #16324F; line-height: 1.1; white-space: nowrap; }
+.nb-cenabox-dph { font-size: 8.5pt; color: #5B6472; white-space: nowrap; }
+.nb-krok-ted { display: inline-block; margin-top: 1mm; font-size: 7pt; font-weight: 700; color: #fff; background: #E08A1E; border-radius: 2mm; padding: 0.3mm 1.8mm; }
+.nb-krok-dalsi { display: inline-block; margin-top: 1mm; font-size: 7pt; font-weight: 700; color: #16324F; border: 1px solid #16324F; border-radius: 2mm; padding: 0.2mm 1.8mm; }
+.nb-vyzva { background: #FFF7EC; border: 1.5px solid #E08A1E; border-radius: 2mm; padding: 4mm 5mm; margin-top: 5mm; break-inside: avoid; page-break-inside: avoid; }
+.nb-vyzva-h { font-size: 12pt; font-weight: 700; color: #16324F; margin-bottom: 1.5mm; }
+.nb-podpis { display: flex; gap: 8mm; margin-top: 5mm; font-size: 9pt; color: #5B6472; }
+.nb-podpis > div { flex: 1; }
+.nb-podpis-cara { border-bottom: 1px solid #1A1A1A; height: 9mm; margin-bottom: 1mm; }
+.nb-duvera { display: flex; gap: 4mm; margin: 0 0 4mm; break-inside: avoid; page-break-inside: avoid; }
+.nb-duvera > div { flex: 1; border-top: 2px solid #E08A1E; padding-top: 1.8mm; font-size: 8.5pt; color: #5B6472; line-height: 1.4; }
+.nb-duvera b { display: block; font-size: 10pt; color: #16324F; margin-bottom: 0.5mm; }
+.nb-duvera b::before { content: "✓ "; color: #E08A1E; }
 .nb-chybi { color: #b91c1c; background: #fee2e2; border-radius: 3px; padding: 0 3px; font-weight: 700; font-style: normal; }
 [contenteditable="true"] { outline: 1px dashed transparent; border-radius: 3px; cursor: text; transition: outline-color .15s; }
 .nb-edit [contenteditable="true"]:hover { outline-color: #93c5fd; }
@@ -136,6 +153,7 @@ const Chybi = ({ co }) => <span className="nb-chybi">doplnit: {co}</span>;
 export default function NabidkaNahled({
   texty, ukony, onUkonyChange, cenaSDph, cenaBezDph, dphPct, zahrnuto, nezahrnuto, seznamNoveFve,
   upravy, onUpravy, customerName, adresa, cisloNabidky, vystaveno, oz, isAdmin, onSave, S,
+  chybiPripojeni,
 }) {
   const [nastaveni, setNastaveni] = useState(PRAZDNE_NASTAVENI);
   const [nastaveniNacteno, setNastaveniNacteno] = useState(false);
@@ -189,6 +207,15 @@ export default function NabidkaNahled({
   const zalohaKdy = String(hodnota("zalohaKdy") ?? "").trim();
   const termin = String(hodnota("termin") ?? "").trim();
   const zarukaMaterial = String(hodnota("zarukaMaterial") ?? "").trim();
+  // u servisu jen s revizí / diagnostikou / čištěním se nic nedodává
+  const maMaterial = texty.maUkony ? ukonyMajiMaterial(ukony) : true;
+  // výzva k přijetí nabídky (bod 6) — předvyplněná z kontaktu OZ a čísla nabídky
+  const vyzvaVychozi = [
+    "Nabídku přijmete jednoduše:",
+    [oz.email && `odpovězte na e-mail ${oz.email}`, oz.telefon && `zavolejte na ${oz.telefon}`].filter(Boolean).join(" nebo "),
+    cisloNabidky ? `a uveďte číslo nabídky ${cisloNabidky}.` : "a uveďte číslo nabídky.",
+    "Obratem se Vám ozveme a domluvíme termín. Nabídku můžete také podepsat níže a poslat nám ji zpět.",
+  ].filter(Boolean).join(" ");
   const zarukaPrace = String(hodnota("zarukaPrace") ?? "").trim();
   const zalohaKc = zalohaPct != null ? Math.round((cenaSDph * zalohaPct) / 100) : 0;
   const doplatekKc = cenaSDph - zalohaKc;
@@ -200,11 +227,12 @@ export default function NabidkaNahled({
     zalohaPct == null && "výše zálohy",
     zalohaPct > 0 && !zalohaKdy && "kdy se platí záloha",
     !termin && "termín provedení",
-    !zarukaMaterial && "záruka na materiál",
+    maMaterial && !zarukaMaterial && "záruka na materiál",
     !zarukaPrace && "záruka na práci",
     texty.maUkony && !(ukony || []).some((x) => (x.nazev || "").trim()) && "úkony servisu",
     texty.maUkony && (ukony || []).some(ukonBezCeny) && "cena u některého úkonu",
     seznamNoveFve && "„Co je v ceně“ má položky pro novou instalaci FVE (oprav v kalkulaci)",
+    chybiPripojeni && "jestli je v ceně změna připojení u distributora (vyber v kalkulaci)",
   ].filter(Boolean);
 
   const tisk = () => {
@@ -325,6 +353,21 @@ export default function NabidkaNahled({
           <div className="nb-oz-jmeno">{oz.jmeno}</div>
           <div className="nb-oz-kontakt">{[oz.email, oz.telefon].filter(Boolean).join("   ·   ")}</div>
 
+          <div className="nb-cenabox">
+            <div className="nb-cenabox-l">
+              <b>{texty.maUkony ? "Cena servisu" : "Cena rozšíření"}</b><br />
+              {platiDo ? <>Nabídka platí do {fmtDatum(platiDo)}</> : <>Platnost: {platnost || <Chybi co="platnost" />}</>}
+              {zalohaPct > 0 && <><br />Záloha {zalohaPct} % ({fmtKc(zalohaKc)}), zbytek po dokončení</>}
+            </div>
+            <div className="nb-cenabox-r">
+              <div className="nb-cenabox-cena">{fmtKc(cenaSDph)}</div>
+              <div className="nb-cenabox-dph">vč. DPH {dphPct} % · bez DPH {fmtKc(cenaBezDph)}</div>
+            </div>
+          </div>
+          <div className="nb-duvera">
+            {DUVERA.map((d) => <div key={d.nadpis}><b>{d.nadpis}</b>{d.text}</div>)}
+          </div>
+
           {texty.maUkony && (
             <div className="nb-sekce">
               <div className="nb-h">Co pro Vás provedeme</div>
@@ -416,7 +459,7 @@ export default function NabidkaNahled({
             <div className="nb-h">Záruční podmínky</div>
             <table className="nb-tab">
               <tbody>
-                <tr><td className="nb-l">Dodaný materiál a komponenty</td><td className="nb-v">{zarukaMaterial || <Chybi co="záruka" />}</td></tr>
+                {maMaterial && <tr><td className="nb-l">Dodaný materiál a komponenty</td><td className="nb-v">{zarukaMaterial || <Chybi co="záruka" />}</td></tr>}
                 <tr><td className="nb-l">Provedená práce</td><td className="nb-v">{zarukaPrace || <Chybi co="záruka" />}</td></tr>
               </tbody>
             </table>
@@ -431,10 +474,27 @@ export default function NabidkaNahled({
                     <img src={`/nabidka/krok${n}.png`} alt="" />
                     <div className="nb-krok-cislo">KROK {n}</div>
                     <div>{texty[`krok${n}`]}</div>
+                    {n === 3 && <div className="nb-krok-ted">JSTE ZDE</div>}
+                    {n === 4 && <div className="nb-krok-dalsi">DALŠÍ KROK</div>}
                   </div>
                   {n < 5 && <img className="nb-sipka" src="/nabidka/sipka.png" alt="→" />}
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="nb-vyzva">
+            <div className="nb-vyzva-h">Jak nabídku přijmout</div>
+            <Upravitelne className="nb-p" hodnota={u.vyzva} vychozi={vyzvaVychozi} onZmena={(v) => nastav({ vyzva: v })} />
+            <div className="nb-podpis">
+              <div>
+                <div className="nb-podpis-cara"></div>
+                Nabídku přijímám — datum a podpis zákazníka
+              </div>
+              <div>
+                <div className="nb-podpis-cara"></div>
+                Za Jurenka Elektro{oz.jmeno ? ` — ${oz.jmeno}` : ""}
+              </div>
             </div>
           </div>
         </div>

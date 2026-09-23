@@ -3,7 +3,7 @@ import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { PRAZDNA_FVE, applyPreset, POLOZKY_NOVE_INSTALACE, zapnutePolozkyNoveInstalace } from "./fvePresets.js";
-import { DRUHY_SERVISU, UKON_DOPRAVA, textyNabidky, ukonyZCfg, cenaUkonu, soucetUkonu, ukonBezCeny, seznamyPodleTypu, maSeznamNoveFve } from "./nabidkaTexty.js";
+import { DRUHY_SERVISU, UKON_DOPRAVA, ZMENA_PRIPOJENI, textyNabidky, ukonyZCfg, cenaUkonu, soucetUkonu, ukonBezCeny, seznamyPodleTypu, maSeznamNoveFve } from "./nabidkaTexty.js";
 import NabidkaNahled from "./NabidkaNahled.jsx";
 
 // ─── FVE kalkulačka — přesně podle Excelu "Kalkulačka sestav" ──────────────
@@ -332,8 +332,18 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     radky: radkyNabidky,
     vykonKwp: vykonFve,
     bateriKwh,
-    cenaText: fmtNum(cenaNabidkySDph) + " Kč",
   }) : null;
+  // "Co je / není v ceně" pro náhled: zaškrtnuté položky + u rozšíření změna
+  // připojení u distributora podle volby (někdy v ceně, někdy ne).
+  const zmenaPripojeni = ZMENA_PRIPOJENI[cfg.zmenaPripojeni];
+  const zahrnutoNahled = [
+    ...(cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
+    ...(jobType === "FVR" && cfg.zmenaPripojeni === "vcene" ? [zmenaPripojeni.text] : []),
+  ];
+  const nezahrnutoNahled = [
+    ...(cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
+    ...(jobType === "FVR" && cfg.zmenaPripojeni === "mimo" ? [zmenaPripojeni.text] : []),
+  ];
   // Nabídka z dřívějška může mít zapnuté položky nové instalace FVE nebo
   // její seznam "co je v ceně" — upozornit a nabídnout opravu jedním klikem.
   const polozkyNoveFve = maNahled && jobType === "FVR" ? zapnutePolozkyNoveInstalace(cfg) : [];
@@ -402,6 +412,15 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       {jobType === "FVR" && (
         <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7c2d12" }}>
           <b>Rozšíření FVE:</b> do materiálu níže zadávej jen to, co se <b>přidává</b> (např. 8 panelů, 1 baterie). V nabídce se z toho udělá seznam „Co se bude přidávat“ včetně přidaného výkonu.
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <b>Vyřízení změny připojení u distributora:</b>
+            <select style={{ ...S.select, marginBottom: 0, width: "auto", borderColor: cfg.zmenaPripojeni ? undefined : "#f87171" }}
+              value={cfg.zmenaPripojeni || ""} onChange={(e) => set({ zmenaPripojeni: e.target.value || undefined })}>
+              <option value="">— vyber —</option>
+              {Object.entries(ZMENA_PRIPOJENI).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <span style={{ color: "#9a3412" }}>propíše se do „Co je / není v ceně“</span>
+          </div>
         </div>
       )}
 
@@ -631,8 +650,9 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           cenaBezDph={cenaNabidkyBezDphFinal}
           dphPct={Math.round(dph * 100)}
           seznamNoveFve={seznamNoveFve}
-          zahrnuto={(cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text)}
-          nezahrnuto={(cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text)}
+          zahrnuto={zahrnutoNahled}
+          nezahrnuto={nezahrnutoNahled}
+          chybiPripojeni={jobType === "FVR" && !zmenaPripojeni}
           upravy={cfg.nahled}
           onUpravy={(nahled) => set({ nahled })}
           customerName={customerName}
