@@ -4795,7 +4795,7 @@ const lastOf = (full) => { const parts = (full || "").trim().split(/\s+/).filter
 const joinName = (first, last) => [first, last].map(s => (s || "").trim()).filter(Boolean).join(" ");
 
 function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries, attendance, tasks, setTasks }) {
-  const [newE, setNewE] = useState({ name: "", position: "", department: "", email: "", salary: "", status: "Aktivní", start: "" });
+  const [newE, setNewE] = useState({ name: "", position: "", department: "", email: "", phone: "", salary: "", status: "Aktivní", start: "" });
   const [detailEmp, setDetailEmp] = useState(null);
   const [editField, setEditField] = useState({});
   const [uploading, setUploading] = useState(false);
@@ -4823,11 +4823,11 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
     if (!newE.name) return;
     const { data: row } = await supabase.from("employees").insert({
       name: newE.name, position: newE.position, department: newE.department,
-      email: newE.email, salary: Number(newE.salary),
+      email: newE.email, phone: newE.phone || null, salary: Number(newE.salary),
       status: newE.status, start_date: newE.start,
     }).select().single();
     if (row) setEmployees([...employees, { ...row, start: row.start_date }]);
-    setNewE({ name: "", position: "", department: "", email: "", salary: "", status: "Aktivní", start: "" });
+    setNewE({ name: "", position: "", department: "", email: "", phone: "", salary: "", status: "Aktivní", start: "" });
     closeModal();
   };
 
@@ -4892,7 +4892,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
     setDetailEmp(emp);
     setEditField({
       name: emp.name, position: emp.position, department: emp.department,
-      email: emp.email, salary: emp.salary || "", status: emp.status,
+      email: emp.email, phone: emp.phone || "", salary: emp.salary || "", status: emp.status,
       start: emp.start || emp.start_date || "",
       bio: emp.bio || "", specialization: emp.specialization || "",
       notes_warning: emp.notes_warning || "",
@@ -4908,7 +4908,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
     if (!detailEmp) return;
     const upd = {
       name: editField.name, position: editField.position, department: editField.department,
-      email: editField.email, salary: Number(editField.salary), status: editField.status,
+      email: editField.email, phone: (editField.phone || "").trim() || null, salary: Number(editField.salary), status: editField.status,
       start_date: editField.start, bio: editField.bio,
       specialization: editField.specialization, notes_warning: editField.notes_warning,
       hourly_rate_cost: Number(editField.hourly_rate_cost) || 0,
@@ -5120,7 +5120,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                 </div>
                 {[
                   ["Pozice", "position"], ["Oddělení", "department"],
-                  ["Email", "email"], ["Plat (Kč)", "salary"],
+                  ["Email", "email"], ["Telefon (do nabídek)", "phone"], ["Plat (Kč)", "salary"],
                   ["Sazba náklady (Kč/h)", "hourly_rate_cost"], ["Sazba fakturace (Kč/h)", "hourly_rate_client"],
                 ].map(([label, key]) => (
                   <div key={key}>
@@ -5288,7 +5288,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
             <div><label style={S.label}>Jméno</label><input style={S.input} value={firstOf(newE.name)} onChange={e => setNewE({ ...newE, name: joinName(e.target.value, lastOf(newE.name)) })} /></div>
             <div><label style={S.label}>Příjmení</label><input style={S.input} value={lastOf(newE.name)} onChange={e => setNewE({ ...newE, name: joinName(firstOf(newE.name), e.target.value) })} /></div>
           </div>
-          {[["Pozice", "position"], ["Oddělení", "department"], ["Email", "email"], ["Plat (Kč)", "salary"]].map(([l, k]) => (
+          {[["Pozice", "position"], ["Oddělení", "department"], ["Email", "email"], ["Telefon", "phone"], ["Plat (Kč)", "salary"]].map(([l, k]) => (
             <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={newE[k]} onChange={e => setNewE({ ...newE, [k]: e.target.value })} /></div>
           ))}
           <div><label style={S.label}>Datum nástupu</label><input type="date" style={S.input} value={newE.start || ""} onChange={e => setNewE({ ...newE, start: e.target.value })} /></div>

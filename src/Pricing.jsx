@@ -408,6 +408,46 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     fve: d?.fve || null,
   });
 
+  // Evidence odeslaných nabídek (kopie HTML) pro otevřenou nabídku.
+  const [odeslane, setOdeslane] = useState([]);
+  const nactiOdeslane = async (quoteId) => {
+    if (!quoteId) { setOdeslane([]); return; }
+    const { data: rows } = await supabase.from("nabidky_odeslane")
+      .select("id, cislo, cena, odeslal, created_at").eq("quote_id", quoteId).order("created_at", { ascending: true });
+    setOdeslane(rows || []);
+  };
+  useEffect(() => {
+    let zruseno = false;
+    if (!activeId) return undefined;
+    supabase.from("nabidky_odeslane").select("id, cislo, cena, odeslal, created_at").eq("quote_id", activeId)
+      .order("created_at", { ascending: true })
+      .then(({ data: rows }) => { if (!zruseno) setOdeslane(rows || []); });
+    return () => { zruseno = true; };
+  }, [activeId]);
+
+  // Nabídka odeslána zákazníkovi: uloží přesnou kopii a přepne stav na Odesláno
+  // (Schváleno/Zamítnuto se nepřepisuje). Jen pro uloženou nabídku bez
+  // neuložených změn, ať kopie odpovídá tomu, co je v databázi.
+  const oznacitOdeslano = async ({ html, cena }) => {
+    if (!activeId) { alert("Nabídku nejdřív ulož."); return; }
+    if (hasUnsavedChanges()) { alert("Máš neuložené změny — nejdřív nabídku ulož (💾 Uložit), ať odeslaná kopie odpovídá uložené nabídce."); return; }
+    const cislo = quotes.find((q) => q.id === activeId)?.cislo || null;
+    const { error } = await supabase.from("nabidky_odeslane").insert({
+      quote_id: activeId, cislo, cena: Math.round(Number(cena) || 0), html, odeslal: currentUser?.name || null,
+    });
+    if (error) { alert("Kopii nabídky se nepodařilo uložit: " + error.message); return; }
+    if (status === "Návrh") {
+      const { error: e2 } = await supabase.from("quotes").update({ status: "Odesláno", updated_at: new Date().toISOString() }).eq("id", activeId);
+      if (e2) { alert("Kopie je uložená, ale stav se nepodařilo změnit: " + e2.message); }
+      else {
+        setStatus("Odesláno");
+        setQuotes(quotes.map((q) => (q.id === activeId ? { ...q, status: "Odesláno" } : q)));
+        savedSnapshotRef.current = JSON.stringify({ name, customerId, status: "Odesláno", type, data });
+      }
+    }
+    await nactiOdeslane(activeId);
+  };
+
   const hasUnsavedChanges = () => {
     if (savedSnapshotRef.current === null) return false;
     return savedSnapshotRef.current !== JSON.stringify({ name, customerId, status, type, data });
@@ -836,6 +876,8 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           customerAddress={customers.find((c) => c.id === Number(customerId))?.address}
           cisloNabidky={quotes.find((q) => q.id === activeId)?.cislo}
           vystaveno={quotes.find((q) => q.id === activeId)?.vystaveno}
+          odeslane={activeId ? odeslane : []}
+          onOdeslano={oznacitOdeslano}
           jobType={type}
           onSave={save}
           cilovaCena={data.zakaznik.cilovaCena}

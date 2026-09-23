@@ -11,6 +11,9 @@ import { cenaUkonu, ukonBezCeny, ukonyMajiMaterial, DUVERA } from "./nabidkaText
 // vytiskne přesně to, co je vidět, včetně záhlaví s logem a zápatí.
 
 const NASTAVENI_KEY = "nabidky_vychozi";
+const FIRMA_EMAIL = "info@jurenkaelektro.cz";
+const FIRMA_TELEFON = "+420 702 172 622";
+const fmtCas = (iso) => new Date(iso).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 // Výchozí hodnoty firmy — schválně prázdné, vyplní se jednou v nastavení.
 const PRAZDNE_NASTAVENI = {
@@ -102,6 +105,8 @@ const CSS = `
 .nb-edit [contenteditable="true"]:hover { outline-color: #93c5fd; }
 .nb-edit [contenteditable="true"]:focus { outline: 2px solid #3b82f6; background: #f8fbff; }
 [contenteditable="true"]:empty::before { content: attr(data-placeholder); color: #94a3b8; font-style: italic; }
+.nb-zastarale { display: block; margin-top: 1mm; font-size: 8.5pt; font-style: normal; color: #b45309; background: #fef3c7; border-radius: 3px; padding: 1mm 2mm; }
+.nb-zastarale button { margin-left: 6px; font-size: 8.5pt; color: #0369a1; background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; }
 .nb-reset { margin-left: 6px; font-size: 8pt; color: #0369a1; background: none; border: none; cursor: pointer; padding: 0; font-style: normal; font-weight: 400; }
 `;
 
@@ -112,7 +117,7 @@ const CSS_TISK = `
 @page { size: A4; margin: 0; }
 html, body { margin: 0; padding: 0; background: #fff; }
 .nb-page { box-shadow: none; width: 210mm; }
-.nb-no-print, .nb-reset { display: none !important; }
+.nb-no-print, .nb-reset, .nb-zastarale { display: none !important; }
 [contenteditable] { outline: none !important; background: none !important; }
 [contenteditable]:empty::before { content: ""; }
 .nb-print-hlavicka { position: fixed; top: 0; left: 0; width: 210mm; }
@@ -127,8 +132,11 @@ html, body { margin: 0; padding: 0; background: #fff; }
 
 // Text, který jde přepsat kliknutím přímo v náhledu. Prázdná hodnota =
 // použije se předvyplněný text; "↺ původní" vrátí předvyplnění.
-function Upravitelne({ hodnota, vychozi, onZmena, className, placeholder }) {
+function Upravitelne({ hodnota, vychozi, zaklad, onZmena, className, placeholder }) {
   const text = hodnota ?? vychozi ?? "";
+  // ručně upravený text vznikl z jiného předvyplnění (např. se mezitím
+  // změnily úkony nebo přidávané komponenty) → může už nesedět
+  const zastarale = hodnota !== undefined && zaklad !== undefined && vychozi !== undefined && zaklad !== vychozi;
   return (
     <div className={className}>
       <span
@@ -144,6 +152,12 @@ function Upravitelne({ hodnota, vychozi, onZmena, className, placeholder }) {
       {hodnota !== undefined && hodnota !== vychozi && vychozi !== undefined && (
         <button className="nb-reset" title="Vrátit předvyplněný text" onClick={() => onZmena(undefined)}>↺ původní</button>
       )}
+      {zastarale && (
+        <span className="nb-zastarale">
+          ⚠️ Od tvé úpravy se změnil obsah nabídky (úkony, komponenty…) — zkontroluj, jestli text pořád sedí.
+          <button onClick={() => onZmena(undefined)}>Použít nový předvyplněný text</button>
+        </span>
+      )}
     </div>
   );
 }
@@ -153,6 +167,7 @@ const Chybi = ({ co }) => <span className="nb-chybi">doplnit: {co}</span>;
 export default function NabidkaNahled({
   texty, ukony, onUkonyChange, cenaSDph, cenaBezDph, dphPct, zahrnuto, nezahrnuto, seznamNoveFve,
   upravy, onUpravy, customerName, adresa, cisloNabidky, vystaveno, oz, isAdmin, onSave, S,
+  odeslane, onOdeslano,
   chybiPripojeni,
 }) {
   const [nastaveni, setNastaveni] = useState(PRAZDNE_NASTAVENI);
@@ -186,6 +201,20 @@ export default function NabidkaNahled({
 
   const u = upravy || {};
   const nastav = (patch) => onUpravy({ ...u, ...patch });
+  // úprava textu si uloží i předvyplnění, ze kterého vznikla (klíč_zaklad)
+  const upravText = (k, vychozi) => (v) => nastav({ [k]: v, [`${k}_zaklad`]: v === undefined ? undefined : vychozi });
+
+  // Kontakt obchodníka: e-mail a telefon z jeho zaměstnanecké karty, jinak firemní.
+  const [kontaktOz, setKontaktOz] = useState(null);
+  useEffect(() => {
+    if (!oz.employeeId) return undefined;
+    let zruseno = false;
+    supabase.from("employees").select("email, phone").eq("id", oz.employeeId).maybeSingle()
+      .then(({ data }) => { if (!zruseno) setKontaktOz(data || null); });
+    return () => { zruseno = true; };
+  }, [oz.employeeId]);
+  const ozEmail = (kontaktOz?.email || oz.email || FIRMA_EMAIL).trim();
+  const ozTelefon = (kontaktOz?.phone || oz.telefon || FIRMA_TELEFON).trim();
   // hodnota pro tuto nabídku: vlastní úprava, jinak výchozí z nastavení
   const hodnota = (k) => {
     const v = u[k];
@@ -212,7 +241,7 @@ export default function NabidkaNahled({
   // výzva k přijetí nabídky (bod 6) — předvyplněná z kontaktu OZ a čísla nabídky
   const vyzvaVychozi = [
     "Nabídku přijmete jednoduše:",
-    [oz.email && `odpovězte na e-mail ${oz.email}`, oz.telefon && `zavolejte na ${oz.telefon}`].filter(Boolean).join(" nebo "),
+    [ozEmail && `odpovězte na e-mail ${ozEmail}`, ozTelefon && `zavolejte na ${ozTelefon}`].filter(Boolean).join(" nebo "),
     cisloNabidky ? `a uveďte číslo nabídky ${cisloNabidky}.` : "a uveďte číslo nabídky.",
     "Obratem se Vám ozveme a domluvíme termín. Nabídku můžete také podepsat níže a poslat nám ji zpět.",
   ].filter(Boolean).join(" ");
@@ -235,10 +264,10 @@ export default function NabidkaNahled({
     chybiPripojeni && "jestli je v ceně změna připojení u distributora (vyber v kalkulaci)",
   ].filter(Boolean);
 
-  const tisk = () => {
-    if (chybejici.length && !window.confirm(`V nabídce chybí: ${chybejici.join(", ")}.\n\nVytisknout i tak?`)) return;
+  // Celá nabídka jako samostatné HTML (stejné pro tisk i pro uloženou kopii).
+  const sestavHtml = (sTiskem) => {
     const el = stranka.current;
-    if (!el) return;
+    if (!el) return null;
     const obsah = el.querySelector(".nb-obsah").innerHTML;
     const paticka = el.querySelector(".nb-paticka").outerHTML;
     const origin = window.location.origin;
@@ -248,12 +277,48 @@ export default function NabidkaNahled({
       <div class="nb-print-paticka nb-page">${paticka}</div>
       <table class="nb-layout nb-page"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot>
       <tbody><tr><td><div class="nb-obsah">${obsah}</div></td></tr></tbody></table>
-      <script>window.onload=function(){setTimeout(function(){window.print();},150);}</script></body></html>`;
+      ${sTiskem ? "<script>window.onload=function(){setTimeout(function(){window.print();},150);}</script>" : ""}</body></html>`;
+    return html;
+  };
+
+  const otevritOkno = (html) => {
+    const w = window.open("", "_blank");
+    if (!w) { alert("Prohlížeč zablokoval nové okno — povol prosím vyskakovací okna pro tuto stránku."); return; }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
+  const tisk = () => {
+    if (chybejici.length && !window.confirm(`V nabídce chybí: ${chybejici.join(", ")}.\n\nVytisknout i tak?`)) return;
+    const html = sestavHtml(true);
+    if (!html) return;
     const w = window.open("", "_blank");
     if (!w) { alert("Prohlížeč zablokoval nové okno pro tisk — povol prosím vyskakovací okna pro tuto stránku."); return; }
     w.document.open();
     w.document.write(html);
     w.document.close();
+  };
+
+  // Evidence odeslání: kopie přesně toho, co zákazník dostal, + stav Odesláno.
+  const [odesilam, setOdesilam] = useState(false);
+  const oznacitOdeslano = async () => {
+    if (!cisloNabidky) { alert("Nabídka ještě nemá číslo — nejdřív ji ulož (💾 Uložit)."); return; }
+    if (chybejici.length && !window.confirm(`V nabídce chybí: ${chybejici.join(", ")}.\n\nOznačit jako odeslanou i tak?`)) return;
+    if (!window.confirm(`Označit nabídku ${cisloNabidky} jako odeslanou zákazníkovi?\n\nUloží se přesná kopie toho, co teď vidíš, a stav nabídky se přepne na „Odesláno“.`)) return;
+    const html = sestavHtml(false);
+    if (!html) return;
+    setOdesilam(true);
+    try {
+      await onOdeslano({ html, cena: cenaSDph });
+    } finally {
+      setOdesilam(false);
+    }
+  };
+  const zobrazitOdeslanou = async (id) => {
+    const { data, error } = await supabase.from("nabidky_odeslane").select("html").eq("id", id).maybeSingle();
+    if (error || !data) { alert("Kopii se nepodařilo načíst: " + (error?.message || "nenalezeno")); return; }
+    otevritOkno(data.html);
   };
 
   const upravUkon = (id, patch) => onUkonyChange((ukony || []).map((x) => (x.id === id ? { ...x, ...patch } : x)));
@@ -273,8 +338,27 @@ export default function NabidkaNahled({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {onSave && <button style={S.btn("#34d399")} onClick={onSave}>💾 Uložit</button>}
             <button style={S.btn("#0369a1")} onClick={tisk}>🖨️ Tisk / PDF</button>
+            {onOdeslano && (
+              <button style={S.btn("#7c3aed")} disabled={odesilam} onClick={oznacitOdeslano}
+                title="Uloží přesnou kopii nabídky tak, jak ji zákazník dostal, a přepne stav na Odesláno">
+                {odesilam ? "Ukládám…" : "📨 Označit jako odeslanou"}
+              </button>
+            )}
           </div>
         </div>
+        {(odeslane || []).length > 0 && (
+          <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#4c1d95", marginBottom: 12 }}>
+            <b>Odesláno zákazníkovi:</b>{" "}
+            {odeslane.map((o, i) => (
+              <span key={o.id}>
+                {i > 0 && " · "}
+                {fmtCas(o.created_at)}{o.odeslal ? ` (${o.odeslal})` : ""}{o.cena != null ? `, ${fmtKc(o.cena)}` : ""}{" "}
+                <button style={{ background: "none", border: "none", color: "#6d28d9", textDecoration: "underline", cursor: "pointer", padding: 0, fontSize: 12 }}
+                  onClick={() => zobrazitOdeslanou(o.id)}>zobrazit kopii</button>
+              </span>
+            ))}
+          </div>
+        )}
         <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>
           Texty v náhledu upravíš kliknutím přímo do nich. Ceny a počty se berou z kalkulace výše. Pro PDF zvol v tisku „Uložit jako PDF“.
         </div>
@@ -333,7 +417,7 @@ export default function NabidkaNahled({
         <div className="nb-hlavicka"><img src="/nabidka/hlavicka.png" alt="Jurenka Elektro" /></div>
         <div className="nb-obsah">
           <div className="nb-nadpis">{texty.nadpis}</div>
-          <Upravitelne className="nb-podnadpis" hodnota={u.podnadpis} vychozi={texty.podnadpis} onZmena={(v) => nastav({ podnadpis: v })} />
+          <Upravitelne className="nb-podnadpis" hodnota={u.podnadpis} vychozi={texty.podnadpis} zaklad={u.podnadpis_zaklad} onZmena={upravText("podnadpis", texty.podnadpis)} />
           <div className="nb-meta">
             <div>
               Nabídka č. <b>{cisloNabidky || <Chybi co="číslo se přidělí při uložení" />}</b>
@@ -347,11 +431,11 @@ export default function NabidkaNahled({
           </div>
 
           <p className="nb-p">Dobrý den,</p>
-          <Upravitelne className="nb-p" hodnota={u.uvod} vychozi={texty.uvod} onZmena={(v) => nastav({ uvod: v })} />
+          <Upravitelne className="nb-p" hodnota={u.uvod} vychozi={texty.uvod} zaklad={u.uvod_zaklad} onZmena={upravText("uvod", texty.uvod)} />
           <Upravitelne className="nb-poznamka" hodnota={u.poznamka} vychozi="" placeholder="＋ Klikni a doplň vlastní poznámku (např. zjištěná závada, stav soustavy…) — prázdné se netiskne"
             onZmena={(v) => nastav({ poznamka: v || undefined })} />
           <div className="nb-oz-jmeno">{oz.jmeno}</div>
-          <div className="nb-oz-kontakt">{[oz.email, oz.telefon].filter(Boolean).join("   ·   ")}</div>
+          <div className="nb-oz-kontakt">{[ozEmail, ozTelefon].filter(Boolean).join("   ·   ")}</div>
 
           <div className="nb-cenabox">
             <div className="nb-cenabox-l">
@@ -395,7 +479,7 @@ export default function NabidkaNahled({
 
           <div className="nb-sekce">
             <div className="nb-h">Zpracování nabídky</div>
-            <Upravitelne className="nb-p" hodnota={u.zpracovani} vychozi={texty.zpracovani} onZmena={(v) => nastav({ zpracovani: v })} />
+            <Upravitelne className="nb-p" hodnota={u.zpracovani} vychozi={texty.zpracovani} zaklad={u.zpracovani_zaklad} onZmena={upravText("zpracovani", texty.zpracovani)} />
           </div>
 
           <div className="nb-sekce">
@@ -485,7 +569,7 @@ export default function NabidkaNahled({
 
           <div className="nb-vyzva">
             <div className="nb-vyzva-h">Jak nabídku přijmout</div>
-            <Upravitelne className="nb-p" hodnota={u.vyzva} vychozi={vyzvaVychozi} onZmena={(v) => nastav({ vyzva: v })} />
+            <Upravitelne className="nb-p" hodnota={u.vyzva} vychozi={vyzvaVychozi} zaklad={u.vyzva_zaklad} onZmena={upravText("vyzva", vyzvaVychozi)} />
             <div className="nb-podpis">
               <div>
                 <div className="nb-podpis-cara"></div>
