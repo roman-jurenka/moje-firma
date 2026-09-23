@@ -40,12 +40,23 @@ const CSS = `
 .pr-row.pr-klik:hover { filter: brightness(0.985); }
 .pr-panel { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 24px); overflow: auto; padding-bottom: 8px; }
 .pr-kpi { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.pr-grid.pr-jedna { grid-template-columns: minmax(0, 1fr); }
+.pr-siroky { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.pr-siroky > .pr-cela { grid-column: 1 / -1; }
+.pr-siroky > .pr-cela > div { height: 100%; box-sizing: border-box; }
+.pr-sloupec { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.pr-prubeh-radek { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px !important; }
 @media (max-width: 1150px) { .pr-grid { grid-template-columns: 1fr; } .pr-panel { position: static; max-height: none; } }
+@media (max-width: 1150px) {
+  .pr-siroky, .pr-prubeh-radek { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pr-siroky > .pr-sloupec:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+}
 @media (max-width: 760px) {
   .pr-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40px; }
   .pr-row > .pr-sek { display: none; }
   .pr-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pr-wrap { padding: 16px; }
+  .pr-siroky, .pr-prubeh-radek, .pr-siroky > .pr-sloupec:last-child { grid-template-columns: minmax(0, 1fr); }
 }
 `;
 
@@ -549,7 +560,7 @@ export default function Prubeh({
         <div style={{ ...karta, padding: "12px 18px" }}><div style={{ fontSize: 13, color: "#475569", fontWeight: 600 }}>Otevřené zakázky (hodnota)</div><div style={{ fontSize: 24, fontWeight: 800 }}>{fmtKc(kpi.hodnota)}</div></div>
       </div>
 
-      <div className="pr-grid">
+      <div className={jednaId ? "pr-grid pr-jedna" : "pr-grid"}>
         <div style={{ ...karta, padding: 0, overflow: "hidden" }}>
           <div style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #e2e8f0", alignItems: "center", flexWrap: "wrap" }}>
             <button type="button" style={btn("#0f172a")} onClick={() => { setVyberHledat(""); setVyberOkno(true); }} title="Vybrat jednu zakázku a zobrazit jen její průběh">🎯 Jedna zakázka</button>
@@ -620,7 +631,7 @@ export default function Prubeh({
           {nacteno && viditelne.length > 0 && !z && <div style={{ padding: "12px 16px", fontSize: 13, color: "#64748b" }}>Klikni na zakázku: ukáže se její další krok, úkoly fáze, poznámky a brána.</div>}
         </div>
 
-        {z ? vykresliPanel() : (
+        {z ? vykresliPanel(!!jednaId) : (
           <div style={{ ...karta, color: "#64748b", fontSize: 14 }}>Vyber zakázku v seznamu.</div>
         )}
       </div>
@@ -790,7 +801,7 @@ export default function Prubeh({
   }
 
   // ── Pravý panel vybrané zakázky ──
-  function vykresliPanel() {
+  function vykresliPanel(siroky = false) {
     const f = fazeById[z.faze];
     const s = sekceById[f.sekce];
     const auto = autoZ(z);
@@ -834,9 +845,7 @@ export default function Prubeh({
       preskoceno: { background: "#f8fafc", color: "#94a3b8", border: "1px solid #f1f5f9", textDecoration: "line-through" },
     };
 
-    return (
-      <div className="pr-panel" id="pr-panel">
-        <div style={{ ...karta, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 4 }}>
+    const kHlavicka = <div style={{ ...karta, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{z.nazev}</div>
             {z.typ && <span style={{ background: tb[0], color: tb[1], borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>{z.typ}</span>}
@@ -859,10 +868,10 @@ export default function Prubeh({
               </select>
             </div>
           )}
-        </div>
-
-        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
+        </div>;
+    const kPrubeh = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontWeight: 800, fontSize: 16 }}>Celý průběh zakázky</div>
+          <div className={siroky ? "pr-prubeh-radek" : undefined} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {prubehSekci.map(({ s: ss, faze: fz }) => (
             <div key={ss.id} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: ss.tmava, letterSpacing: 0.4 }}>{ss.nazev.toUpperCase()}</div>
@@ -881,9 +890,9 @@ export default function Prubeh({
               </div>
             </div>
           ))}
-        </div>
-
-        {otevrena && (
+          </div>
+        </div>;
+    const kDalsiKrok = otevrena && (
           <div style={{ background: "#0f172a", color: "#fff", borderRadius: 16, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1, color: "#fcd34d" }}>DALŠÍ KROK</div>
             {editKrok ? (
@@ -914,9 +923,8 @@ export default function Prubeh({
               </>
             )}
           </div>
-        )}
-
-        {otevrena && (
+        );
+    const kUkolyFaze = otevrena && (
           <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <span style={{ fontWeight: 800, fontSize: 16 }}>Úkoly fáze {nazevFaze(f, z.typ)}</span>
@@ -959,9 +967,8 @@ export default function Prubeh({
             {!hotovaFaze && !rozhodnuti && <div style={{ fontSize: 12, color: "#64748b" }}>Dál to pustí, až budou všechny úkoly fáze hotové.</div>}
             {dalsi && dalsi.sekce !== f.sekce && f.sekce === "ob" && !z.contract_id && <div style={{ fontSize: 12, color: "#64748b" }}>Předáním do back office se založí zakázka (kód, náklady, docházka).</div>}
           </div>
-        )}
-
-        {otevrena && (
+        );
+    const kProc = otevrena && (
           <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <span style={{ fontWeight: 800, fontSize: 16 }}>Proč to stojí · poznámky</span>
@@ -987,9 +994,8 @@ export default function Prubeh({
               <span style={{ fontSize: 12, color: "#64748b" }}>uloží se s datem a jménem</span>
             </div>
           </div>
-        )}
-
-        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
+        );
+    const kMisto = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <span style={{ fontWeight: 800, fontSize: 16 }}>Zákazník a místo realizace</span>
             {!editMisto && <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => setEditMisto({ adresa: z.misto_adresa || zakZ?.address || "", kontakt: z.misto_kontakt || "", telefon: z.misto_telefon || "" })}>Upravit</button>}
@@ -1021,9 +1027,8 @@ export default function Prubeh({
               {(z.misto_kontakt || z.misto_telefon) && <div>👷 Na místě: {z.misto_kontakt || ""}{z.misto_telefon && <> · <a href={`tel:${z.misto_telefon}`} style={{ color: "#0369a1" }}>{z.misto_telefon}</a></>}</div>}
             </div>
           )}
-        </div>
-
-        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
+        </div>;
+    const kUkoly = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <span style={{ fontWeight: 800, fontSize: 16 }}>Úkoly k zakázce {ukolyZ.length > 0 && <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>({ukolyZ.filter((t) => !t.done).length} otevřených)</span>}</span>
             {!novyUkol && <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => setNovyUkol({ title: "", due: "", kdo: ja })}>+ Úkol</button>}
@@ -1056,9 +1061,8 @@ export default function Prubeh({
               </label>
             );
           })}
-        </div>
-
-        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
+        </div>;
+    const kZpravy = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
           <div style={{ fontWeight: 800, fontSize: 16 }}>Zprávy k zakázce</div>
           <div style={{ display: "flex", gap: 8 }}>
             <input aria-label="Nová zpráva" placeholder="Napiš zprávu kolegům…" style={inp} value={zprava} onChange={(e) => setZprava(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") poslatZpravu(); }} />
@@ -1072,9 +1076,8 @@ export default function Prubeh({
             </div>
           ))}
           {zpravyZ.length > 5 && <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13, alignSelf: "flex-start" }} onClick={() => setVsechnyZpravy((v) => !v)}>{vsechnyZpravy ? "Jen posledních 5" : `Zobrazit všech ${zpravyZ.length}`}</button>}
-        </div>
-
-        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8 }}>
+        </div>;
+    const kHistorie = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ fontWeight: 800, fontSize: 16 }}>Historie a poznámky</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 240, overflow: "auto" }}>
             {pzZ.length === 0 && <div style={{ fontSize: 13, color: "#94a3b8" }}>Zatím bez poznámek.</div>}
@@ -1089,9 +1092,8 @@ export default function Prubeh({
               </div>
             ))}
           </div>
-        </div>
-
-        {otevrena && brana.length > 0 && (
+        </div>;
+    const kBrana = otevrena && brana.length > 0 && (
           <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 9 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>
@@ -1101,9 +1103,8 @@ export default function Prubeh({
               <div key={b.text} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>{b.hotovo ? <Fajfka size={18} /> : <Kolecko size={18} />}{b.text}</div>
             ))}
           </div>
-        )}
-
-        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
+        );
+    const kKdo = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
           <div style={{ fontWeight: 800, fontSize: 16 }}>Kdo za co odpovídá</div>
           {[["vlastnik_obchod", "Obchod", "#0369a1"], ["vlastnik_bo", "Back office", "#92400e"], ["vlastnik_re", "Realizace", "#15803d"]].map(([key, label, barva]) => (
             <div key={key} style={{ display: "grid", gridTemplateColumns: "110px 1fr", alignItems: "center", gap: 8 }}>
@@ -1113,7 +1114,23 @@ export default function Prubeh({
               </select>
             </div>
           ))}
+        </div>;
+
+    if (!siroky) {
+      return (
+        <div className="pr-panel" id="pr-panel">
+          {kHlavicka}{kPrubeh}{kDalsiKrok}{kUkolyFaze}{kProc}{kMisto}{kUkoly}{kZpravy}{kHistorie}{kBrana}{kKdo}
         </div>
+      );
+    }
+    // Zobrazená jedna zakázka: vše pod seznamem, na celou šířku, zleva doprava.
+    return (
+      <div className="pr-siroky" id="pr-panel">
+        <div className="pr-cela">{kHlavicka}</div>
+        <div className="pr-cela">{kPrubeh}</div>
+        <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}</div>
+        <div className="pr-sloupec">{kProc}{kHistorie}</div>
+        <div className="pr-sloupec">{kMisto}{kUkoly}{kZpravy}{kKdo}</div>
       </div>
     );
   }
