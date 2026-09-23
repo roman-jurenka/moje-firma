@@ -114,25 +114,87 @@ const CSS = `
 .nb-reset { margin-left: 6px; font-size: 8pt; color: #0369a1; background: none; border: none; cursor: pointer; padding: 0; font-style: normal; font-weight: 400; }
 `;
 
-// Tisk: záhlaví a zápatí jsou na každé stránce (position: fixed), obsah je
-// v tabulce s prázdnou hlavičkou/patičkou, které na každé stránce udělají
-// místo — tak se nic nepřekryje. Prvky jen pro appku (.nb-no-print) mizí.
+// Tisk: nabídka se v tiskovém okně sama rozdělí na stránky A4 (skript
+// STRANKOVANI níže) — každá stránka má vlastní záhlaví, zápatí a číslo
+// stránky. Nespoléhá na opakování "position: fixed" ani hlavičky tabulky,
+// které Safari při tisku neopakuje, takže vypadá stejně v Chrome, Edge,
+// Firefoxu i Safari (ověřeno v Chromiu a WebKitu). Velké tabulky se dělí
+// po řádcích, malé sekce (.nb-drzet) se přesouvají celé.
 const CSS_TISK = `
 @page { size: A4; margin: 0; }
 html, body { margin: 0; padding: 0; background: #fff; }
-.nb-page { box-shadow: none; width: 210mm; }
+@media screen { body { background: #e5e7eb; padding: 8mm 0; } .nb-list { margin: 0 auto 8mm; box-shadow: 0 2px 12px rgba(15,23,42,.2); } }
+.nb-list, #nb-zdroj { color: #1A1A1A; font-family: Calibri, Carlito, "Segoe UI", Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; }
+.nb-list { position: relative; width: 210mm; height: 296.5mm; overflow: hidden; background: #fff; break-after: page; page-break-after: always; box-sizing: border-box; }
+.nb-list:last-child { break-after: auto; page-break-after: auto; }
+.nb-list-hlavicka { position: absolute; top: 0; left: 0; width: 210mm; }
+.nb-list-hlavicka img { width: 210mm; display: block; }
+.nb-list-telo { position: absolute; top: 42mm; bottom: 27mm; left: 0; right: 0; padding: 0 15mm; overflow: hidden; }
+.nb-list-paticka { position: absolute; bottom: 0; left: 0; width: 210mm; }
+.nb-list-cislo { position: absolute; bottom: 23.5mm; right: 15mm; font-family: Arial, sans-serif; font-size: 7.5pt; color: #94a3b8; }
+#nb-zdroj { position: absolute; left: -10000px; top: 0; width: 180mm; }
 .nb-no-print, .nb-reset, .nb-zastarale { display: none !important; }
 [contenteditable] { outline: none !important; background: none !important; }
 [contenteditable]:empty::before { content: ""; }
-.nb-print-hlavicka { position: fixed; top: 0; left: 0; width: 210mm; }
-.nb-print-hlavicka img { width: 210mm; display: block; }
-.nb-print-paticka { position: fixed; bottom: 0; left: 0; width: 210mm; }
-.nb-layout { width: 210mm; border-collapse: collapse; }
-.nb-layout > thead > tr > td { height: 42mm; padding: 0; }
-.nb-layout > tfoot > tr > td { height: 27mm; padding: 0; }
-.nb-layout > tbody > tr > td { padding: 0; }
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 `;
+
+// Stránkování v tiskovém okně (čistý JS bez knihoven, ES5 kvůli starším
+// prohlížečům). Bloky obsahu se skládají na stránky; když se blok nevejde,
+// jde na další stránku, tabulka se případně rozdělí po řádcích.
+const STRANKOVANI = `function nbStrankuj(tisk){
+  var zdroj=document.getElementById('nb-zdroj'), stranky=document.getElementById('nb-stranky');
+  var paticka=document.getElementById('nb-paticka').innerHTML, telo;
+  function novaStrana(){
+    var s=document.createElement('div'); s.className='nb-list';
+    s.innerHTML='<div class="nb-list-hlavicka"><img src="nabidka/hlavicka.png" alt=""></div><div class="nb-list-telo"></div><div class="nb-list-paticka">'+paticka+'</div>';
+    stranky.appendChild(s); telo=s.querySelector('.nb-list-telo');
+  }
+  function preteka(){ return telo.scrollHeight > telo.clientHeight + 1; }
+  function tbody(el){ return el.querySelector ? el.querySelector('table.nb-tab > tbody') : null; }
+  function rozdel(el){
+    var tb=tbody(el), tab=tb.parentNode, radky=[], za=[], i;
+    while(tb.firstChild){ radky.push(tb.removeChild(tb.firstChild)); }
+    while(tab.nextSibling){ za.push(tab.parentNode.removeChild(tab.nextSibling)); }
+    var sablona=el.cloneNode(true), h=sablona.querySelector('.nb-h'); if(h){ h.parentNode.removeChild(h); }
+    var kus=el; telo.appendChild(kus);
+    for(i=0;i<radky.length;i++){
+      tb.appendChild(radky[i]);
+      if(!preteka()) continue;
+      tb.removeChild(radky[i]);
+      var sam=telo.children.length===1;
+      if(!tb.children.length && sam){ tb.appendChild(radky[i]); continue; }
+      if(!tb.children.length){ telo.removeChild(kus); novaStrana(); telo.appendChild(kus); i--; continue; }
+      novaStrana(); kus=sablona.cloneNode(true); tb=tbody(kus); telo.appendChild(kus); i--;
+    }
+    for(i=0;i<za.length;i++){ kus.appendChild(za[i]); }
+    if(za.length && preteka()){
+      var obal=document.createElement('div');
+      for(i=0;i<za.length;i++){ obal.appendChild(kus.removeChild(za[i])); }
+      novaStrana(); telo.appendChild(obal);
+    }
+  }
+  function pridej(el){
+    telo.appendChild(el);
+    if(!preteka()) return;
+    telo.removeChild(el);
+    var tb=tbody(el), drzet=el.className && String(el.className).indexOf('nb-drzet')>=0;
+    if(tb && tb.children.length>1 && !drzet){ rozdel(el); return; }
+    if(telo.children.length){ novaStrana(); }
+    telo.appendChild(el);
+    if(preteka() && tb && tb.children.length>1){ telo.removeChild(el); rozdel(el); }
+  }
+  novaStrana();
+  var bloky=[], n;
+  while(zdroj.firstChild){ n=zdroj.removeChild(zdroj.firstChild); if(n.nodeType===1) bloky.push(n); }
+  for(var i=0;i<bloky.length;i++){ pridej(bloky[i]); }
+  zdroj.parentNode.removeChild(zdroj);
+  var listy=stranky.children;
+  for(i=0;i<listy.length;i++){
+    var c=document.createElement('div'); c.className='nb-list-cislo'; c.textContent='Strana '+(i+1)+' / '+listy.length; listy[i].appendChild(c);
+  }
+  if(tisk){ setTimeout(function(){ window.print(); }, 200); }
+}`;
 
 // Text, který jde přepsat kliknutím přímo v náhledu. Prázdná hodnota =
 // použije se předvyplněný text; "↺ původní" vrátí předvyplnění.
@@ -285,13 +347,16 @@ export default function NabidkaNahled({
     const obsah = el.querySelector(".nb-obsah").innerHTML;
     const paticka = el.querySelector(".nb-paticka").outerHTML;
     const origin = window.location.origin;
+    // Bez skriptu by uložená kopie po otevření nebyla rozdělená na stránky,
+    // proto se stránkování spouští vždy; tisk jen když sTiskem.
     const html = `<!DOCTYPE html><html lang="cs"><head><meta charset="utf-8"><title>${cisloNabidky ? cisloNabidky + " – " : ""}${texty.nadpis} – ${customerName || ""}</title>
       <base href="${origin}/"><style>${CSS}${CSS_TISK}</style></head><body>
-      <div class="nb-print-hlavicka"><img src="${origin}/nabidka/hlavicka.png" alt=""></div>
-      <div class="nb-print-paticka nb-page">${paticka}</div>
-      <table class="nb-layout nb-page"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot>
-      <tbody><tr><td><div class="nb-obsah">${obsah}</div></td></tr></tbody></table>
-      ${sTiskem ? "<script>window.onload=function(){setTimeout(function(){window.print();},150);}</script>" : ""}</body></html>`;
+      <div id="nb-zdroj" class="nb-obsah">${obsah}</div>
+      <div id="nb-paticka" style="display:none">${paticka}</div>
+      <div id="nb-stranky"></div>
+      <script>${STRANKOVANI}
+      window.onload=function(){ var go=function(){ nbStrankuj(${sTiskem ? "true" : "false"}); };
+        if(document.fonts && document.fonts.ready){ document.fonts.ready.then(go, go); } else { go(); } };</script></body></html>`;
     return html;
   };
 
