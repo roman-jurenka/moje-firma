@@ -712,7 +712,40 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 
 function MainApp({ currentUser, setCurrentUser, onLogout }) {
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTabStav] = useState("dashboard");
+  // Historie obrazovek pro tlačítko Zpět (a systémové Zpět na telefonu):
+  // každé přepnutí záložky se zapamatuje, Zpět vrací na předchozí.
+  const tabRef = useRef("dashboard");
+  const historieTabu = useRef([]);
+  const [predchoziTab, setPredchoziTab] = useState(null);
+  const setTab = useCallback((novy) => {
+    const akt = tabRef.current;
+    const cil = typeof novy === "function" ? novy(akt) : novy;
+    if (!cil || cil === akt) return;
+    historieTabu.current = [...historieTabu.current, akt].slice(-50);
+    setPredchoziTab(akt);
+    tabRef.current = cil;
+    setTabStav(cil);
+    try { window.history.pushState({ appTab: cil }, ""); } catch (e) { console.warn("Historie prohlížeče nedostupná:", e); }
+  }, []);
+  const krokZpet = useCallback(() => {
+    const h = historieTabu.current;
+    if (!h.length) return;
+    const predchozi = h[h.length - 1];
+    historieTabu.current = h.slice(0, -1);
+    setPredchoziTab(historieTabu.current[historieTabu.current.length - 1] || null);
+    tabRef.current = predchozi;
+    setTabStav(predchozi);
+  }, []);
+  useEffect(() => {
+    window.addEventListener("popstate", krokZpet);
+    return () => window.removeEventListener("popstate", krokZpet);
+  }, [krokZpet]);
+  // Tlačítko Zpět jde přes historii prohlížeče, ať sedí i systémové Zpět.
+  const zpetNaPredchozi = () => {
+    if (window.history.state?.appTab) window.history.back();
+    else krokZpet();
+  };
   // Rychlá obrazovka (Odchod / Fotky) – otevírá ji klepnutí na notifikaci o odpracovaném čase (?rychle=…)
   const [rychle, setRychle] = useState(false);
   useEffect(() => {
@@ -756,7 +789,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       window.removeEventListener("pageshow", spust);
       navigator.serviceWorker?.removeEventListener("message", h);
     };
-  }, []);
+  }, [setTab]);
   const [sheetContractId, setSheetContractId] = useState(null);
   const [sheetContractName, setSheetContractName] = useState("");
 
@@ -769,7 +802,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     };
     window.addEventListener("openSheet", handler);
     return () => window.removeEventListener("openSheet", handler);
-  }, []);
+  }, [setTab]);
 
   // Obecný event pro přepnutí hlavní záložky odjinud (např. tlačítko
   // "Otevřít modul Fakturace" na záložce Faktury u zakázky v Contracts.jsx).
@@ -777,7 +810,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     const handler = (e) => { if (e.detail?.tab) setTab(e.detail.tab); };
     window.addEventListener("gotoTab", handler);
     return () => window.removeEventListener("gotoTab", handler);
-  }, []);
+  }, [setTab]);
   const [customers, setCustomers] = useState([]);
   const [deals, setDeals] = useState([]);
   const [communication, setCommunication] = useState([]);
@@ -916,7 +949,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadAllData();
-  }, [loadAllData]);
+  }, [loadAllData, setTab]);
 
   // ── Plánovaná automatická záloha na OneDrive ──
   // Appka nemá vlastní server/cron, takže zálohu jednou denně potichu spustí
@@ -1105,6 +1138,21 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         <i className={`ti ${theme === "light" ? "ti-moon" : "ti-sun"}`} aria-hidden="true"></i>
       </button>
       <button
+        className="pwa-top-btn" onClick={zpetNaPredchozi} disabled={!predchoziTab}
+        title={predchoziTab ? `Zpět na: ${NAV.find(n => n.id === predchoziTab)?.label || "předchozí obrazovku"}` : "Zpět (zatím není kam)"}
+        aria-label="Zpět na předchozí obrazovku"
+        style={{
+          position: "fixed", top: 14, right: 154, zIndex: 500,
+          width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
+          background: "#fff", color: "#0E3B5E", cursor: predchoziTab ? "pointer" : "default",
+          opacity: predchoziTab ? 1 : 0.4,
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
+          boxShadow: "0 2px 8px #0002",
+        }}
+      >
+        <i className="ti ti-arrow-left" aria-hidden="true"></i>
+      </button>
+      <button
         className="pwa-top-btn" onClick={obnovitAplikaci} disabled={obnovuji}
         title="Obnovit celou aplikaci (nejnovější verze a data)" aria-label="Obnovit aplikaci"
         style={{
@@ -1135,7 +1183,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           className="pwa-top-btn" onClick={() => retryOfflineQueueNow()}
           title={!isOnline ? "Appka je offline — zápisy se ukládají do zařízení a odešlou se samy po obnovení signálu" : "Klikni pro okamžité odeslání čekajících záznamů"}
           style={{
-            position: "fixed", top: 14, right: 154, zIndex: 500,
+            position: "fixed", top: 14, right: 200, zIndex: 500,
             display: "flex", alignItems: "center", gap: 6,
             height: 38, borderRadius: 19, border: "1px solid #f59e0b",
             background: "#fff7ed", color: "#b45309", cursor: "pointer",
