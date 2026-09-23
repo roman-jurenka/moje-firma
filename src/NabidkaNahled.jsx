@@ -19,6 +19,31 @@ const FIRMA_TELEFON = "+420 702 172 622";
 const fmtCas = (iso) => new Date(iso).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 // Výchozí hodnoty firmy — schválně prázdné, vyplní se jednou v nastavení.
+// E-mail do nabídek a šablona e-mailu zákazníkovi — jedna sada pro všechny
+// typy nabídek (app_settings, klíč EMAIL_KEY).
+const EMAIL_KEY = "nabidky_email";
+const VYCHOZI_EMAIL = {
+  email: "",
+  predmet: "Cenová nabídka {cislo} – {popis}",
+  text: [
+    "Dobrý den,",
+    "",
+    "v příloze Vám posíláme cenovou nabídku č. {cislo} – {popis}.",
+    "",
+    "Cena: {cena}.",
+    "Nabídka platí do {plati_do}.",
+    "",
+    "Nabídku přijmete jednoduše odpovědí na tento e-mail nebo telefonicky na {telefon}. Pokud cokoliv není jasné, rádi Vám vše vysvětlíme.",
+    "",
+    "S pozdravem",
+    "{obchodnik}",
+    "Jurenka Elektro s.r.o.",
+    "{telefon} · {email}",
+    "www.jurenkaelektro.cz",
+  ].join("\n"),
+};
+const ZNACKY_EMAILU = "{cislo} číslo nabídky · {popis} podnadpis nabídky · {zakaznik} · {cena} cena bez DPH a s DPH · {plati_do} · {obchodnik} · {email} · {telefon}";
+
 const PRAZDNE_NASTAVENI = {
   platnost: "",       // počet dní, např. "30" (starší "30 dní" se taky přečte)
   zalohaPct: "",      // např. 50 (0 = bez zálohy)
@@ -241,6 +266,7 @@ export default function NabidkaNahled({
   dotace = 0,          // Kč s DPH, o které se cena díla sníží dotací (jen FVE/FVR s dotací)
   poznamkaVychozi = "", // předvyplněná poznámka (u HRM/ELK poznámka k nabídce)
   upozorneni = [],     // další chybějící údaje od volající stránky
+  customerEmail = "",  // e-mail zákazníka — předvyplní se do "Komu" v e-mailu
 }) {
   const nastaveniKlic = klicNastaveni(typ);
   const [nastaveni, setNastaveni] = useState(PRAZDNE_NASTAVENI);
@@ -263,9 +289,25 @@ export default function NabidkaNahled({
     return () => { zruseno = true; };
   }, [nastaveniKlic]);
 
+  const [emailNastaveni, setEmailNastaveni] = useState(VYCHOZI_EMAIL);
+  const [emailForm, setEmailForm] = useState(VYCHOZI_EMAIL);
+  useEffect(() => {
+    let zruseno = false;
+    supabase.from("app_settings").select("value").eq("key", EMAIL_KEY).maybeSingle().then(({ data }) => {
+      if (zruseno) return;
+      const v = { ...VYCHOZI_EMAIL, ...Object.fromEntries(Object.entries(data?.value || {}).filter(([, x]) => String(x ?? "").trim() !== "")) };
+      setEmailNastaveni(v);
+      setEmailForm(v);
+    });
+    return () => { zruseno = true; };
+  }, []);
+
   const ulozNastaveni = async () => {
     setUkladamNastaveni(true);
-    const { error } = await supabase.from("app_settings").upsert({ key: nastaveniKlic, value: nastaveniForm, updated_at: new Date().toISOString() });
+    const { error: e1 } = await supabase.from("app_settings").upsert({ key: nastaveniKlic, value: nastaveniForm, updated_at: new Date().toISOString() });
+    const { error: e2 } = await supabase.from("app_settings").upsert({ key: EMAIL_KEY, value: emailForm, updated_at: new Date().toISOString() });
+    const error = e1 || e2;
+    if (!error) setEmailNastaveni({ ...VYCHOZI_EMAIL, ...Object.fromEntries(Object.entries(emailForm).filter(([, x]) => String(x ?? "").trim() !== "")) });
     setUkladamNastaveni(false);
     if (error) { alert("Výchozí hodnoty se nepodařilo uložit: " + error.message); return; }
     setNastaveni(nastaveniForm);
@@ -286,7 +328,8 @@ export default function NabidkaNahled({
       .then(({ data }) => { if (!zruseno) setKontaktOz(data || null); });
     return () => { zruseno = true; };
   }, [oz.employeeId]);
-  const ozEmailVychozi = (kontaktOz?.email || oz.email || FIRMA_EMAIL).trim();
+  // Předdefinovaný e-mail z nastavení má přednost před e-mailem z karty zaměstnance.
+  const ozEmailVychozi = (emailNastaveni.email || kontaktOz?.email || oz.email || FIRMA_EMAIL).trim();
   const ozTelefonVychozi = (kontaktOz?.phone || oz.telefon || FIRMA_TELEFON).trim();
   // U konkrétní nabídky jde kontakt přepsat (např. nabídka za kolegu);
   // prázdné pole = kontakt z karty zaměstnance, případně firemní.
@@ -407,6 +450,43 @@ export default function NabidkaNahled({
     otevritOkno(data.html);
   };
 
+  // E-mail zákazníkovi: předvyplní se ze šablony, před odesláním jde upravit.
+  const [email, setEmail] = useState(null); // { komu, predmet, text } — null = zavřeno
+  const doplnitEmail = (sablona) => {
+    const cenaText = dotaceKc > 0
+      ? `${fmtKc(cenaBezDph)} bez DPH, ${fmtKc(cenaSDph)} vč. DPH ${dphPct} %, po odečtení dotace ${fmtKc(cenaSDph - dotaceKc)}`
+      : `${fmtKc(cenaBezDph)} bez DPH, ${fmtKc(cenaSDph)} vč. DPH ${dphPct} %`;
+    const hodnoty = {
+      cislo: cisloNabidky || "(číslo se přidělí při uložení)",
+      popis: String(u.podnadpis ?? texty.podnadpis ?? "").trim(),
+      zakaznik: customerName || "",
+      cena: cenaText,
+      plati_do: platiDo ? fmtDatum(platiDo) : (platnost || "—"),
+      obchodnik: ozJmeno,
+      email: ozEmail,
+      telefon: ozTelefon,
+    };
+    return String(sablona || "").replace(/\{(\w+)\}/g, (m, k) => (k in hodnoty ? hodnoty[k] : m));
+  };
+  const otevritEmail = () => setEmail({
+    komu: customerEmail || "",
+    predmet: doplnitEmail(emailNastaveni.predmet),
+    text: doplnitEmail(emailNastaveni.text),
+  });
+  const mailto = email
+    ? `mailto:${email.komu.trim().replace(/[\s;]+/g, ",")}?subject=${encodeURIComponent(email.predmet)}&body=${encodeURIComponent(email.text)}`
+    : "";
+  const [zkopirovano, setZkopirovano] = useState(false);
+  const kopirovatEmail = async () => {
+    try {
+      await navigator.clipboard.writeText(`${email.predmet}\n\n${email.text}`);
+      setZkopirovano(true);
+      setTimeout(() => setZkopirovano(false), 2000);
+    } catch {
+      alert("Text se nepodařilo zkopírovat — označ ho v poli a zkopíruj ručně (Ctrl+C).");
+    }
+  };
+
   const upravUkon = (id, patch) => onUkonyChange((ukony || []).map((x) => (x.id === id ? { ...x, ...patch } : x)));
   const platneUkony = (ukony || []).filter((x) => (x.nazev || "").trim() || (x.popis || "").trim());
   // sloupec "počet ks" jen když ho některý řádek má (u sekcí HRM/ELK většinou ne)
@@ -428,6 +508,7 @@ export default function NabidkaNahled({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {onSave && <button style={S.btn("#34d399")} onClick={onSave}>💾 Uložit</button>}
             <button style={S.btn("#0369a1")} onClick={tisk}>🖨️ Tisk / PDF</button>
+            <button style={S.btn("#0f766e")} onClick={() => (email ? setEmail(null) : otevritEmail())}>✉️ E-mail zákazníkovi</button>
             {onOdeslano && (
               <button style={S.btn("#7c3aed")} disabled={odesilam} onClick={oznacitOdeslano}
                 title="Uloží přesnou kopii nabídky tak, jak ji zákazník dostal, a přepne stav na Odesláno">
@@ -436,6 +517,35 @@ export default function NabidkaNahled({
             )}
           </div>
         </div>
+        {email && (
+          <div style={{ background: "#f0fdfa", border: "1px solid #99f6e4", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontWeight: 700, color: "#115e59", marginBottom: 8 }}>✉️ E-mail zákazníkovi</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10 }}>
+              <div>
+                <label style={S.label}>Komu</label>
+                <input style={{ ...inp, borderColor: email.komu.trim() ? undefined : "#f87171" }} type="email" value={email.komu} placeholder="e-mail zákazníka"
+                  onChange={(e) => setEmail({ ...email, komu: e.target.value })} />
+              </div>
+              <div>
+                <label style={S.label}>Předmět</label>
+                <input style={inp} value={email.predmet} onChange={(e) => setEmail({ ...email, predmet: e.target.value })} />
+              </div>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <label style={S.label}>Text</label>
+              <textarea style={{ ...inp, minHeight: 230, resize: "vertical", fontFamily: "inherit" }} value={email.text} onChange={(e) => setEmail({ ...email, text: e.target.value })} />
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
+              <a href={mailto} style={{ ...S.btn("#0f766e"), textDecoration: "none", display: "inline-block" }}>📧 Otevřít v poště</a>
+              <button style={S.btnGhost} onClick={kopirovatEmail}>{zkopirovano ? "✓ Zkopírováno" : "📋 Kopírovat text"}</button>
+              <button style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }} onClick={otevritEmail}>↺ Znovu ze šablony</button>
+            </div>
+            <div style={{ fontSize: 12, color: "#475569", marginTop: 8 }}>
+              Postup: 1) 🖨️ Tisk / PDF → Uložit jako PDF, 2) 📧 Otevřít v poště a PDF přilož, 3) po odeslání klikni 📨 Označit jako odeslanou.
+              {!customerEmail && " U zákazníka není vyplněný e-mail — doplň ho sem nebo do karty zákazníka."}
+            </div>
+          </div>
+        )}
         {(odeslane || []).length > 0 && (
           <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#4c1d95", marginBottom: 12 }}>
             <b>Odesláno zákazníkovi:</b>{" "}
@@ -472,7 +582,7 @@ export default function NabidkaNahled({
           ))}
         </div>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4, margin: "12px 0 6px" }}>
-          Kontakt obchodníka v této nabídce <span style={{ textTransform: "none", fontWeight: 400 }}>(prázdné = z karty zaměstnance{oz.employeeId ? "" : ", jinak firemní"})</span>
+          Kontakt obchodníka v této nabídce <span style={{ textTransform: "none", fontWeight: 400 }}>(prázdné = {emailNastaveni.email ? "e-mail z výchozích hodnot, telefon z karty zaměstnance" : "z karty zaměstnance, jinak firemní"})</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 10 }}>
           {[["ozJmeno", "Jméno obchodníka", oz.jmeno || "jméno"], ["ozEmail", "E-mail", ozEmailVychozi], ["ozTelefon", "Telefon", ozTelefonVychozi]].map(([k, label, ph]) => (
@@ -500,6 +610,26 @@ export default function NabidkaNahled({
                     onChange={(e) => setNastaveniForm({ ...nastaveniForm, [k]: e.target.value })} />
                 </div>
               ))}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4, margin: "14px 0 6px" }}>
+              E-mail — společný pro všechny typy nabídek
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10 }}>
+              <div>
+                <label style={S.label}>E-mail do všech nabídek</label>
+                <input style={inp} disabled={!isAdmin} type="email" value={emailForm.email ?? ""} placeholder={`prázdné = z karty zaměstnance (jinak ${FIRMA_EMAIL})`}
+                  onChange={(e) => setEmailForm({ ...emailForm, email: e.target.value })} />
+              </div>
+              <div>
+                <label style={S.label}>Předmět e-mailu zákazníkovi</label>
+                <input style={inp} disabled={!isAdmin} value={emailForm.predmet ?? ""} onChange={(e) => setEmailForm({ ...emailForm, predmet: e.target.value })} />
+              </div>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <label style={S.label}>Text e-mailu zákazníkovi</label>
+              <textarea style={{ ...inp, minHeight: 210, resize: "vertical", fontFamily: "inherit" }} disabled={!isAdmin} value={emailForm.text ?? ""}
+                onChange={(e) => setEmailForm({ ...emailForm, text: e.target.value })} />
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Doplní se samo: {ZNACKY_EMAILU}</div>
             </div>
             {isAdmin && (
               <button style={{ ...S.btn("#0369a1"), marginTop: 10 }} disabled={ukladamNastaveni} onClick={ulozNastaveni}>

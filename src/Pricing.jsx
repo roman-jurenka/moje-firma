@@ -520,6 +520,7 @@ function NahledSekcove({ type, data, setData, cilovaCena, dphPct, customer, quot
       onUpravy={(nahled) => nastavZakaznik({ nahled })}
       customerName={customer?.name}
       adresa={(data.zakaznik.adresa || "").trim() || customer?.address}
+      customerEmail={customer?.email || customer?.email_contact || ""}
       cisloNabidky={quote?.cislo}
       vystaveno={quote?.vystaveno}
       oz={{ jmeno: currentUser?.name || "", email: currentUser?.email || "", employeeId: currentUser?.employeeId ?? null }}
@@ -1044,6 +1045,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           quoteName={name}
           customerName={customers.find((c) => c.id === Number(customerId))?.name}
           customerAddress={customers.find((c) => c.id === Number(customerId))?.address}
+          customerEmail={(() => { const c = customers.find((x) => x.id === Number(customerId)); return c?.email || c?.email_contact || ""; })()}
           cisloNabidky={quotes.find((q) => q.id === activeId)?.cislo}
           vystaveno={quotes.find((q) => q.id === activeId)?.vystaveno}
           odeslane={activeId ? odeslane : []}
