@@ -89,10 +89,12 @@ const CSS = `
 .nb-cenabox { display: flex; justify-content: space-between; align-items: center; gap: 6mm; background: #F4F8FC; border: 1.5px solid #16324F; border-left: 5px solid #E08A1E; border-radius: 2mm; padding: 3.5mm 5mm; margin: 1mm 0 4mm; break-inside: avoid; page-break-inside: avoid; }
 .nb-cenabox-l { font-size: 9pt; color: #5B6472; line-height: 1.5; }
 .nb-cenabox-l b { color: #16324F; font-size: 10.5pt; }
-.nb-cenabox-r { text-align: right; }
-.nb-cenabox-cena { font-size: 20pt; font-weight: 700; color: #16324F; line-height: 1.1; white-space: nowrap; }
-.nb-cenabox-dph { font-size: 8.5pt; color: #5B6472; white-space: nowrap; }
-.nb-cenabox-pred { font-size: 8pt; font-weight: 700; color: #E08A1E; text-transform: uppercase; letter-spacing: .3px; }
+.nb-cenabox-tab { border-collapse: collapse; margin-left: auto; }
+.nb-cenabox-tab td { padding: 0.4mm 0 0.4mm 5mm; font-size: 9.5pt; color: #5B6472; white-space: nowrap; text-align: right; vertical-align: baseline; }
+.nb-cenabox-tab td:first-child { padding-left: 0; text-align: left; }
+.nb-cenabox-tab tr.nb-hl td { border-top: 1px solid #16324F; padding-top: 1.2mm; color: #16324F; font-weight: 700; font-size: 10.5pt; }
+.nb-cenabox-tab tr.nb-hl td:last-child { font-size: 18pt; line-height: 1.1; }
+.nb-cenabox-tab tr.nb-dotace td { color: #2F8F5B; }
 .nb-krok-ted { display: inline-block; margin-top: 1mm; font-size: 7pt; font-weight: 700; color: #fff; background: #E08A1E; border-radius: 2mm; padding: 0.3mm 1.8mm; }
 .nb-krok-dalsi { display: inline-block; margin-top: 1mm; font-size: 7pt; font-weight: 700; color: #16324F; border: 1px solid #16324F; border-radius: 2mm; padding: 0.2mm 1.8mm; }
 .nb-vyzva { background: #FFF7EC; border: 1.5px solid #E08A1E; border-radius: 2mm; padding: 4mm 5mm; margin-top: 5mm; break-inside: avoid; page-break-inside: avoid; }
@@ -525,20 +527,25 @@ export default function NabidkaNahled({
             <div className="nb-cenabox-l">
               <b>{texty.cenaNadpis || (texty.maUkony ? "Cena servisu" : "Cena rozšíření")}</b><br />
               {platiDo ? <>Nabídka platí do {fmtDatum(platiDo)}</> : <>Platnost: {platnost || <Chybi co="platnost" />}</>}
-              {zalohaPct > 0 && <><br />Záloha {zalohaPct} % ({fmtKc(zalohaKc)}), zbytek po dokončení</>}
+              {zalohaPct > 0 && <><br />Záloha {zalohaPct} % ({fmtKc(zalohaKc)} vč. DPH), zbytek po dokončení</>}
             </div>
-            {dotaceKc > 0 ? (
-              <div className="nb-cenabox-r">
-                <div className="nb-cenabox-pred">Vaše cena po dotaci</div>
-                <div className="nb-cenabox-cena">{fmtKc(cenaSDph - dotaceKc)}</div>
-                <div className="nb-cenabox-dph">cena díla {fmtKc(cenaSDph)} vč. DPH {dphPct} % − dotace {fmtKc(dotaceKc)}</div>
-              </div>
-            ) : (
-              <div className="nb-cenabox-r">
-                <div className="nb-cenabox-cena">{fmtKc(cenaSDph)}</div>
-                <div className="nb-cenabox-dph">vč. DPH {dphPct} % · bez DPH {fmtKc(cenaBezDph)}</div>
-              </div>
-            )}
+            {/* Stejné řádky u všech typů: bez DPH → DPH → s DPH (u dotace ještě
+                dotace a cena po dotaci). Zvýrazněná je částka, kterou zákazník platí. */}
+            <table className="nb-cenabox-tab">
+              <tbody>
+                <tr><td>Cena{dotaceKc > 0 ? " díla" : ""} bez DPH</td><td>{fmtKc(cenaBezDph)}</td></tr>
+                <tr><td>DPH {dphPct} %</td><td>{fmtKc(cenaSDph - cenaBezDph)}</td></tr>
+                {dotaceKc > 0 ? (
+                  <>
+                    <tr><td>Cena díla s DPH</td><td>{fmtKc(cenaSDph)}</td></tr>
+                    <tr className="nb-dotace"><td>Dotace Nová zelená úsporám</td><td>− {fmtKc(dotaceKc)}</td></tr>
+                    <tr className="nb-hl"><td>Vaše cena po dotaci</td><td>{fmtKc(cenaSDph - dotaceKc)}</td></tr>
+                  </>
+                ) : (
+                  <tr className="nb-hl"><td>Cena s DPH</td><td>{fmtKc(cenaSDph)}</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
           <div className="nb-duvera">
             {duvera.map((d) => <div key={d.nadpis}><b>{d.nadpis}</b>{d.text}</div>)}
@@ -593,7 +600,9 @@ export default function NabidkaNahled({
                 {platiDo
                   ? <>Nabídka platí do {fmtDatum(platiDo)}.</>
                   : platnost ? <>Platnost nabídky: {platnost}.</> : <>Platnost nabídky: <Chybi co="platnost" />.</>}
-                {" "}Ceny jsou s DPH {dphPct} %.
+                {" "}{texty.maUkony
+                  ? <>Ceny položek jsou uvedeny bez DPH, celková cena včetně DPH {dphPct} % je v součtu.</>
+                  : <>Cena bez DPH i včetně DPH {dphPct} % je uvedena v cenovém přehledu na začátku nabídky.</>}
               </p>
             </div>
           )}
@@ -606,12 +615,12 @@ export default function NabidkaNahled({
                   <tr><td className="nb-l">Platba</td><td className="nb-v"><Chybi co="výše zálohy" /></td></tr>
                 )}
                 {zalohaPct === 0 && (
-                  <tr><td className="nb-l">Platba</td><td className="nb-v">{fmtKc(cenaSDph)} (100 %) — {doplatekKdy}</td></tr>
+                  <tr><td className="nb-l">Platba</td><td className="nb-v">{fmtKc(cenaSDph)} (100 % ceny vč. DPH) — {doplatekKdy}</td></tr>
                 )}
                 {zalohaPct > 0 && (
                   <>
-                    <tr><td className="nb-l">1. Zálohová platba</td><td className="nb-v">{fmtKc(zalohaKc)} ({zalohaPct} % z celkové ceny) — {zalohaKdy || <Chybi co="kdy se platí" />}</td></tr>
-                    <tr><td className="nb-l">2. Konečná platba</td><td className="nb-v">{fmtKc(doplatekKc)} ({100 - zalohaPct} % z celkové ceny) — {doplatekKdy}</td></tr>
+                    <tr><td className="nb-l">1. Zálohová platba</td><td className="nb-v">{fmtKc(zalohaKc)} ({zalohaPct} % z celkové ceny vč. DPH) — {zalohaKdy || <Chybi co="kdy se platí" />}</td></tr>
+                    <tr><td className="nb-l">2. Konečná platba</td><td className="nb-v">{fmtKc(doplatekKc)} ({100 - zalohaPct} % z celkové ceny vč. DPH) — {doplatekKdy}</td></tr>
                   </>
                 )}
               </tbody>
