@@ -92,18 +92,22 @@ function ServisUkony({ ukony, onChange, dph, S }) {
   );
 }
 
-// U servisu a rozšíření je cílová cena nabídky (seznam nabídek, obchodní
-// případ) vždy stejná jako cena v nabídce pro zákazníka — synchronizuje se
-// automaticky. Samostatná komponenta, ať je hook mimo podmíněný return.
-function SyncCilovaCena({ cena, aktualni, onSync }) {
+// Cena nabídky (seznam nabídek, obchodní případ, souhrn v kartě) je vždy
+// stejná jako cena v nabídce pro zákazníka — do nabídky se automaticky
+// propíše cena BEZ DPH, sazba DPH a u FVE/FVR i náklad z kalkulace (pro
+// marži). Samostatná komponenta, ať je hook mimo podmíněný return.
+function SyncCilovaCena({ cenaBezDph, cenaSDph, dphPct, naklad, aktualni, onSync }) {
   useEffect(() => {
-    if (!onSync || !Number.isFinite(cena)) return;
-    if (String(Math.round(cena)) !== String(aktualni ?? "")) onSync(Math.round(cena));
-  }, [cena, aktualni, onSync]);
+    if (!onSync || !Number.isFinite(cenaBezDph)) return;
+    const z = aktualni || {};
+    const stejne = String(cenaBezDph) === String(z.cilovaCena ?? "") && String(cenaSDph) === String(z.cenaSDph ?? "") && Number(z.dph) === dphPct
+      && (naklad == null || String(naklad) === String(z.nakladKalkulace ?? ""));
+    if (!stejne) onSync({ cenaBezDph, cenaSDph, dphPct, naklad });
+  }, [cenaBezDph, cenaSDph, dphPct, naklad, aktualni, onSync]);
   return null;
 }
 
-export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave, cilovaCena, cisloNabidky, vystaveno, customerAddress, odeslane, onOdeslano }) {
+export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave, cenaVNabidce, cisloNabidky, vystaveno, customerAddress, odeslane, onOdeslano }) {
   const cfg = value || PRAZDNA_FVE();
   const set = (patch) => onChange({ ...cfg, ...patch });
   const setItem = (key, patch) => onChange({ ...cfg, [key]: { ...cfg[key], ...patch } });
@@ -309,9 +313,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     wallbox: "Wallbox / nabíjení EV", regulace: "Regulace", bojler: "Bojler",
   };
   const maNahled = jobType === "SRV" || jobType === "FVR" || jobType === "FVE";
-  // U servisu a rozšíření se cílová cena bere automaticky z nabídky, u nové
-  // FVE se nastavuje tlačítkem (interní nacenění tam může mít vlastní cenu).
-  const synchronizovatCenu = jobType === "SRV" || jobType === "FVR";
+  // Cena nabídky se u všech tří typů bere automaticky z kalkulace.
+  const synchronizovatCenu = maNahled;
   const ukonyNabidky = ukonyZCfg(cfg);
   const vNabidce = (item, cfgItem) => Number(cfgItem?.qty) > 0 && !/^Bez /.test(item?.name || "");
   // Nová FVE: jen to, co zákazníka zajímá (jako dřív ve Wordu) — rozvaděč DC
@@ -339,7 +342,6 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const cenaNabidkySDph = jobType === "SRV" ? Math.round(cenaNabidkyBezDph * (1 + dph)) : cenaDphRounded;
   const cenaNabidkyBezDphFinal = jobType === "SRV" ? cenaNabidkyBezDph : Math.round(cenaNabidkySDph / (1 + dph));
   const dotaceNabidky = jobType !== "SRV" && cfg.dotaceOn ? Math.round(dotace) : 0;
-  const cenaProZakaznika = cenaNabidkySDph - dotaceNabidky;
   const textyNahledu = maNahled ? textyNabidky({
     jobType,
     ukony: ukonyNabidky,
@@ -648,13 +650,11 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           U servisu je cena nabídky <b>součet úkonů: {fmtKc(cenaNabidkySDph)} s DPH</b>. Čísla výše (materiál z popisu soustavy) se do nabídky nepočítají.
         </div>
       )}
-      {synchronizovatCenu && <SyncCilovaCena cena={cenaProZakaznika} aktualni={cilovaCena} onSync={onUseAsTarget} />}
+      {synchronizovatCenu && (
+        <SyncCilovaCena cenaBezDph={Math.round(cenaNabidkyBezDphFinal)} cenaSDph={Math.round(cenaNabidkySDph)} dphPct={Math.round(dph * 100)}
+          naklad={jobType === "SRV" ? null : Math.round(naklad)} aktualni={cenaVNabidce} onSync={onUseAsTarget} />
+      )}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {onUseAsTarget && !synchronizovatCenu && (
-          <button style={S.btn("#F5C518")} onClick={() => onUseAsTarget(cfg.dotaceOn ? cenaPoDotaci : cenaDphRounded)}>
-            ➡️ Použít jako cílovou cenu pro zákazníka
-          </button>
-        )}
         {maNahled && <button style={S.btn("#0369a1")} onClick={() => setNahledOtevren((v) => !v)}>📝 {nahledOtevren ? "Skrýt náhled nabídky" : "Náhled nabídky pro zákazníka"}</button>}
         {jobType === "FVE" && (
           <button style={S.btnGhost} onClick={generateWordOffer} title="Původní Word šablona — bez čísla nabídky a evidence odeslání">📄 Word (původní šablona)</button>

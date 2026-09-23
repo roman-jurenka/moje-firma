@@ -61,7 +61,9 @@ const PRAZDNA_NABIDKA = () => ({
     polozky: [],     // [{id, nazev, md}] — samostatné položky mimo fáze, např. revize, dokumentace
   },
   zakaznik: {
-    cilovaCena: "",  // cílová prodejní cena celkem — co uvidí zákazník; prázdné = návrh z interní ceny + marže
+    cilovaCena: "",  // prodejní cena BEZ DPH — u FVE/FVR/SRV se přebírá z kalkulace, jinak = náklad + marže
+    marzePct: "",    // marže jako přirážka k nákladu v % (HRM, ELK, bez typu); prázdné = VYCHOZI_MARZE
+    dph: 21,         // sazba DPH v % — připočítá se až k ceně bez DPH
     sekce: [],       // [{id, nazev, castka}] — volné sekce, appka je nijak nepředepisuje
   },
   denniPlan: [],     // [{id, datum, pocetLidi, poznamka}] — rozvrh po dnech, přenese se do projektu/zakázky
@@ -76,7 +78,51 @@ const PRAZDNA_NABIDKA = () => ({
 // je to prostě celková částka materiálu na daný řádek.
 // Samostatná (bezstavová) verze výpočtu celkové ceny nabídky — používá se
 // pro KPI v seznamu nabídek, kde nechceme znovu procházet celý editor.
-function computeQuoteTotals(qdata) {
+// ─── Cena nabídky: NÁKLAD + MARŽE = CENA BEZ DPH, + DPH = CENA S DPH ───────
+// Všechny částky se vedou bez DPH, DPH se připočítá až na konci. U FVE,
+// rozšíření a servisu počítá cenu kalkulace výše (FVE: materiál, práce,
+// služby + marže; servis: součet úkonů) a do nabídky se propíše sama.
+// U hromosvodů, elektroinstalací a nabídek bez typu je náklad z interního
+// nacenění a marže se zadává v % jako přirážka k nákladu.
+const VYCHOZI_MARZE = 25;
+const KALKULACNI_TYPY = ["FVE", "FVR", "SRV"];
+function marzeNabidky(d, naklad) {
+  const z = d?.zakaznik || {};
+  if (z.marzePct !== undefined && z.marzePct !== "" && z.marzePct !== null) return Number(z.marzePct) || 0;
+  // starší nabídka s ručně zadanou cenou → dopočítat, jaké marži odpovídá
+  if (z.cilovaCena !== "" && z.cilovaCena != null && naklad > 0) return Math.round((Number(z.cilovaCena) / naklad - 1) * 10000) / 100;
+  return VYCHOZI_MARZE;
+}
+function cenaNabidkyBezDph(d, typ, naklad) {
+  if (KALKULACNI_TYPY.includes(typ)) return Math.round(Number(d?.zakaznik?.cilovaCena) || 0);
+  return Math.round(naklad * (1 + marzeNabidky(d, naklad) / 100));
+}
+
+// Řetězec ceny — stejné zobrazení v kartě nabídky i v souhrnu dole.
+function RetezecCeny({ naklad, marzeKc, marzePct, cenaBez, dphPct, cenaS, poznamka }) {
+  const dlazdice = [
+    ["Náklad (bez DPH)", fmtKc(naklad), "#f87171"],
+    [`+ Marže${marzePct != null ? ` ${String(marzePct).replace(".", ",")} %` : ""}`, fmtKc(marzeKc), marzeKc >= 0 ? "#16a34a" : "#dc2626"],
+    ["= Cena bez DPH", fmtKc(cenaBez), "#0369a1"],
+    [`+ DPH ${dphPct} %`, fmtKc(cenaS - cenaBez), "#64748b"],
+    ["= Cena s DPH", fmtKc(cenaS), "#1A1A1A"],
+  ];
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8 }}>
+        {dlazdice.map(([l, v, c], i) => (
+          <div key={l} style={{ background: i === 4 ? "#eff6ff" : "#fff", border: "1px solid " + (i === 4 ? "#93c5fd" : "#e2e8f0"), borderRadius: 10, padding: "8px 10px" }}>
+            <div style={{ ...S.label, marginBottom: 2 }}>{l}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: c, whiteSpace: "nowrap" }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      {poznamka && <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>{poznamka}</div>}
+    </div>
+  );
+}
+
+function computeQuoteTotals(qdata, typ) {
   const d = qdata || {};
   const sazbaMd = d?.interni?.sazbaMd || 0;
   const sazbaBod = d?.interni?.sazbaBod || 0;
@@ -90,8 +136,7 @@ function computeQuoteTotals(qdata) {
   const celkemMaterial = radkyV.reduce((s, v) => s + v.material, 0);
   const celkemPrace = radkyV.reduce((s, v) => s + v.laborKc, 0) + celkemPolozkyKc;
   const celkemNaklad = celkemDoprava + celkemMaterial + celkemPrace;
-  const cilovaZadana = d?.zakaznik?.cilovaCena;
-  const cilovaCena = cilovaZadana !== "" && cilovaZadana != null ? Number(cilovaZadana) : Math.round(celkemNaklad * 1.25);
+  const cilovaCena = cenaNabidkyBezDph(d, typ, celkemNaklad); // bez DPH
   return { celkemNaklad, cilovaCena };
 }
 
@@ -452,8 +497,8 @@ function NahledSekcove({ type, data, setData, cilovaCena, dphPct, customer, quot
   const cenaSDph = Math.round(cenaBezDph * (1 + dphPct / 100));
   const soucetSekci = sekce.reduce((s, x) => s + (Number(x.castka) || 0), 0);
   const upozorneni = [
-    cenaBezDph <= 0 && "cena (vyplň interní nacenění nebo cílovou cenu)",
-    ukony.length > 0 && Math.abs(soucetSekci - cenaBezDph) >= 1 && `součet položek ${fmtKc(soucetSekci)} nesedí na cílovou cenu ${fmtKc(cenaBezDph)} (uprav sekce)`,
+    cenaBezDph <= 0 && "cena (vyplň interní nacenění — cena = náklad + marže)",
+    ukony.length > 0 && Math.abs(soucetSekci - cenaBezDph) >= 1 && `součet položek ${fmtKc(soucetSekci)} nesedí na cenu bez DPH ${fmtKc(cenaBezDph)} (uprav sekce)`,
   ].filter(Boolean);
   const nastavZakaznik = (patch) => setData({ ...data, zakaznik: { ...data.zakaznik, ...patch } });
   return (
@@ -614,18 +659,25 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const celkemPrace = radkyVypoctene.reduce((s, x) => s + x.v.laborKc, 0) + celkemPolozkyKc;
   const celkemNaklad = celkemDoprava + celkemMaterial + celkemPrace;
 
-  const cilovaCenaZadana = data?.zakaznik?.cilovaCena;
-  const cilovaCena = cilovaCenaZadana !== "" && cilovaCenaZadana != null ? Number(cilovaCenaZadana) : Math.round(celkemNaklad * 1.25);
-  const marze = cilovaCena - celkemNaklad;
-  const marzePct = cilovaCena ? Math.round((marze / cilovaCena) * 1000) / 10 : 0;
+  // Náklad + marže = cena bez DPH, + DPH = cena s DPH (viz RetezecCeny).
+  // U FVE/FVR je náklad z kalkulace (materiál, práce, služby), u ostatních
+  // z interního nacenění níže.
+  const kalkulacni = KALKULACNI_TYPY.includes(type);
+  const nakladZKalkulace = type === "FVE" || type === "FVR";
+  const nakladNabidky = nakladZKalkulace ? Math.round(Number(data?.zakaznik?.nakladKalkulace) || 0) : celkemNaklad;
+  const marzeZadana = kalkulacni ? null : marzeNabidky(data, celkemNaklad);
+  const cilovaCena = data ? cenaNabidkyBezDph(data, type, celkemNaklad) : 0; // cena BEZ DPH
+  const dphPct = data?.zakaznik?.dph ?? 21;
+  // u kalkulace přesně její cena s DPH (FVE se zaokrouhluje na tisíce), jinak dopočet
+  const cenaSDph = kalkulacni && data?.zakaznik?.cenaSDph ? Math.round(Number(data.zakaznik.cenaSDph)) : Math.round(cilovaCena * (1 + dphPct / 100));
+  const marze = cilovaCena - nakladNabidky;
+  const marzePct = nakladNabidky > 0 ? Math.round((marze / nakladNabidky) * 1000) / 10 : null; // přirážka k nákladu
 
   const sekceSuma = data ? data.zakaznik.sekce.reduce((s, x) => s + (Number(x.castka) || 0), 0) : 0;
   const sekceRozdil = cilovaCena - sekceSuma;
 
   // ── Nabídka pro zákazníka u hromosvodů a elektroinstalací (náhled) ──
   const sekcova = SEKCOVE_TYPY.includes(type);
-  const dphPctSekce = data?.zakaznik?.dph ?? 21;
-  const cilovaSDph = Math.round(cilovaCena * (1 + dphPctSekce / 100));
 
   const planClovekDni = data ? data.denniPlan.reduce((s, p) => s + (Number(p.pocetLidi) || 0), 0) : 0;
   const planDniPocet = data ? data.denniPlan.length : 0;
@@ -816,7 +868,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       "<span class='typebadge'>" + (typeInfo ? typeInfo.label : "") + "</span>" +
       typeSummaryHtml +
       sekceHtml +
-      "<div class='total'>Celková cena: " + fmtKc(cilovaCena) + "</div>" +
+      "<div class='total'>Cena bez DPH: " + fmtKc(cilovaCena) + "<br>DPH " + dphPct + " %: " + fmtKc(cenaSDph - cilovaCena) + "<br>Celková cena s DPH: " + fmtKc(cenaSDph) + "</div>" +
       (data.notes ? "<p style='margin-top:20px;white-space:pre-wrap;font-size:13px'>" + data.notes + "</p>" : "") +
       "<script>window.onload=function(){window.print();}</script></body></html>";
     w.document.open();
@@ -837,7 +889,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       (polozkyVypoctene.length ? "<h2 style='margin-top:14px'>Samostatné položky</h2><table><thead><tr><th>Název</th><th>MD</th><th>Cena</th></tr></thead><tbody>" +
         polozkyVypoctene.map(({ p, md, cena }) => `<tr><td>${p.nazev || "—"}</td><td>${Math.round(md * 100) / 100}</td><td>${fmtKc(cena)}</td></tr>`).join("") +
         "</tbody></table>" : "") +
-      "<div class='total'>Celkem MD: " + (Math.round(celkemMd * 100) / 100) + " · Celkem interní náklad: " + fmtKc(celkemNaklad) + " · Cílová cena: " + fmtKc(cilovaCena) + " · Marže: " + fmtKc(marze) + " (" + marzePct + " %)</div>" +
+      "<div class='total'>Celkem MD: " + (Math.round(celkemMd * 100) / 100) + " · Náklad: " + fmtKc(nakladNabidky) + " · Marže: " + fmtKc(marze) + (marzePct != null ? " (" + marzePct + " %)" : "") + " · Cena bez DPH: " + fmtKc(cilovaCena) + " · Cena s DPH " + dphPct + " %: " + fmtKc(cenaSDph) + "</div>" +
       "<script>window.onload=function(){window.print();}</script></body></html>";
     const w = window.open("", "_blank");
     w.document.write(html);
@@ -857,7 +909,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   // do každé nabídky zvlášť.
   const kpiSchvaleno = quotes.filter(q => q.status === "Schváleno");
   const kpiOtevreno = quotes.filter(q => q.status !== "Zamítnuto");
-  const kpiHodnotaOtevrenych = kpiOtevreno.reduce((s, q) => s + computeQuoteTotals(q.data).cilovaCena, 0);
+  const kpiHodnotaOtevrenych = kpiOtevreno.reduce((s, q) => s + computeQuoteTotals(q.data, q.type).cilovaCena, 0);
 
   // Historie samostatných položek napříč VŠEMI nabídkami (i mimo FVE) — pro
   // ceník/napovídání v PolozkyTabulka.
@@ -884,7 +936,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
             <div style={{ fontSize: 22, fontWeight: 800, color: "#34d399" }}>{kpiSchvaleno.length}</div>
           </div>
           <div style={S.card}>
-            <div style={S.label}>Hodnota otevřené pipeline</div>
+            <div style={S.label}>Hodnota otevřené pipeline (bez DPH)</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b" }}>{fmtKc(kpiHodnotaOtevrenych)}</div>
           </div>
         </div>
@@ -937,7 +989,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
                       {q.status}
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{q.cislo ? <b>{q.cislo} · </b> : ""}{cust ? cust.name : "bez zákazníka"} · {fmtKc(computeQuoteTotals(q.data).cilovaCena)}</div>
+                  <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{q.cislo ? <b>{q.cislo} · </b> : ""}{cust ? cust.name : "bez zákazníka"} · {fmtKc(computeQuoteTotals(q.data, q.type).cilovaCena)} bez DPH</div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button onClick={e => { e.stopPropagation(); duplicateQuote(q); }} title="Duplikovat nabídku" style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 11 }}>📋 Duplikovat</button>
@@ -998,14 +1050,27 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           onOdeslano={oznacitOdeslano}
           jobType={type}
           onSave={save}
-          cilovaCena={data.zakaznik.cilovaCena}
-          onUseAsTarget={(kc) => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: String(Math.round(kc)) } })}
+          cenaVNabidce={data.zakaznik}
+          onUseAsTarget={({ cenaBezDph, cenaSDph: sDphKalk, dphPct: dphKalk, naklad }) => setData({ ...data, zakaznik: {
+            ...data.zakaznik, cilovaCena: String(cenaBezDph), cenaSDph: String(sDphKalk), dph: dphKalk,
+            ...(naklad != null ? { nakladKalkulace: String(naklad) } : {}),
+          } })}
         />
       )}
 
       {/* INTERNÍ NACENĚNÍ — po MD */}
       <div style={S.card}>
         <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>🧮 Interní nacenění — po MD (člověko-dnech)</div>
+        {nakladZKalkulace && (
+          <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#7c2d12", marginBottom: 10 }}>
+            U {type === "FVE" ? "nové FVE" : "rozšíření"} se náklad i cena počítají v kalkulaci výše — tady jen plán práce (MD) pro rozvrh a zakázku, do ceny se nepřičítá.
+          </div>
+        )}
+        {type === "SRV" && (
+          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#1e3a8a", marginBottom: 10 }}>
+            U servisu je tady náklad (lidé, dny, doprava, materiál) — cena je součet úkonů v kalkulaci výše, marže = cena − tento náklad.
+          </div>
+        )}
         <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Počet MD (dní) a počet lidí se u každého řádku píší ručně — appka je vynásobí (2 dny × 3 lidi = 6 MD) a tím se počítá práce (MD × sazba). Doprava se násobí jen počtem dní (stejná cesta bez ohledu na počet lidí). Materiál se nenásobí vůbec — je to vždy celková částka za řádek. U řádků s jednotkou „Bod" nebo „Hodina" se práce počítá jako množství × příslušná sazba, bez násobení počtem lidí. Jen pro vnitřní potřebu — zákazník tohle nevidí.</div>
         <div style={{ display: "flex", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
           <div style={{ maxWidth: 160 }}>
@@ -1061,22 +1126,32 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       <div style={S.card}>
         <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>📋 Nabídka pro zákazníka — po sekcích</div>
         <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>To, co uvidí zákazník: vlastní pojmenované sekce a jejich cena, bez vnitřního rozpisu hodin a nákladů.</div>
-        <div style={{ maxWidth: 260, marginBottom: 14 }}>
-          <label style={S.label}>Cílová prodejní cena celkem {sekcova ? "BEZ DPH " : ""}(Kč) <span style={{ textTransform: "none" }}>— prázdné = návrh {fmtKc(Math.round(celkemNaklad * 1.25))}</span></label>
-          <input type="number" style={S.input} placeholder={String(Math.round(celkemNaklad * 1.25))} value={data.zakaznik.cilovaCena}
-            disabled={type === "SRV" || type === "FVR"} title={type === "SRV" || type === "FVR" ? "U servisu a rozšíření se bere automaticky z nabídky pro zákazníka" : undefined}
-            onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: e.target.value } })} />
-          {(type === "SRV" || type === "FVR") && <div style={{ fontSize: 11, color: "#475569", marginTop: -6 }}>Bere se automaticky z nabídky pro zákazníka (kalkulace výše).</div>}
-          {sekcova && <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>S DPH {dphPctSekce} %: <b>{fmtKc(cilovaSDph)}</b></div>}
-        </div>
-        {sekcova && (
-          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, marginBottom: 14 }}>
+        {kalkulacni ? (
+          <div style={{ fontSize: 12, color: "#1e3a8a", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px", marginBottom: 14 }}>
+            Cenu počítá kalkulace výše ({type === "SRV" ? "součet úkonů" : "náklad + marže"}) a propisuje se sem sama:
+            {" "}<b>{fmtKc(cilovaCena)} bez DPH</b> · DPH {dphPct} % · <b>{fmtKc(cenaSDph)} s DPH</b>.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "160px 240px 1fr", gap: 12, marginBottom: 6, alignItems: "end" }}>
+            <div>
+              <label style={S.label}>Marže (% k nákladu)</label>
+              <input type="number" min="0" step="1" style={S.input} value={data.zakaznik.marzePct ?? ""} placeholder={String(marzeZadana)}
+                onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, marzePct: e.target.value } })} />
+            </div>
             <div>
               <label style={S.label}>Sazba DPH v nabídce</label>
-              <select style={S.select} value={dphPctSekce} onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, dph: Number(e.target.value) } })}>
+              <select style={S.select} value={dphPct} onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, dph: Number(e.target.value) } })}>
                 {SAZBY_DPH.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
               </select>
             </div>
+            <div style={{ fontSize: 12, color: "#475569", paddingBottom: 12 }}>
+              Náklad {fmtKc(celkemNaklad)} + marže {String(marzeZadana).replace(".", ",")} % = <b>{fmtKc(cilovaCena)} bez DPH</b>, + DPH {dphPct} % = <b>{fmtKc(cenaSDph)} s DPH</b>.
+              {celkemNaklad <= 0 && <span style={{ color: "#b91c1c" }}> Nejdřív vyplň interní nacenění výše.</span>}
+            </div>
+          </div>
+        )}
+        {sekcova && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 14 }}>
             <div>
               <label style={S.label}>Místo realizace <span style={{ textTransform: "none" }}>— prázdné = adresa zákazníka</span></label>
               <input style={S.input} value={data.zakaznik.adresa ?? ""} placeholder={customers.find(c => c.id === Number(customerId))?.address || "např. Zábřeh, Krumpach 12"}
@@ -1088,8 +1163,25 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         <div style={{ marginTop: 12, fontSize: 13 }}>
           <span style={{ color: "#475569" }}>Součet sekcí: </span><b>{fmtKc(sekceSuma)}</b>
           <span style={{ marginLeft: 10, color: Math.abs(sekceRozdil) < 1 ? "#34d399" : "#f59e0b" }}>
-            {Math.abs(sekceRozdil) < 1 ? "✓ sedí na cílovou cenu" : `⚠️ nerozděleno: ${fmtKc(sekceRozdil)}`}
+            {Math.abs(sekceRozdil) < 1 ? "✓ sedí na cenu bez DPH"
+              : sekceRozdil > 0 ? `⚠️ zbývá rozdělit ${fmtKc(sekceRozdil)} (sekce se zadávají bez DPH)`
+                : `⚠️ sekce jsou o ${fmtKc(-sekceRozdil)} víc než cena bez DPH`}
           </span>
+          {Math.abs(sekceRozdil) >= 1 && sekceSuma > 0 && cilovaCena > 0 && (
+            <button style={{ ...S.btnGhost, padding: "3px 10px", fontSize: 12, marginLeft: 10 }}
+              title="Přepočítá částky sekcí ve stejném poměru tak, aby dohromady dávaly cenu bez DPH"
+              onClick={() => {
+                const sekce = data.zakaznik.sekce;
+                let zbyva = cilovaCena;
+                const nove = sekce.map((x, i) => {
+                  if (i === sekce.length - 1) return { ...x, castka: String(zbyva) };
+                  const c = Math.round((Number(x.castka) || 0) / sekceSuma * cilovaCena);
+                  zbyva -= c;
+                  return { ...x, castka: String(c) };
+                });
+                setData({ ...data, zakaznik: { ...data.zakaznik, sekce: nove } });
+              }}>⚖️ Dorovnat sekce na cenu</button>
+          )}
         </div>
         {sekcova && (() => {
           const vychozi = seznamyPodleTypu(type);
@@ -1112,7 +1204,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         {sekcova && nahledOtevren && (
           <div ref={nahledRef}>
             <NahledSekcove
-              type={type} data={data} setData={setData} cilovaCena={cilovaCena} dphPct={dphPctSekce}
+              type={type} data={data} setData={setData} cilovaCena={cilovaCena} dphPct={dphPct}
               customer={customers.find(c => c.id === Number(customerId))}
               quote={quotes.find(q => q.id === activeId)} currentUser={currentUser}
               odeslane={activeId ? odeslane : []} onOdeslano={oznacitOdeslano} onSave={save}
@@ -1123,15 +1215,13 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
 
       <div style={S.card}>
         <label style={S.label}>{!type || sekcova ? "Poznámka k nabídce — zobrazí se zákazníkovi" : "Interní poznámka — zákazník ji nevidí"}</label>
-        <textarea style={{ ...S.input, minHeight: 70, resize: "vertical" }} value={data.notes} onChange={e => setData({ ...data, notes: e.target.value })} />
+        <textarea style={{ ...S.input, minHeight: 70, resize: "vertical", fontFamily: "inherit" }} value={data.notes} onChange={e => setData({ ...data, notes: e.target.value })} />
       </div>
 
       <div style={{ ...S.card, background: "#f8fafc" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
-          <div><div style={S.label}>Celkem interní náklad</div><div style={{ fontSize: 20, fontWeight: 800, color: "#f87171" }}>{fmtKc(celkemNaklad)}</div></div>
-          <div><div style={S.label}>Cílová cena</div><div style={{ fontSize: 20, fontWeight: 800, color: "#34d399" }}>{fmtKc(cilovaCena)}</div></div>
-          <div><div style={S.label}>Marže</div><div style={{ fontSize: 20, fontWeight: 800, color: marze >= 0 ? "#34d399" : "#f87171" }}>{fmtKc(marze)}</div></div>
-          <div><div style={S.label}>Marže %</div><div style={{ fontSize: 20, fontWeight: 800, color: marze >= 0 ? "#34d399" : "#f87171" }}>{marzePct} %</div></div>
+        <div style={{ marginBottom: 14 }}>
+          <RetezecCeny naklad={nakladNabidky} marzeKc={marze} marzePct={marzePct} cenaBez={cilovaCena} dphPct={dphPct} cenaS={cenaSDph}
+            poznamka={nakladZKalkulace ? "Náklad a marže z kalkulace FVE výše." : type === "SRV" ? "Cena = součet úkonů servisu, náklad = interní nacenění." : "Marže je přirážka k nákladu. Všechny částky kromě poslední jsou bez DPH."} />
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button style={S.btn("#34d399")} onClick={save} disabled={saving}>{saving ? "Ukládám…" : "💾 Uložit nabídku"}</button>
