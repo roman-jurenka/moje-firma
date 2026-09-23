@@ -548,6 +548,21 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const savedSnapshotRef = useRef(null);
   const [typeFilter, setTypeFilter] = useState("vse");
   const [nahledOtevren, setNahledOtevren] = useState(false);
+  // Krátká potvrzovací hláška nahoře (uloženo, odesláno, zkopírováno…).
+  const [hlaska, setHlaska] = useState(null);
+  const hlaskaTimer = useRef(null);
+  const ukazHlasku = (text) => {
+    clearTimeout(hlaskaTimer.current);
+    setHlaska(text);
+    hlaskaTimer.current = setTimeout(() => setHlaska(null), 4000);
+  };
+  useEffect(() => () => clearTimeout(hlaskaTimer.current), []);
+  const hlaskaEl = hlaska && (
+    <div role="status" style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "#15803d", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, boxShadow: "0 6px 20px rgba(0,0,0,.2)", maxWidth: "90vw" }}
+      onClick={() => setHlaska(null)}>
+      {hlaska}
+    </div>
+  );
   const nahledRef = useRef(null);
   const [statusFilter, setStatusFilter] = useState("vse");
 
@@ -604,6 +619,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       }
     }
     await nactiOdeslane(activeId);
+    ukazHlasku(status === "Návrh" ? "✓ Označeno jako odeslané — kopie uložena, stav změněn na Odesláno" : "✓ Odeslání zaznamenáno — kopie nabídky uložena");
   };
 
   const hasUnsavedChanges = () => {
@@ -728,6 +744,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       setName(row.name);
       savedSnapshotRef.current = JSON.stringify({ name: row.name, customerId, status, type, data });
       setSaving(false);
+      ukazHlasku(row.cislo ? `✓ Nabídka uložena — přiděleno číslo ${row.cislo}` : "✓ Nabídka uložena");
       return;
     }
     alert("Nabídku se nepodařilo uložit: nepodařilo se přidělit volné číslo nabídky. Zkus to prosím znovu.");
@@ -736,9 +753,11 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
 
   const deleteQuote = async (id) => {
     if (!confirm("Smazat tuto nabídku?")) return;
-    await supabase.from("quotes").delete().eq("id", id);
+    const { error } = await supabase.from("quotes").delete().eq("id", id);
+    if (error) { alert("Nabídku se nepodařilo smazat: " + error.message); return; }
     setQuotes(quotes.filter(q => q.id !== id));
     if (activeId === id) closeQuote();
+    ukazHlasku("Nabídka smazána");
   };
 
   // Duplikace nabídky — ušetří přepisování celého interního nacenění, když
@@ -755,8 +774,9 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       data: q.data,
       updated_at: new Date().toISOString(),
     };
-    const { data: inserted } = await supabase.from("quotes").insert(row).select().single();
-    if (inserted) setQuotes([inserted, ...quotes]);
+    const { data: inserted, error } = await supabase.from("quotes").insert(row).select().single();
+    if (error) { alert("Nabídku se nepodařilo zkopírovat: " + error.message); return; }
+    if (inserted) { setQuotes([inserted, ...quotes]); ukazHlasku(`✓ Nabídka zkopírována jako „${row.name}“`); }
   };
 
   const convertToDeal = async () => {
@@ -920,6 +940,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   if (!data) {
     return (
       <div style={S.app}>
+        {hlaskaEl}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1A1A1A", margin: 0 }}>💰 Nacenění</h1>
           <button style={S.btn()} onClick={newQuote}>+ Nová nabídka</button>
@@ -1007,6 +1028,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   // ─── EDITOR NABÍDKY ──────────────────────────────────────────────────────
   return (
     <div style={S.app}>
+      {hlaskaEl}
       <button onClick={() => { if (confirmDiscardChanges()) closeQuote(); }} style={{ ...S.btnGhost, padding: "6px 14px", marginBottom: 14 }}>← Zpět na seznam</button>
 
       <div style={{ ...S.card, display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
