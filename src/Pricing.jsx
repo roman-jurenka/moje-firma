@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, Fragment } from "react";
 import { supabase } from "./supabase.js";
 import FveCalculator from "./FveCalculator.jsx";
 import { vychoziSluzba } from "./fvePresets.js";
+import NabidkaNahled from "./NabidkaNahled.jsx";
+import { textyNabidky, seznamyPodleTypu } from "./nabidkaTexty.js";
 
 const S = {
   app:      { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px 28px" },
@@ -29,11 +31,19 @@ const JOB_TYPES = [
   { id: "SRV", label: "SRV — Servis" },
 ];
 
-// Číslo nabídky pro servis a rozšíření: N-{typ}-{rok}-{pořadí}, např.
-// N-SRV-2026-0001. Pořadí se počítá zvlášť pro každý typ a rok z čerstvých
+// Číslo nabídky: N-{typ}-{rok}-{pořadí}, např. N-SRV-2026-0001 nebo
+// N-FVE-2026-0001. Pořadí se počítá zvlášť pro každý typ a rok z čerstvých
 // dat v databázi (ne z lokálního stavu), duplicitu hlídá UNIQUE index
 // quotes_cislo_key (sql-cislo-nabidky.sql).
-const CISLOVANE_TYPY = ["SRV", "FVR"];
+const CISLOVANE_TYPY = ["FVE", "FVR", "SRV", "HRM", "ELK"];
+// Hromosvody a elektroinstalace: nabídka pro zákazníka se skládá ze sekcí
+// (název, popis, cena bez DPH) — cílová cena je u nich BEZ DPH.
+const SEKCOVE_TYPY = ["HRM", "ELK"];
+const SAZBY_DPH = [
+  { v: 21, label: "21 %" },
+  { v: 12, label: "12 % (bytová výstavba)" },
+  { v: 0, label: "0 % (přenesená daňová povinnost)" },
+];
 async function dalsiCisloNabidky(typ) {
   const prefix = `N-${typ}-${new Date().getFullYear()}-`;
   const { data, error } = await supabase.from("quotes").select("cislo").like("cislo", `${prefix}%`);
@@ -325,26 +335,55 @@ function PolozkyTabulka({ polozky, setPolozky, sazbaMd, historicke }) {
 function SekceTabulka({ sekce, setSekce }) {
   const update = (id, key, value) => setSekce(sekce.map(s => s.id === id ? { ...s, [key]: value } : s));
   const remove = (id) => setSekce(sekce.filter(s => s.id !== id));
-  const add = () => setSekce([...sekce, { id: uid(), nazev: "", castka: "" }]);
+  const add = () => setSekce([...sekce, { id: uid(), nazev: "", popis: "", castka: "" }]);
 
   return (
     <div>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead><tr><th style={S.th}>Název sekce (vlastní)</th><th style={S.th}>Částka (Kč)</th><th style={S.th}></th></tr></thead>
+        <thead><tr><th style={S.th}>Název sekce (vlastní)</th><th style={S.th}>Popis pro zákazníka</th><th style={S.th}>Částka (Kč)</th><th style={S.th}></th></tr></thead>
         <tbody>
           {sekce.map(s => (
             <tr key={s.id}>
-              <td style={S.td}><input style={{ ...S.input, marginBottom: 0 }} placeholder="např. Materiál, Montáž, Doprava a revize..." value={s.nazev} onChange={e => update(s.id, "nazev", e.target.value)} /></td>
+              <td style={{ ...S.td, width: "28%" }}><input style={{ ...S.input, marginBottom: 0 }} placeholder="např. Materiál, Montáž, Doprava a revize..." value={s.nazev} onChange={e => update(s.id, "nazev", e.target.value)} /></td>
+              <td style={S.td}><textarea style={{ ...S.input, marginBottom: 0, minHeight: 36, resize: "vertical", fontFamily: "inherit" }} placeholder="co přesně zahrnuje (nepovinné)" value={s.popis ?? ""} onChange={e => update(s.id, "popis", e.target.value)} /></td>
               <td style={S.td}><input type="number" style={{ ...S.input, marginBottom: 0, width: 130 }} value={s.castka} onChange={e => update(s.id, "castka", e.target.value)} /></td>
               <td style={S.td}><button onClick={() => remove(s.id)} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11 }}>✕</button></td>
             </tr>
           ))}
           {sekce.length === 0 && (
-            <tr><td colSpan={3} style={{ ...S.td, color: "#64748b", padding: "12px 8px" }}>Zatím žádné sekce — přidej vlastní členění, které dává smysl u téhle zakázky.</td></tr>
+            <tr><td colSpan={4} style={{ ...S.td, color: "#64748b", padding: "12px 8px" }}>Zatím žádné sekce — přidej vlastní členění, které dává smysl u téhle zakázky.</td></tr>
           )}
         </tbody>
       </table>
       <button onClick={add} style={{ ...S.btnGhost, marginTop: 10, padding: "6px 14px", fontSize: 12 }}>+ Přidat sekci</button>
+    </div>
+  );
+}
+
+// ─── Co je / není v ceně (hromosvody, elektroinstalace) ─────────────────────
+// Stejné chování jako v kalkulačce FVE: položky jde odškrtnout, smazat nebo
+// přidat vlastní; do nabídky jdou jen zaškrtnuté.
+function SeznamVCene({ nadpis, polozky, onChange }) {
+  const [novy, setNovy] = useState("");
+  const pridat = () => {
+    if (!novy.trim()) return;
+    onChange([...polozky, { id: String(uid()), text: novy.trim(), checked: true }]);
+    setNovy("");
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>{nadpis}</div>
+      {polozky.map(it => (
+        <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+          <input type="checkbox" checked={it.checked} onChange={() => onChange(polozky.map(x => x.id === it.id ? { ...x, checked: !x.checked } : x))} />
+          <span style={{ flex: 1, fontSize: 13, color: it.checked ? "#1A1A1A" : "#64748b", textDecoration: it.checked ? "none" : "line-through" }}>{it.text}</span>
+          <button onClick={() => onChange(polozky.filter(x => x.id !== it.id))} style={{ ...S.btn("#ef4444"), padding: "2px 8px", fontSize: 10 }}>✕</button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <input style={S.input} placeholder="+ přidat položku" value={novy} onChange={e => setNovy(e.target.value)} onKeyDown={e => e.key === "Enter" && pridat()} />
+        <button style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }} onClick={pridat}>Přidat</button>
+      </div>
     </div>
   );
 }
@@ -378,6 +417,77 @@ function DenniPlanTabulka({ plan, setPlan }) {
   );
 }
 
+// Náhled nabídky pro hromosvody (HRM) a elektroinstalace (ELK): položky =
+// sekce (název, popis, cena bez DPH), specifikace = u HRM rozpis materiálu
+// z kusovníků, u ELK počet bodů / hodin. Úpravy textů jdou do data.zakaznik.nahled.
+function NahledSekcove({ type, data, setData, cilovaCena, dphPct, customer, quote, currentUser, odeslane, onOdeslano, onSave }) {
+  const sekce = data.zakaznik.sekce || [];
+  const ukony = sekce
+    .filter(s => (s.nazev || "").trim() || (s.popis || "").trim())
+    .map(s => ({ id: s.id, nazev: s.nazev || "", popis: s.popis || "", cena: s.castka ?? "", ks: "" }));
+  const radkyInt = data.interni.radky || [];
+  let radky = [];
+  if (type === "HRM") {
+    const grouped = {};
+    radkyInt.flatMap(r => r.kusovnik || []).forEach(it => {
+      const nazev = (it.nazev || "").trim();
+      if (!nazev) return;
+      const klic = nazev + "|" + (it.jednotka || "ks");
+      if (!grouped[klic]) grouped[klic] = { nazev, jednotka: it.jednotka || "ks", mnozstvi: 0 };
+      grouped[klic].mnozstvi += Number(it.mnozstvi) || 0;
+    });
+    radky = Object.values(grouped).filter(g => g.mnozstvi > 0)
+      .map(g => ({ label: g.nazev, ks: `${Math.round(g.mnozstvi * 100) / 100} ${g.jednotka}`, hodnota: "" }));
+  } else {
+    const sumBod = radkyInt.filter(r => r.jednotka === "bod").reduce((s, r) => s + (Number(r.pocetMd) || 0), 0);
+    const sumHod = radkyInt.filter(r => r.jednotka === "hod").reduce((s, r) => s + (Number(r.pocetMd) || 0), 0);
+    if (sumBod) radky.push({ label: "Elektroinstalační body (zásuvky, vypínače, světelné vývody…)", ks: `${sumBod}`, hodnota: "" });
+    if (sumHod) radky.push({ label: "Práce v hodinové sazbě", ks: `${sumHod} h`, hodnota: "" });
+  }
+  const texty = textyNabidky({ jobType: type, ukony, radky });
+  const vychozi = seznamyPodleTypu(type);
+  const zahrnuto = (data.zakaznik.zahrnutoItems || vychozi.zahrnutoItems).filter(it => it.checked).map(it => it.text);
+  const nezahrnuto = (data.zakaznik.nezahrnutoItems || vychozi.nezahrnutoItems).filter(it => it.checked).map(it => it.text);
+  const cenaBezDph = Math.round(Number(cilovaCena) || 0);
+  const cenaSDph = Math.round(cenaBezDph * (1 + dphPct / 100));
+  const soucetSekci = sekce.reduce((s, x) => s + (Number(x.castka) || 0), 0);
+  const upozorneni = [
+    cenaBezDph <= 0 && "cena (vyplň interní nacenění nebo cílovou cenu)",
+    ukony.length > 0 && Math.abs(soucetSekci - cenaBezDph) >= 1 && `součet položek ${fmtKc(soucetSekci)} nesedí na cílovou cenu ${fmtKc(cenaBezDph)} (uprav sekce)`,
+  ].filter(Boolean);
+  const nastavZakaznik = (patch) => setData({ ...data, zakaznik: { ...data.zakaznik, ...patch } });
+  return (
+    <NabidkaNahled
+      texty={texty}
+      ukony={ukony}
+      onUkonyChange={(nove) => nastavZakaznik({
+        sekce: sekce.map(s => { const x = nove.find(n => n.id === s.id); return x ? { ...s, nazev: x.nazev, popis: x.popis } : s; }),
+      })}
+      cenaSDph={cenaSDph}
+      cenaBezDph={cenaBezDph}
+      dphPct={dphPct}
+      zahrnuto={zahrnuto}
+      nezahrnuto={nezahrnuto}
+      seznamNoveFve={false}
+      upozorneni={upozorneni}
+      poznamkaVychozi={data.notes || ""}
+      upravy={data.zakaznik.nahled}
+      onUpravy={(nahled) => nastavZakaznik({ nahled })}
+      customerName={customer?.name}
+      adresa={(data.zakaznik.adresa || "").trim() || customer?.address}
+      cisloNabidky={quote?.cislo}
+      vystaveno={quote?.vystaveno}
+      oz={{ jmeno: currentUser?.name || "", email: currentUser?.email || "", employeeId: currentUser?.employeeId ?? null }}
+      odeslane={odeslane}
+      onOdeslano={onOdeslano}
+      isAdmin={currentUser?.role === "admin"}
+      onSave={onSave}
+      typ={type}
+      S={S}
+    />
+  );
+}
+
 export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const [quotes, setQuotes] = useState([]);
   const [search, setSearch] = useState("");
@@ -391,6 +501,8 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const [converting, setConverting] = useState(false);
   const savedSnapshotRef = useRef(null);
   const [typeFilter, setTypeFilter] = useState("vse");
+  const [nahledOtevren, setNahledOtevren] = useState(false);
+  const nahledRef = useRef(null);
   const [statusFilter, setStatusFilter] = useState("vse");
 
   useEffect(() => {
@@ -470,6 +582,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     setStatus(st);
     setType(ty);
     setData(normalized);
+    setNahledOtevren(false);
     savedSnapshotRef.current = JSON.stringify({ name: q.name, customerId: cId, status: st, type: ty, data: normalized });
   };
 
@@ -485,7 +598,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     savedSnapshotRef.current = JSON.stringify({ name: "", customerId: "", status: "Návrh", type: "", data: fresh });
   };
 
-  const closeQuote = () => { setActiveId(null); setData(null); savedSnapshotRef.current = null; };
+  const closeQuote = () => { setActiveId(null); setData(null); setNahledOtevren(false); savedSnapshotRef.current = null; };
 
   // ── Výpočty ──
   const sazbaMd = data?.interni?.sazbaMd || 0;
@@ -508,6 +621,11 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
 
   const sekceSuma = data ? data.zakaznik.sekce.reduce((s, x) => s + (Number(x.castka) || 0), 0) : 0;
   const sekceRozdil = cilovaCena - sekceSuma;
+
+  // ── Nabídka pro zákazníka u hromosvodů a elektroinstalací (náhled) ──
+  const sekcova = SEKCOVE_TYPY.includes(type);
+  const dphPctSekce = data?.zakaznik?.dph ?? 21;
+  const cilovaSDph = Math.round(cilovaCena * (1 + dphPctSekce / 100));
 
   const planClovekDni = data ? data.denniPlan.reduce((s, p) => s + (Number(p.pocetLidi) || 0), 0) : 0;
   const planDniPocet = data ? data.denniPlan.length : 0;
@@ -944,12 +1062,28 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>📋 Nabídka pro zákazníka — po sekcích</div>
         <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>To, co uvidí zákazník: vlastní pojmenované sekce a jejich cena, bez vnitřního rozpisu hodin a nákladů.</div>
         <div style={{ maxWidth: 260, marginBottom: 14 }}>
-          <label style={S.label}>Cílová prodejní cena celkem (Kč) <span style={{ textTransform: "none" }}>— prázdné = návrh {fmtKc(Math.round(celkemNaklad * 1.25))}</span></label>
+          <label style={S.label}>Cílová prodejní cena celkem {sekcova ? "BEZ DPH " : ""}(Kč) <span style={{ textTransform: "none" }}>— prázdné = návrh {fmtKc(Math.round(celkemNaklad * 1.25))}</span></label>
           <input type="number" style={S.input} placeholder={String(Math.round(celkemNaklad * 1.25))} value={data.zakaznik.cilovaCena}
             disabled={type === "SRV" || type === "FVR"} title={type === "SRV" || type === "FVR" ? "U servisu a rozšíření se bere automaticky z nabídky pro zákazníka" : undefined}
             onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, cilovaCena: e.target.value } })} />
           {(type === "SRV" || type === "FVR") && <div style={{ fontSize: 11, color: "#475569", marginTop: -6 }}>Bere se automaticky z nabídky pro zákazníka (kalkulace výše).</div>}
+          {sekcova && <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>S DPH {dphPctSekce} %: <b>{fmtKc(cilovaSDph)}</b></div>}
         </div>
+        {sekcova && (
+          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, marginBottom: 14 }}>
+            <div>
+              <label style={S.label}>Sazba DPH v nabídce</label>
+              <select style={S.select} value={dphPctSekce} onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, dph: Number(e.target.value) } })}>
+                {SAZBY_DPH.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={S.label}>Místo realizace <span style={{ textTransform: "none" }}>— prázdné = adresa zákazníka</span></label>
+              <input style={S.input} value={data.zakaznik.adresa ?? ""} placeholder={customers.find(c => c.id === Number(customerId))?.address || "např. Zábřeh, Krumpach 12"}
+                onChange={e => setData({ ...data, zakaznik: { ...data.zakaznik, adresa: e.target.value } })} />
+            </div>
+          </div>
+        )}
         <SekceTabulka sekce={data.zakaznik.sekce} setSekce={sekce => setData({ ...data, zakaznik: { ...data.zakaznik, sekce } })} />
         <div style={{ marginTop: 12, fontSize: 13 }}>
           <span style={{ color: "#475569" }}>Součet sekcí: </span><b>{fmtKc(sekceSuma)}</b>
@@ -957,10 +1091,38 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
             {Math.abs(sekceRozdil) < 1 ? "✓ sedí na cílovou cenu" : `⚠️ nerozděleno: ${fmtKc(sekceRozdil)}`}
           </span>
         </div>
+        {sekcova && (() => {
+          const vychozi = seznamyPodleTypu(type);
+          const zahrnutoItems = data.zakaznik.zahrnutoItems || vychozi.zahrnutoItems;
+          const nezahrnutoItems = data.zakaznik.nezahrnutoItems || vychozi.nezahrnutoItems;
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}>
+              <SeznamVCene nadpis="V ceně JE zahrnuto" polozky={zahrnutoItems}
+                onChange={polozky => setData({ ...data, zakaznik: { ...data.zakaznik, zahrnutoItems: polozky, nezahrnutoItems } })} />
+              <SeznamVCene nadpis="V ceně NENÍ zahrnuto" polozky={nezahrnutoItems}
+                onChange={polozky => setData({ ...data, zakaznik: { ...data.zakaznik, zahrnutoItems, nezahrnutoItems: polozky } })} />
+            </div>
+          );
+        })()}
+        {sekcova && (
+          <div style={{ marginTop: 14 }}>
+            <button style={S.btn("#0369a1")} onClick={() => setNahledOtevren(v => !v)}>📝 {nahledOtevren ? "Skrýt náhled nabídky" : "Náhled nabídky pro zákazníka"}</button>
+          </div>
+        )}
+        {sekcova && nahledOtevren && (
+          <div ref={nahledRef}>
+            <NahledSekcove
+              type={type} data={data} setData={setData} cilovaCena={cilovaCena} dphPct={dphPctSekce}
+              customer={customers.find(c => c.id === Number(customerId))}
+              quote={quotes.find(q => q.id === activeId)} currentUser={currentUser}
+              odeslane={activeId ? odeslane : []} onOdeslano={oznacitOdeslano} onSave={save}
+            />
+          </div>
+        )}
       </div>
 
       <div style={S.card}>
-        <label style={S.label}>Poznámka k nabídce</label>
+        <label style={S.label}>{!type || sekcova ? "Poznámka k nabídce — zobrazí se zákazníkovi" : "Interní poznámka — zákazník ji nevidí"}</label>
         <textarea style={{ ...S.input, minHeight: 70, resize: "vertical" }} value={data.notes} onChange={e => setData({ ...data, notes: e.target.value })} />
       </div>
 
@@ -973,11 +1135,19 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button style={S.btn("#34d399")} onClick={save} disabled={saving}>{saving ? "Ukládám…" : "💾 Uložit nabídku"}</button>
-          {/* U SRV nahrazuje HTML tisk servisní nabídka (Word) v kalkulačce výše */}
-          {type !== "SRV" && <button style={S.btnGhost} onClick={printQuote}>🖨️ Nabídka pro zákazníka</button>}
+          {/* Nabídka pro zákazníka: u FVE/FVR/SRV náhled v kalkulačce, u HRM/ELK
+              náhled u sekcí; starý jednoduchý tisk jen u nabídky bez typu */}
+          {sekcova && (
+            <button style={S.btn("#0369a1")} onClick={() => { setNahledOtevren(true); setTimeout(() => nahledRef.current?.scrollIntoView({ behavior: "smooth" }), 50); }}>
+              📝 Náhled nabídky pro zákazníka
+            </button>
+          )}
+          {!type && <button style={S.btnGhost} onClick={printQuote}>🖨️ Nabídka pro zákazníka</button>}
           <button style={S.btnGhost} onClick={printInterni}>📊 Interní přehled (MD)</button>
           {activeId && <button style={S.btn("#F5C518")} disabled={converting} onClick={convertToDeal}>{converting ? "Převádím…" : "➡️ Převést na obchodní případ"}</button>}
         </div>
+        {!type && <div style={{ fontSize: 12, color: "#b45309", marginTop: 10 }}>Vyber nahoře typ zakázky — podle něj se připraví nabídka pro zákazníka s číslem, podmínkami a evidencí odeslání.</div>}
+        {(type === "FVE" || type === "FVR" || type === "SRV") && <div style={{ fontSize: 12, color: "#475569", marginTop: 10 }}>Nabídku pro zákazníka otevřeš tlačítkem „📝 Náhled nabídky pro zákazníka“ v kalkulaci nahoře.</div>}
       </div>
     </div>
   );

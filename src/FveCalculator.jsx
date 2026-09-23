@@ -3,7 +3,7 @@ import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { PRAZDNA_FVE, applyPreset, POLOZKY_NOVE_INSTALACE, zapnutePolozkyNoveInstalace } from "./fvePresets.js";
-import { DRUHY_SERVISU, UKON_DOPRAVA, ZMENA_PRIPOJENI, textyNabidky, ukonyZCfg, cenaUkonu, soucetUkonu, ukonBezCeny, seznamyPodleTypu, maSeznamNoveFve } from "./nabidkaTexty.js";
+import { DRUHY_SERVISU, UKON_DOPRAVA, ZMENA_PRIPOJENI, textyNabidky, ukonyZCfg, cenaUkonu, soucetUkonu, ukonBezCeny, seznamyPodleTypu, maSeznamNoveFve, odhadVynosu } from "./nabidkaTexty.js";
 import NabidkaNahled from "./NabidkaNahled.jsx";
 
 // ─── FVE kalkulačka — přesně podle Excelu "Kalkulačka sestav" ──────────────
@@ -298,40 +298,59 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     }
   };
 
-  // Nabídka pro servis (SRV) a rozšíření FVE (FVR) — skládá se jako náhled
-  // přímo v appce (NabidkaNahled.jsx), texty podle typu z nabidkaTexty.js.
-  // Specifikace = komponenty s množstvím > 0: u SRV stávající soustava
-  // (revize, diagnostika, čištění panelů), u FVR to, co se přidává.
+  // Nabídka pro zákazníka — nová FVE, servis (SRV) i rozšíření (FVR) se
+  // skládají jako náhled přímo v appce (NabidkaNahled.jsx), texty podle typu
+  // z nabidkaTexty.js. Specifikace = komponenty s množstvím > 0 (bez položek
+  // "Bez …" z ceníku): u FVE celá sestava, u SRV stávající soustava,
+  // u FVR to, co se přidává. Word šablona zůstává u FVE jako záloha.
   const RADEK_LABELS = {
     panel: "Fotovoltaické panely", konstrukce: "Konstrukce", stridac: "Střídač", baterie: "Baterie",
     bms: "BMS", rozvadecDc: "Rozvaděč DC", ostatniFixed: "Ostatní elektro materiál", backup: "Back-up",
     wallbox: "Wallbox / nabíjení EV", regulace: "Regulace", bojler: "Bojler",
   };
-  const maNahled = jobType === "SRV" || jobType === "FVR";
+  const maNahled = jobType === "SRV" || jobType === "FVR" || jobType === "FVE";
+  // U servisu a rozšíření se cílová cena bere automaticky z nabídky, u nové
+  // FVE se nastavuje tlačítkem (interní nacenění tam může mít vlastní cenu).
+  const synchronizovatCenu = jobType === "SRV" || jobType === "FVR";
   const ukonyNabidky = ukonyZCfg(cfg);
+  const vNabidce = (item, cfgItem) => Number(cfgItem?.qty) > 0 && !/^Bez /.test(item?.name || "");
+  // Nová FVE: jen to, co zákazníka zajímá (jako dřív ve Wordu) — rozvaděč DC
+  // a drobný elektro materiál jsou v "Dodávka FVE a všech komponent".
+  const FVE_RADKY = {
+    panel: "Fotovoltaické panely", konstrukce: "Konstrukce pro uchycení panelů", stridac: "Střídač", baterie: "Baterie",
+    backup: "Záložní napájení (back-up)", regulace: "Regulace do TUV", wallbox: "Elektromobilita", bojler: "Bojler",
+  };
   const radkyNabidky = matRows
-    .filter(([, , cfgItem]) => Number(cfgItem?.qty) > 0)
+    .filter(([key, item, cfgItem]) => vNabidce(item, cfgItem) && (jobType !== "FVE" || FVE_RADKY[key]))
     .map(([key, item, cfgItem]) => ({
-      label: RADEK_LABELS[key] || key,
-      hodnota: key === "baterie" && bateriKwh > 0 ? `${item.name} (celkem ${fmtCz(bateriKwh)} kWh)` : item.name,
+      label: (jobType === "FVE" ? FVE_RADKY[key] : RADEK_LABELS[key]) || key,
+      hodnota: key === "baterie" && bateriKwh > 0
+        ? `${item.name} (celkem ${fmtCz(bateriKwh)} kWh)${jobType === "FVE" && vNabidce(bms, cfg.bms) ? " + BMS" : ""}`
+        : item.name,
       ks: String(cfgItem.qty),
     }));
   (cfg.customRows || [])
     .filter((r) => (r.name || "").trim() && Number(r.qty) > 0)
     .forEach((r) => radkyNabidky.push({ label: "Další položka", hodnota: r.name.trim(), ks: String(r.qty) }));
   // Cena v nabídce: u servisu součet úkonů (zaokrouhleno jen na celé Kč),
-  // u rozšíření cena z kalkulace (po dotaci, je-li zapnutá).
+  // u FVE a rozšíření cena díla z kalkulace; dotace se v nabídce ukáže
+  // zvlášť (cena díla − dotace = cena pro zákazníka), platby jsou z ceny díla.
   const cenaNabidkyBezDph = jobType === "SRV" ? soucetUkonu(ukonyNabidky) : null;
-  const cenaNabidkySDph = jobType === "SRV"
-    ? Math.round(cenaNabidkyBezDph * (1 + dph))
-    : (cfg.dotaceOn ? cenaPoDotaci : cenaDphRounded);
+  const cenaNabidkySDph = jobType === "SRV" ? Math.round(cenaNabidkyBezDph * (1 + dph)) : cenaDphRounded;
   const cenaNabidkyBezDphFinal = jobType === "SRV" ? cenaNabidkyBezDph : Math.round(cenaNabidkySDph / (1 + dph));
+  const dotaceNabidky = jobType !== "SRV" && cfg.dotaceOn ? Math.round(dotace) : 0;
+  const cenaProZakaznika = cenaNabidkySDph - dotaceNabidky;
   const textyNahledu = maNahled ? textyNabidky({
     jobType,
     ukony: ukonyNabidky,
     radky: radkyNabidky,
     vykonKwp: vykonFve,
     bateriKwh,
+    sDotaci: dotaceNabidky > 0,
+    rocniVynos: String(cfg.rocniVynosOverride || "").trim() || odhadVynosu(vykonFve),
+    maBaterii: vNabidce(baterie, cfg.baterie),
+    prodlouzenaZarukaStridace: !!cfg.zaruka,
+    cisloOP: String(cfg.cisloOP || "").trim(),
   }) : null;
   // "Co je / není v ceně" pro náhled: zaškrtnuté položky + u rozšíření změna
   // připojení u distributora podle volby (někdy v ceně, někdy ne).
@@ -347,7 +366,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   // Nabídka z dřívějška může mít zapnuté položky nové instalace FVE nebo
   // její seznam "co je v ceně" — upozornit a nabídnout opravu jedním klikem.
   const polozkyNoveFve = maNahled && jobType === "FVR" ? zapnutePolozkyNoveInstalace(cfg) : [];
-  const seznamNoveFve = maNahled && maSeznamNoveFve(cfg);
+  const seznamNoveFve = (jobType === "SRV" || jobType === "FVR") && maSeznamNoveFve(cfg);
   const opravitNaSluzbu = () => set({
     ...(jobType === "FVR" ? POLOZKY_NOVE_INSTALACE : {}),
     ...(seznamNoveFve ? seznamyPodleTypu(jobType) : {}),
@@ -495,10 +514,10 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       )}
 
       <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
-        <div style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>Údaje pro nabídku pro zákazníka (Word) — nepočítají se, jen se vypíšou do dokumentu.</div>
+        <div style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>Údaje pro nabídku pro zákazníka — nepočítají se, jen se vypíšou do nabídky.</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           <div><label style={S.label}>Číslo obchodního případu</label><input style={S.input} placeholder="RJ-26-08-0001" value={cfg.cisloOP} onChange={(e) => set({ cisloOP: e.target.value })} /></div>
-          <div><label style={S.label}>Adresa instalace</label><input style={S.input} placeholder={customerName || "např. Zábřeh, Jan Novák"} value={cfg.adresaInstalace} onChange={(e) => set({ adresaInstalace: e.target.value })} /></div>
+          <div><label style={S.label}>Adresa instalace</label><input style={S.input} placeholder={customerAddress ? `prázdné = ${customerAddress}` : "např. Zábřeh, Krumpach 12"} value={cfg.adresaInstalace} onChange={(e) => set({ adresaInstalace: e.target.value })} /></div>
           <div><label style={S.label}>Roční výnos FVE (MWh) — prázdné = odhad</label><input style={S.input} placeholder="např. 6,0–6,9" value={cfg.rocniVynosOverride} onChange={(e) => set({ rocniVynosOverride: e.target.value })} /></div>
         </div>
 
@@ -629,18 +648,18 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           U servisu je cena nabídky <b>součet úkonů: {fmtKc(cenaNabidkySDph)} s DPH</b>. Čísla výše (materiál z popisu soustavy) se do nabídky nepočítají.
         </div>
       )}
-      {maNahled && <SyncCilovaCena cena={cenaNabidkySDph} aktualni={cilovaCena} onSync={onUseAsTarget} />}
+      {synchronizovatCenu && <SyncCilovaCena cena={cenaProZakaznika} aktualni={cilovaCena} onSync={onUseAsTarget} />}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {onUseAsTarget && !maNahled && (
+        {onUseAsTarget && !synchronizovatCenu && (
           <button style={S.btn("#F5C518")} onClick={() => onUseAsTarget(cfg.dotaceOn ? cenaPoDotaci : cenaDphRounded)}>
             ➡️ Použít jako cílovou cenu pro zákazníka
           </button>
         )}
-        {maNahled
-          ? <button style={S.btn("#0369a1")} onClick={() => setNahledOtevren((v) => !v)}>📝 {nahledOtevren ? "Skrýt náhled nabídky" : "Náhled nabídky pro zákazníka"}</button>
-          : <button style={S.btn("#0369a1")} onClick={generateWordOffer}>📄 Vygenerovat nabídku (Word)</button>}
+        {maNahled && <button style={S.btn("#0369a1")} onClick={() => setNahledOtevren((v) => !v)}>📝 {nahledOtevren ? "Skrýt náhled nabídky" : "Náhled nabídky pro zákazníka"}</button>}
+        {jobType === "FVE" && (
+          <button style={S.btnGhost} onClick={generateWordOffer} title="Původní Word šablona — bez čísla nabídky a evidence odeslání">📄 Word (původní šablona)</button>
+        )}
       </div>
-      {!maNahled && <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>Pro PDF: otevři stažený Word dokument a použij "Uložit jako → PDF" — appka umí přesně vyplnit šablonu, ale přesný převod na PDF (1:1 jako Word) neumí bez samotného Wordu/LibreOffice udělat.</div>}
       {maNahled && nahledOtevren && (
         <NabidkaNahled
           texty={textyNahledu}
@@ -655,6 +674,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           chybiPripojeni={jobType === "FVR" && !zmenaPripojeni}
           upravy={cfg.nahled}
           onUpravy={(nahled) => set({ nahled })}
+          typ={jobType}
+          dotace={dotaceNabidky}
           customerName={customerName}
           adresa={cfg.adresaInstalace || customerAddress}
           cisloNabidky={cisloNabidky}

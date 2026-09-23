@@ -2,15 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase.js";
 import { cenaUkonu, ukonBezCeny, ukonyMajiMaterial, DUVERA } from "./nabidkaTexty.js";
 
-// ─── Náhled nabídky pro zákazníka (servis SRV a rozšíření FVR) ────────────
+// ─── Náhled nabídky pro zákazníka (FVE, servis, rozšíření, hromosvody, elektro) ─
 // Nabídka se skládá přímo v appce: texty jsou předvyplněné podle typu
 // zakázky (nabidkaTexty.js) a dají se upravit kliknutím přímo do náhledu,
 // částky se berou z kalkulace, záruky a platební podmínky z výchozích
-// hodnot firmy (app_settings, klíč NASTAVENI_KEY) — u konkrétní nabídky se
-// dají přepsat. Úpravy se ukládají do nabídky (cfg.nahled). Tisk / PDF
+// hodnot firmy (app_settings, klíč podle typu — klicNastaveni) — u konkrétní
+// nabídky se dají přepsat. Úpravy se ukládají do nabídky. Tisk / PDF
 // vytiskne přesně to, co je vidět, včetně záhlaví s logem a zápatí.
 
-const NASTAVENI_KEY = "nabidky_vychozi";
+// Nová FVE má jiné podmínky (platnost, termín, záruky) než servis a menší
+// zakázky — proto vlastní sadu výchozích hodnot.
+const klicNastaveni = (typ) => (typ === "FVE" ? "nabidky_vychozi_FVE" : "nabidky_vychozi");
+const popisNastaveni = (typ) => (typ === "FVE" ? "nabídky nové FVE" : "servis, rozšíření, hromosvody a elektroinstalace");
 const FIRMA_EMAIL = "info@jurenkaelektro.cz";
 const FIRMA_TELEFON = "+420 702 172 622";
 const fmtCas = (iso) => new Date(iso).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -57,7 +60,7 @@ const CSS = `
 .nb-oz-kontakt { font-size: 9pt; color: #5B6472; margin-bottom: 5mm; }
 .nb-h { font-size: 12pt; font-weight: 700; color: #16324F; border-bottom: 1.5px solid #E08A1E; padding-bottom: 1mm; margin: 5mm 0 2.5mm; break-after: avoid; page-break-after: avoid; }
 .nb-h + .nb-tab thead, .nb-h + .nb-p { break-before: avoid; }
-.nb-kroky, .nb-dva { break-inside: avoid; page-break-inside: avoid; }
+.nb-kroky, .nb-dva, .nb-drzet { break-inside: avoid; page-break-inside: avoid; }
 .nb-tab { width: 100%; border-collapse: collapse; }
 .nb-tab th { font-size: 8pt; font-weight: 700; color: #5B6472; text-align: left; padding: 1.5mm 1.5mm; border-bottom: 1px solid #D9D9D9; }
 .nb-tab td { padding: 2mm 1.5mm; border-bottom: 1px solid #D9D9D9; vertical-align: top; }
@@ -89,6 +92,7 @@ const CSS = `
 .nb-cenabox-r { text-align: right; }
 .nb-cenabox-cena { font-size: 20pt; font-weight: 700; color: #16324F; line-height: 1.1; white-space: nowrap; }
 .nb-cenabox-dph { font-size: 8.5pt; color: #5B6472; white-space: nowrap; }
+.nb-cenabox-pred { font-size: 8pt; font-weight: 700; color: #E08A1E; text-transform: uppercase; letter-spacing: .3px; }
 .nb-krok-ted { display: inline-block; margin-top: 1mm; font-size: 7pt; font-weight: 700; color: #fff; background: #E08A1E; border-radius: 2mm; padding: 0.3mm 1.8mm; }
 .nb-krok-dalsi { display: inline-block; margin-top: 1mm; font-size: 7pt; font-weight: 700; color: #16324F; border: 1px solid #16324F; border-radius: 2mm; padding: 0.2mm 1.8mm; }
 .nb-vyzva { background: #FFF7EC; border: 1.5px solid #E08A1E; border-radius: 2mm; padding: 4mm 5mm; margin-top: 5mm; break-inside: avoid; page-break-inside: avoid; }
@@ -169,7 +173,12 @@ export default function NabidkaNahled({
   upravy, onUpravy, customerName, adresa, cisloNabidky, vystaveno, oz, isAdmin, onSave, S,
   odeslane, onOdeslano,
   chybiPripojeni,
+  typ,                 // typ zakázky (FVE/SRV/FVR/HRM/ELK) — podle něj se berou výchozí hodnoty
+  dotace = 0,          // Kč s DPH, o které se cena díla sníží dotací (jen FVE/FVR s dotací)
+  poznamkaVychozi = "", // předvyplněná poznámka (u HRM/ELK poznámka k nabídce)
+  upozorneni = [],     // další chybějící údaje od volající stránky
 }) {
+  const nastaveniKlic = klicNastaveni(typ);
   const [nastaveni, setNastaveni] = useState(PRAZDNE_NASTAVENI);
   const [nastaveniNacteno, setNastaveniNacteno] = useState(false);
   const [nastaveniOtevreno, setNastaveniOtevreno] = useState(false);
@@ -179,7 +188,7 @@ export default function NabidkaNahled({
 
   useEffect(() => {
     let zruseno = false;
-    supabase.from("app_settings").select("value").eq("key", NASTAVENI_KEY).maybeSingle().then(({ data, error }) => {
+    supabase.from("app_settings").select("value").eq("key", nastaveniKlic).maybeSingle().then(({ data, error }) => {
       if (zruseno) return;
       if (error) console.error("Nepodařilo se načíst výchozí hodnoty nabídek:", error.message);
       const hodnoty = { ...PRAZDNE_NASTAVENI, ...(data?.value || {}) };
@@ -188,11 +197,11 @@ export default function NabidkaNahled({
       setNastaveniNacteno(true);
     });
     return () => { zruseno = true; };
-  }, []);
+  }, [nastaveniKlic]);
 
   const ulozNastaveni = async () => {
     setUkladamNastaveni(true);
-    const { error } = await supabase.from("app_settings").upsert({ key: NASTAVENI_KEY, value: nastaveniForm, updated_at: new Date().toISOString() });
+    const { error } = await supabase.from("app_settings").upsert({ key: nastaveniKlic, value: nastaveniForm, updated_at: new Date().toISOString() });
     setUkladamNastaveni(false);
     if (error) { alert("Výchozí hodnoty se nepodařilo uložit: " + error.message); return; }
     setNastaveni(nastaveniForm);
@@ -237,7 +246,11 @@ export default function NabidkaNahled({
   const termin = String(hodnota("termin") ?? "").trim();
   const zarukaMaterial = String(hodnota("zarukaMaterial") ?? "").trim();
   // u servisu jen s revizí / diagnostikou / čištěním se nic nedodává
-  const maMaterial = texty.maUkony ? ukonyMajiMaterial(ukony) : true;
+  const maMaterial = texty.maMaterial ?? (texty.maUkony ? ukonyMajiMaterial(ukony) : true);
+  const dotaceKc = Math.max(0, Math.round(Number(dotace) || 0));
+  const duvera = texty.duvera || DUVERA;
+  const doplatekKdy = texty.doplatekKdy || "po dokončení prací a otestování funkčnosti";
+  const zarukyNavic = texty.zarukyNavic || [];
   // výzva k přijetí nabídky (bod 6) — předvyplněná z kontaktu OZ a čísla nabídky
   const vyzvaVychozi = [
     "Nabídku přijmete jednoduše:",
@@ -258,10 +271,11 @@ export default function NabidkaNahled({
     !termin && "termín provedení",
     maMaterial && !zarukaMaterial && "záruka na materiál",
     !zarukaPrace && "záruka na práci",
-    texty.maUkony && !(ukony || []).some((x) => (x.nazev || "").trim()) && "úkony servisu",
-    texty.maUkony && (ukony || []).some(ukonBezCeny) && "cena u některého úkonu",
+    texty.maUkony && !(ukony || []).some((x) => (x.nazev || "").trim()) && (texty.ukonyChybi || "úkony servisu"),
+    texty.maUkony && (ukony || []).some(ukonBezCeny) && (texty.ukonBezCenyText || "cena u některého úkonu"),
     seznamNoveFve && "„Co je v ceně“ má položky pro novou instalaci FVE (oprav v kalkulaci)",
     chybiPripojeni && "jestli je v ceně změna připojení u distributora (vyber v kalkulaci)",
+    ...upozorneni,
   ].filter(Boolean);
 
   // Celá nabídka jako samostatné HTML (stejné pro tisk i pro uloženou kopii).
@@ -323,6 +337,10 @@ export default function NabidkaNahled({
 
   const upravUkon = (id, patch) => onUkonyChange((ukony || []).map((x) => (x.id === id ? { ...x, ...patch } : x)));
   const platneUkony = (ukony || []).filter((x) => (x.nazev || "").trim() || (x.popis || "").trim());
+  // sloupec "počet ks" jen když ho některý řádek má (u sekcí HRM/ELK většinou ne)
+  const ukonyMajiKs = platneUkony.some((x) => String(x.ks ?? "").trim() !== "");
+  const specRadky = texty.specRadky || [];
+  const specMaPopis = specRadky.some((r) => String(r.hodnota ?? "").trim() !== "");
   const nastaveniChybi = nastaveniNacteno && POLE_NASTAVENI.some(([k]) => String(nastaveni[k] ?? "").trim() === "");
 
   const inp = { ...S.input, marginBottom: 0 };
@@ -365,7 +383,7 @@ export default function NabidkaNahled({
 
         {nastaveniChybi && !nastaveniOtevreno && (
           <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#92400e", marginBottom: 12 }}>
-            Výchozí záruky a platební podmínky ještě nejsou nastavené. {isAdmin ? "Nastav je jednou pro všechny nabídky:" : "Požádej administrátora, ať je nastaví."}
+            Výchozí záruky a platební podmínky pro {popisNastaveni(typ)} ještě nejsou nastavené. {isAdmin ? "Nastav je jednou, pak se doplňují samy:" : "Požádej administrátora, ať je nastaví."}
             {isAdmin && <button style={{ ...S.btnGhost, padding: "3px 10px", fontSize: 12, marginLeft: 8 }} onClick={() => setNastaveniOtevreno(true)}>⚙️ Nastavit</button>}
           </div>
         )}
@@ -384,7 +402,7 @@ export default function NabidkaNahled({
 
         <div style={{ marginTop: 10 }}>
           <button style={{ ...S.btnGhost, padding: "4px 12px", fontSize: 12 }} onClick={() => { setNastaveniForm(nastaveni); setNastaveniOtevreno((v) => !v); }}>
-            ⚙️ Výchozí hodnoty pro všechny nabídky {nastaveniOtevreno ? "▲" : "▼"}
+            ⚙️ Výchozí hodnoty — {popisNastaveni(typ)} {nastaveniOtevreno ? "▲" : "▼"}
           </button>
         </div>
         {nastaveniOtevreno && (
@@ -423,55 +441,64 @@ export default function NabidkaNahled({
               Nabídka č. <b>{cisloNabidky || <Chybi co="číslo se přidělí při uložení" />}</b>
               {" · "}Vystaveno {fmtDatum(datumVystaveni)}
               {platiDo && <> · Platí do <b>{fmtDatum(platiDo)}</b></>}
+              {texty.metaNavic ? <> · {texty.metaNavic}</> : null}
             </div>
             <div>
               {customerName ? <>Pro: <b>{customerName}</b> · </> : ""}
-              Místo instalace: {adresaInstalace || <Chybi co="adresa" />}
+              {texty.mistoLabel || "Místo instalace"}: {adresaInstalace || <Chybi co="adresa" />}
             </div>
           </div>
 
           <p className="nb-p">Dobrý den,</p>
           <Upravitelne className="nb-p" hodnota={u.uvod} vychozi={texty.uvod} zaklad={u.uvod_zaklad} onZmena={upravText("uvod", texty.uvod)} />
-          <Upravitelne className="nb-poznamka" hodnota={u.poznamka} vychozi="" placeholder="＋ Klikni a doplň vlastní poznámku (např. zjištěná závada, stav soustavy…) — prázdné se netiskne"
+          <Upravitelne className="nb-poznamka" hodnota={u.poznamka} vychozi={poznamkaVychozi || ""} placeholder="＋ Klikni a doplň vlastní poznámku (např. zjištěná závada, stav soustavy…) — prázdné se netiskne"
             onZmena={(v) => nastav({ poznamka: v || undefined })} />
           <div className="nb-oz-jmeno">{oz.jmeno}</div>
           <div className="nb-oz-kontakt">{[ozEmail, ozTelefon].filter(Boolean).join("   ·   ")}</div>
 
           <div className="nb-cenabox">
             <div className="nb-cenabox-l">
-              <b>{texty.maUkony ? "Cena servisu" : "Cena rozšíření"}</b><br />
+              <b>{texty.cenaNadpis || (texty.maUkony ? "Cena servisu" : "Cena rozšíření")}</b><br />
               {platiDo ? <>Nabídka platí do {fmtDatum(platiDo)}</> : <>Platnost: {platnost || <Chybi co="platnost" />}</>}
               {zalohaPct > 0 && <><br />Záloha {zalohaPct} % ({fmtKc(zalohaKc)}), zbytek po dokončení</>}
             </div>
-            <div className="nb-cenabox-r">
-              <div className="nb-cenabox-cena">{fmtKc(cenaSDph)}</div>
-              <div className="nb-cenabox-dph">vč. DPH {dphPct} % · bez DPH {fmtKc(cenaBezDph)}</div>
-            </div>
+            {dotaceKc > 0 ? (
+              <div className="nb-cenabox-r">
+                <div className="nb-cenabox-pred">Vaše cena po dotaci</div>
+                <div className="nb-cenabox-cena">{fmtKc(cenaSDph - dotaceKc)}</div>
+                <div className="nb-cenabox-dph">cena díla {fmtKc(cenaSDph)} vč. DPH {dphPct} % − dotace {fmtKc(dotaceKc)}</div>
+              </div>
+            ) : (
+              <div className="nb-cenabox-r">
+                <div className="nb-cenabox-cena">{fmtKc(cenaSDph)}</div>
+                <div className="nb-cenabox-dph">vč. DPH {dphPct} % · bez DPH {fmtKc(cenaBezDph)}</div>
+              </div>
+            )}
           </div>
           <div className="nb-duvera">
-            {DUVERA.map((d) => <div key={d.nadpis}><b>{d.nadpis}</b>{d.text}</div>)}
+            {duvera.map((d) => <div key={d.nadpis}><b>{d.nadpis}</b>{d.text}</div>)}
           </div>
 
           {texty.maUkony && (
             <div className="nb-sekce">
               <div className="nb-h">Co pro Vás provedeme</div>
               <table className="nb-tab">
-                <thead><tr><th>ÚKON</th><th className="nb-ks">POČET KS</th><th>POPIS</th><th className="nb-kc">CENA BEZ DPH</th></tr></thead>
+                <thead><tr><th>{texty.ukonySloupec || "ÚKON"}</th>{ukonyMajiKs && <th className="nb-ks">POČET KS</th>}<th>POPIS</th><th className="nb-kc">CENA BEZ DPH</th></tr></thead>
                 <tbody>
                   {platneUkony.length === 0 && (
-                    <tr><td className="nb-l">Rozsah prací</td><td className="nb-ks"></td><td className="nb-v"><Chybi co="úkony zadej v kalkulaci výše" /></td><td className="nb-kc"></td></tr>
+                    <tr><td className="nb-l">Rozsah prací</td>{ukonyMajiKs && <td className="nb-ks"></td>}<td className="nb-v"><Chybi co={texty.ukonyChybi || "úkony zadej v kalkulaci výše"} /></td><td className="nb-kc"></td></tr>
                   )}
                   {platneUkony.map((x) => (
                     <tr key={x.id}>
                       <td className="nb-l"><span key={x.nazev} contentEditable suppressContentEditableWarning onBlur={(e) => upravUkon(x.id, { nazev: e.currentTarget.innerText.trim() })}>{x.nazev}</span></td>
-                      <td className="nb-ks">{x.ks ?? ""}</td>
+                      {ukonyMajiKs && <td className="nb-ks">{x.ks ?? ""}</td>}
                       <td className="nb-v"><span key={x.popis} contentEditable suppressContentEditableWarning onBlur={(e) => upravUkon(x.id, { popis: e.currentTarget.innerText.trim() })}>{x.popis}</span></td>
                       <td className="nb-kc">{ukonBezCeny(x) ? <Chybi co="cena" /> : fmtKc(cenaUkonu(x))}</td>
                     </tr>
                   ))}
-                  <tr className="nb-soucet"><td colSpan={3} className="nb-l2">Cena celkem bez DPH</td><td className="nb-kc">{fmtKc(cenaBezDph)}</td></tr>
-                  <tr className="nb-soucet"><td colSpan={3} className="nb-l2">DPH {dphPct} %</td><td className="nb-kc">{fmtKc(cenaSDph - cenaBezDph)}</td></tr>
-                  <tr className="nb-soucet nb-soucet-hl"><td colSpan={3} className="nb-l2" style={{ color: "#16324F", fontWeight: 700 }}>Cena celkem s DPH</td><td className="nb-kc">{fmtKc(cenaSDph)}</td></tr>
+                  <tr className="nb-soucet"><td colSpan={ukonyMajiKs ? 3 : 2} className="nb-l2">Cena celkem bez DPH</td><td className="nb-kc">{fmtKc(cenaBezDph)}</td></tr>
+                  <tr className="nb-soucet"><td colSpan={ukonyMajiKs ? 3 : 2} className="nb-l2">DPH {dphPct} %</td><td className="nb-kc">{fmtKc(cenaSDph - cenaBezDph)}</td></tr>
+                  <tr className="nb-soucet nb-soucet-hl"><td colSpan={ukonyMajiKs ? 3 : 2} className="nb-l2" style={{ color: "#16324F", fontWeight: 700 }}>Cena celkem s DPH</td><td className="nb-kc">{fmtKc(cenaSDph)}</td></tr>
                 </tbody>
               </table>
             </div>
@@ -482,29 +509,31 @@ export default function NabidkaNahled({
             <Upravitelne className="nb-p" hodnota={u.zpracovani} vychozi={texty.zpracovani} zaklad={u.zpracovani_zaklad} onZmena={upravText("zpracovani", texty.zpracovani)} />
           </div>
 
-          <div className="nb-sekce">
-            <div className="nb-h">{texty.nadpisSpecifikace}</div>
-            <table className="nb-tab">
-              <thead><tr><th>POLOŽKA</th><th className="nb-ks">POČET KS</th><th>TYP / POPIS</th></tr></thead>
-              <tbody>
-                {texty.specRadky.map((r, i) => (
-                  <tr key={i} className={/^Cena/.test(r.label) ? "nb-cena" : ""}>
-                    <td className="nb-l">{r.label}</td>
-                    <td className="nb-ks">{r.ks}</td>
-                    <td className="nb-v">{r.hodnota === "[doplnit]" ? <Chybi co="zadej v kalkulaci výše" /> : r.hodnota}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="nb-drobne">
-              {platiDo
-                ? <>Nabídka platí do {fmtDatum(platiDo)}.</>
-                : platnost ? <>Platnost nabídky: {platnost}.</> : <>Platnost nabídky: <Chybi co="platnost" />.</>}
-              {" "}Ceny jsou s DPH {dphPct} %.
-            </p>
-          </div>
+          {specRadky.length > 0 && (
+            <div className="nb-sekce">
+              <div className="nb-h">{texty.nadpisSpecifikace}</div>
+              <table className="nb-tab">
+                <thead><tr><th>POLOŽKA</th><th className="nb-ks">{texty.specSloupecKs || "POČET KS"}</th>{specMaPopis && <th>TYP / POPIS</th>}</tr></thead>
+                <tbody>
+                  {specRadky.map((r, i) => (
+                    <tr key={i} className={/^Cena/.test(r.label) ? "nb-cena" : ""}>
+                      <td className={specMaPopis ? "nb-l" : "nb-v"}>{r.label}</td>
+                      <td className="nb-ks">{r.ks}</td>
+                      {specMaPopis && <td className="nb-v">{r.hodnota === "[doplnit]" ? <Chybi co="zadej v kalkulaci výše" /> : r.hodnota}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="nb-drobne">
+                {platiDo
+                  ? <>Nabídka platí do {fmtDatum(platiDo)}.</>
+                  : platnost ? <>Platnost nabídky: {platnost}.</> : <>Platnost nabídky: <Chybi co="platnost" />.</>}
+                {" "}Ceny jsou s DPH {dphPct} %.
+              </p>
+            </div>
+          )}
 
-          <div className="nb-sekce">
+          <div className="nb-sekce nb-drzet">
             <div className="nb-h">Platební podmínky</div>
             <table className="nb-tab">
               <tbody>
@@ -512,16 +541,19 @@ export default function NabidkaNahled({
                   <tr><td className="nb-l">Platba</td><td className="nb-v"><Chybi co="výše zálohy" /></td></tr>
                 )}
                 {zalohaPct === 0 && (
-                  <tr><td className="nb-l">Platba</td><td className="nb-v">{fmtKc(cenaSDph)} (100 %) — po dokončení prací a otestování funkčnosti</td></tr>
+                  <tr><td className="nb-l">Platba</td><td className="nb-v">{fmtKc(cenaSDph)} (100 %) — {doplatekKdy}</td></tr>
                 )}
                 {zalohaPct > 0 && (
                   <>
                     <tr><td className="nb-l">1. Zálohová platba</td><td className="nb-v">{fmtKc(zalohaKc)} ({zalohaPct} % z celkové ceny) — {zalohaKdy || <Chybi co="kdy se platí" />}</td></tr>
-                    <tr><td className="nb-l">2. Konečná platba</td><td className="nb-v">{fmtKc(doplatekKc)} ({100 - zalohaPct} % z celkové ceny) — po dokončení prací a otestování funkčnosti</td></tr>
+                    <tr><td className="nb-l">2. Konečná platba</td><td className="nb-v">{fmtKc(doplatekKc)} ({100 - zalohaPct} % z celkové ceny) — {doplatekKdy}</td></tr>
                   </>
                 )}
               </tbody>
             </table>
+            {dotaceKc > 0 && (
+              <p className="nb-drobne">Platby se počítají z ceny díla {fmtKc(cenaSDph)} vč. DPH. Dotaci ve výši {fmtKc(dotaceKc)} vyplácí Státní fond životního prostředí ČR v rámci programu Nová zelená úsporám.</p>
+            )}
           </div>
 
           {(zahrnuto.length > 0 || nezahrnuto.length > 0) && (
@@ -534,16 +566,21 @@ export default function NabidkaNahled({
             </div>
           )}
 
-          <div className="nb-sekce">
+          <div className="nb-sekce nb-drzet">
             <div className="nb-h">Termín provedení</div>
-            <p className="nb-p">Práce provedeme do {termin || <Chybi co="termín" />} od odsouhlasení nabídky.</p>
+            <p className="nb-p">{texty.terminPred || "Práce provedeme do"} {termin || <Chybi co="termín" />} {texty.terminOd || "od odsouhlasení nabídky"}.</p>
           </div>
 
-          <div className="nb-sekce">
+          <div className="nb-sekce nb-drzet">
             <div className="nb-h">Záruční podmínky</div>
             <table className="nb-tab">
               <tbody>
-                {maMaterial && <tr><td className="nb-l">Dodaný materiál a komponenty</td><td className="nb-v">{zarukaMaterial || <Chybi co="záruka" />}</td></tr>}
+                {zarukyNavic.map((z) => (
+                  <tr key={z.k}><td className="nb-l">{z.label}</td><td className="nb-v">
+                    <Upravitelne hodnota={u[z.k]} vychozi={z.hodnota} onZmena={(v) => nastav({ [z.k]: v })} />
+                  </td></tr>
+                ))}
+                {maMaterial && <tr><td className="nb-l">{texty.zarukaMaterialLabel || "Dodaný materiál a komponenty"}</td><td className="nb-v">{zarukaMaterial || <Chybi co="záruka" />}</td></tr>}
                 <tr><td className="nb-l">Provedená práce</td><td className="nb-v">{zarukaPrace || <Chybi co="záruka" />}</td></tr>
               </tbody>
             </table>
