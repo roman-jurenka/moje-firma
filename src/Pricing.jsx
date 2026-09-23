@@ -4,6 +4,7 @@ import FveCalculator from "./FveCalculator.jsx";
 import { vychoziSluzba } from "./fvePresets.js";
 import NabidkaNahled from "./NabidkaNahled.jsx";
 import { textyNabidky, seznamyPodleTypu } from "./nabidkaTexty.js";
+import { fazeById, terminFaze } from "./prubehFaze.js";
 
 const S = {
   app:      { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px 28px" },
@@ -784,25 +785,61 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     if (!onConvertToDeal) return;
     setConverting(true);
     const cust = customers.find(c => c.id === Number(customerId));
-    const { data: dealRow, error } = await supabase.from("deals").insert({
-      name, value: Math.round(cilovaCena), stage: "Nový",
-      customer_id: customerId ? Number(customerId) : null,
-      assigned_to: currentUser?.name || "",
-      type: type || null,
-    }).select().single();
-    if (error) {
-      alert("Nabídku se nepodařilo převést na obchodní případ: " + error.message);
+    const aktivni = quotes.find(q => q.id === activeId);
+    // Nabídka už v Průběhu zakázek je → jen ji tam otevřít, nic nezakládat podruhé.
+    const { data: podleNabidky } = await supabase.from("zakazky_prubeh").select("id").eq("quote_id", activeId);
+    let prubehId = podleNabidky?.[0]?.id || null;
+    if (!prubehId && aktivni?.deal_id) {
+      const { data: podleDealu } = await supabase.from("zakazky_prubeh").select("id").eq("deal_id", aktivni.deal_id);
+      prubehId = podleDealu?.[0]?.id || null;
+    }
+    if (prubehId) {
       setConverting(false);
+      onConvertToDeal(null, cust, prubehId);
       return;
     }
+    // Obchodní případ se dál zakládá na pozadí (úkoly, zprávy, přehledy);
+    // pracuje se s ním v Průběhu zakázek.
+    let dealRow = null;
+    if (aktivni?.deal_id) {
+      const { data } = await supabase.from("deals").select("*").eq("id", aktivni.deal_id).maybeSingle();
+      dealRow = data;
+    }
+    if (!dealRow) {
+      const { data, error } = await supabase.from("deals").insert({
+        name, value: Math.round(cilovaCena), stage: "Nabídka",
+        customer_id: customerId ? Number(customerId) : null,
+        assigned_to: currentUser?.name || "",
+        type: type || null,
+        site_address: cust?.address || null,
+      }).select().single();
+      if (error) {
+        alert("Nabídku se nepodařilo předat do Průběhu zakázek: " + error.message);
+        setConverting(false);
+        return;
+      }
+      dealRow = data;
+    }
     if (dealRow) {
+      const { data: pr, error: prErr } = await supabase.from("zakazky_prubeh").insert({
+        nazev: name || "Zakázka", customer_id: customerId ? Number(customerId) : null, typ: type || null,
+        hodnota: Math.round(cilovaCena) || null, deal_id: dealRow.id, quote_id: activeId, faze: "jednani", stav: "otevrena",
+        vlastnik_obchod: currentUser?.name || null, dalsi_krok: "Zákazník se k nabídce vyjádřil", dalsi_krok_kdo: currentUser?.name || null,
+        dalsi_krok_termin: terminFaze(fazeById.jednani), misto_adresa: cust?.address || null,
+      }).select().single();
+      if (pr) {
+        prubehId = pr.id;
+        await supabase.from("zakazky_poznamky").insert({ prubeh_id: pr.id, kdo: currentUser?.name || "Systém", text: `Předáno z Nacenění (nabídka ${aktivni?.cislo || name}) — čeká se na vyjádření zákazníka.`, system: true });
+      } else if (prErr) {
+        console.warn("Zápis do Průběhu zakázek selhal (převezme se při otevření):", prErr.message);
+      }
       const { error: updErr } = await supabase.from("quotes").update({ deal_id: dealRow.id, status: "Odesláno" }).eq("id", activeId);
       if (updErr) {
         alert("Obchodní případ vznikl, ale nabídku se nepodařilo označit jako odeslanou: " + updErr.message);
       } else {
         setQuotes(quotes.map(q => q.id === activeId ? { ...q, deal_id: dealRow.id, status: "Odesláno" } : q));
       }
-      onConvertToDeal(dealRow, cust);
+      onConvertToDeal(dealRow, cust, prubehId);
     }
     setConverting(false);
   };
@@ -1258,7 +1295,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           )}
           {!type && <button style={S.btnGhost} onClick={printQuote}>🖨️ Nabídka pro zákazníka</button>}
           <button style={S.btnGhost} onClick={printInterni}>📊 Interní přehled (MD)</button>
-          {activeId && <button style={S.btn("#F5C518")} disabled={converting} onClick={convertToDeal}>{converting ? "Převádím…" : "➡️ Převést na obchodní případ"}</button>}
+          {activeId && <button style={S.btn("#F5C518")} disabled={converting} onClick={convertToDeal}>{converting ? "Předávám…" : "➡️ Předat do Průběhu zakázek"}</button>}
         </div>
         {!type && <div style={{ fontSize: 12, color: "#b45309", marginTop: 10 }}>Vyber nahoře typ zakázky — podle něj se připraví nabídka pro zákazníka s číslem, podmínkami a evidencí odeslání.</div>}
         {(type === "FVE" || type === "FVR" || type === "SRV") && <div style={{ fontSize: 12, color: "#475569", marginTop: 10 }}>Nabídku pro zákazníka otevřeš tlačítkem „📝 Náhled nabídky pro zákazníka“ v kalkulaci nahoře.</div>}

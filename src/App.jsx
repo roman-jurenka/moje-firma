@@ -413,7 +413,7 @@ const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "ti-layout-dashboard", group: "CRM" },
   { id: "customers", label: "Zákazníci", icon: "ti-users", group: "CRM" },
   { id: "pricing", label: "Nacenění", icon: "ti-calculator", group: "CRM" },
-  { id: "deals", label: "Obchodní příp.", icon: "ti-briefcase", group: "CRM" },
+  { id: "deals", label: "Obchodní příp. (starý)", icon: "ti-briefcase", group: "CRM" },
   // { id: "communication", label: "Komunikace", icon: "ti-message-circle", group: "CRM" }, // odebráno — data zachována pro detail zákazníka
   { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "CRM" },
   { id: "contracts", label: "Zakázky", icon: "ti-file-invoice", group: "CRM" },
@@ -793,6 +793,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [contracts, setContracts] = useState([]);
   const [contractInitialDeal, setContractInitialDeal] = useState(null);
   const [contractInitialId, setContractInitialId] = useState(null); // otevřít konkrétní zakázku (z Průběhu zakázek)
+  const [prubehInitialId, setPrubehInitialId] = useState(null); // otevřít konkrétní zakázku v Průběhu (z Nacenění)
   const [costEntries, setCostEntries] = useState([]);
   const [deliveryNotes, setDeliveryNotes] = useState([]); // dodací listy (materiál s vlastní marží) — pro KPI zisku
   const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
@@ -1000,7 +1001,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // Nová záložka Průběh zakázek: kdo má povolené Zakázky, vidí i ji (i s
   // vlastním nastavením záložek v Oprávnění, kde by jinak chyběla).
   const zakladTabs = currentUser.navOverride || ROLES[currentUser.role]?.nav || [];
-  const allowedTabs = zakladTabs.includes("contracts") && !zakladTabs.includes("prubeh") ? [...zakladTabs, "prubeh"] : zakladTabs;
+  const sPrubehem = (zakladTabs.includes("contracts") || zakladTabs.includes("deals")) && !zakladTabs.includes("prubeh") ? [...zakladTabs, "prubeh"] : zakladTabs;
+  // Obchodní případy nahradil Průběh zakázek — starou záložku vidí už jen admin
+  // (data v ní zůstávají, Průběh je používá na pozadí).
+  const allowedTabs = currentUser.role === "admin" ? sPrubehem : sPrubehem.filter(t => t !== "deals");
   const visibleNav = NAV.filter(n => allowedTabs.includes(n.id));
   const groups = [...new Set(visibleNav.map(n => n.group))];
 
@@ -1437,7 +1441,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* ── NACENĚNÍ ── */}
         {tab === "pricing" && <Pricing
           customers={customers} employees={employees} currentUser={currentUser}
-          onConvertToDeal={(deal) => { setDeals(prev => [deal, ...prev]); setTab("deals"); }}
+          onConvertToDeal={(deal, cust, prubehId) => {
+            if (deal) setDeals(prev => (prev.some(d => d.id === deal.id) ? prev : [deal, ...prev]));
+            if (allowedTabs.includes("prubeh")) { setPrubehInitialId(prubehId || null); setTab("prubeh"); } else setTab("deals");
+          }}
         />}
 
         {/* ── DEALY ── */}
@@ -1616,6 +1623,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* ── PRŮBĚH ZAKÁZEK (Obchod → Back office → Realizace) ── */}
         {tab === "prubeh" && <Prubeh
           customers={customers} employees={employees} currentUser={currentUser}
+          tasks={tasks} setTasks={setTasks}
+          dealMsgs={dealMsgs} setDealMsgs={setDealMsgs} contractMsgs={contractMsgs} setContractMsgs={setContractMsgs}
+          initialId={prubehInitialId} onClearInitial={() => setPrubehInitialId(null)}
+          onDealZalozen={(d) => setDeals(prev => (prev.some(x => x.id === d.id) ? prev : [d, ...prev]))}
           onOtevritZakazku={(id) => { setContractInitialId(id); setTab("contracts"); }}
           onOtevritNaceneni={() => setTab("pricing")}
         />}

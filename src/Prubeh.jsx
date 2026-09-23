@@ -81,7 +81,11 @@ function BunkaSekce({ z, sekceIds }) {
   );
 }
 
-export default function Prubeh({ customers = [], employees = [], currentUser, onOtevritZakazku, onOtevritNaceneni }) {
+export default function Prubeh({
+  customers = [], employees = [], currentUser, onOtevritZakazku, onOtevritNaceneni,
+  tasks = [], setTasks, dealMsgs = [], setDealMsgs, contractMsgs = [], setContractMsgs,
+  initialId, onClearInitial, onDealZalozen,
+}) {
   const ja = currentUser?.name || "";
   const [rows, setRows] = useState([]);
   const [poznamky, setPoznamky] = useState([]);
@@ -98,6 +102,13 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
   const [pracuji, setPracuji] = useState(false);
   const [, setVerzeNastaveni] = useState(0);
   const [nastaveniForm, setNastaveniForm] = useState(null);
+  const [jednaId, setJednaId] = useState(null);       // zobrazit jen jednu konkrétní zakázku
+  const [vyberOkno, setVyberOkno] = useState(false);  // vyskakovací okno s výběrem zakázky
+  const [vyberHledat, setVyberHledat] = useState("");
+  const [editMisto, setEditMisto] = useState(null);
+  const [novyUkol, setNovyUkol] = useState(null);
+  const [zprava, setZprava] = useState("");
+  const [vsechnyZpravy, setVsechnyZpravy] = useState(false);
   const smiNastavit = ["admin", "manager"].includes(currentUser?.role);
   const [hlaska, setHlaska] = useState(null);
   const hlaskaTimer = useRef(null);
@@ -120,8 +131,8 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
         supabase.from("zakazky_prubeh").select("*").order("updated_at", { ascending: false }),
         supabase.from("zakazky_poznamky").select("*").order("created_at", { ascending: false }).limit(1000),
         supabase.from("quotes").select("id, name, cislo, status, customer_id, type, data"),
-        supabase.from("contracts").select("id, code, name, status, price, type, customer_id, deal_id"),
-        supabase.from("deals").select("id, name, value, stage, customer_id, type, assigned_to"),
+        supabase.from("contracts").select("id, code, name, status, price, type, customer_id, deal_id, address"),
+        supabase.from("deals").select("id, name, value, stage, customer_id, type, assigned_to, site_address, site_contact_name, site_contact_phone"),
         supabase.from("app_settings").select("value").eq("key", NASTAVENI_KEY).maybeSingle(),
       ]);
       if (zruseno) return;
@@ -138,7 +149,7 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
           const faze = FAZE_ZE_STAVU_ZAKAZKY[k.status] || "zaloha";
           return {
             nazev: k.name || k.code || "Zakázka", customer_id: k.customer_id, typ: normalizujTyp(k.type) || null,
-            hodnota: k.price, contract_id: k.id, deal_id: maDeal.has(k.deal_id) ? null : k.deal_id, faze,
+            hodnota: k.price, contract_id: k.id, deal_id: maDeal.has(k.deal_id) ? null : k.deal_id, faze, misto_adresa: k.address || null,
             stav: k.status === "Fakturována" ? "uzavrena" : "otevrena",
             dalsi_krok: `Zkontrolovat fázi (převzato ze stavu „${k.status || "?"}“)`, dalsi_krok_kdo: ja || null,
             _pozn: `Převzato ze seznamu zakázek (${k.code || k.name}, stav „${k.status || "?"}“) — zkontroluj, jestli fáze sedí.`,
@@ -147,6 +158,7 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
         ...(d.data || []).filter((x) => !maDeal.has(x.id) && !dealSeZakazkou.has(x.id) && x.stage !== "Prohráno").map((x) => ({
           nazev: x.name || "Obchodní případ", customer_id: x.customer_id, typ: normalizujTyp(x.type) || null, hodnota: x.value,
           deal_id: x.id, faze: FAZE_ZE_STAGE[x.stage] || PRVNI_FAZE, stav: "otevrena", vlastnik_obchod: x.assigned_to || null,
+          misto_adresa: x.site_address || null, misto_kontakt: x.site_contact_name || null, misto_telefon: x.site_contact_phone || null,
           dalsi_krok: "Zkontrolovat fázi (převzato z obchodních případů)", dalsi_krok_kdo: x.assigned_to || ja || null,
           _pozn: `Převzato z obchodních případů (stav „${x.stage}“).`,
         })),
@@ -171,6 +183,9 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
       setQuotes(q.data || []);
       setContracts(kontrakty);
       setNacteno(true);
+      // Přišli jsme odjinud (např. z Nacenění) s konkrétní zakázkou → rovnou ji otevřít.
+      if (initialId && prubeh.some((r) => r.id === initialId)) { setVybrano(initialId); setJednaId(initialId); }
+      if (initialId && onClearInitial) onClearInitial();
     };
     nacti();
     return () => { zruseno = true; };
@@ -204,7 +219,7 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
   };
 
   const q = hledat.trim().toLowerCase();
-  const viditelne = rows
+  const viditelne = jednaId ? rows.filter((z) => z.id === jednaId) : rows
     .filter((z) => (uzavrene ? z.stav !== "otevrena" : z.stav === "otevrena"))
     .filter((z) => {
       if (fronta === "vse") return true;
@@ -218,7 +233,7 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
   const z = rows.find((r) => r.id === vybrano) || null;
   // Na užší obrazovce je panel pod seznamem — po kliknutí na něj rovnou sjedeme.
   const vybrat = (id) => {
-    setVybrano(id); setEditKrok(null); setDraft("");
+    setVybrano(id); setEditKrok(null); setDraft(""); setEditMisto(null); setNovyUkol(null); setZprava(""); setVsechnyZpravy(false);
     if (window.innerWidth <= 1150) setTimeout(() => document.getElementById("pr-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   };
 
@@ -264,7 +279,7 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
     const kod = await kodZakazky(zak.typ, vlastnikSekce(zak, "ob"));
     const { data: k, error } = await supabase.from("contracts").insert({
       name: zak.nazev, customer_id: zak.customer_id, type: zak.typ, price: zak.hodnota || null,
-      status: "Nová", code: kod || null, deal_id: zak.deal_id || null, address: zakaznik(zak.customer_id)?.address || null,
+      status: "Nová", code: kod || null, deal_id: zak.deal_id || null, address: zak.misto_adresa || zakaznik(zak.customer_id)?.address || null,
     }).select().single();
     if (error) { alert("Zakázku se nepodařilo založit: " + error.message); return null; }
     setContracts((ks) => [k, ...ks]);
@@ -383,11 +398,104 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
     if (ok) ukazHlasku(qq ? "✓ Nabídka propojená" : "Nabídka odpojená");
   };
 
+  // Obchodní případ (deals) běží pod průběhem dál kvůli úkolům, zprávám a
+  // přehledům — když ho zakázka ještě nemá, založí se potichu.
+  const zajistitDeal = async (zak) => {
+    if (zak.deal_id) return zak.deal_id;
+    const { data: d, error } = await supabase.from("deals").insert({
+      name: zak.nazev, value: zak.hodnota || null, stage: STAGE_Z_FAZE[zak.faze] || (sekceZ(zak) === "ob" ? "Nový" : "Vyhráno"),
+      customer_id: zak.customer_id || null, assigned_to: zak.vlastnik_obchod || ja || null, type: zak.typ || null,
+      site_address: zak.misto_adresa || null, site_contact_name: zak.misto_kontakt || null, site_contact_phone: zak.misto_telefon || null,
+    }).select().single();
+    if (error) { alert("Nepodařilo se připravit zakázku pro úkoly a zprávy: " + error.message); return null; }
+    await supabase.from("zakazky_prubeh").update({ deal_id: d.id }).eq("id", zak.id);
+    setRows((rs) => rs.map((r) => (r.id === zak.id ? { ...r, deal_id: d.id } : r)));
+    if (onDealZalozen) onDealZalozen(d);
+    return d.id;
+  };
+
+  const ulozMisto = async () => {
+    const m = { misto_adresa: editMisto.adresa.trim() || null, misto_kontakt: editMisto.kontakt.trim() || null, misto_telefon: editMisto.telefon.trim() || null };
+    const ok = await uloz(z, m);
+    if (!ok) return;
+    // ať sedí i obchodní případ a zakázka (adresa pro technika, docházku…)
+    if (z.deal_id) await supabase.from("deals").update({ site_address: m.misto_adresa, site_contact_name: m.misto_kontakt, site_contact_phone: m.misto_telefon }).eq("id", z.deal_id);
+    if (z.contract_id && m.misto_adresa) {
+      await supabase.from("contracts").update({ address: m.misto_adresa }).eq("id", z.contract_id);
+      setContracts((ks) => ks.map((k) => (k.id === z.contract_id ? { ...k, address: m.misto_adresa } : k)));
+    }
+    setEditMisto(null);
+    ukazHlasku("✓ Místo realizace uložené");
+  };
+
+  const ukolyZakazky = (zak) => tasks
+    .filter((t) => (zak.deal_id && t.deal_id === zak.deal_id) || (zak.contract_id && t.contract_id === zak.contract_id))
+    .sort((a, b) => (a.done - b.done) || String(a.due || "9999").localeCompare(String(b.due || "9999")));
+
+  const pridatUkol = async () => {
+    if (!novyUkol.title.trim()) { alert("Napiš, co je potřeba udělat."); return; }
+    setPracuji(true);
+    const dealId = z.contract_id ? z.deal_id : await zajistitDeal(z);
+    if (!z.contract_id && !dealId) { setPracuji(false); return; }
+    const { data: row, error } = await supabase.from("tasks").insert({
+      title: novyUkol.title.trim(), due: novyUkol.due || "", priority: "Střední", done: false,
+      customer_id: z.customer_id || null, contract_id: z.contract_id || null, deal_id: dealId || null,
+      created_by: ja || "?", assigned_to: novyUkol.kdo || "", visible_to: [],
+    }).select().single();
+    setPracuji(false);
+    if (error) { alert("Úkol se nepodařilo uložit: " + error.message); return; }
+    if (setTasks) setTasks((prev) => [...prev, { ...row, customerId: row.customer_id }]);
+    if (novyUkol.kdo && novyUkol.kdo !== ja) {
+      await supabase.from("notifications").insert({ user_name: novyUkol.kdo, title: "Nový úkol", message: `${ja || "?"} ti zadal: ${row.title} (${z.nazev})`, link_type: "task", link_id: row.id });
+    }
+    setNovyUkol(null);
+    ukazHlasku("✓ Úkol přidaný — najdeš ho i v Úkolech");
+  };
+  const prepnoutUkol = async (t) => {
+    const { error } = await supabase.from("tasks").update({ done: !t.done }).eq("id", t.id);
+    if (error) { alert("Úkol se nepodařilo změnit: " + error.message); return; }
+    if (setTasks) setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, done: !t.done } : x)));
+  };
+
+  const zpravyZakazky = (zak) => [
+    ...dealMsgs.filter((m) => zak.deal_id && m.deal_id === zak.deal_id),
+    ...contractMsgs.filter((m) => zak.contract_id && m.contract_id === zak.contract_id),
+  ].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
+  const poslatZpravu = async () => {
+    const text = zprava.trim();
+    if (!text) return;
+    setPracuji(true);
+    let row = null;
+    let error = null;
+    if (z.contract_id) {
+      ({ data: row, error } = await supabase.from("contract_messages").insert({ contract_id: z.contract_id, user_name: ja || "?", message: text }).select().single());
+      if (row && setContractMsgs) setContractMsgs((prev) => [row, ...prev]);
+    } else {
+      const dealId = await zajistitDeal(z);
+      if (dealId) {
+        ({ data: row, error } = await supabase.from("deal_messages").insert({ deal_id: dealId, user_name: ja || "?", message: text }).select().single());
+        if (row && setDealMsgs) setDealMsgs((prev) => [row, ...prev]);
+      }
+    }
+    setPracuji(false);
+    if (error) { alert("Zprávu se nepodařilo odeslat: " + error.message); return; }
+    if (row) setZprava("");
+  };
+
   const zalozitPoptavku = async () => {
     if (!nova.nazev.trim()) { alert("Zadej název zakázky."); return; }
     if (!nova.typ) { alert("Vyber typ zakázky — podle něj se nastaví fáze."); return; }
     setPracuji(true);
+    const { data: deal, error: dealErr } = await supabase.from("deals").insert({
+      name: nova.nazev.trim(), value: nova.hodnota ? Number(nova.hodnota) : null, stage: "Nový",
+      customer_id: nova.customer_id ? Number(nova.customer_id) : null, assigned_to: nova.obchodnik || ja || null, type: nova.typ,
+      site_address: nova.adresa?.trim() || null,
+    }).select().single();
+    if (dealErr) { setPracuji(false); alert("Poptávku se nepodařilo založit: " + dealErr.message); return; }
+    if (onDealZalozen) onDealZalozen(deal);
     const row = {
+      deal_id: deal.id, misto_adresa: nova.adresa?.trim() || null,
       nazev: nova.nazev.trim(), customer_id: nova.customer_id ? Number(nova.customer_id) : null, typ: nova.typ,
       hodnota: nova.hodnota ? Number(nova.hodnota) : null, faze: PRVNI_FAZE, stav: "otevrena",
       vlastnik_obchod: nova.obchodnik || ja || null, dalsi_krok: FAZE[0].ukoly[0].text, dalsi_krok_kdo: nova.obchodnik || ja || null,
@@ -429,7 +537,7 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
             {frontaBtn("re", "Realizace", "#15803d")}
           </div>
           {smiNastavit && <button type="button" style={btnGhost} onClick={() => setNastaveniForm(Object.fromEntries(FAZE.map((f) => [f.id, { dny: f.dny, typy: Object.fromEntries(TYPY.map((t) => [t.id, pravidlo(f, t.id)])), ukoly: f.ukoly.map((u) => ({ ...u })) }])))}>⚙️ Nastavení fází</button>}
-          <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "" })}>+ Nová poptávka</button>
+          <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "" })}>+ Nová poptávka</button>
         </div>
       </div>
 
@@ -444,11 +552,20 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
       <div className="pr-grid">
         <div style={{ ...karta, padding: 0, overflow: "hidden" }}>
           <div style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #e2e8f0", alignItems: "center", flexWrap: "wrap" }}>
-            <input type="search" aria-label="Hledat zakázku" placeholder="Hledat zákazníka, název nebo kód…" value={hledat} onChange={(e) => setHledat(e.target.value)} style={{ ...inp, maxWidth: 320 }} />
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: "#334155" }}>
-              <input type="checkbox" checked={uzavrene} onChange={(e) => setUzavrene(e.target.checked)} /> Uzavřené a prohrané
-            </label>
+            <button type="button" style={btn("#0f172a")} onClick={() => { setVyberHledat(""); setVyberOkno(true); }} title="Vybrat jednu zakázku a zobrazit jen její průběh">🎯 Jedna zakázka</button>
+            {!jednaId && <input type="search" aria-label="Hledat zakázku" placeholder="Hledat zákazníka, název nebo kód…" value={hledat} onChange={(e) => setHledat(e.target.value)} style={{ ...inp, maxWidth: 320 }} />}
+            {!jednaId && (
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: "#334155" }}>
+                <input type="checkbox" checked={uzavrene} onChange={(e) => setUzavrene(e.target.checked)} /> Uzavřené a prohrané
+              </label>
+            )}
           </div>
+          {jednaId && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "10px 16px", background: "#eff6ff", borderBottom: "1px solid #bfdbfe", fontSize: 14, color: "#1e3a8a" }}>
+              <span>Zobrazena jen zakázka <b>{rows.find((r) => r.id === jednaId)?.nazev || ""}</b></span>
+              <button type="button" style={{ ...btnGhost, padding: "5px 11px", fontSize: 13 }} onClick={() => setJednaId(null)}>✕ Zobrazit všechny</button>
+            </div>
+          )}
           <div className="pr-row" style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: "#475569" }}>
             <div style={{ padding: "11px 16px" }}>ZAKÁZKA</div>
             <div className="pr-sek" style={{ padding: "11px 8px", color: "#0369a1" }}>OBCHOD</div>
@@ -508,6 +625,47 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
         )}
       </div>
 
+      {vyberOkno && (() => {
+        const hq = vyberHledat.trim().toLowerCase();
+        const nalezene = rows
+          .filter((r) => !hq || [r.nazev, zakaznik(r.customer_id)?.name, contractById(r.contract_id)?.code, r.typ, r.misto_adresa].some((t) => String(t || "").toLowerCase().includes(hq)))
+          .sort((a, b) => ((a.stav !== "otevrena") - (b.stav !== "otevrena")) || String(a.nazev).localeCompare(String(b.nazev), "cs"));
+        const vyber = (id) => { setJednaId(id); setVyberOkno(false); vybrat(id); };
+        return (
+          <div role="dialog" aria-modal="true" aria-label="Vybrat zakázku" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px" }}
+            onClick={(e) => { if (e.target === e.currentTarget) setVyberOkno(false); }}
+            onKeyDown={(e) => { if (e.key === "Escape") setVyberOkno(false); if (e.key === "Enter" && nalezene.length > 0) vyber(nalezene[0].id); }}>
+            <div style={{ ...karta, width: "min(560px, 100%)", display: "flex", flexDirection: "column", gap: 12, maxHeight: "calc(100vh - 80px)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>🎯 Zobrazit průběh jedné zakázky</div>
+                <button type="button" aria-label="Zavřít" style={{ ...btnGhost, padding: "4px 10px" }} onClick={() => setVyberOkno(false)}>✕</button>
+              </div>
+              <input type="search" autoFocus aria-label="Hledat zakázku podle názvu" placeholder="Začni psát název, zákazníka, kód nebo adresu…" value={vyberHledat} onChange={(e) => setVyberHledat(e.target.value)} style={inp} />
+              <div style={{ fontSize: 12, color: "#64748b" }}>{nalezene.length} {nalezene.length === 1 ? "zakázka" : nalezene.length >= 2 && nalezene.length <= 4 ? "zakázky" : "zakázek"} · včetně uzavřených a prohraných · Enter vybere první</div>
+              <div style={{ display: "flex", flexDirection: "column", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "auto", minHeight: 0 }}>
+                {nalezene.length === 0 && <div style={{ padding: 14, fontSize: 14, color: "#64748b" }}>Nic nenalezeno.</div>}
+                {nalezene.map((r, i) => {
+                  const fr = fazeById[r.faze];
+                  const sr = sekceById[fr?.sekce] || sekceById.ob;
+                  return (
+                    <button key={r.id} type="button" onClick={() => vyber(r.id)}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 14px", border: "none", borderTop: i ? "1px solid #f1f5f9" : "none", background: r.id === jednaId ? "#eff6ff" : "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit", color: "#0f172a" }}>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", fontWeight: 800, fontSize: 14 }}>{r.nazev}</span>
+                        <span style={{ display: "block", fontSize: 12, color: "#64748b" }}>{[contractById(r.contract_id)?.code, zakaznik(r.customer_id)?.name, r.typ].filter(Boolean).join(" · ")}</span>
+                      </span>
+                      <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "3px 9px", ...(r.stav === "otevrena" ? { background: sr.svetla, color: sr.tmava } : r.stav === "prohrana" ? { background: "#f1f5f9", color: "#64748b" } : { background: "#dcfce7", color: "#166534" }) }}>
+                        {r.stav === "otevrena" ? `${sr.nazev} · ${nazevFaze(fr, r.typ)}` : r.stav === "prohrana" ? "Prohráno" : "Uzavřeno"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {nova && (
         <div role="dialog" aria-modal="true" aria-label="Nová poptávka" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
           onClick={(e) => { if (e.target === e.currentTarget) setNova(null); }}>
@@ -520,7 +678,7 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
                   <option value="">— vyber —</option>{TYPY.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                 </select></div>
               <div><label style={lbl} htmlFor="pr-zak">Zákazník</label>
-                <select id="pr-zak" style={inp} value={nova.customer_id} onChange={(e) => setNova({ ...nova, customer_id: e.target.value })}>
+                <select id="pr-zak" style={inp} value={nova.customer_id} onChange={(e) => { const c = zakaznik(Number(e.target.value)); setNova({ ...nova, customer_id: e.target.value, adresa: nova.adresa || c?.address || "" }); }}>
                   <option value="">— zatím bez zákazníka —</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select></div>
               <div><label style={lbl} htmlFor="pr-hod">Odhad hodnoty bez DPH (Kč)</label><input id="pr-hod" type="number" min="0" style={inp} value={nova.hodnota} onChange={(e) => setNova({ ...nova, hodnota: e.target.value })} /></div>
@@ -530,6 +688,7 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
                 </select></div>
               <div><label style={lbl} htmlFor="pr-ter">Ozvat se zákazníkovi do</label><input id="pr-ter" type="date" style={inp} value={nova.termin} onChange={(e) => setNova({ ...nova, termin: e.target.value })} /></div>
             </div>
+            <div><label style={lbl} htmlFor="pr-adr">Místo realizace (adresa)</label><input id="pr-adr" style={inp} value={nova.adresa} placeholder="předvyplní se ze zákazníka, jde přepsat" onChange={(e) => setNova({ ...nova, adresa: e.target.value })} /></div>
             <div style={{ fontSize: 12, color: "#64748b" }}>Nového zákazníka založ nejdřív v Zákaznících. Zakázka se sama založí, až poptávka projde do back office.</div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button type="button" style={btnGhost} onClick={() => setNova(null)}>Zrušit</button>
@@ -648,6 +807,32 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
     const otevrena = z.stav === "otevrena";
     const nabidkyZakaznika = quotes.filter((x) => !z.customer_id || x.customer_id === z.customer_id);
     const po = poTerminu(z);
+    const zakZ = zakaznik(z.customer_id);
+    const ukolyZ = ukolyZakazky(z);
+    const zpravyZ = zpravyZakazky(z);
+
+    // Celý průběh: všechny fáze, které se zakázky týkají, a kde je teď.
+    const iTed = FAZE.findIndex((x) => x.id === z.faze);
+    const kdyHotovo = (fx) => pzZ.find((p) => p.system && String(p.text).startsWith(`Hotovo: ${nazevFaze(fx, z.typ)} →`));
+    const stavFaze = (fx, i) => {
+      if ((z.preskocene || []).includes(fx.id)) return "preskoceno";
+      if (z.stav === "uzavrena") return "hotovo";
+      if (i < iTed) return "hotovo";
+      if (i === iTed) return z.stav === "prohrana" ? "prohrano" : "ted";
+      return fazeKRozhodnuti(fx, z) ? "mozna" : "ceka";
+    };
+    const prubehSekci = ["ob", "bo", "re", "uz"].map((sid) => ({
+      s: sekceById[sid],
+      faze: FAZE.map((fx, i) => ({ fx, i })).filter(({ fx }) => fx.sekce === sid && pravidlo(fx, z.typ) !== "-"),
+    })).filter((x) => x.faze.length);
+    const cip = {
+      hotovo: { background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" },
+      ted: { background: s.barva, color: "#fff", border: `1px solid ${s.barva}` },
+      prohrano: { background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca" },
+      ceka: { background: "#fff", color: "#64748b", border: "1px solid #e2e8f0" },
+      mozna: { background: "#fff", color: "#94a3b8", border: "1px dashed #cbd5e1" },
+      preskoceno: { background: "#f8fafc", color: "#94a3b8", border: "1px solid #f1f5f9", textDecoration: "line-through" },
+    };
 
     return (
       <div className="pr-panel" id="pr-panel">
@@ -674,6 +859,28 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
               </select>
             </div>
           )}
+        </div>
+
+        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Celý průběh zakázky</div>
+          {prubehSekci.map(({ s: ss, faze: fz }) => (
+            <div key={ss.id} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: ss.tmava, letterSpacing: 0.4 }}>{ss.nazev.toUpperCase()}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {fz.map(({ fx, i }) => {
+                  const st = stavFaze(fx, i);
+                  const h = st === "hotovo" ? kdyHotovo(fx) : null;
+                  return (
+                    <span key={fx.id} title={st === "mozna" ? "Volitelná — appka se zeptá, jestli je potřeba" : st === "preskoceno" ? "Přeskočeno" : h ? `Hotovo ${fmtCas(h.created_at)}` : ""}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4, borderRadius: 8, padding: "3px 8px", fontSize: 12, fontWeight: st === "ted" ? 800 : 600, ...cip[st] }}>
+                      {st === "hotovo" && <Fajfka size={12} />}{st === "ted" && "● "}{nazevFaze(fx, z.typ)}{st === "mozna" && " ?"}
+                      {h && <span style={{ fontWeight: 400, opacity: 0.8 }}>{fmtDatum(h.created_at.slice(0, 10))}</span>}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
 
         {otevrena && (
@@ -781,6 +988,91 @@ export default function Prubeh({ customers = [], employees = [], currentUser, on
             </div>
           </div>
         )}
+
+        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 800, fontSize: 16 }}>Zákazník a místo realizace</span>
+            {!editMisto && <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => setEditMisto({ adresa: z.misto_adresa || zakZ?.address || "", kontakt: z.misto_kontakt || "", telefon: z.misto_telefon || "" })}>Upravit</button>}
+          </div>
+          {zakZ ? (
+            <div style={{ lineHeight: 1.5 }}>
+              <b>{zakZ.name}</b>
+              {zakZ.phone && <> · <a href={`tel:${zakZ.phone}`} style={{ color: "#0369a1" }}>{zakZ.phone}</a></>}
+              {zakZ.email && <> · <a href={`mailto:${zakZ.email}`} style={{ color: "#0369a1" }}>{zakZ.email}</a></>}
+            </div>
+          ) : <div style={{ color: "#94a3b8" }}>Bez zákazníka</div>}
+          {editMisto ? (
+            <>
+              <div><label style={lbl} htmlFor="pr-madr">Adresa realizace</label><input id="pr-madr" style={inp} value={editMisto.adresa} onChange={(e) => setEditMisto({ ...editMisto, adresa: e.target.value })} /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div><label style={lbl} htmlFor="pr-mkon">Kontakt na místě</label><input id="pr-mkon" style={inp} value={editMisto.kontakt} onChange={(e) => setEditMisto({ ...editMisto, kontakt: e.target.value })} /></div>
+                <div><label style={lbl} htmlFor="pr-mtel">Telefon</label><input id="pr-mtel" type="tel" style={inp} value={editMisto.telefon} onChange={(e) => setEditMisto({ ...editMisto, telefon: e.target.value })} /></div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" style={btn("#0369a1")} onClick={ulozMisto}>Uložit</button>
+                <button type="button" style={btnGhost} onClick={() => setEditMisto(null)}>Zrušit</button>
+              </div>
+            </>
+          ) : (
+            <div style={{ lineHeight: 1.5, color: "#334155" }}>
+              {z.misto_adresa
+                ? <div>📍 {z.misto_adresa} · <a href={`https://maps.google.com/?q=${encodeURIComponent(z.misto_adresa)}`} target="_blank" rel="noreferrer" style={{ color: "#0369a1" }}>mapa</a></div>
+                : <div style={{ color: "#b45309" }}>📍 Chybí adresa realizace — doplň ji tlačítkem Upravit.</div>}
+              {(z.misto_kontakt || z.misto_telefon) && <div>👷 Na místě: {z.misto_kontakt || ""}{z.misto_telefon && <> · <a href={`tel:${z.misto_telefon}`} style={{ color: "#0369a1" }}>{z.misto_telefon}</a></>}</div>}
+            </div>
+          )}
+        </div>
+
+        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 800, fontSize: 16 }}>Úkoly k zakázce {ukolyZ.length > 0 && <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>({ukolyZ.filter((t) => !t.done).length} otevřených)</span>}</span>
+            {!novyUkol && <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => setNovyUkol({ title: "", due: "", kdo: ja })}>+ Úkol</button>}
+          </div>
+          {novyUkol && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, background: "#f8fafc", borderRadius: 10, padding: 10 }}>
+              <input aria-label="Co je potřeba udělat" autoFocus placeholder="Co je potřeba udělat…" style={inp} value={novyUkol.title} onChange={(e) => setNovyUkol({ ...novyUkol, title: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") pridatUkol(); }} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <input aria-label="Termín úkolu" type="date" style={inp} value={novyUkol.due} onChange={(e) => setNovyUkol({ ...novyUkol, due: e.target.value })} />
+                <select aria-label="Komu" style={inp} value={novyUkol.kdo} onChange={(e) => setNovyUkol({ ...novyUkol, kdo: e.target.value })}>
+                  <option value="">— komu —</option>{lide.map((j) => <option key={j} value={j}>{j}</option>)}
+                </select>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" style={btn("#0369a1")} disabled={pracuji} onClick={pridatUkol}>Přidat úkol</button>
+                <button type="button" style={btnGhost} onClick={() => setNovyUkol(null)}>Zrušit</button>
+              </div>
+            </div>
+          )}
+          {ukolyZ.length === 0 && !novyUkol && <div style={{ fontSize: 13, color: "#94a3b8" }}>Zatím žádné úkoly.</div>}
+          {ukolyZ.map((t) => {
+            const poT = !t.done && t.due && t.due < dnes;
+            return (
+              <label key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer" }}>
+                <input type="checkbox" checked={!!t.done} onChange={() => prepnoutUkol(t)} style={{ width: 17, height: 17, marginTop: 2 }} />
+                <span style={{ flexGrow: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", textDecoration: t.done ? "line-through" : "none", color: t.done ? "#94a3b8" : "#0f172a", fontWeight: t.done ? 400 : 600 }}>{t.title}</span>
+                  <span style={{ display: "block", fontSize: 12, color: poT ? "#b91c1c" : "#64748b" }}>{[t.assigned_to, t.due ? (poT ? `po termínu (${fmtDatum(t.due)})` : `do ${fmtDatum(t.due)}`) : null].filter(Boolean).join(" · ") || "bez termínu"}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Zprávy k zakázce</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input aria-label="Nová zpráva" placeholder="Napiš zprávu kolegům…" style={inp} value={zprava} onChange={(e) => setZprava(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") poslatZpravu(); }} />
+            <button type="button" style={btn(zprava.trim() ? "#0369a1" : "#cbd5e1", zprava.trim() ? "#fff" : "#475569")} disabled={!zprava.trim() || pracuji} onClick={poslatZpravu}>Odeslat</button>
+          </div>
+          {zpravyZ.length === 0 && <div style={{ fontSize: 13, color: "#94a3b8" }}>Zatím žádné zprávy.</div>}
+          {(vsechnyZpravy ? zpravyZ : zpravyZ.slice(0, 5)).map((m) => (
+            <div key={(m.contract_id ? "c" : "d") + m.id} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <div style={{ fontSize: 12, color: "#64748b" }}><b style={{ color: "#334155" }}>{m.user_name}</b> · {fmtCas(m.created_at)}</div>
+              <div style={{ lineHeight: 1.4, whiteSpace: "pre-wrap" }}>{m.message}</div>
+            </div>
+          ))}
+          {zpravyZ.length > 5 && <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13, alignSelf: "flex-start" }} onClick={() => setVsechnyZpravy((v) => !v)}>{vsechnyZpravy ? "Jen posledních 5" : `Zobrazit všech ${zpravyZ.length}`}</button>}
+        </div>
 
         <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ fontWeight: 800, fontSize: 16 }}>Historie a poznámky</div>
