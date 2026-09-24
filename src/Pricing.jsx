@@ -4,7 +4,7 @@ import FveCalculator from "./FveCalculator.jsx";
 import { vychoziSluzba } from "./fvePresets.js";
 import NabidkaNahled from "./NabidkaNahled.jsx";
 import { textyNabidky, seznamyPodleTypu } from "./nabidkaTexty.js";
-import { fazeById, terminFaze } from "./prubehFaze.js";
+import { fazeById, terminFaze, planovaneMd } from "./prubehFaze.js";
 
 const S = {
   app:      { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px 28px" },
@@ -697,6 +697,9 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   // ── Nabídka pro zákazníka u hromosvodů a elektroinstalací (náhled) ──
   const sekcova = SEKCOVE_TYPY.includes(type);
 
+  // Plán práce v MD: u FVE/FVR z kalkulace, jinak z interního nacenění.
+  const planMd = data ? (nakladZKalkulace ? planovaneMd(data, type) : celkemMd) : 0;
+  const planMdZdroj = nakladZKalkulace ? "kalkulace" : "nacenění";
   const planClovekDni = data ? data.denniPlan.reduce((s, p) => s + (Number(p.pocetLidi) || 0), 0) : 0;
   const planDniPocet = data ? data.denniPlan.length : 0;
 
@@ -940,14 +943,16 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       "<style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:22px;margin-bottom:2px}h2{font-size:13px;color:#555;font-weight:normal;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th{background:#64748b;color:#fff;padding:6px 8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:12px}.total{font-size:16px;font-weight:bold;margin-top:16px;text-align:right}@media print{body{padding:16px}}</style>" +
       "</head><body>" +
       "<h1>Interní nacenění – " + name + "</h1>" +
-      "<h2>Sazba: " + fmtKc(sazbaMd) + " / MD</h2>" +
+      (nakladZKalkulace
+        ? "<h2>Práce podle kalkulace: elektro " + (Number(data.fve?.mdElektro) || 0) + " MD · střecha " + (Number(data.fve?.mdStrecha) || 0) + " MD · instalatér " + (Number(data.fve?.mdInstalater) || 0) + " MD</h2>"
+        : "<h2>Sazba: " + fmtKc(sazbaMd) + " / MD</h2>" +
       "<table><thead><tr><th>Popis</th><th>Doprava km/den</th><th>Počet dní</th><th>Počet lidí</th><th>Celkem MD</th><th>Materiál</th><th>Cena</th></tr></thead><tbody>" +
       radkyVypoctene.map(({ r, v }) => `<tr><td>${r.popis || "—"}</td><td>${r.dopravaKm || 0}</td><td>${v.dny}</td><td>${v.lide}</td><td>${Math.round(v.md * 100) / 100}</td><td>${fmtKc(v.material)}</td><td>${fmtKc(v.cena)}</td></tr>`).join("") +
       "</tbody></table>" +
       (polozkyVypoctene.length ? "<h2 style='margin-top:14px'>Samostatné položky</h2><table><thead><tr><th>Název</th><th>MD</th><th>Cena</th></tr></thead><tbody>" +
         polozkyVypoctene.map(({ p, md, cena }) => `<tr><td>${p.nazev || "—"}</td><td>${Math.round(md * 100) / 100}</td><td>${fmtKc(cena)}</td></tr>`).join("") +
-        "</tbody></table>" : "") +
-      "<div class='total'>Celkem MD: " + (Math.round(celkemMd * 100) / 100) + " · Náklad: " + fmtKc(nakladNabidky) + " · Marže: " + fmtKc(marze) + (marzePct != null ? " (" + marzePct + " %)" : "") + " · Cena bez DPH: " + fmtKc(cilovaCena) + " · Cena s DPH " + dphPct + " %: " + fmtKc(cenaSDph) + "</div>" +
+        "</tbody></table>" : "")) +
+      "<div class='total'>Celkem MD: " + (Math.round(planMd * 100) / 100) + " · Náklad: " + fmtKc(nakladNabidky) + " · Marže: " + fmtKc(marze) + (marzePct != null ? " (" + marzePct + " %)" : "") + " · Cena bez DPH: " + fmtKc(cilovaCena) + " · Cena s DPH " + dphPct + " %: " + fmtKc(cenaSDph) + "</div>" +
       "<script>window.onload=function(){window.print();}</script></body></html>";
     const w = window.open("", "_blank");
     w.document.write(html);
@@ -1119,14 +1124,10 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         />
       )}
 
-      {/* INTERNÍ NACENĚNÍ — po MD */}
+      {/* INTERNÍ NACENĚNÍ — po MD (u FVE/FVR ne: práce, náklad i MD jsou v kalkulaci výše) */}
+      {!nakladZKalkulace && (
       <div style={S.card}>
         <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>🧮 Interní nacenění — po MD (člověko-dnech)</div>
-        {nakladZKalkulace && (
-          <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#7c2d12", marginBottom: 10 }}>
-            U {type === "FVE" ? "nové FVE" : "rozšíření"} se náklad i cena počítají v kalkulaci výše — tady jen plán práce (MD) pro rozvrh a zakázku, do ceny se nepřičítá.
-          </div>
-        )}
         {type === "SRV" && (
           <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#1e3a8a", marginBottom: 10 }}>
             U servisu je tady náklad (lidé, dny, doprava, materiál) — cena je součet úkonů v kalkulaci výše, marže = cena − tento náklad.
@@ -1165,18 +1166,19 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           <div><span style={{ color: "#475569" }}>Celkem interní náklad: </span><b style={{ color: "#f87171" }}>{fmtKc(celkemNaklad)}</b></div>
         </div>
       </div>
+      )}
 
       {/* ROZVRH PO DNECH — u FVR (rozšíření) skrytý, obvykle jde o jednodenní zásah */}
       {type !== "FVR" && (
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>📅 Rozvrh po dnech</div>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Kolik lidí je potřeba který den — přenese se do projektu a zakázky jako plán, proti kterému appka srovná skutečnou docházku.</div>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Kolik lidí je potřeba který den — přenese se do projektu a zakázky jako plán, proti kterému appka srovná skutečnou docházku.{nakladZKalkulace ? ` Plán práce z kalkulace: ${Math.round(planMd * 100) / 100} MD.` : ""}</div>
           <DenniPlanTabulka plan={data.denniPlan} setPlan={plan => setData({ ...data, denniPlan: plan })} />
           <div style={{ marginTop: 12, fontSize: 13 }}>
             <span style={{ color: "#475569" }}>Naplánováno: </span><b>{planDniPocet} dní, {planClovekDni} člověko-dní celkem</b>
-            {celkemMd > 0 && (
-              <span style={{ marginLeft: 10, color: Math.abs(planClovekDni - celkemMd) < 0.5 ? "#34d399" : "#f59e0b" }}>
-                {Math.abs(planClovekDni - celkemMd) < 0.5 ? "✓ odpovídá nacenění" : `⚠️ nacenění počítá s ${Math.round(celkemMd * 100) / 100} MD — rozvrh ${Math.abs(planClovekDni - celkemMd) > 0 ? (planClovekDni > celkemMd ? "přesahuje" : "nepokrývá") : "sedí"} o ${Math.round(Math.abs(planClovekDni - celkemMd) * 100) / 100}`}
+            {planMd > 0 && (
+              <span style={{ marginLeft: 10, color: Math.abs(planClovekDni - planMd) < 0.5 ? "#15803d" : "#b45309" }}>
+                {Math.abs(planClovekDni - planMd) < 0.5 ? `✓ odpovídá ${planMdZdroj}` : `⚠️ ${planMdZdroj} počítá s ${Math.round(planMd * 100) / 100} MD — rozvrh ${planClovekDni > planMd ? "přesahuje" : "nepokrývá"} o ${Math.round(Math.abs(planClovekDni - planMd) * 100) / 100}`}
               </span>
             )}
           </div>

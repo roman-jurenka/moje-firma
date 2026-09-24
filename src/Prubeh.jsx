@@ -4,7 +4,7 @@ import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
   nazevFaze, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
   branaSekce, NAZEV_BRANY, postupSekce, FAZE_ZE_STAVU_ZAKAZKY, FAZE_ZE_STAGE, STAV_ZAKAZKY_ZE_SEKCE, STAGE_Z_FAZE,
-  NASTAVENI_KEY, pouzijNastaveni, zakladFaze, pravidlo, PRAVIDLA_TYPU, terminFaze,
+  NASTAVENI_KEY, pouzijNastaveni, zakladFaze, pravidlo, PRAVIDLA_TYPU, terminFaze, planovaneMd,
 } from "./prubehFaze.js";
 
 // ─── Průběh zakázek (varianta D: přehled + panel dalšího kroku) ─────────────
@@ -141,7 +141,7 @@ export default function Prubeh({
       const [pr, pz, q, c, d, nast] = await Promise.all([
         supabase.from("zakazky_prubeh").select("*").order("updated_at", { ascending: false }),
         supabase.from("zakazky_poznamky").select("*").order("created_at", { ascending: false }).limit(1000),
-        supabase.from("quotes").select("id, name, cislo, status, customer_id, type, data"),
+        supabase.from("quotes").select("id, name, cislo, status, customer_id, type, data, deal_id, updated_at"),
         supabase.from("contracts").select("id, code, name, status, price, type, customer_id, deal_id, address"),
         supabase.from("deals").select("id, name, value, stage, customer_id, type, assigned_to, site_address, site_contact_name, site_contact_phone"),
         supabase.from("app_settings").select("value").eq("key", NASTAVENI_KEY).maybeSingle(),
@@ -294,7 +294,39 @@ export default function Prubeh({
     }).select().single();
     if (error) { alert("Zakázku se nepodařilo založit: " + error.message); return null; }
     setContracts((ks) => [k, ...ks]);
+    await zalozitProjektZNabidky(zak, k);
     return k.id;
+  };
+
+  // Stejně jako dřív převod obchodního případu na zakázku: z nabídky se založí
+  // projekt s plánovanými MD a rozvrhem po dnech (plán vs. skutečná docházka).
+  const zalozitProjektZNabidky = async (zak, k) => {
+    const nabidka = (zak.quote_id && quoteById(zak.quote_id))
+      || quotes.filter((x) => zak.deal_id && x.deal_id === zak.deal_id).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0];
+    const qd = nabidka?.data;
+    if (!qd) return;
+    const md = planovaneMd(qd, nabidka.type || zak.typ);
+    const dny = (qd.denniPlan || []).filter((p) => p.datum);
+    if (!md && !dny.length) return;
+    try {
+      const { data: proj, error } = await supabase.from("projects").insert({
+        name: k.name, customer_id: k.customer_id, status: "Plánování", progress: 0,
+        budget: Number(k.price) || 0, spent: 0, deadline: null, assignees: [],
+        contract_id: k.id, planned_md: md || null,
+      }).select().single();
+      if (error) throw error;
+      if (dny.length) {
+        const { error: e2 } = await supabase.from("project_day_plan").insert(dny.map((p) => ({
+          contract_id: k.id, project_id: proj?.id || null, date: p.datum, planned_people: Number(p.pocetLidi) || 1, note: p.poznamka || null,
+        })));
+        if (e2) throw e2;
+      }
+      await pridatPoznamku(zak, `Založen projekt z nabídky ${nabidka.cislo || nabidka.name}: plán ${Math.round(md * 100) / 100} MD${dny.length ? `, rozvrh ${dny.length} ${dny.length === 1 ? "den" : dny.length < 5 ? "dny" : "dní"}` : ""}.`, true);
+    } catch (e) {
+      // Zakázka je hlavní a je uložená; projekt je doplněk — jen upozornit.
+      console.warn("Projekt z nabídky se nepodařilo založit:", e);
+      ukazHlasku("Zakázka založená, ale projekt s plánem MD se nepodařilo vytvořit");
+    }
   };
 
   const synchronizovatStare = async (zak, novaFaze, contractId) => {

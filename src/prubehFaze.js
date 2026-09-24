@@ -138,6 +138,21 @@ export const DUVODY_CEKANI = [
 ];
 export const nazevDuvodu = (id) => DUVODY_CEKANI.find((d) => d.id === id)?.label || "";
 
+// Plánované člověko-dny (MD) z nabídky: u FVE/FVR z kalkulace (elektro +
+// střecha + instalatér), jinak z interního nacenění (dny × lidi u řádků v MD
+// + samostatné položky; řádky po bodech/hodinách do MD nepočítají).
+export function planovaneMd(qd, typ) {
+  if (!qd) return 0;
+  if (typ === "FVE" || typ === "FVR") {
+    const f = qd.fve || {};
+    return (Number(f.mdElektro) || 0) + (Number(f.mdStrecha) || 0) + (Number(f.mdInstalater) || 0);
+  }
+  const i = qd.interni || {};
+  const zRadku = (i.radky || []).reduce((s, r) => (r.jednotka === "bod" || r.jednotka === "hod"
+    ? s : s + (Number(r.pocetMd) || 0) * (Number(r.pocetLidi) || 1)), 0);
+  return zRadku + (i.polozky || []).reduce((s, p) => s + (Number(p.md) || 0), 0);
+}
+
 export const nazevFaze = (f, typ) => (f?.nazevTyp?.[typ]) || f?.nazev || "";
 export const pravidlo = (f, typ) => (f.typy && f.typy[typ]) || "v";
 
