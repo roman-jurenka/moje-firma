@@ -90,6 +90,31 @@ const CSS = `
 .nb-h { font-size: 12pt; font-weight: 700; color: #16324F; border-bottom: 1.5px solid #E08A1E; padding-bottom: 1mm; margin: 5mm 0 2.5mm; break-after: avoid; page-break-after: avoid; }
 .nb-h + .nb-tab thead, .nb-h + .nb-p { break-before: avoid; }
 .nb-kroky, .nb-dva, .nb-drzet { break-inside: avoid; page-break-inside: avoid; }
+.nb-specB { border: 2px solid #16324F; border-radius: 2mm; overflow: hidden; margin: 0 0 4mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.nb-specB .nb-h { display: flex; justify-content: space-between; align-items: center; margin: 0; padding: 2.5mm 4mm; background: #16324F; color: #fff; border-bottom: 3px solid #E08A1E; font-size: 12.5pt; }
+.nb-specB-pocet { font-size: 9.5pt; font-weight: 700; color: #16324F; background: #fff; border-radius: 10mm; padding: 0.6mm 3mm; }
+.nb-specB-tab th { background: #EEF3F8; padding: 1.8mm 3mm; }
+.nb-specB-tab td { padding: 2.4mm 3mm; border-bottom: 1px solid #D9E2EC; vertical-align: middle; }
+.nb-specB-tab tbody tr:nth-child(even) td { background: #F7FAFC; }
+.nb-specB-tab td.nb-specB-ks, .nb-specB-tab th.nb-specB-ks { width: 20mm; text-align: center; }
+.nb-specB-tab td.nb-specB-ks { background: #FFF1DE !important; color: #16324F; font-size: 15pt; font-weight: 800; white-space: nowrap; }
+.nb-specB-tab td.nb-specB-ks small { font-size: 8pt; font-weight: 700; color: #8A5A14; }
+.nb-specB-tab td.nb-specB-kat { color: #5B6472; width: 30%; font-size: 9.5pt; }
+.nb-specB-tab td.nb-specB-nazev { font-weight: 700; color: #16324F; font-size: 11pt; }
+.nb-specB-info { display: flex; flex-wrap: wrap; gap: 1mm 7mm; padding: 1.8mm 4mm; background: #FFF8EE; border-bottom: 1px solid #F1D9B5; font-size: 9.5pt; color: #5B6472; }
+.nb-specB-info b { color: #16324F; }
+.nb-specB-husty .nb-specB-tab td { padding-top: 1.3mm; padding-bottom: 1.3mm; }
+.nb-specB-husty .nb-specB-tab td.nb-specB-kat { width: 26%; }
+.nb-specB-husty .nb-specB-tab td.nb-specB-ks, .nb-specB-husty .nb-specB-tab th.nb-specB-ks { width: 17mm; }
+.nb-stlacit.nb-specB .nb-h { padding-top: 1.6mm; padding-bottom: 1.6mm; font-size: 11.5pt; }
+.nb-stlacit .nb-specB-info, .nb-stlacit .nb-specB-pata { padding-top: 1.1mm; padding-bottom: 1.1mm; font-size: 9pt; }
+.nb-stlacit .nb-specB-tab th { padding-top: 1mm; padding-bottom: 1mm; }
+.nb-stlacit .nb-specB-tab td { padding-top: 0.8mm !important; padding-bottom: 0.8mm !important; }
+.nb-stlacit .nb-specB-tab td.nb-specB-nazev { font-size: 10pt !important; }
+.nb-stlacit .nb-specB-tab td.nb-specB-ks { font-size: 12pt !important; }
+.nb-specB-husty .nb-specB-tab td.nb-specB-ks { font-size: 13pt; }
+.nb-specB-husty .nb-specB-tab td.nb-specB-nazev { font-size: 10.5pt; }
+.nb-specB-pata { padding: 2mm 4mm; background: #EEF3F8; font-size: 9.5pt; color: #16324F; text-align: right; }
 .nb-tab { width: 100%; border-collapse: collapse; }
 .nb-tab th { font-size: 8pt; font-weight: 700; color: #5B6472; text-align: left; padding: 1.5mm 1.5mm; border-bottom: 1px solid #D9D9D9; }
 .nb-tab td { padding: 2mm 1.5mm; border-bottom: 1px solid #D9D9D9; vertical-align: top; }
@@ -211,6 +236,11 @@ const STRANKOVANI = `function nbStrankuj(tisk){
     telo.removeChild(el);
     var tb=tbody(el), drzet=el.className && String(el.className).indexOf('nb-drzet')>=0;
     if(tb && tb.children.length>1 && !drzet){ rozdel(el); return; }
+    if(drzet && telo.children.length && el.className.indexOf('nb-spec')>=0){
+      el.className+=' nb-stlacit'; telo.appendChild(el);
+      if(!preteka()) return;
+      telo.removeChild(el); el.className=el.className.replace(' nb-stlacit','');
+    }
     if(telo.children.length){ novaStrana(); }
     telo.appendChild(el);
     if(preteka() && tb && tb.children.length>1){ telo.removeChild(el); rozdel(el); }
@@ -497,7 +527,41 @@ export default function NabidkaNahled({
   const ukonyMajiKs = platneUkony.some((x) => String(x.ks ?? "").trim() !== "");
   const specRadky = texty.specRadky || [];
   const specMaPopis = specRadky.some((r) => String(r.hodnota ?? "").trim() !== "");
+  // počítají se jen skutečné položky s množstvím (ne řádky jako výkon nebo roční výnos)
+  const specPolozky = specRadky.filter((r) => !/^Cena/.test(r.label) && String(r.ks ?? "").trim() !== "");
+  const pocetPolozek = (n) => `${n} ${n === 1 ? "položka" : n >= 2 && n <= 4 ? "položky" : "položek"}`;
+  // U FVE a rozšíření jde rozpis hned pod cenu a je zvýrazněný — zákazník má
+  // na první pohled vidět, co za tu cenu dostane (u servisu je to jen popis
+  // stávající soustavy, ten zůstává dál v nabídce).
+  const specPodCenou = !texty.maUkony;
   const nastaveniChybi = nastaveniNacteno && POLE_NASTAVENI.some(([k]) => String(nastaveni[k] ?? "").trim() === "");
+
+  // Rozpis se nikdy nedělí na dvě strany (nb-drzet): když se nevejde pod
+  // cenu, přesune se celý na další stranu. Informační řádky bez množství
+  // (výkon, roční výnos) jsou v jednom proužku, delší seznam je hustší.
+  const specInfo = specRadky.filter((r) => String(r.ks ?? "").trim() === "" && !/^Cena/.test(r.label) && r.hodnota !== "[doplnit]");
+  const specTabulka = specRadky.filter((r) => !specInfo.includes(r));
+  const blokSpecifikace = specRadky.length > 0 && (
+    <div className={`nb-sekce nb-specB nb-drzet${specTabulka.length > 5 ? " nb-specB-husty" : ""}`}>
+      <div className="nb-h"><span>{texty.nadpisSpecifikace}</span>{specPolozky.length > 0 && <span className="nb-specB-pocet">{pocetPolozek(specPolozky.length)} v ceně</span>}</div>
+      {specInfo.length > 0 && (
+        <div className="nb-specB-info">{specInfo.map((r, i) => <span key={i}>{r.label}: <b>{r.hodnota}</b></span>)}</div>
+      )}
+      <table className="nb-tab nb-specB-tab">
+        <thead><tr><th className="nb-specB-ks">MNOŽSTVÍ</th><th>{specMaPopis ? "DRUH" : "POLOŽKA"}</th>{specMaPopis && <th>VÝROBEK / TYP</th>}</tr></thead>
+        <tbody>
+          {specTabulka.map((r, i) => (
+            <tr key={i}>
+              <td className="nb-specB-ks">{String(r.ks ?? "").trim() !== "" ? <>{r.ks} <small>ks</small></> : ""}</td>
+              <td className="nb-specB-kat">{r.label}</td>
+              {specMaPopis && <td className="nb-specB-nazev">{r.hodnota === "[doplnit]" ? <Chybi co="zadej v kalkulaci výše" /> : r.hodnota}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="nb-specB-pata">Vše výše uvedené je zahrnuto v ceně <b>{fmtKc(cenaSDph)}</b> vč. DPH {dphPct} %.</div>
+    </div>
+  );
 
   const inp = { ...S.input, marginBottom: 0 };
 
@@ -679,6 +743,7 @@ export default function NabidkaNahled({
               <b>{texty.cenaNadpis || (texty.maUkony ? "Cena servisu" : "Cena rozšíření")}</b><br />
               {platiDo ? <>Nabídka platí do {fmtDatum(platiDo)}</> : <>Platnost: {platnost || <Chybi co="platnost" />}</>}
               {zalohaPct > 0 && <><br />Záloha {zalohaPct} % ({fmtKc(zalohaKc)} vč. DPH), zbytek po dokončení</>}
+              {specPodCenou && specPolozky.length > 0 && <><br />V ceně: <b style={{ fontSize: "inherit", color: "#8A5A14" }}>{pocetPolozek(specPolozky.length)}</b> — rozpis hned pod cenou</>}
             </div>
             {/* Stejné řádky u všech typů: bez DPH → DPH → s DPH (u dotace ještě
                 dotace a cena po dotaci). Zvýrazněná je částka, kterou zákazník platí. */}
@@ -698,6 +763,8 @@ export default function NabidkaNahled({
               </tbody>
             </table>
           </div>
+          {specPodCenou && blokSpecifikace}
+
           <div className="nb-duvera">
             {duvera.map((d) => <div key={d.nadpis}><b>{d.nadpis}</b>{d.text}</div>)}
           </div>
@@ -732,31 +799,7 @@ export default function NabidkaNahled({
             <Upravitelne className="nb-p" hodnota={u.zpracovani} vychozi={texty.zpracovani} zaklad={u.zpracovani_zaklad} onZmena={upravText("zpracovani", texty.zpracovani)} />
           </div>
 
-          {specRadky.length > 0 && (
-            <div className="nb-sekce">
-              <div className="nb-h">{texty.nadpisSpecifikace}</div>
-              <table className="nb-tab">
-                <thead><tr><th>POLOŽKA</th><th className="nb-ks">{texty.specSloupecKs || "POČET KS"}</th>{specMaPopis && <th>TYP / POPIS</th>}</tr></thead>
-                <tbody>
-                  {specRadky.map((r, i) => (
-                    <tr key={i} className={/^Cena/.test(r.label) ? "nb-cena" : ""}>
-                      <td className={specMaPopis ? "nb-l" : "nb-v"}>{r.label}</td>
-                      <td className="nb-ks">{r.ks}</td>
-                      {specMaPopis && <td className="nb-v">{r.hodnota === "[doplnit]" ? <Chybi co="zadej v kalkulaci výše" /> : r.hodnota}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="nb-drobne">
-                {platiDo
-                  ? <>Nabídka platí do {fmtDatum(platiDo)}.</>
-                  : platnost ? <>Platnost nabídky: {platnost}.</> : <>Platnost nabídky: <Chybi co="platnost" />.</>}
-                {" "}{texty.maUkony
-                  ? <>Ceny položek jsou uvedeny bez DPH, celková cena včetně DPH {dphPct} % je v součtu.</>
-                  : <>Cena bez DPH i včetně DPH {dphPct} % je uvedena v cenovém přehledu na začátku nabídky.</>}
-              </p>
-            </div>
-          )}
+          {!specPodCenou && blokSpecifikace}
 
           <div className="nb-sekce nb-drzet">
             <div className="nb-h">Platební podmínky</div>

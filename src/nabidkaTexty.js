@@ -151,7 +151,7 @@ export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, ba
       cenaNadpis: "Cena rozšíření",
       maUkony: false,
       ukony: [],
-      zpracovani: "Nabídku jsme připravili na míru podle Vaší poptávky a údajů o Vaší stávající elektrárně. Níže najdete, co se bude přidávat, a podmínky provedení.",
+      zpracovani: "Nabídku jsme připravili na míru podle Vaší poptávky a údajů o Vaší stávající elektrárně. Co se bude přidávat, najdete hned pod cenou, níže pak podmínky provedení.",
       nadpisSpecifikace: "Co se bude přidávat",
       specRadky,
       nadpisPostup: "Jak probíhá rozšíření s Jurenka Elektro",
