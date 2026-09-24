@@ -28,6 +28,53 @@ function findItem(list, name) {
   return (list || []).find((x) => x.name === name) || { name: name || "", cena: 0, wp: null, kwh: null };
 }
 
+// Vzhled kalkulačky po sekcích (Materiál / Služby a práce / Ostatní) a lišta
+// s cenou přilepená dole. Na mobilu je řádek dvouřádkový (název + položka,
+// pod tím množství a cena s DPH); lišta sedí nad spodní navigací.
+const FK_CSS = `
+.fk-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 72px 100px 78px 112px 112px 36px; gap: 10px; align-items: center; padding: 5px 16px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+.fk-head { padding: 9px 16px; font-size: 11px; font-weight: 700; color: #475569; letter-spacing: .4px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+.fk-num { text-align: right; white-space: nowrap; }
+.fk-zak .fk-int { display: none !important; }
+.fk-zak .fk-row { grid-template-columns: 170px minmax(0, 1fr) 72px 140px 140px 36px; }
+.fk-hlava { display: flex; align-items: center; gap: 14px; padding: 12px 16px; }
+.fk-soucty { display: flex; gap: 20px; text-align: right; }
+.fk-lista { position: sticky; bottom: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 -8px 24px rgba(15, 23, 42, .10); padding: 12px 18px; margin: 8px 0 16px; }
+.fk-l { display: block; font-size: 12px; color: #475569; }
+.fk-v { font-size: 18px; font-weight: 800; white-space: nowrap; }
+.fk-varovani { flex-basis: 100%; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 700; }
+@media (max-width: 900px) {
+  .fk-row, .fk-zak .fk-row { grid-template-columns: 72px minmax(0, 1fr) 36px; row-gap: 6px; padding: 8px 12px; }
+  .fk-row > .fk-lbl, .fk-row > .fk-pol { grid-column: 1 / -1; }
+  .fk-row > .fk-int, .fk-row > .fk-mhide { display: none !important; }
+  .fk-head > .fk-pol { display: none; }
+  .fk-hlava { flex-wrap: wrap; }
+  .fk-soucty { width: 100%; justify-content: flex-end; }
+}
+@media (max-width: 768px) {
+  .fk-lista { bottom: calc(66px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; padding: 8px 10px 8px 70px; gap: 6px 10px; }
+  .fk-lista .fk-li-mhide { display: none; }
+  .fk-lista .fk-v { font-size: 16px !important; }
+  .fk-lista .fk-l { font-size: 11px; }
+  .fk-lista > div { text-align: left !important; min-width: 0; }
+  .fk-lista .fk-varovani { grid-column: 1 / -1; }
+  .fk-lista .fk-dph { padding: 0 9px !important; white-space: nowrap; }
+}
+`;
+const PRESET_NAZVY = { light: "LIGHT", basic: "BASIC", optimal: "OPTIMAL", premium: "PREMIUM", emobilita: "E-MOBILITA", servis: "SERVIS", custom: "Vlastní sestava" };
+const MIN_MARZE = 0.35; // pod touhle marží je potřeba schválení (dosavadní pravidlo)
+const SEKCE_VZHLED = {
+  material: { nazev: "Materiál", popis: "Panely, konstrukce, střídač, baterie a řízení", bd: "#bae6fd", bg: "#e0f2fe", ik: "#0369a1", barva: "#075985", text: "#0c4a6e", pridat: "+ Přidat vlastní položku materiálu" },
+  sluzby: { nazev: "Služby a práce", popis: "Montáž v MD, vyřízení dotace a připojení, doprava, revize, ELMR", bd: "#ddd6fe", bg: "#ede9fe", ik: "#6d28d9", barva: "#5b21b6", text: "#4c1d95", pridat: "+ Přidat vlastní službu nebo práci" },
+  ostatni: { nazev: "Ostatní", popis: "Drobný elektro materiál, back-up, wallbox, bojler a vlastní položky", bd: "#fde68a", bg: "#fef3c7", ik: "#b45309", barva: "#92400e", text: "#78350f", pridat: "+ Přidat vlastní ostatní položku" },
+};
+const svgIkona = (d) => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
+const IKONY_SEKCI = {
+  material: svgIkona(<><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /><path d="M12 13v8" /></>),
+  sluzby: svgIkona(<path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.6 2.6-2.4-.6-.6-2.4 2.6-2.6z" />),
+  ostatni: svgIkona(<><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M17 14v6M14 17h6" /></>),
+};
+
 const CAT_LABELS = { panely: "Panely", konstrukce: "Konstrukce", stridace: "Střídače", baterie: "Baterie", bms: "BMS", rozvadec_dc: "Rozvaděč DC", ostatni: "Ostatní materiál (Back-up, wallbox, drobný materiál)", regulace: "Regulace", bojlery: "Bojlery", prace: "Práce", sluzby: "Služby", elmr: "Úpravy ELMR", dotace_zaklad: "Základ dotace (podle typu střídače)", zaruky_stridac: "Záruka 10 let (podle střídače)" };
 
 function Sel({ list, value, onChange, style }) {
@@ -43,6 +90,7 @@ function Sel({ list, value, onChange, style }) {
 // V nabídce se vypíšou v tabulce "Co pro Vás provedeme" (úkon | počet ks |
 // popis | cena). Cena servisu = součet úkonů (cena za kus × ks), materiál
 // v kalkulaci níže u servisu slouží jen k popisu stávající soustavy.
+const noveIdRadku = () => Date.now() + Math.random();
 const noveIdUkonu = () => `u${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
 
 function ServisUkony({ ukony, onChange, dph, S }) {
@@ -107,7 +155,7 @@ function SyncCilovaCena({ cenaBezDph, cenaSDph, dphPct, naklad, aktualni, onSync
   return null;
 }
 
-export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave, cenaVNabidce, cisloNabidky, vystaveno, customerAddress, customerEmail, odeslane, onOdeslano }) {
+export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave, cenaVNabidce, cisloNabidky, vystaveno, customerAddress, customerEmail, odeslane, onOdeslano, uZakaznika, onUZakaznika }) {
   const cfg = value || PRAZDNA_FVE();
   const set = (patch) => onChange({ ...cfg, ...patch });
   const setItem = (key, patch) => onChange({ ...cfg, [key]: { ...cfg[key], ...patch } });
@@ -118,6 +166,12 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const [newZahrnuto, setNewZahrnuto] = useState("");
   const [newNezahrnuto, setNewNezahrnuto] = useState("");
   const [nahledOtevren, setNahledOtevren] = useState(false);
+  // Režim „U zákazníka“: schová náklady, marže a provize (obrazovka jde ukázat
+  // zákazníkovi). Nepoužité řádky (0 ks, „Bez …“) jsou schované, dokud se neukážou.
+  const [uZakLokalne, setUZakLokalne] = useState(false);
+  const uZak = uZakaznika ?? uZakLokalne;
+  const setUZak = onUZakaznika || setUZakLokalne;
+  const [ukazNepouzite, setUkazNepouzite] = useState({});
   const isAdmin = currentUser?.role === "admin";
 
   const loadCenik = () => {
@@ -204,10 +258,13 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const bateriKwh = (baterie.kwh || 0) * (Number(cfg.baterie.qty) || 0);
 
   let dotace = 0;
+  let dotaceDuvod = "";
   if (cfg.dotaceOn) {
     let zaklad = dotaceZaklad.cena + (vykonFve - 2) * 10000 + Math.min(bateriKwh, vykonFve * 2) * 10000 + ((cfg.wallbox.qty > 0) ? 20000 : 0) + 5000;
     const strop = 205000 + ((cfg.wallbox.qty > 0) ? 20000 : 0);
-    if (zaklad > strop) zaklad = strop;
+    dotaceDuvod = "podle výkonu a baterie";
+    if (zaklad > strop) { zaklad = strop; dotaceDuvod = `strop ${fmtKc(strop)}`; }
+    if (cenaDphRounded * 0.5 < zaklad) dotaceDuvod = "max. 50 % ceny s DPH";
     dotace = Math.min(zaklad, cenaDphRounded * 0.5);
     if (cfg.kraj === "zvyhodnene") dotace = dotace * 1.1 - 500;
     if (cfg.wallbox.qty > 0) dotace += 10000;
@@ -221,7 +278,9 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const provizeKc = (cenaDphRounded / (1 + dph)) * (plovouciPct / 100);
   const provizeCelkem = (Number(cfg.zakladniProvize) || 0) + provizeKc;
 
-  const addCustomRow = () => set({ customRows: [...(cfg.customRows || []), { id: Date.now() + Math.random(), name: "", qty: 1, cena: 0 }] });
+  const addCustomRow = (sekce = "ostatni") => {
+    set({ customRows: [...(cfg.customRows || []), { id: noveIdRadku(), name: "", qty: 1, cena: 0, sekce }] });
+  };
   const updateCustomRow = (id, patch) => set({ customRows: cfg.customRows.map((r) => r.id === id ? { ...r, ...patch } : r) });
   const removeCustomRow = (id) => set({ customRows: cfg.customRows.filter((r) => r.id !== id) });
 
@@ -374,47 +433,175 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     ...(seznamNoveFve ? seznamyPodleTypu(jobType) : {}),
   });
 
-  const selStyle = { ...S.select, marginBottom: 0 };
-  const qtyStyle = { ...S.input, marginBottom: 0, width: 70 };
+  // ── Kalkulace po sekcích: Materiál / Služby a práce / Ostatní ──
+  // Jen jiné rozdělení a zobrazení — výpočet ceny (náklad, marže, DPH,
+  // zaokrouhlení, dotace) je beze změny výše.
+  const kDph = 1 + dph;
+  const inpS = { ...S.input, marginBottom: 0 };
+  const pctTxt = (f) => `${Math.round(f * 1000) / 10} %`;
+  const cislo = (x) => Number(x) || 0;
+  const nepouzita = (item, cfgItem) => !(cislo(cfgItem?.qty) > 0) || /^Bez /.test(item?.name || "");
+  const RADKY_MAT = [
+    ["panel", "Panely", cenik.panely, panel], ["konstrukce", "Konstrukce", cenik.konstrukce, konstr],
+    ["stridac", "Střídač", cenik.stridace, stridac], ["baterie", "Baterie", cenik.baterie, baterie],
+    ["bms", "BMS", cenik.bms, bms], ["rozvadecDc", "Rozvaděč DC", cenik.rozvadec_dc, rozvadecDc],
+    ["regulace", "Regulace (AZrouter)", cenik.regulace, regulace],
+  ];
+  const RADKY_OST = [
+    ["ostatniFixed", "Elektro drobný materiál", cenik.ostatni, ostatniFixed], ["backup", "Back-up", cenik.ostatni, backup],
+    ["wallbox", "Wallbox / regulace navíc", cenik.ostatni, wallbox], ["bojler", "Bojler", cenik.bojlery, bojler],
+  ];
+  const vlastniRadky = (sekce) => (cfg.customRows || []).filter((r) => (r.sekce || "ostatni") === sekce);
+  const nVlastni = (sekce) => vlastniRadky(sekce).reduce((sum, r) => sum + cislo(r.qty) * cislo(r.cena), 0);
+  const nRadku = ([key, , , item]) => item.cena * cislo(cfg[key].qty);
+  const sRadku = (radek) => nRadku(radek) * (1 + rowMarzeFrac(cfg[radek[0]]));
+  const provizeZakl = cislo(cfg.zakladniProvize);
+  const sluzbyBezProvize = nakladSvc - provizeZakl;
+  const nSluzby = nakladPrace + sluzbyBezProvize + nVlastni("sluzby");
+  const nMatVlastni = zarukaCena + nVlastni("material");
+  const sekceSum = {
+    material: {
+      n: RADKY_MAT.reduce((sum, rr) => sum + nRadku(rr), 0) + nMatVlastni,
+      s: RADKY_MAT.reduce((sum, rr) => sum + sRadku(rr), 0) + nMatVlastni * (1 + marze),
+    },
+    sluzby: { n: nSluzby, s: nSluzby * (1 + marze) },
+    ostatni: {
+      n: RADKY_OST.reduce((sum, rr) => sum + nRadku(rr), 0) + nVlastni("ostatni"),
+      s: RADKY_OST.reduce((sum, rr) => sum + sRadku(rr), 0) + nVlastni("ostatni") * (1 + marze),
+    },
+  };
+  const podil = (n) => (naklad > 0 ? Math.round((n / naklad) * 100) : 0);
+  const nizkaMarze = marze < MIN_MARZE;
+  const dphPct = Math.round(dph * 100);
+  const sazbyDph = [12, 21, ...([12, 21].includes(dphPct) ? [] : [dphPct])];
+  const presunNa = (id) => document.getElementById(`fk-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  const row = (label, key, list, item, cfgItem) => {
-    const qty = cfgItem.qty;
-    const cenaBezMarze = item.cena * (Number(qty) || 0);
-    const rowFrac = rowMarzeFrac(cfgItem);
-    const cenaSMarzi = cenaBezMarze * (1 + rowFrac);
-    const prepsano = cfgItem.marzeOverride !== "" && cfgItem.marzeOverride != null;
+  // Jeden řádek kalkulace (stejné sloupce ve všech sekcích).
+  const radek = ({ klic, nazev, polozka, mnozstvi, n, frac, marzeBunka, akce, slabe }) => (
+    <div key={klic} className="fk-row" style={slabe ? { opacity: 0.6 } : undefined}>
+      <div className="fk-lbl" style={{ fontWeight: 600, minWidth: 0 }}>{nazev}</div>
+      <div className="fk-pol" style={{ minWidth: 0 }}>{polozka}</div>
+      <div>{mnozstvi}</div>
+      <div className="fk-num fk-int" style={{ color: "#475569" }}>{fmtKc(n)}</div>
+      <div className="fk-num fk-int">{marzeBunka || <span style={{ color: "#64748b" }} title="Společná marže">{pctTxt(frac)}</span>}</div>
+      <div className="fk-num fk-mhide" style={{ fontWeight: 700 }}>{fmtKc(n * (1 + frac))}</div>
+      <div className="fk-num" style={{ fontWeight: 700, color: "#075985" }}>{fmtKc(n * (1 + frac) * kDph)}</div>
+      <div>{akce}</div>
+    </div>
+  );
+  const hlavickaSloupcu = (c1, c2, q) => (
+    <div className="fk-row fk-head">
+      <span className="fk-lbl">{c1}</span><span className="fk-pol">{c2}</span><span style={{ textAlign: "center" }}>{q}</span>
+      <span className="fk-num fk-int">NÁKLAD</span><span className="fk-num fk-int">MARŽE</span>
+      <span className="fk-num fk-mhide">{uZak ? "BEZ DPH" : "S MARŽÍ"}</span><span className="fk-num">S DPH {dphPct} %</span><span />
+    </div>
+  );
+  const pocetInput = (label, value, onChangeVal) => (
+    <input type="number" min="0" aria-label={label} style={{ ...inpS, textAlign: "center", padding: "6px 4px" }} value={value} onChange={(e) => onChangeVal(e.target.value)} />
+  );
+  const radekMat = ([key, nazev, list, item]) => {
+    const c = cfg[key];
+    const prepsano = c.marzeOverride !== "" && c.marzeOverride != null;
+    return radek({
+      klic: key, nazev, n: nRadku([key, nazev, list, item]), frac: rowMarzeFrac(c), slabe: nepouzita(item, c),
+      polozka: <Sel list={list} value={item.name} onChange={(name) => setItem(key, { name })} style={{ ...S.select, marginBottom: 0, width: "100%" }} />,
+      mnozstvi: pocetInput(`Množství – ${nazev}`, c.qty, (v) => setItem(key, { qty: v })),
+      marzeBunka: (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+          <input type="number" min="0" max="100" step="1" aria-label={`Marže – ${nazev}`} placeholder={String(Math.round(marze * 100))}
+            title="Vlastní marže řádku — prázdné = společná marže"
+            style={{ ...inpS, width: 50, textAlign: "right", padding: "4px 6px", fontSize: 13, color: prepsano ? "#0369a1" : "#64748b", fontWeight: prepsano ? 700 : 400, borderColor: prepsano ? "#0369a1" : undefined }}
+            value={c.marzeOverride ?? ""} onChange={(e) => setItem(key, { marzeOverride: e.target.value })} />
+          <span style={{ fontSize: 12, color: "#64748b" }}>%</span>
+        </span>
+      ),
+    });
+  };
+  const radekVlastni = (rv) => radek({
+    klic: rv.id, n: cislo(rv.qty) * cislo(rv.cena), frac: marze,
+    nazev: <input aria-label="Název vlastní položky" placeholder="Název položky" style={inpS} value={rv.name} onChange={(e) => updateCustomRow(rv.id, { name: e.target.value })} />,
+    polozka: uZak ? <span /> : (
+      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type="number" min="0" aria-label="Náklad za kus (Kč bez DPH)" placeholder="náklad Kč/ks" style={{ ...inpS, maxWidth: 160 }} value={rv.cena} onChange={(e) => updateCustomRow(rv.id, { cena: e.target.value })} />
+        <span className="fk-int" style={{ fontSize: 12, color: "#64748b" }}>náklad za kus</span>
+      </span>
+    ),
+    mnozstvi: pocetInput("Množství", rv.qty, (v) => updateCustomRow(rv.id, { qty: v })),
+    akce: <button type="button" aria-label="Odebrat položku" title="Odebrat" onClick={() => removeCustomRow(rv.id)} style={{ ...S.btnGhost, padding: "4px 9px" }}>✕</button>,
+  });
+  const sazbaTxt = (t) => <span style={{ fontSize: 13, color: "#475569" }}>{t}</span>;
+  const radkyPrace = [
+    { klic: "mdElektro", nazev: "Elektro práce", sazba: prace.elektro },
+    { klic: "mdStrecha", nazev: "Střecha práce", sazba: prace.strecha },
+    { klic: "mdInstalater", nazev: "Instalatérské práce", sazba: prace.instalater },
+  ].map((pr) => ({ ...pr, n: pr.sazba * cislo(cfg[pr.klic]), nepouzito: !(cislo(cfg[pr.klic]) > 0) }));
+  const radkySluzeb = [
+    { klic: "svcDotace", nazev: "Vyřízení dotace", sazba: `${fmtKc(sluzby.dotace)} / ks`, n: sluzby.dotace * cislo(cfg.svcDotace) },
+    { klic: "svcDs", nazev: "Připojení k DS", sazba: `${fmtKc(sluzby.ds)} / ks`, n: sluzby.ds * cislo(cfg.svcDs) },
+    { klic: "svcDopravaKm", nazev: "Doprava (km tam i zpět)", sazba: `${fmtKc(sluzby.doprava)} / km × dny práce`, n: dopravaCena },
+    { klic: "svcRevize", nazev: "Revize", sazba: `${fmtKc(sluzby.revize)} / ks`, n: sluzby.revize * cislo(cfg.svcRevize) },
+  ].map((sv) => ({ ...sv, nepouzito: !(cislo(cfg[sv.klic]) > 0) }));
+  const elmrNepouzito = !(elmr.cena > 0);
+
+  const sekceBlok = (id, obsah, pocetNepouzitych, pocetPouzitych) => {
+    const v = SEKCE_VZHLED[id];
+    const sum = sekceSum[id];
+    const ukaz = !!ukazNepouzite[id];
     return (
-      <tr key={key}>
-        <td style={S.td}>{label}</td>
-        <td style={S.td}><Sel list={list} value={item.name} onChange={(name) => setItem(key, { name })} style={selStyle} /></td>
-        <td style={S.td}><input type="number" min="0" style={qtyStyle} value={qty} onChange={(e) => setItem(key, { qty: e.target.value })} /></td>
-        <td style={{ ...S.td, textAlign: "right", color: "#475569", whiteSpace: "nowrap" }}>{fmtKc(cenaBezMarze)}</td>
-        <td style={{ ...S.td, textAlign: "right", color: "#94a3b8", whiteSpace: "nowrap" }}>{fmtKc(item.cena)}</td>
-        <td style={{ ...S.td, textAlign: "right", whiteSpace: "nowrap" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
-            <input
-              type="number" min="0" max="100" step="1"
-              placeholder={String(Math.round(marze * 100))}
-              style={{ ...S.input, marginBottom: 0, width: 46, textAlign: "right", fontSize: 11, padding: "4px 5px", color: prepsano ? "#0369a1" : "#94a3b8" }}
-              value={cfgItem.marzeOverride ?? ""}
-              onChange={(e) => setItem(key, { marzeOverride: e.target.value })}
-              title="Marže pro tento řádek — prázdné = použije se společná marže"
-            />
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>%</span>
-            <b style={{ color: "#34d399" }}>{fmtKc(cenaSMarzi)}</b>
+      <section id={`fk-${id}`} style={{ border: `1px solid ${v.bd}`, borderRadius: 14, overflow: "hidden", marginBottom: 16, scrollMarginTop: 70 }}>
+        <div className="fk-hlava" style={{ background: v.bg }}>
+          <span style={{ width: 38, height: 38, borderRadius: 10, background: v.ik, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{IKONY_SEKCI[id]}</span>
+          <div style={{ flexGrow: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: v.barva }}>{v.nazev}</div>
+            <div style={{ fontSize: 13, color: v.text }}>{v.popis}</div>
           </div>
-        </td>
-      </tr>
+          <div className="fk-soucty">
+            {!uZak && <div><div style={{ fontSize: 12, color: v.text }}>náklad</div><div style={{ fontSize: 15, fontWeight: 700, color: v.text }}>{fmtKc(sum.n)}</div></div>}
+            <div><div style={{ fontSize: 12, color: v.text }}>bez DPH</div><div style={{ fontSize: 18, fontWeight: 800, color: v.barva }}>{fmtKc(sum.s)}</div></div>
+            <div><div style={{ fontSize: 12, color: v.text }}>s DPH {dphPct} %</div><div style={{ fontSize: 18, fontWeight: 800, color: v.barva }}>{fmtKc(sum.s * kDph)}</div></div>
+          </div>
+        </div>
+        {!ukaz && pocetPouzitych === 0 ? (
+          <div style={{ padding: "12px 16px", fontSize: 13, color: "#64748b" }}>
+            Zatím tu nic není.{pocetNepouzitych > 0 ? ` Klikni na „Nepoužité (${pocetNepouzitych})“ a vyber, co se dodává, nebo přidej vlastní položku.` : " Přidej vlastní položku."}
+          </div>
+        ) : obsah(ukaz)}
+        <div style={{ display: "flex", gap: 10, padding: "10px 16px", flexWrap: "wrap" }}>
+          {pocetNepouzitych > 0 && (
+            <button type="button" onClick={() => setUkazNepouzite((u) => ({ ...u, [id]: !u[id] }))}
+              style={{ height: 38, border: "none", background: "#f1f5f9", color: "#334155", borderRadius: 8, padding: "0 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+              {ukaz ? "Skrýt nepoužité" : `Nepoužité (${pocetNepouzitych})`}
+            </button>
+          )}
+          <button type="button" onClick={() => addCustomRow(id)}
+            style={{ flexGrow: 1, height: 38, border: `1px dashed ${v.ik}`, background: "#fff", color: v.barva, borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{v.pridat}</button>
+        </div>
+      </section>
     );
   };
 
   return (
-    <div style={S.card}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <div style={{ fontWeight: 700, color: "#1A1A1A" }}>☀️ Kalkulačka FVE — přesně podle Excelu</div>
-        <button style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 11 }} onClick={() => setAdminOpen((v) => !v)}>⚙️ Ceník {isAdmin ? "(admin)" : ""}</button>
+    <div style={S.card} className={uZak ? "fk-wrap fk-zak" : "fk-wrap"}>
+      <style>{FK_CSS}</style>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 18, color: "#1A1A1A" }}>☀️ Kalkulačka FVE</div>
+          <div style={{ fontSize: 13, color: "#475569", marginTop: 2 }}>{[PRESET_NAZVY[cfg.preset] || "Vlastní sestava", vykonFve > 0 ? `${Math.round(vykonFve * 10) / 10} kWp` : null, bateriKwh > 0 ? `${Math.round(bateriKwh * 10) / 10} kWh` : null, cfg.dotaceOn ? "s dotací" : "bez dotace"].filter(Boolean).join(" · ")}</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button type="button" aria-pressed={uZak} onClick={() => setUZak(!uZak)} title="Schová náklady, marže a provize — obrazovku jde ukázat zákazníkovi"
+            style={{ display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 14px", borderRadius: 10, border: `1px solid ${uZak ? "#93c5fd" : "#cbd5e1"}`, background: uZak ? "#eff6ff" : "#fff", color: uZak ? "#1e3a8a" : "#334155", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+            <span aria-hidden="true" style={{ width: 34, height: 20, borderRadius: 10, background: uZak ? "#0369a1" : "#cbd5e1", display: "flex", alignItems: "center", padding: 2, boxSizing: "border-box", justifyContent: uZak ? "flex-end" : "flex-start" }}><span style={{ width: 16, height: 16, borderRadius: "50%", background: "#fff" }} /></span>
+            Režim „U zákazníka“
+          </button>
+          {!uZak && <button style={{ ...S.btnGhost, padding: "8px 12px", fontSize: 12 }} onClick={() => setAdminOpen((v) => !v)}>⚙️ Ceník {isAdmin ? "(admin)" : ""}</button>}
+        </div>
       </div>
-      <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Materiál, práce, služby, dotace a provize se počítají stejně jako v excelové kalkulačce sestav. Ceník je natažený z databáze.</div>
+      {uZak && (
+        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "8px 12px", marginBottom: 14, fontSize: 13, color: "#1e3a8a" }}>
+          Zákazník vidí jen položky a ceny — náklady, marže a provize jsou skryté. Vypneš přepínačem vpravo nahoře.
+        </div>
+      )}
 
       {maNahled && (polozkyNoveFve.length > 0 || seznamNoveFve) && (
         <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#7f1d1d" }}>
@@ -555,94 +742,157 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         </div>
       </div>
 
-      <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Materiál</div>
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
-        <thead><tr><th style={S.th}>Řádek</th><th style={S.th}>Položka</th><th style={S.th}>Množ.</th><th style={S.th}>Cena bez marže</th><th style={S.th}>Cena za kus</th><th style={S.th}>Cena s marží ({Math.round(marze * 100)} %)</th></tr></thead>
-        <tbody>
-          {row("Panely", "panel", cenik.panely, panel, cfg.panel)}
-          {row("Konstrukce", "konstrukce", cenik.konstrukce, konstr, cfg.konstrukce)}
-          {row("Střídač", "stridac", cenik.stridace, stridac, cfg.stridac)}
-          <tr>
-            <td style={S.td} colSpan={5}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                <input type="checkbox" checked={cfg.zaruka} onChange={(e) => set({ zaruka: e.target.checked })} /> + Záruka 10 let na střídač (0 % marže)
-              </label>
-            </td>
-            <td style={{ ...S.td, textAlign: "right", color: "#475569" }}>{fmtKc(zarukaCena)}</td>
-          </tr>
-          {row("Baterie", "baterie", cenik.baterie, baterie, cfg.baterie)}
-          {row("BMS", "bms", cenik.bms, bms, cfg.bms)}
-          {row("Rozvaděč DC", "rozvadecDc", cenik.rozvadec_dc, rozvadecDc, cfg.rozvadecDc)}
-          {row("Ostatní elektro materiál", "ostatniFixed", cenik.ostatni, ostatniFixed, cfg.ostatniFixed)}
-          {row("Back-up", "backup", cenik.ostatni, backup, cfg.backup)}
-          {row("Wallbox / regulace navíc", "wallbox", cenik.ostatni, wallbox, cfg.wallbox)}
-          {row("Regulace (AZrouter)", "regulace", cenik.regulace, regulace, cfg.regulace)}
-          {row("Bojler", "bojler", cenik.bojlery, bojler, cfg.bojler)}
-        </tbody>
-      </table>
-
-      {(cfg.customRows || []).map((r) => (
-        <div key={r.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-          <input style={{ ...S.input, marginBottom: 0, flex: 1 }} placeholder="Název nespecifikované položky" value={r.name} onChange={(e) => updateCustomRow(r.id, { name: e.target.value })} />
-          <input type="number" style={{ ...S.input, marginBottom: 0, width: 70 }} placeholder="ks" value={r.qty} onChange={(e) => updateCustomRow(r.id, { qty: e.target.value })} />
-          <input type="number" style={{ ...S.input, marginBottom: 0, width: 100 }} placeholder="Kč/ks" value={r.cena} onChange={(e) => updateCustomRow(r.id, { cena: e.target.value })} />
-          <span style={{ width: 90, textAlign: "right", fontSize: 13, color: "#475569" }}>{fmtKc((Number(r.qty) || 0) * (Number(r.cena) || 0))}</span>
-          <button onClick={() => removeCustomRow(r.id)} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11 }}>✕</button>
+      {!uZak && naklad > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, color: "#475569", marginBottom: 6, flexWrap: "wrap" }}>
+            <b>Skladba nákladu</b>
+            <span>Náklad celkem <b style={{ color: "#b91c1c", fontSize: 15 }}>{fmtKc(naklad)}</b></span>
+          </div>
+          <div style={{ display: "flex", height: 28, borderRadius: 8, overflow: "hidden" }}>
+            {[["material", "#0369a1", sekceSum.material.n, "Materiál"], ["sluzby", "#6d28d9", sekceSum.sluzby.n, "Služby"], ["ostatni", "#b45309", sekceSum.ostatni.n, "Ostatní"], [null, "#64748b", provizeZakl, "Provize OZ"]]
+              .filter(([, , n]) => n > 0)
+              .map(([id, barva, n, nazev]) => (
+                <button key={nazev} type="button" onClick={() => id && presunNa(id)} title={`${nazev}: ${fmtKc(n)} · ${podil(n)} %`}
+                  style={{ width: `${(n / naklad) * 100}%`, minWidth: 4, background: barva, color: "#fff", border: "none", fontSize: 12, fontWeight: 700, textAlign: "left", paddingLeft: 8, overflow: "hidden", whiteSpace: "nowrap", cursor: id ? "pointer" : "default", fontFamily: "inherit" }}>
+                  {podil(n) >= 12 ? `${nazev} ${podil(n)} %` : ""}
+                </button>
+              ))}
+          </div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#334155", marginTop: 6 }}>
+            {[["#0369a1", "Materiál", sekceSum.material.n], ["#6d28d9", "Služby a práce", sekceSum.sluzby.n], ["#b45309", "Ostatní", sekceSum.ostatni.n], ["#64748b", "Provize OZ (základní)", provizeZakl]].map(([barva, nazev, n]) => (
+              <span key={nazev} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: barva }} />{nazev} {fmtKc(n)} · {podil(n)} %
+              </span>
+            ))}
+          </div>
         </div>
-      ))}
-      <button onClick={addCustomRow} style={{ ...S.btnGhost, marginBottom: 16, padding: "6px 14px", fontSize: 12 }}>+ Přidat nespecifikovanou položku</button>
+      )}
 
-      <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Práce (MD)</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 16 }}>
-        <div><label style={S.label}>Elektro práce ({fmtKc(prace.elektro)}/MD)</label><input type="number" style={S.input} value={cfg.mdElektro} onChange={(e) => set({ mdElektro: e.target.value })} /></div>
-        <div><label style={S.label}>Střecha práce ({fmtKc(prace.strecha)}/MD)</label><input type="number" style={S.input} value={cfg.mdStrecha} onChange={(e) => set({ mdStrecha: e.target.value })} /></div>
-        <div><label style={S.label}>Instalatérské práce ({fmtKc(prace.instalater)}/MD)</label><input type="number" style={S.input} value={cfg.mdInstalater} onChange={(e) => set({ mdInstalater: e.target.value })} /></div>
-      </div>
+      {sekceBlok("material", (ukaz) => (
+        <>
+          {hlavickaSloupcu("ŘÁDEK", "POLOŽKA", "KS")}
+          {RADKY_MAT.filter(([key, , , item]) => ukaz || !nepouzita(item, cfg[key])).flatMap((rr) => [
+            radekMat(rr),
+            rr[0] === "stridac" && (ukaz || cfg.zaruka) ? radek({
+              klic: "zaruka", nazev: "Záruka 10 let", n: zarukaCena, frac: marze, slabe: !cfg.zaruka,
+              polozka: (
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <input type="checkbox" checked={!!cfg.zaruka} onChange={(e) => set({ zaruka: e.target.checked })} />
+                  Prodloužená záruka na střídač ({fmtKc(zarukaItem.cena)})
+                </label>
+              ),
+              mnozstvi: <span style={{ display: "block", textAlign: "center", color: "#64748b" }}>{cfg.zaruka ? 1 : 0}</span>,
+            }) : null,
+          ])}
+          {vlastniRadky("material").map(radekVlastni)}
+        </>
+      ), RADKY_MAT.filter(([key, , , item]) => nepouzita(item, cfg[key])).length + (cfg.zaruka ? 0 : 1),
+      RADKY_MAT.filter(([key, , , item]) => !nepouzita(item, cfg[key])).length + (cfg.zaruka ? 1 : 0) + vlastniRadky("material").length)}
 
-      <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Služby</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 16 }}>
-        <div><label style={S.label}>Vyřízení dotace</label><input type="number" style={S.input} value={cfg.svcDotace} onChange={(e) => set({ svcDotace: e.target.value })} /></div>
-        <div><label style={S.label}>Vyřízení připojení k DS</label><input type="number" style={S.input} value={cfg.svcDs} onChange={(e) => set({ svcDs: e.target.value })} /></div>
-        <div><label style={S.label}>Doprava (km z Prahy tam i zpět)</label><input type="number" style={S.input} value={cfg.svcDopravaKm} onChange={(e) => set({ svcDopravaKm: e.target.value })} /></div>
-        <div><label style={S.label}>Revize</label><input type="number" style={S.input} value={cfg.svcRevize} onChange={(e) => set({ svcRevize: e.target.value })} /></div>
-        <div style={{ gridColumn: "span 2" }}>
-          <label style={S.label}>Úprava ELMR</label>
-          <select style={S.select} value={cfg.elmr} onChange={(e) => set({ elmr: e.target.value })}>
-            {(cenik.elmr || []).map((x) => <option key={x.name} value={x.name}>{x.name} — {fmtKc(x.cena)}</option>)}
-          </select>
+      {sekceBlok("sluzby", (ukaz) => (
+        <>
+          {hlavickaSloupcu("PRÁCE", "SAZBA", "MD")}
+          {radkyPrace.filter((pr) => ukaz || !pr.nepouzito).map((pr) => radek({
+            klic: pr.klic, nazev: pr.nazev, n: pr.n, frac: marze, slabe: pr.nepouzito,
+            polozka: sazbaTxt(`${fmtKc(pr.sazba)} / MD`),
+            mnozstvi: pocetInput(pr.nazev, cfg[pr.klic], (v) => set({ [pr.klic]: v })),
+          }))}
+          {hlavickaSloupcu("SLUŽBY", "SAZBA", "POČET")}
+          {radkySluzeb.filter((sv) => ukaz || !sv.nepouzito).map((sv) => radek({
+            klic: sv.klic, nazev: sv.nazev, n: sv.n, frac: marze, slabe: sv.nepouzito,
+            polozka: sazbaTxt(sv.sazba),
+            mnozstvi: pocetInput(sv.nazev, cfg[sv.klic], (v) => set({ [sv.klic]: v })),
+          }))}
+          {(ukaz || !elmrNepouzito) && radek({
+            klic: "elmr", nazev: "Úprava ELMR", n: elmr.cena, frac: marze, slabe: elmrNepouzito,
+            polozka: (
+              <select aria-label="Úprava ELMR" style={{ ...S.select, marginBottom: 0, width: "100%" }} value={cfg.elmr} onChange={(e) => set({ elmr: e.target.value })}>
+                {(cenik.elmr || []).map((x) => <option key={x.name} value={x.name}>{x.name} — {fmtKc(x.cena)}</option>)}
+              </select>
+            ),
+            mnozstvi: <span style={{ display: "block", textAlign: "center", color: "#64748b" }}>{elmrNepouzito ? 0 : 1}</span>,
+          })}
+          {vlastniRadky("sluzby").map(radekVlastni)}
+        </>
+      ), radkyPrace.filter((pr) => pr.nepouzito).length + radkySluzeb.filter((sv) => sv.nepouzito).length + (elmrNepouzito ? 1 : 0),
+      radkyPrace.filter((pr) => !pr.nepouzito).length + radkySluzeb.filter((sv) => !sv.nepouzito).length + (elmrNepouzito ? 0 : 1) + vlastniRadky("sluzby").length)}
+
+      {sekceBlok("ostatni", (ukaz) => (
+        <>
+          {hlavickaSloupcu("ŘÁDEK", "POLOŽKA", "KS")}
+          {RADKY_OST.filter(([key, , , item]) => ukaz || !nepouzita(item, cfg[key])).map(radekMat)}
+          {vlastniRadky("ostatni").map(radekVlastni)}
+        </>
+      ), RADKY_OST.filter(([key, , , item]) => nepouzita(item, cfg[key])).length,
+      RADKY_OST.filter(([key, , , item]) => !nepouzita(item, cfg[key])).length + vlastniRadky("ostatni").length)}
+
+      {!uZak && (
+        <div style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: "14px 16px", background: "#f8fafc", marginBottom: 8 }}>
+          <div style={{ fontWeight: 800, marginBottom: 10 }}>Provize OZ a sleva</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+            <div><label style={S.label} htmlFor="fk-prov-z">Základní provize (Kč) — v nákladu</label><input id="fk-prov-z" type="number" style={inpS} value={cfg.zakladniProvize} onChange={(e) => set({ zakladniProvize: e.target.value })} /></div>
+            <div>
+              <label style={S.label} htmlFor="fk-prov-p">Plovoucí provize (%) — doporučeno {Math.round(doporucenoPct * 10) / 10} %</label>
+              <input id="fk-prov-p" type="text" inputMode="decimal" style={inpS}
+                value={cfg.plovouciProvizePct == null ? Math.round(doporucenoPct * 10) / 10 : cfg.plovouciProvizePct}
+                onChange={(e) => set({ plovouciProvizePct: e.target.value })}
+                onBlur={(e) => { let v = parseFloat(String(e.target.value).replace(",", ".")); if (isNaN(v)) v = doporucenoPct; v = Math.max(1, Math.min(10, v)); set({ plovouciProvizePct: v }); }} />
+            </div>
+            <div><label style={S.label} htmlFor="fk-sleva">Sleva z ceny s DPH (Kč)</label><input id="fk-sleva" type="number" style={inpS} value={cfg.sleva} onChange={(e) => set({ sleva: e.target.value })} /></div>
+          </div>
+          <div style={{ fontSize: 13, color: "#475569", marginTop: 8 }}>Provize OZ celkem <b>{fmtKc(provizeCelkem)}</b> (zákl. {fmtKc(provizeZakl)} + plovoucí {Math.round(plovouciPct * 10) / 10} % = {fmtKc(provizeKc)})</div>
         </div>
-      </div>
+      )}
 
-      <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Provize OZ</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-        <div><label style={S.label}>Základní provize (Kč)</label><input type="number" style={S.input} value={cfg.zakladniProvize} onChange={(e) => set({ zakladniProvize: e.target.value })} /></div>
+      <div className="fk-lista">
+        {!uZak && jobType !== "SRV" && (
+          <>
+            <div className="fk-li-mhide"><span className="fk-l">Náklad</span><span className="fk-v" style={{ color: "#b91c1c" }}>{fmtKc(naklad)}</span></div>
+            <div>
+              <label className="fk-l" htmlFor="fk-marze">Marže</label>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <input id="fk-marze" type="number" min="0" max="200" step="1" value={Math.round(marze * 1000) / 10}
+                  onChange={(e) => set({ marze: e.target.value === "" ? 0 : Number(e.target.value) / 100 })}
+                  style={{ ...inpS, width: 72, fontWeight: 800, fontSize: 16, padding: "6px 8px", border: `2px solid ${nizkaMarze ? "#dc2626" : "#cbd5e1"}`, background: nizkaMarze ? "#fef2f2" : "#fff" }} />
+                <span style={{ fontWeight: 700, color: "#475569" }}>%</span>
+              </span>
+            </div>
+            <div className="fk-li-mhide"><span className="fk-l">Marže v Kč</span><span className="fk-v" style={{ color: nizkaMarze ? "#b91c1c" : "#15803d" }}>{fmtKc(marzeKc)}</span></div>
+          </>
+        )}
+        <div className={jobType === "SRV" ? undefined : "fk-li-mhide"}><span className="fk-l">{jobType === "SRV" ? "Cena servisu bez DPH" : "Cena bez DPH"}</span><span className="fk-v" style={{ color: "#075985" }}>{fmtKc(cenaNabidkyBezDphFinal)}</span></div>
         <div>
-          <label style={S.label}>Plovoucí provize (%) — doporučeno {Math.round(doporucenoPct * 10) / 10} %</label>
-          <input type="text" inputMode="decimal" style={S.input}
-            value={cfg.plovouciProvizePct == null ? Math.round(doporucenoPct * 10) / 10 : cfg.plovouciProvizePct}
-            onChange={(e) => set({ plovouciProvizePct: e.target.value })}
-            onBlur={(e) => { let v = parseFloat(String(e.target.value).replace(",", ".")); if (isNaN(v)) v = doporucenoPct; v = Math.max(1, Math.min(10, v)); set({ plovouciProvizePct: v }); }} />
+          <span className="fk-l">DPH</span>
+          <span role="group" aria-label="Sazba DPH" style={{ display: "flex", gap: 4 }}>
+            {sazbyDph.map((sz) => {
+              const akt = sz === dphPct;
+              const neplatna = ![12, 21].includes(sz);
+              return (
+                <button key={sz} type="button" className="fk-dph" aria-pressed={akt} onClick={() => set({ dph: sz / 100 })} title={neplatna ? "Nestandardní sazba" : undefined}
+                  style={{ height: 34, padding: "0 12px", borderRadius: 8, fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", background: akt ? (neplatna ? "#b45309" : "#0369a1") : "#fff", color: akt ? "#fff" : "#334155", border: `1px solid ${akt ? (neplatna ? "#b45309" : "#0369a1") : "#cbd5e1"}` }}>
+                  {sz} %
+                </button>
+              );
+            })}
+          </span>
         </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 6 }}>
-        <div><label style={S.label}>Marže</label><input type="range" min="0" max="0.6" step="0.01" value={cfg.marze} onChange={(e) => set({ marze: e.target.value })} style={{ width: "100%" }} /><div style={{ fontSize: 13 }}>{Math.round(marze * 100)} %</div></div>
-        <div><label style={S.label}>DPH</label><input type="range" min="0" max="0.21" step="0.01" value={cfg.dph} onChange={(e) => set({ dph: e.target.value })} style={{ width: "100%" }} /><div style={{ fontSize: 13 }}>{Math.round(dph * 100)} %</div></div>
-        <div><label style={S.label}>Sleva (Kč)</label><input type="number" style={S.input} value={cfg.sleva} onChange={(e) => set({ sleva: e.target.value })} /></div>
-      </div>
-      {marze < 0.35 && <div style={{ fontSize: 12, color: "#f87171", marginBottom: 10 }}>⚠️ Marže pod 35 % je potřeba schválit u Romana.</div>}
-
-      <div style={{ display: "grid", gridTemplateColumns: cfg.dotaceOn ? "repeat(2,1fr)" : "repeat(2,1fr)", gap: 12, marginBottom: 12, marginTop: 6 }}>
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}><div style={S.label}>Celkem náklad</div><div style={{ fontSize: 22, fontWeight: 800 }}>{fmtKc(naklad)}</div></div>
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14 }}><div style={S.label}>Cena s DPH po zaokrouhlení</div><div style={{ fontSize: 22, fontWeight: 800 }}>{fmtKc(cenaDphRounded)}</div></div>
-        {cfg.dotaceOn && <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: 14 }}><div style={{ ...S.label, color: "#16a34a" }}>Dotace</div><div style={{ fontSize: 22, fontWeight: 800, color: "#16a34a" }}>{fmtKc(dotace)}</div></div>}
-        {cfg.dotaceOn && <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: 14 }}><div style={{ ...S.label, color: "#0369a1" }}>Cena po dotaci</div><div style={{ fontSize: 22, fontWeight: 800, color: "#0369a1" }}>{fmtKc(cenaPoDotaci)}</div></div>}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 16 }}>
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}><div style={S.label}>Marže Kč</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtKc(marzeKc)}</div></div>
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, gridColumn: "span 2" }}><div style={S.label}>Provize OZ celkem</div><div style={{ fontSize: 14, fontWeight: 700 }}>{fmtKc(provizeCelkem)} <span style={{ color: "#475569", fontWeight: 400 }}>(zákl. {fmtKc(cfg.zakladniProvize)} + plov. {Math.round(plovouciPct * 10) / 10}% = {fmtKc(provizeKc)})</span></div></div>
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}><div style={S.label}>Výkon / Baterie</div><div style={{ fontSize: 14, fontWeight: 700 }}>{Math.round(vykonFve * 10) / 10} kWp / {Math.round(bateriKwh * 10) / 10} kWh</div></div>
+        <div className="fk-li-mhide" style={{ flexGrow: 1 }} />
+        <div style={{ textAlign: "right" }}>
+          <span className="fk-l">Cena s DPH{jobType !== "SRV" && <span className="fk-li-mhide" style={{ color: "#64748b" }}> (zaokr. na tisíce)</span>}</span>
+          <span className="fk-v" style={{ fontSize: 22 }}>{fmtKc(cenaNabidkySDph)}</span>
+        </div>
+        {jobType !== "SRV" && cfg.dotaceOn && (
+          <div style={{ textAlign: "right", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "6px 12px" }}>
+            <span className="fk-l" style={{ color: "#166534" }}>Po dotaci<span className="fk-li-mhide"> · dotace {fmtKc(dotace)} ({dotaceDuvod})</span></span>
+            <span className="fk-v" style={{ fontSize: 22, color: "#166534" }}>{fmtKc(cenaPoDotaci)}</span>
+          </div>
+        )}
+        {!uZak && jobType !== "SRV" && nizkaMarze && (
+          <div className="fk-varovani" role="alert">⚠️ Marže {pctTxt(marze)} je pod {Math.round(MIN_MARZE * 100)} % — je potřeba schválit u Romana.</div>
+        )}
+        {![12, 21, 0].includes(dphPct) && (
+          <div className="fk-varovani">Sazba DPH {dphPct} % se už nepoužívá — zvol 12 % (rodinné domy) nebo 21 %.</div>
+        )}
       </div>
 
       {jobType === "SRV" && (

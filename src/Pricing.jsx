@@ -549,6 +549,8 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
   const savedSnapshotRef = useRef(null);
   const [typeFilter, setTypeFilter] = useState("vse");
   const [nahledOtevren, setNahledOtevren] = useState(false);
+  // Režim „U zákazníka“ z kalkulačky FVE — schová i souhrn nákladů a marže pod ní.
+  const [uZakaznika, setUZakaznika] = useState(false);
   // Krátká potvrzovací hláška nahoře (uloženo, odesláno, zkopírováno…).
   const [hlaska, setHlaska] = useState(null);
   const hlaskaTimer = useRef(null);
@@ -1115,6 +1117,8 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
           odeslane={activeId ? odeslane : []}
           onOdeslano={oznacitOdeslano}
           jobType={type}
+          uZakaznika={uZakaznika}
+          onUZakaznika={setUZakaznika}
           onSave={save}
           cenaVNabidce={data.zakaznik}
           onUseAsTarget={({ cenaBezDph, cenaSDph: sDphKalk, dphPct: dphKalk, naklad }) => setData({ ...data, zakaznik: {
@@ -1169,7 +1173,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
       )}
 
       {/* ROZVRH PO DNECH — u FVR (rozšíření) skrytý, obvykle jde o jednodenní zásah */}
-      {type !== "FVR" && (
+      {type !== "FVR" && !(uZakaznika && kalkulacni) && (
         <div style={S.card}>
           <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>📅 Rozvrh po dnech</div>
           <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>Kolik lidí je potřeba který den — přenese se do projektu a zakázky jako plán, proti kterému appka srovná skutečnou docházku.{nakladZKalkulace ? ` Plán práce z kalkulace: ${Math.round(planMd * 100) / 100} MD.` : ""}</div>
@@ -1276,16 +1280,16 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
         )}
       </div>
 
-      <div style={S.card}>
+      {!(uZakaznika && kalkulacni) && <div style={S.card}>
         <label style={S.label}>{!type || sekcova ? "Poznámka k nabídce — zobrazí se zákazníkovi" : "Interní poznámka — zákazník ji nevidí"}</label>
         <textarea style={{ ...S.input, minHeight: 70, resize: "vertical", fontFamily: "inherit" }} value={data.notes} onChange={e => setData({ ...data, notes: e.target.value })} />
-      </div>
+      </div>}
 
       <div style={{ ...S.card, background: "#f8fafc" }}>
-        <div style={{ marginBottom: 14 }}>
+        {!(uZakaznika && kalkulacni) && <div style={{ marginBottom: 14 }}>
           <RetezecCeny naklad={nakladNabidky} marzeKc={marze} marzePct={marzePct} cenaBez={cilovaCena} dphPct={dphPct} cenaS={cenaSDph}
             poznamka={nakladZKalkulace ? "Náklad a marže z kalkulace FVE výše." : type === "SRV" ? "Cena = součet úkonů servisu, náklad = interní nacenění." : "Marže je přirážka k nákladu. Všechny částky kromě poslední jsou bez DPH."} />
-        </div>
+        </div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button style={S.btn("#34d399")} onClick={save} disabled={saving}>{saving ? "Ukládám…" : "💾 Uložit nabídku"}</button>
           {/* Nabídka pro zákazníka: u FVE/FVR/SRV náhled v kalkulačce, u HRM/ELK
@@ -1296,7 +1300,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
             </button>
           )}
           {!type && <button style={S.btnGhost} onClick={printQuote}>🖨️ Nabídka pro zákazníka</button>}
-          <button style={S.btnGhost} onClick={printInterni}>📊 Interní přehled (MD)</button>
+          {!(uZakaznika && kalkulacni) && <button style={S.btnGhost} onClick={printInterni}>📊 Interní přehled (MD)</button>}
           {activeId && <button style={S.btn("#F5C518")} disabled={converting} onClick={convertToDeal}>{converting ? "Předávám…" : "➡️ Předat do Průběhu zakázek"}</button>}
         </div>
         {!type && <div style={{ fontSize: 12, color: "#b45309", marginTop: 10 }}>Vyber nahoře typ zakázky — podle něj se připraví nabídka pro zákazníka s číslem, podmínkami a evidencí odeslání.</div>}

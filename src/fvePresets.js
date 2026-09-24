@@ -28,7 +28,7 @@ export const PRAZDNA_FVE = () => ({
   elmr: "Úprava ELMR ČEZ 1: základní",
   zakladniProvize: 6400,
   plovouciProvizePct: null, // null = ještě nedotčeno, dopočte se z marže
-  marze: 0.45, dph: 0.15, sleva: 0,
+  marze: 0.45, dph: 0.12, sleva: 0,
   cisloOP: "",          // číslo obchodního případu do nabídky pro zákazníka (RJ-XX-XX-XXXX)
   adresaInstalace: "",  // prázdné = použije se jméno zákazníka
   rocniVynosOverride: "", // prázdné = dopočte se odhadem z výkonu FVE
@@ -52,11 +52,11 @@ export const PRAZDNA_FVE = () => ({
 // Reálné výchozí kusovníky šablon — přesně podle listů LIGHT/BASIC/OPTIMAL/
 // PREMIUM/E-MOBILITA/SERVIS v Excelu.
 const PRESETY = {
-  light: { panel: ["Canadian Solar 455 Wp", 8], konstrukce: ["Šikmá střecha", 8], stridac: ["GW3600D-NS", 1], baterie: ["Bez baterie", 0], bms: ["Bez BMS", 0], regulace: ["AZrouter - 1x slave", 1], mdElektro: 2, mdStrecha: 2, marze: 0.45, dph: 0.15 },
-  basic: { panel: ["Canadian Solar 455 Wp", 8], konstrukce: ["Šikmá střecha", 8], stridac: ["GW3648D-ES", 1], baterie: ["LV Pylontech - US3000C", 2], bms: ["Bez BMS", 0], backup: ["Rozvaděč Back-up - okruhy (M5+P3F)", 1], regulace: ["Bez regulace", 0], mdElektro: 3, mdStrecha: 2, marze: 0.45, dph: 0.15 },
-  optimal: { panel: ["Canadian Solar 455 Wp", 12], konstrukce: ["Šikmá střecha", 12], stridac: ["GW6,5K-ET", 1], baterie: ["HV Energy Storage System - Titan GS-HV-3.74", 3], bms: ["BMS - Energy Storage System - Titan", 1], backup: ["Rozvaděč Back-up - okruhy (M5+P3F)", 1], regulace: ["Bez regulace", 0], mdElektro: 3, mdStrecha: 2, marze: 0.45, dph: 0.15 },
-  premium: { panel: ["Canadian Solar 455 Wp", 16], konstrukce: ["Šikmá střecha", 16], stridac: ["GW8K-ET", 1], baterie: ["HV Energy Storage System - Titan GS-HV-3.74", 3], bms: ["BMS - Energy Storage System - Titan", 1], rozvadecDc: ["Rozvaděč DC - 2 string (DC2 nebo A2)", 1], backup: ["Rozvaděč Back-up - okruhy (M5+P3F)", 1], regulace: ["Bez regulace", 0], mdElektro: 3, mdStrecha: 4, marze: 0.40, dph: 0.15 },
-  emobilita: { panel: ["Canadian Solar 455 Wp", 20], konstrukce: ["Šikmá střecha", 20], stridac: ["GW10K-ET", 1], baterie: ["HV Energy Storage System - Titan GS-HV-3.74", 3], bms: ["BMS - Energy Storage System - Titan", 1], rozvadecDc: ["Rozvaděč DC - 2 string (DC2 nebo A2)", 1], backup: ["Bez Back-up", 1], wallbox: ["AZcharger wallbox", 1], regulace: ["AZrouter - pouze master", 1], mdElektro: 4, mdStrecha: 4, marze: 0.40, dph: 0.15 },
+  light: { panel: ["Canadian Solar 455 Wp", 8], konstrukce: ["Šikmá střecha", 8], stridac: ["GW3600D-NS", 1], baterie: ["Bez baterie", 0], bms: ["Bez BMS", 0], regulace: ["AZrouter - 1x slave", 1], mdElektro: 2, mdStrecha: 2, marze: 0.45, dph: 0.12 },
+  basic: { panel: ["Canadian Solar 455 Wp", 8], konstrukce: ["Šikmá střecha", 8], stridac: ["GW3648D-ES", 1], baterie: ["LV Pylontech - US3000C", 2], bms: ["Bez BMS", 0], backup: ["Rozvaděč Back-up - okruhy (M5+P3F)", 1], regulace: ["Bez regulace", 0], mdElektro: 3, mdStrecha: 2, marze: 0.45, dph: 0.12 },
+  optimal: { panel: ["Canadian Solar 455 Wp", 12], konstrukce: ["Šikmá střecha", 12], stridac: ["GW6,5K-ET", 1], baterie: ["HV Energy Storage System - Titan GS-HV-3.74", 3], bms: ["BMS - Energy Storage System - Titan", 1], backup: ["Rozvaděč Back-up - okruhy (M5+P3F)", 1], regulace: ["Bez regulace", 0], mdElektro: 3, mdStrecha: 2, marze: 0.45, dph: 0.12 },
+  premium: { panel: ["Canadian Solar 455 Wp", 16], konstrukce: ["Šikmá střecha", 16], stridac: ["GW8K-ET", 1], baterie: ["HV Energy Storage System - Titan GS-HV-3.74", 3], bms: ["BMS - Energy Storage System - Titan", 1], rozvadecDc: ["Rozvaděč DC - 2 string (DC2 nebo A2)", 1], backup: ["Rozvaděč Back-up - okruhy (M5+P3F)", 1], regulace: ["Bez regulace", 0], mdElektro: 3, mdStrecha: 4, marze: 0.40, dph: 0.12 },
+  emobilita: { panel: ["Canadian Solar 455 Wp", 20], konstrukce: ["Šikmá střecha", 20], stridac: ["GW10K-ET", 1], baterie: ["HV Energy Storage System - Titan GS-HV-3.74", 3], bms: ["BMS - Energy Storage System - Titan", 1], rozvadecDc: ["Rozvaděč DC - 2 string (DC2 nebo A2)", 1], backup: ["Bez Back-up", 1], wallbox: ["AZcharger wallbox", 1], regulace: ["AZrouter - pouze master", 1], mdElektro: 4, mdStrecha: 4, marze: 0.40, dph: 0.12 },
   servis: { panel: ["Bez panelů", 0], konstrukce: ["Bez konstrukce", 0], stridac: ["Bez střídače", 0], baterie: ["Bez baterie", 0], bms: ["Bez BMS", 0], backup: ["Bez Back-up", 0], wallbox: ["Bez Back-up", 0], regulace: ["Bez regulace", 0], mdElektro: 0, mdStrecha: 0, marze: 0.45, dph: 0.21 },
 };
 
