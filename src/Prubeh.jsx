@@ -95,7 +95,7 @@ function BunkaSekce({ z, sekceIds }) {
 export default function Prubeh({
   customers = [], employees = [], currentUser, onOtevritZakazku, onOtevritNaceneni,
   tasks = [], setTasks, dealMsgs = [], setDealMsgs, contractMsgs = [], setContractMsgs,
-  initialId, onClearInitial, onDealZalozen,
+  initialId, onClearInitial, onDealZalozen, onZakaznikZalozen,
 }) {
   const ja = currentUser?.name || "";
   const [rows, setRows] = useState([]);
@@ -131,6 +131,11 @@ export default function Prubeh({
   useEffect(() => () => clearTimeout(hlaskaTimer.current), []);
 
   const zakaznik = (id) => customers.find((c) => c.id === id);
+  // Zrušení výběru zákazníka v nové poptávce — adresa předvyplněná z něj jde pryč taky.
+  const bezZakaznika = (n) => {
+    const puvodni = zakaznik(Number(n.customer_id));
+    return { customer_id: "", adresa: puvodni && n.adresa === (puvodni.address || "") ? "" : n.adresa };
+  };
   const lide = employees.filter((e) => !e.status || e.status === "Aktivní").map((e) => e.name).filter(Boolean);
   if (ja && !lide.includes(ja)) lide.unshift(ja);
 
@@ -527,19 +532,34 @@ export default function Prubeh({
   };
 
   const zalozitPoptavku = async () => {
-    if (!nova.nazev.trim()) { alert("Zadej název zakázky."); return; }
     if (!nova.typ) { alert("Vyber typ zakázky — podle něj se nastaví fáze."); return; }
+    const novyZak = nova.zakRezim === "novy" ? { ...nova.novyZak, name: nova.novyZak.name.trim() } : null;
+    if (novyZak && !novyZak.name) { alert("Zadej jméno nového zákazníka."); return; }
+    // Název zakázky se doplní sám ze zákazníka a typu, když ho nikdo nevyplní.
+    const jmenoZak = novyZak?.name || zakaznik(Number(nova.customer_id))?.name || "";
+    const typLabel = TYPY.find((t) => t.id === nova.typ)?.label || nova.typ;
+    const nazev = nova.nazev.trim() || [jmenoZak, typLabel].filter(Boolean).join(" · ");
     setPracuji(true);
+    let customerId = nova.customer_id ? Number(nova.customer_id) : null;
+    if (novyZak) {
+      const { data: c, error: cErr } = await supabase.from("customers").insert({
+        name: novyZak.name, phone: novyZak.phone.trim() || null, email: novyZak.email.trim() || null,
+        address: nova.adresa?.trim() || "", tag: "Nový",
+      }).select().single();
+      if (cErr) { setPracuji(false); alert("Zákazníka se nepodařilo založit: " + cErr.message); return; }
+      customerId = c.id;
+      if (onZakaznikZalozen) onZakaznikZalozen(c);
+    }
     const { data: deal, error: dealErr } = await supabase.from("deals").insert({
-      name: nova.nazev.trim(), value: nova.hodnota ? Number(nova.hodnota) : null, stage: "Nový",
-      customer_id: nova.customer_id ? Number(nova.customer_id) : null, assigned_to: nova.obchodnik || ja || null, type: nova.typ,
+      name: nazev, value: nova.hodnota ? Number(nova.hodnota) : null, stage: "Nový",
+      customer_id: customerId, assigned_to: nova.obchodnik || ja || null, type: nova.typ,
       site_address: nova.adresa?.trim() || null,
     }).select().single();
     if (dealErr) { setPracuji(false); alert("Poptávku se nepodařilo založit: " + dealErr.message); return; }
     if (onDealZalozen) onDealZalozen(deal);
     const row = {
       deal_id: deal.id, misto_adresa: nova.adresa?.trim() || null,
-      nazev: nova.nazev.trim(), customer_id: nova.customer_id ? Number(nova.customer_id) : null, typ: nova.typ,
+      nazev, customer_id: customerId, typ: nova.typ,
       hodnota: nova.hodnota ? Number(nova.hodnota) : null, faze: PRVNI_FAZE, stav: "otevrena",
       vlastnik_obchod: nova.obchodnik || ja || null, dalsi_krok: FAZE[0].ukoly[0].text, dalsi_krok_kdo: nova.obchodnik || ja || null,
       dalsi_krok_termin: nova.termin || terminFaze(FAZE[0]),
@@ -580,7 +600,7 @@ export default function Prubeh({
             {frontaBtn("re", "Realizace", "#15803d")}
           </div>
           {smiNastavit && <button type="button" style={btnGhost} onClick={() => setNastaveniForm(Object.fromEntries(FAZE.map((f) => [f.id, { dny: f.dny, typy: Object.fromEntries(TYPY.map((t) => [t.id, pravidlo(f, t.id)])), ukoly: f.ukoly.map((u) => ({ ...u })) }])))}>⚙️ Nastavení fází</button>}
-          <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "" })}>+ Nová poptávka</button>
+          <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "", zakRezim: null, zakHledat: "", novyZak: { name: "", phone: "", email: "" } })}>+ Nová poptávka</button>
         </div>
       </div>
 
@@ -714,16 +734,79 @@ export default function Prubeh({
           onClick={(e) => { if (e.target === e.currentTarget) setNova(null); }}>
           <div style={{ ...karta, width: "min(520px, 100%)", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: 18, fontWeight: 800 }}>Nová poptávka</div>
-            <div><label style={lbl} htmlFor="pr-nazev">Název zakázky *</label><input id="pr-nazev" style={inp} autoFocus value={nova.nazev} placeholder="např. Novák · FVE 8 kWp" onChange={(e) => setNova({ ...nova, nazev: e.target.value })} /></div>
+
+            {/* Zákazník — nejdřív volba stávající / nový, ať se nemusí nic zakládat jinde */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {[["stavajici", "ti-user-search", "Stávající zákazník"], ["novy", "ti-user-plus", "Nový zákazník"]].map(([id, icon, label]) => {
+                const aktivni = nova.zakRezim === id;
+                return (
+                  <button key={id} type="button" aria-pressed={aktivni}
+                    onClick={() => setNova({ ...nova, zakRezim: id, ...(id === "novy" ? bezZakaznika(nova) : {}) })}
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "14px 8px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700,
+                      border: `2px solid ${aktivni ? "#0369a1" : "#e2e8f0"}`, background: aktivni ? "#e0f2fe" : "#fff", color: aktivni ? "#0369a1" : "#334155" }}>
+                    <i className={`ti ${icon}`} aria-hidden="true" style={{ fontSize: 24 }}></i>{label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {nova.zakRezim === "stavajici" && (() => {
+              const vybrany = zakaznik(Number(nova.customer_id));
+              if (vybrany) return (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: "10px 12px" }}>
+                  <i className="ti ti-user-check" aria-hidden="true" style={{ fontSize: 20, color: "#0369a1" }}></i>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700 }}>{vybrany.name}</div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>{[vybrany.phone, vybrany.address].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <button type="button" style={btnGhost} onClick={() => setNova({ ...nova, ...bezZakaznika(nova) })}>Změnit</button>
+                </div>
+              );
+              const q = nova.zakHledat.trim().toLowerCase();
+              const nalezeni = customers
+                .filter((c) => !c.archived)
+                .filter((c) => !q || [c.name, c.company, c.phone, c.email].some((t) => String(t || "").toLowerCase().includes(q)))
+                .slice(0, 6);
+              return (
+                <div>
+                  <input style={inp} autoFocus value={nova.zakHledat} placeholder="Hledat podle jména, telefonu nebo firmy…"
+                    onChange={(e) => setNova({ ...nova, zakHledat: e.target.value })} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6, maxHeight: 220, overflowY: "auto" }}>
+                    {nalezeni.length === 0 && <div style={{ fontSize: 13, color: "#64748b", padding: 6 }}>Nikdo nenalezen — zkus „Nový zákazník“.</div>}
+                    {nalezeni.map((c) => (
+                      <button key={c.id} type="button"
+                        onClick={() => setNova({ ...nova, customer_id: String(c.id), adresa: nova.adresa || c.address || "" })}
+                        style={{ textAlign: "left", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", cursor: "pointer", fontFamily: "inherit" }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</div>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>{[c.company, c.phone, c.address].filter(Boolean).join(" · ")}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {nova.zakRezim === "novy" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ gridColumn: "1 / -1" }}><label style={lbl} htmlFor="pr-nz-jmeno">Jméno zákazníka *</label>
+                  <input id="pr-nz-jmeno" style={inp} autoFocus value={nova.novyZak.name} placeholder="Jan Novák"
+                    onChange={(e) => setNova({ ...nova, novyZak: { ...nova.novyZak, name: e.target.value } })} /></div>
+                <div><label style={lbl} htmlFor="pr-nz-tel">Telefon</label>
+                  <input id="pr-nz-tel" type="tel" style={inp} value={nova.novyZak.phone}
+                    onChange={(e) => setNova({ ...nova, novyZak: { ...nova.novyZak, phone: e.target.value } })} /></div>
+                <div><label style={lbl} htmlFor="pr-nz-mail">E-mail</label>
+                  <input id="pr-nz-mail" type="email" style={inp} value={nova.novyZak.email}
+                    onChange={(e) => setNova({ ...nova, novyZak: { ...nova.novyZak, email: e.target.value } })} /></div>
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div><label style={lbl} htmlFor="pr-typ">Typ zakázky *</label>
                 <select id="pr-typ" style={inp} value={nova.typ} onChange={(e) => setNova({ ...nova, typ: e.target.value })}>
                   <option value="">— vyber —</option>{TYPY.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                 </select></div>
-              <div><label style={lbl} htmlFor="pr-zak">Zákazník</label>
-                <select id="pr-zak" style={inp} value={nova.customer_id} onChange={(e) => { const c = zakaznik(Number(e.target.value)); setNova({ ...nova, customer_id: e.target.value, adresa: nova.adresa || c?.address || "" }); }}>
-                  <option value="">— zatím bez zákazníka —</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select></div>
+              <div><label style={lbl} htmlFor="pr-nazev">Název zakázky</label>
+                <input id="pr-nazev" style={inp} value={nova.nazev} placeholder="doplní se sám (jméno · typ)" onChange={(e) => setNova({ ...nova, nazev: e.target.value })} /></div>
               <div><label style={lbl} htmlFor="pr-hod">Odhad hodnoty bez DPH (Kč)</label><input id="pr-hod" type="number" min="0" style={inp} value={nova.hodnota} onChange={(e) => setNova({ ...nova, hodnota: e.target.value })} /></div>
               <div><label style={lbl} htmlFor="pr-ob">Obchodník</label>
                 <select id="pr-ob" style={inp} value={nova.obchodnik} onChange={(e) => setNova({ ...nova, obchodnik: e.target.value })}>
@@ -732,7 +815,7 @@ export default function Prubeh({
               <div><label style={lbl} htmlFor="pr-ter">Ozvat se zákazníkovi do</label><input id="pr-ter" type="date" style={inp} value={nova.termin} onChange={(e) => setNova({ ...nova, termin: e.target.value })} /></div>
             </div>
             <div><label style={lbl} htmlFor="pr-adr">Místo realizace (adresa)</label><input id="pr-adr" style={inp} value={nova.adresa} placeholder="předvyplní se ze zákazníka, jde přepsat" onChange={(e) => setNova({ ...nova, adresa: e.target.value })} /></div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>Nového zákazníka založ nejdřív v Zákaznících. Zakázka se sama založí, až poptávka projde do back office.</div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>{nova.zakRezim === "novy" ? "Zákazník se založí spolu s poptávkou (najdeš ho pak i v Zákaznících). " : ""}Zakázka se sama založí, až poptávka projde do back office.</div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button type="button" style={btnGhost} onClick={() => setNova(null)}>Zrušit</button>
               <button type="button" style={btn("#0369a1")} disabled={pracuji} onClick={zalozitPoptavku}>{pracuji ? "Ukládám…" : "Založit poptávku"}</button>

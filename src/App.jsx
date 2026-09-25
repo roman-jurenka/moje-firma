@@ -1758,6 +1758,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           dealMsgs={dealMsgs} setDealMsgs={setDealMsgs} contractMsgs={contractMsgs} setContractMsgs={setContractMsgs}
           initialId={prubehInitialId} onClearInitial={() => setPrubehInitialId(null)}
           onDealZalozen={(d) => setDeals(prev => (prev.some(x => x.id === d.id) ? prev : [d, ...prev]))}
+          onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
           onOtevritZakazku={(id) => { setContractInitialId(id); setTab("contracts"); }}
           onOtevritNaceneni={() => setTab("pricing")}
         />}
