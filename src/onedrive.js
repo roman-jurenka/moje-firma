@@ -342,7 +342,7 @@ export async function backupToOneDrive(supabase, onProgress, tablesOverride) {
   const tables = tablesOverride || [
     "contracts", "employees", "attendance", "contract_cost_entries",
     "customers", "deals", "tasks", "invoices", "delivery_notes",
-    "delivery_note_items", "harmonogram", "products",
+    "delivery_note_items", "products",
   ];
 
   onProgress?.("Připravuji zálohu...", 0);
@@ -353,7 +353,10 @@ export async function backupToOneDrive(supabase, onProgress, tablesOverride) {
     const table = tables[i];
     onProgress?.(`Exportuji ${table}...`, Math.round((i / tables.length) * 90));
     try {
-      const { data, error } = await supabase.from(table).select("*");
+      // Plat a sazby zaměstnanců nejdou číst přímo z tabulky — jen přes funkci.
+      const { data, error } = table === "employees"
+        ? await supabase.rpc("get_employees_full")
+        : await supabase.from(table).select("*");
       if (error) throw error;
       const csv = toCSV(data || []);
       const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }); // BOM pro Excel

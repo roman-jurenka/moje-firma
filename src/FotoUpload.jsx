@@ -1,21 +1,9 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { uploadFileObject, isConnected, connectSharedAccount, getDirectDownloadUrl } from "./onedrive.js";
+import { uploadFileObject, isConnected, connectSharedAccount } from "./onedrive.js";
 import { FOTO_KATEGORIE } from "./ZakazkaSheet.jsx";
 import { tryOrQueue } from "./offlineQueue.js";
-
-// Náhled fotky z OneDrive — natáhne čerstvý přímý odkaz přes itemId, se
-// spolehlivým fallbackem na uložený sdílený odkaz (starší fotky bez itemId,
-// nebo fotky nahrané do Supabase Storage, když OneDrive nebyl dostupný).
-function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
-  const [src, setSrc] = useState(fallbackUrl);
-  useEffect(() => {
-    let zrusen = false;
-    if (itemId) getDirectDownloadUrl(itemId).then(url => { if (!zrusen && url) setSrc(url); });
-    return () => { zrusen = true; };
-  }, [itemId]);
-  return <img src={src} alt={alt} style={style} onError={() => { if (src !== fallbackUrl) setSrc(fallbackUrl); }} />;
-}
+import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 
 const S = {
   app: { fontFamily: "'DM Sans',sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px" },
@@ -174,9 +162,9 @@ export default function FotoUpload({ currentUser, setTab }) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8, marginBottom: 10 }}>
                 {fc.map(f => (
                   <div key={f.id} style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", position: "relative" }}>
-                    <a href={f.url} target="_blank" rel="noreferrer">
+                    <StorageLink href={f.url} target="_blank" rel="noreferrer">
                       <OneDriveThumb itemId={f.item_id} fallbackUrl={f.url} alt={f.description || kat} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
-                    </a>
+                    </StorageLink>
                     <button onClick={() => removeFoto(f.id)}
                       style={{ position: "absolute", top: 4, right: 4, background: "#ef444488", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", fontSize: 11, padding: "2px 6px" }}>×</button>
                   </div>

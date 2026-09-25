@@ -18,6 +18,7 @@ import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } f
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
 import { compressImage } from "./imageUtils.js";
+import { StorageImg } from "./storageUrl.jsx";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -484,6 +485,27 @@ const S = {
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
+// Plat a hodinové sazby nejsou v tabulce employees čitelné pro každého —
+// vrací je jen funkce get_employees_full (všechny řádky HR a vedení, ostatním
+// jen jejich vlastní). Zbytek údajů o zaměstnancích vidí každý přihlášený.
+const EMPLOYEE_COLUMNS = "id, name, position, department, email, phone, status, start_date, created_at, role, archived, vacation_days, vacation_used";
+const loadEmployeesWithRates = async () => {
+  const [{ data, error }, { data: rates }] = await Promise.all([
+    supabase.from("employees").select(EMPLOYEE_COLUMNS).order("id"),
+    supabase.rpc("get_employees_full"),
+  ]);
+  const byId = Object.fromEntries((rates || []).map(r => [r.id, r]));
+  return {
+    data: (data || []).map(e => ({
+      ...e,
+      salary: byId[e.id]?.salary ?? null,
+      hourly_rate_cost: byId[e.id]?.hourly_rate_cost ?? null,
+      hourly_rate_client: byId[e.id]?.hourly_rate_client ?? null,
+    })),
+    error,
+  };
+};
+
 const getInitial = (name) => name?.charAt(0).toUpperCase() || "?";
 const fmtKc = (v) => `${Number(v).toLocaleString("cs-CZ")} Kč`;
 // Formát čísla faktury: RRRR + 5místné pořadové číslo (např. 202600001).
@@ -531,7 +553,7 @@ function ContractPhotoPicker({ onSelect, onClose }) {
               <div key={p.id} onClick={() => onSelect(p.url)} style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "2px solid #e2e8f0", transition: "border 0.15s" }}
                 onMouseEnter={e => e.currentTarget.style.borderColor = "#0369a1"}
                 onMouseLeave={e => e.currentTarget.style.borderColor = "#e2e8f0"}>
-                <img src={p.url} alt="" style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
+                <StorageImg src={p.url} alt="" style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
                 <div style={{ padding: "4px 6px", fontSize: 11, color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {p.contracts?.name || "—"}
                 </div>
@@ -890,7 +912,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         supabase.from("tasks").select("*").order("id"),
         supabase.from("invoices").select("*").order("id"),
         supabase.from("products").select("*").order("id"),
-        supabase.from("employees").select("*").order("id"),
+        loadEmployeesWithRates(),
         supabase.from("projects").select("*, project_steps(*)").order("id"),
         supabase.from("costs").select("*").order("id"),
         supabase.rpc("get_attendance_full"),
@@ -953,14 +975,18 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
   // ── Plánovaná automatická záloha na OneDrive ──
   // Appka nemá vlastní server/cron, takže zálohu jednou denně potichu spustí
-  // na pozadí první zaměstnanec, který ten den appku otevře (viz onedrive.js
+  // na pozadí první člověk z vedení, který ten den appku otevře (viz onedrive.js
   // maybeAutoBackup — hlídá si přes Supabase, že už se dnes nezálohovalo a že
-  // zrovna neběží záloha z jiného zařízení). Se startem se počká pár vteřin,
-  // ať to nesoutěží o síť s počátečním načtením dat.
+  // zrovna neběží záloha z jiného zařízení). Zaměstnanec z terénu faktury ani
+  // sazby nevidí, jeho záloha by byla neúplná — proto jen admin / přístup k
+  // fakturám. Se startem se počká pár vteřin, ať to nesoutěží o síť s počátečním
+  // načtením dat.
+  const smiZalohovat = currentUser.role === "admin" || (currentUser.navOverride || ROLES[currentUser.role]?.nav || []).includes("invoices");
   useEffect(() => {
+    if (!smiZalohovat) return;
     const t = setTimeout(() => { maybeAutoBackup(supabase); }, 8000);
     return () => clearTimeout(t);
-  }, []);
+  }, [smiZalohovat]);
 
   // ── Odolnost proti výpadku signálu (docházka, km, fotky, podpisy) ──
   // Handlery skutečně provedou zápis, který se dřív ztratil, když selhala
@@ -3785,7 +3811,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
       {lightboxUrl && (
         <div style={{ ...S.modal, zIndex: 300 }} onClick={() => setLightboxUrl(null)}>
           <div style={{ maxWidth: "90vw", maxHeight: "90vh", position: "relative" }}>
-            <img src={lightboxUrl} alt="" style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain", borderRadius: 12, boxShadow: "0 20px 60px #000a" }} />
+            <StorageImg src={lightboxUrl} alt="" style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain", borderRadius: 12, boxShadow: "0 20px 60px #000a" }} />
             <button onClick={() => setLightboxUrl(null)} style={{ position: "absolute", top: -16, right: -16, background: "#ef4444", color: "#fff", border: "none", borderRadius: "50%", width: 32, height: 32, fontSize: 16, cursor: "pointer" }}>✕</button>
           </div>
         </div>
@@ -3819,7 +3845,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8 }}>
                     {photos.map((ph, i) => (
                       <div key={i} onClick={() => setLightboxUrl(ph.url)} style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "2px solid #334155" }}>
-                        <img src={ph.url} alt={ph.name} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
+                        <StorageImg src={ph.url} alt={ph.name} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
                         {ph.name && <div style={{ padding: "3px 6px", fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "#0E3B5E" }}>{ph.name}</div>}
                       </div>
                     ))}
@@ -3920,7 +3946,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {taskPhotos.map((ph, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", borderRadius: 8, padding: "6px 8px", border: "1px solid #e2e8f0" }}>
-                      <img src={ph.url} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                      <StorageImg src={ph.url} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
                       <input style={{ ...S.input, marginBottom: 0, flex: 1, fontSize: 12 }} value={ph.name}
                         onChange={e => setTaskPhotos(prev => prev.map((p, j) => j === i ? { ...p, name: e.target.value } : p))}
                         placeholder="Název fotky..." />
@@ -4943,8 +4969,8 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
       name: newE.name, position: newE.position, department: newE.department,
       email: newE.email, phone: newE.phone || null, salary: Number(newE.salary),
       status: newE.status, start_date: newE.start,
-    }).select().single();
-    if (row) setEmployees([...employees, { ...row, start: row.start_date }]);
+    }).select(EMPLOYEE_COLUMNS).single();
+    if (row) setEmployees([...employees, { ...row, salary: Number(newE.salary), start: row.start_date }]);
     setNewE({ name: "", position: "", department: "", email: "", phone: "", salary: "", status: "Aktivní", start: "" });
     closeModal();
   };
@@ -8170,7 +8196,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             {attUploadedPhotos.length > 0 && (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, marginBottom: 4 }}>
                 {attUploadedPhotos.map(p => (
-                  <img key={p.id} src={p.url} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+                  <StorageImg key={p.id} src={p.url} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, border: "1px solid #e2e8f0" }} />
                 ))}
               </div>
             )}
@@ -9723,7 +9749,7 @@ export default function App() {
   // employees se smí číst jen po přihlášení (RLS) — natáhni je až jakmile je currentUser hotový
   useEffect(() => {
     if (!currentUser) return;
-    supabase.from("employees").select("*").then(({ data }) => { if (data) setEmployees(data); });
+    loadEmployeesWithRates().then(({ data, error }) => { if (!error) setEmployees(data); });
   }, [currentUser]);
 
   const handleLogin = async () => {

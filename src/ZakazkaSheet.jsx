@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { uploadFileObject, zakazkaFolderPath, isConnected, getDirectDownloadUrl } from "./onedrive.js";
+import { uploadFileObject, zakazkaFolderPath, isConnected } from "./onedrive.js";
+import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import { tryOrQueue } from "./offlineQueue.js";
 import { compressImage } from "./imageUtils.js";
 
@@ -146,21 +147,6 @@ function StavSekce({ val, onChange }) {
   );
 }
 
-// Náhled fotky z OneDrive — natáhne si čerstvý přímý odkaz na obsah souboru
-// (spolehlivé i tam, kde firemní tenant zakazuje anonymní sdílené odkazy).
-// Když se to nepovede (starší fotka bez itemId, výpadek), spadne zpět na
-// uložený sdílený odkaz.
-function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
-  const [src, setSrc] = useState(fallbackUrl);
-  useEffect(() => {
-    let zrusen = false;
-    if (itemId) {
-      getDirectDownloadUrl(itemId).then(url => { if (!zrusen && url) setSrc(url); });
-    }
-    return () => { zrusen = true; };
-  }, [itemId]);
-  return <img src={src} alt={alt} style={style} onError={() => { if (src !== fallbackUrl) setSrc(fallbackUrl); }} />;
-}
 
 function SekceHeader({ sekce, stav, onStav }) {
   return (
@@ -1191,9 +1177,9 @@ export default function ZakazkaSheet({ customers, currentUser, initialContractId
                     {fc.length>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
                       {fc.map(f=>(
                         <div key={f.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",position:"relative"}}>
-                          <a href={f.url} target="_blank" rel="noreferrer">
+                          <StorageLink href={f.url} target="_blank" rel="noreferrer">
                             <OneDriveThumb itemId={f.item_id} fallbackUrl={f.url} alt={f.description||kat} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>
-                          </a>
+                          </StorageLink>
                           <button onClick={()=>removeContractPhoto(f.id)}
                             style={{position:"absolute",top:3,right:3,background:"#ef444488",border:"none",borderRadius:4,color:"#fff",cursor:"pointer",fontSize:10,padding:"1px 5px"}}>×</button>
                         </div>

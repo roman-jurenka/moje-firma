@@ -1,4 +1,5 @@
-import { isConnected, uploadFileObject, getDirectDownloadUrl } from "./onedrive.js";
+import { isConnected, uploadFileObject } from "./onedrive.js";
+import { OneDriveThumb, StorageImg, StorageLink } from "./storageUrl.jsx";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import { tryOrQueue } from "./offlineQueue.js";
@@ -57,18 +58,6 @@ function mdZeStareInterniho(interni) {
   }, 0);
   const zPolozek = (interni.polozky || []).reduce((sum, p) => sum + (Number(p.md) || 0), 0);
   return zRadku + zPolozek;
-}
-
-// Náhled fotky z OneDrive — natáhne čerstvý přímý odkaz přes item_id, se
-// spolehlivým fallbackem na uložený sdílený odkaz (starší fotky bez item_id).
-function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
-  const [src, setSrc] = useState(fallbackUrl);
-  useEffect(() => {
-    let zrusen = false;
-    if (itemId) getDirectDownloadUrl(itemId).then(url => { if (!zrusen && url) setSrc(url); });
-    return () => { zrusen = true; };
-  }, [itemId]);
-  return <img src={src} alt={alt} style={style} onError={() => { if (src !== fallbackUrl) setSrc(fallbackUrl); }} />;
 }
 
 // ─── MINI KALENDÁŘ ───────────────────────────────────────────────────────────
@@ -1901,13 +1890,13 @@ function TasksTab({ tasks, employees, onAdd, onToggle }) {
                 </div>
               </div>
               {t.photo_url && (
-                <img src={t.photo_url} alt="" onClick={() => setExpandedPhoto(expandedPhoto === t.id ? null : t.id)}
+                <StorageImg src={t.photo_url} alt="" onClick={() => setExpandedPhoto(expandedPhoto === t.id ? null : t.id)}
                   style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, cursor: "pointer", border: "2px solid #e2e8f0", flexShrink: 0 }} />
               )}
             </div>
             {expandedPhoto === t.id && t.photo_url && (
               <div style={{ paddingBottom: 10 }}>
-                <img src={t.photo_url} alt="" style={{ width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: 8 }} onClick={() => setExpandedPhoto(null)} />
+                <StorageImg src={t.photo_url} alt="" style={{ width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: 8 }} onClick={() => setExpandedPhoto(null)} />
               </div>
             )}
           </div>
@@ -1958,10 +1947,10 @@ function PhotosTab({ photos, contractId, currentUser, onUpload }) {
           <div style={{ fontSize: 12, color: "#475569", marginBottom: 8, fontWeight: 700 }}>{date}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {byDate[date].map(p => (
-              <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer"
+              <StorageLink key={p.id} href={p.url} target="_blank" rel="noopener noreferrer"
                 style={{ display: "block", width: 120, height: 90, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", flexShrink: 0 }}>
                 <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt={p.description} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              </a>
+              </StorageLink>
             ))}
           </div>
         </div>
@@ -2602,9 +2591,9 @@ function DokumentyTab({ contractId, currentUser }) {
         <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", marginBottom: 8 }}>
           <span style={{ fontSize: 22, flexShrink: 0 }}>{ICONS[doc.file_type] || "📎"}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <a href={doc.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600, color: "#0369a1", fontSize: 14, textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <StorageLink href={doc.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600, color: "#0369a1", fontSize: 14, textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {doc.name}
-            </a>
+            </StorageLink>
             {doc.description && <div style={{ fontSize: 12, color: "#475569" }}>{doc.description}</div>}
           </div>
           <div style={{ fontSize: 11, color: "#64748b", flexShrink: 0, textAlign: "right" }}>

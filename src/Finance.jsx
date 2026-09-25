@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import { isConnected, uploadFileObject } from "./onedrive.js";
+import { StorageLink } from "./storageUrl.jsx";
 
 // ─── Modul Finanční tok ───────────────────────────────────────────────────
 // Počáteční stav bankovního účtu + průběžná evidence odeslaných/přijatých
@@ -227,7 +228,7 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
             <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: "1px solid #f1f5f9" }}>
               <div style={{ fontSize: 13 }}>
                 <strong>{empName(e.employee_id)}</strong> — {e.description || "účtenka"} · {e.entry_date}
-                {e.photo_url && <a href={e.photo_url} target="_blank" rel="noreferrer" style={{ marginLeft: 8 }}>📎 doklad</a>}
+                {e.photo_url && <StorageLink href={e.photo_url} target="_blank" rel="noreferrer" style={{ marginLeft: 8 }}>📎 doklad</StorageLink>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontWeight: 700 }}>{fmtKc(e.amount)}</span>
@@ -290,7 +291,7 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
                   {e.direction === "prijem" ? "+" : "-"}{fmtKc(e.amount)}
                 </td>
                 <td style={{ padding: "9px 14px" }}>
-                  {e.photo_url ? <a href={e.photo_url} target="_blank" rel="noreferrer">📎 foto</a> : "—"}
+                  {e.photo_url ? <StorageLink href={e.photo_url} target="_blank" rel="noreferrer">📎 foto</StorageLink> : "—"}
                 </td>
                 <td style={{ padding: "9px 14px" }}>
                   {e.paid_by_employee
@@ -372,7 +373,7 @@ export function ReceiptsModule({ currentUser }) {
                 <td style={{ padding: "9px 14px" }}>{e.description || "—"}</td>
                 <td style={{ padding: "9px 14px", fontWeight: 700 }}>{fmtKc(e.amount)}</td>
                 <td style={{ padding: "9px 14px" }}>
-                  {e.photo_url ? <a href={e.photo_url} target="_blank" rel="noreferrer">📎 foto</a> : "—"}
+                  {e.photo_url ? <StorageLink href={e.photo_url} target="_blank" rel="noreferrer">📎 foto</StorageLink> : "—"}
                 </td>
                 <td style={{ padding: "9px 14px" }}>
                   {e.paid_by_employee
