@@ -20,9 +20,13 @@ const ZAKLAD_FAZI = [
     { id: "kontakt", text: "Kontakt a adresa zapsané" },
     { id: "pozadavek", text: "Vyjasněno, co zákazník chce" },
   ] },
+  // fotky: u úkolu je tlačítko Nahrát fotky (hodnota = kategorie fotky).
+  // udaje: u úkolu je formulář technických údajů odběrného místa.
+  // smlouva: u úkolu je tlačítko Vygenerovat smlouvu.
   { id: "obhlidka", sekce: "ob", nazev: "Obhlídka", nazevTyp: { SRV: "Diagnostika" }, ukoly: [
     { id: "provedena", text: "Obhlídka / diagnostika provedená" },
-    { id: "podklady", text: "Fotky a zaměření uložené" },
+    { id: "podklady", text: "Fotky a zaměření uložené", fotky: "Obhlídka" },
+    { id: "udaje", text: "Technické údaje (EAN, jistič, fáze)", udaje: true, auto: "udajeVyplnene" },
   ] },
   { id: "nabidka", sekce: "ob", nazev: "Nabídka", ukoly: [
     { id: "nacenena", text: "Nabídka naceněná", auto: "nabidkaPropojena" },
@@ -32,7 +36,7 @@ const ZAKLAD_FAZI = [
     { id: "odpoved", text: "Zákazník se k nabídce vyjádřil", auto: "nabidkaRozhodnuta" },
   ] },
   { id: "smlouva", sekce: "ob", nazev: "Smlouva", nazevTyp: { SRV: "Objednávka" }, ukoly: [
-    { id: "podpis", text: "Smlouva / objednávka podepsaná", brana: true },
+    { id: "podpis", text: "Smlouva / objednávka podepsaná", brana: true, smlouva: true },
   ] },
 
   { id: "zaloha", sekce: "bo", nazev: "Záloha", typy: { SRV: "o" }, ukoly: [
@@ -61,7 +65,7 @@ const ZAKLAD_FAZI = [
   ] },
   { id: "montaz", sekce: "re", nazev: "Montáž", nazevTyp: { SRV: "Servis" }, ukoly: [
     { id: "hotovo", text: "Práce na místě dokončené" },
-    { id: "fotky", text: "Fotky z realizace uložené" },
+    { id: "fotky", text: "Fotky z realizace uložené", fotky: "Po montáži" },
   ] },
   { id: "zprovozneni", sekce: "re", nazev: "Zprovoznění", typy: { SRV: "-", HRM: "-" }, ukoly: [
     { id: "test", text: "Zprovozněno a otestováno" },
@@ -100,11 +104,18 @@ export function pouzijNastaveni(nastaveni) {
   const upr = nastaveni?.faze || {};
   const nove = ZAKLAD_FAZI.map((f) => {
     const u = upr[f.id] || {};
+    // Úkoly upravené adminem si ponechají tlačítka a formuláře ze základu (podle id).
+    const ukoly = Array.isArray(u.ukoly) && u.ukoly.length
+      ? u.ukoly.filter((x) => String(x.text || "").trim()).map((x) => {
+        const z = f.ukoly.find((b) => b.id === x.id);
+        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, ...x } : x;
+      })
+      : f.ukoly;
     return {
       ...f,
       dny: Number(u.dny) > 0 ? Number(u.dny) : f.dny,
       typy: { ...(f.typy || {}), ...(u.typy || {}) },
-      ukoly: Array.isArray(u.ukoly) && u.ukoly.length ? u.ukoly.filter((x) => String(x.text || "").trim()) : f.ukoly,
+      ukoly,
     };
   });
   FAZE.length = 0;

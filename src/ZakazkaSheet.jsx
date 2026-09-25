@@ -10,7 +10,7 @@ const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label
 // Formátování peněžních částek jednotně s tisícovými oddělovači, jako všude jinde v appce.
 const fmtKc = (v) => { const n = Number(v); return (!v || isNaN(n)) ? "—" : n.toLocaleString("cs-CZ") + " Kč"; };
 const fmtDateSheet = (v) => { if (!v) return "—"; try { return new Date(v + "T00:00:00").toLocaleDateString("cs-CZ"); } catch { return v; } };
-export const FOTO_KATEGORIE = ["Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"];
+export const FOTO_KATEGORIE = ["Obhlídka","Před montáží","Průběh montáže","Po montáži","Detail střídač/baterie","Předávací protokol","Servis"];
 const SEKCE = [
   { id: "zakaznik",  icon: "👤", label: "Zákazník",         barva: "#6366f1" },
   { id: "nabidka",   icon: "📋", label: "Nabídka",          barva: "#0369a1" },

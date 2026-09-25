@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
+import PizZip from "pizzip";
+import Docxtemplater from "docxtemplater";
+import { isConnected, connectSharedAccount, uploadFileObject } from "./onedrive.js";
+import { compressImage } from "./imageUtils.js";
+import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
   nazevFaze, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
@@ -130,6 +135,24 @@ export default function Prubeh({
   };
   useEffect(() => () => clearTimeout(hlaskaTimer.current), []);
 
+  // Fotky zakázky (i z obhlídky, kdy ještě neexistuje zakázka — vazba přes prubeh_id).
+  const [fotkyZ, setFotkyZ] = useState({});          // { [prubehId]: [...] }
+  const [nahravam, setNahravam] = useState(null);     // kategorie, která se právě nahrává
+  const [udajeForm, setUdajeForm] = useState(null);   // { id, ean, jistic_a, faze }
+  const [generuji, setGeneruji] = useState(false);
+  const fotoInput = useRef(null);
+  const fotoCil = useRef(null);                       // { z, faze, ukol } pro vybrané soubory
+  const vybranyRadek = rows.find((r) => r.id === vybrano);
+  const vybranyContract = vybranyRadek?.contract_id;
+  useEffect(() => {
+    if (!vybrano) return;
+    let zruseno = false;
+    const podminka = `prubeh_id.eq.${vybrano}${vybranyContract ? `,contract_id.eq.${vybranyContract}` : ""}`;
+    supabase.from("contract_photos").select("*").or(podminka).order("created_at", { ascending: false })
+      .then(({ data }) => { if (!zruseno) setFotkyZ((m) => ({ ...m, [vybrano]: data || [] })); });
+    return () => { zruseno = true; };
+  }, [vybrano, vybranyContract]);
+
   const zakaznik = (id) => customers.find((c) => c.id === id);
   // Zrušení výběru zákazníka v nové poptávce — adresa předvyplněná z něj jde pryč taky.
   const bezZakaznika = (n) => {
@@ -217,6 +240,7 @@ export default function Prubeh({
       nabidkaPropojena: !!q,
       nabidkaOdeslana: !!q && ["Odesláno", "Schváleno"].includes(q.status),
       nabidkaRozhodnuta: !!q && ["Schváleno", "Zamítnuto"].includes(q.status),
+      udajeVyplnene: !!(z.udaje?.ean && z.udaje?.jistic_a && z.udaje?.faze),
     };
   };
   const dnes = dnesIso();
@@ -276,6 +300,110 @@ export default function Prubeh({
     return u ? u.text : `Posunout do další fáze`;
   };
   const vlastnikSekce = (zak, sekce) => ({ ob: zak.vlastnik_obchod, bo: zak.vlastnik_bo, re: zak.vlastnik_re, uz: zak.vlastnik_bo }[sekce]) || ja || null;
+
+  // ── Fotky k úkolu (obhlídka, realizace) ──
+  const vybratFotky = (zak, faze, ukol) => {
+    fotoCil.current = { zak, faze, ukol };
+    fotoInput.current?.click();
+  };
+  const nahratFotky = async (files) => {
+    const cil = fotoCil.current;
+    if (!cil || !files?.length) return;
+    const { zak, faze, ukol } = cil;
+    const kategorie = ukol.fotky;
+    setNahravam(kategorie);
+    const nazevSlozky = (contractById(zak.contract_id)?.name || zak.nazev || String(zak.id)).replace(/[/\\?%*:|"<>]/g, "_");
+    const pripojeno = isConnected() || await connectSharedAccount();
+    let nahrano = 0;
+    for (const puvodni of files) {
+      try {
+        const file = await compressImage(puvodni);
+        let url, storagePath, itemId = null;
+        if (pripojeno) {
+          const r = await uploadFileObject(`FirmaCRM/Zakázky/${nazevSlozky}/Fotky`, file);
+          url = r.webUrl; itemId = r.itemId; storagePath = "onedrive:" + file.name;
+        } else {
+          const ext = (file.name || "foto.jpg").split(".").pop();
+          const path = `prubeh-${zak.id}/${crypto.randomUUID()}.${ext}`;
+          const { error } = await supabase.storage.from("zakazky-fotky").upload(path, file);
+          if (error) throw error;
+          url = supabase.storage.from("zakazky-fotky").getPublicUrl(path).data.publicUrl;
+          storagePath = path;
+        }
+        const { data: row, error } = await supabase.from("contract_photos").insert({
+          contract_id: zak.contract_id || null, prubeh_id: zak.id, date: dnesIso(), url,
+          storage_path: storagePath, item_id: itemId, category: kategorie, uploaded_by: currentUser?.employeeId || null,
+        }).select().single();
+        if (error) throw error;
+        setFotkyZ((m) => ({ ...m, [zak.id]: [row, ...(m[zak.id] || [])] }));
+        nahrano++;
+      } catch (e) {
+        alert(`Fotku „${puvodni.name}“ se nepodařilo nahrát: ${e.message}`);
+      }
+    }
+    setNahravam(null);
+    if (!nahrano) return;
+    ukazHlasku(`✓ Nahráno ${nahrano} ${nahrano === 1 ? "fotka" : nahrano < 5 ? "fotky" : "fotek"}`);
+    // Úkol „fotky uložené“ se po nahrání sám odškrtne.
+    const aktualni = rows.find((r) => r.id === zak.id) || zak;
+    if (!ukolHotovy(aktualni, faze, ukol, autoZ(aktualni))) await toggleUkol(aktualni, faze, ukol);
+  };
+
+  // ── Technické údaje odběrného místa ──
+  const ulozitUdaje = async (zak) => {
+    const ean = String(udajeForm.ean || "").replace(/\s/g, "");
+    if (ean && !/^\d{18}$/.test(ean)) { alert("EAN má mít 18 číslic (začíná obvykle 8591824…)."); return; }
+    const udaje = { ...(zak.udaje || {}), ean, jistic_a: udajeForm.jistic_a ? Number(udajeForm.jistic_a) : null, faze: udajeForm.faze ? Number(udajeForm.faze) : null };
+    const patch = { udaje };
+    // Další krok se posune, když byl na tomhle úkolu.
+    const nz = { ...zak, udaje };
+    const f = fazeById[zak.faze];
+    if (f && (!zak.dalsi_krok || zak.dalsi_krok === krokProFazi(zak, f))) patch.dalsi_krok = krokProFazi(nz, f);
+    if (await uloz(zak, patch)) { setUdajeForm(null); ukazHlasku("✓ Technické údaje uložené"); }
+  };
+
+  // ── Smlouva z Word šablony (public/templates/smlouva_sablona.docx) ──
+  const vygenerovatSmlouvu = async (zak) => {
+    setGeneruji(true);
+    try {
+      const res = await fetch("/templates/smlouva_sablona.docx");
+      const typ = res.headers.get("content-type") || "";
+      if (!res.ok || typ.includes("text/html")) throw new Error("Šablona smlouvy zatím není v aplikaci nahraná (public/templates/smlouva_sablona.docx).");
+      const doc = new Docxtemplater(new PizZip(await res.arrayBuffer()), { paragraphLoop: true, linebreaks: true, nullGetter: () => "" });
+      const zak_ = zakaznik(zak.customer_id) || {};
+      const k = contractById(zak.contract_id);
+      const q = zak.quote_id ? quoteById(zak.quote_id) : null;
+      const cena = Number(q?.data?.zakaznik?.cilovaCena) || Number(zak.hodnota) || Number(k?.price) || 0;
+      const u = zak.udaje || {};
+      doc.render({
+        datum: new Date().toLocaleDateString("cs-CZ"),
+        cisloZakazky: k?.code || "",
+        nazevZakazky: zak.nazev || "",
+        typZakazky: TYPY.find((t) => t.id === zak.typ)?.label || zak.typ || "",
+        zakaznikJmeno: zak_.name || "",
+        zakaznikFirma: zak_.company || "",
+        zakaznikAdresa: zak_.address || "",
+        zakaznikTelefon: zak_.phone || "",
+        zakaznikEmail: zak_.email || "",
+        mistoRealizace: zak.misto_adresa || zak_.address || "",
+        ean: u.ean || "",
+        jistic: u.jistic_a ? `${u.jistic_a} A` : "",
+        pocetFazi: u.faze ? `${u.faze}f` : "",
+        cena: cena ? Math.round(cena).toLocaleString("cs-CZ") : "",
+        obchodnik: zak.vlastnik_obchod || ja || "",
+      });
+      const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `Smlouva ${k?.code || ""} ${zak_.name || zak.nazev || ""}.docx`.replace(/\s+/g, " ").trim();
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      await pridatPoznamku(zak, "Vygenerovaná smlouva k podpisu.", true);
+    } catch (e) {
+      alert(e.message);
+    }
+    setGeneruji(false);
+  };
 
   const toggleUkol = async (zak, faze, ukol) => {
     const klic = `${faze.id}.${ukol.id}`;
@@ -588,6 +716,9 @@ export default function Prubeh({
     <div className="pr-wrap" style={{ background: "#f0f4f8", minHeight: "100vh", display: "flex", flexDirection: "column", gap: 16 }}>
       <style>{CSS}</style>
       {hlaskaEl}
+      {/* Výběr fotek pro tlačítko „Nahrát fotky“ u úkolu fáze (na mobilu nabídne i fotoaparát). */}
+      <input ref={fotoInput} type="file" accept="image/*" multiple style={{ display: "none" }}
+        onChange={(e) => { const files = [...e.target.files]; e.target.value = ""; nahratFotky(files); }} />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>🧭 Průběh zakázek</h1>
@@ -1058,13 +1189,70 @@ export default function Prubeh({
                 {f.ukoly.map((u, i) => {
                   const hot = ukolHotovy(z, f, u, auto);
                   const zAuto = u.auto && auto[u.auto];
+                  const fotkyUkolu = u.fotky ? (fotkyZ[z.id] || []).filter((p) => p.category === u.fotky) : [];
+                  const akce = (e, fn) => { e.preventDefault(); e.stopPropagation(); fn(); };
+                  const tlAkce = { ...btnGhost, padding: "5px 10px", fontSize: 13, whiteSpace: "nowrap" };
                   return (
-                    <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: i ? "1px solid #f1f5f9" : "none", fontSize: 14, background: hot ? "#fff" : "#fffbeb", cursor: zAuto ? "default" : "pointer" }}>
-                      <input type="checkbox" checked={hot} disabled={!!zAuto} onChange={() => toggleUkol(z, f, u)} style={{ width: 18, height: 18, accentColor: s.barva }} />
-                      <span style={{ flexGrow: 1, fontWeight: hot ? 400 : 700 }}>{u.text}</span>
-                      {zAuto && <span style={{ fontSize: 11, color: "#64748b" }}>z nabídky</span>}
-                      {u.brana && <span title="Podmínka brány" style={{ fontSize: 11, color: "#15803d", fontWeight: 700 }}>brána</span>}
-                    </label>
+                    <div key={u.id} style={{ borderTop: i ? "1px solid #f1f5f9" : "none", background: hot ? "#fff" : "#fffbeb" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", fontSize: 14, cursor: zAuto ? "default" : "pointer", flexWrap: "wrap" }}>
+                        <input type="checkbox" checked={hot} disabled={!!zAuto} onChange={() => toggleUkol(z, f, u)} style={{ width: 18, height: 18, accentColor: s.barva }} />
+                        <span style={{ flexGrow: 1, fontWeight: hot ? 400 : 700 }}>{u.text}</span>
+                        {zAuto && <span style={{ fontSize: 11, color: "#64748b" }}>{u.udaje ? "vyplněno" : "z nabídky"}</span>}
+                        {u.brana && <span title="Podmínka brány" style={{ fontSize: 11, color: "#15803d", fontWeight: 700 }}>brána</span>}
+                        {u.fotky && (
+                          <button type="button" style={tlAkce} disabled={!!nahravam} onClick={(e) => akce(e, () => vybratFotky(z, f, u))}>
+                            <i className="ti ti-camera" aria-hidden="true"></i> {nahravam === u.fotky ? "Nahrávám…" : `Nahrát fotky${fotkyUkolu.length ? ` (${fotkyUkolu.length})` : ""}`}
+                          </button>
+                        )}
+                        {u.udaje && udajeForm?.id !== z.id && (
+                          <button type="button" style={tlAkce} onClick={(e) => akce(e, () => setUdajeForm({ id: z.id, ean: z.udaje?.ean || "", jistic_a: z.udaje?.jistic_a || "", faze: z.udaje?.faze || "" }))}>
+                            <i className="ti ti-bolt" aria-hidden="true"></i> {zAuto ? "Upravit" : "Vyplnit"}
+                          </button>
+                        )}
+                        {u.smlouva && (
+                          <button type="button" style={tlAkce} disabled={generuji} onClick={(e) => akce(e, () => vygenerovatSmlouvu(z))}>
+                            <i className="ti ti-file-text" aria-hidden="true"></i> {generuji ? "Generuji…" : "Vygenerovat smlouvu"}
+                          </button>
+                        )}
+                      </label>
+
+                      {u.udaje && zAuto && udajeForm?.id !== z.id && (
+                        <div style={{ padding: "0 12px 10px 40px", fontSize: 13, color: "#475569" }}>
+                          EAN {z.udaje.ean} · jistič {z.udaje.jistic_a} A · {z.udaje.faze}f
+                        </div>
+                      )}
+
+                      {u.udaje && udajeForm?.id === z.id && (
+                        <div style={{ padding: "4px 12px 12px", display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8, alignItems: "end" }}>
+                          <div><label style={lbl} htmlFor="pr-ean">EAN odběrného místa</label>
+                            <input id="pr-ean" style={inp} inputMode="numeric" autoFocus value={udajeForm.ean} placeholder="8591824…"
+                              onChange={(e) => setUdajeForm({ ...udajeForm, ean: e.target.value })} /></div>
+                          <div><label style={lbl} htmlFor="pr-jistic">Hlavní jistič (A)</label>
+                            <input id="pr-jistic" style={inp} type="number" min="1" inputMode="numeric" value={udajeForm.jistic_a} placeholder="25"
+                              onChange={(e) => setUdajeForm({ ...udajeForm, jistic_a: e.target.value })} /></div>
+                          <div><label style={lbl} htmlFor="pr-faze">Počet fází</label>
+                            <select id="pr-faze" style={inp} value={udajeForm.faze} onChange={(e) => setUdajeForm({ ...udajeForm, faze: e.target.value })}>
+                              <option value="">—</option><option value="1">1 fáze</option><option value="3">3 fáze</option>
+                            </select></div>
+                          <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                            <button type="button" style={btnGhost} onClick={() => setUdajeForm(null)}>Zrušit</button>
+                            <button type="button" style={btn("#0369a1")} disabled={pracuji} onClick={() => ulozitUdaje(z)}>Uložit údaje</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {fotkyUkolu.length > 0 && (
+                        <div style={{ display: "flex", gap: 6, padding: "0 12px 10px 40px", flexWrap: "wrap" }}>
+                          {fotkyUkolu.slice(0, 6).map((p) => (
+                            <StorageLink key={p.id} href={p.url} target="_blank" rel="noopener noreferrer"
+                              style={{ display: "block", width: 56, height: 56, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+                              <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt={p.category} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            </StorageLink>
+                          ))}
+                          {fotkyUkolu.length > 6 && <span style={{ alignSelf: "center", fontSize: 12, color: "#64748b" }}>+{fotkyUkolu.length - 6}</span>}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
