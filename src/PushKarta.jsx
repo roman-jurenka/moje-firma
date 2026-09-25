@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { zjistiPushStav, zapniPush, vypniPush } from "./pushUtil.js";
+import * as ui from "./ui.js";
 
 // Karta „Upozornění v telefonu“ – zaměstnanec si tu zapne notifikaci s odpracovaným časem
 // (V práci od 7:03 · 4 h 30 min) a rychlými akcemi Odchod / Nahrát fotky.
@@ -59,7 +60,7 @@ export default function PushKarta({ style = {}, kompaktni = false }) {
       </div>
       {chyba && <div style={{ fontSize: 12, color: "#991b1b", marginBottom: 8 }}>{chyba}</div>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {stav === "vypnuto" && <button disabled={busy} onClick={zapnout} style={{ ...btn, background: "#F5C518", color: "#1A1A1A" }}>{busy ? "Zapínám…" : "Zapnout na tomto zařízení"}</button>}
+        {stav === "vypnuto" && <button disabled={busy} onClick={zapnout} style={{ ...btn, ...ui.tlacitko() }}>{busy ? "Zapínám…" : "Zapnout na tomto zařízení"}</button>}
         {stav === "zapnuto" && <button disabled={busy} onClick={vypnout} style={{ ...btn, background: "transparent", color: "#0369a1", border: "1px solid #0369a1" }}>{busy ? "Vypínám…" : "Vypnout"}</button>}
         {stav === "zapnuto" && <button onClick={mistniTest} style={{ ...btn, background: "transparent", color: "#475569", border: "1px solid #cbd5e1" }}>Zkušební upozornění</button>}
       </div>

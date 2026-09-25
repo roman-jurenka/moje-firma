@@ -4,6 +4,7 @@ import { uploadFileObject, zakazkaFolderPath, isConnected } from "./onedrive.js"
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import { tryOrQueue } from "./offlineQueue.js";
 import { compressImage } from "./imageUtils.js";
+import * as ui from "./ui.js";
 
 const STAV_DOC = { ceka: { label: "Čeká", color: "#475569" }, vyplnen: { label: "Vyplněn", color: "#f59e0b" }, odeslan: { label: "Odeslán", color: "#0369a1" }, podepsan: { label: "Podepsán", color: "#16a34a" } };
 // Formátování peněžních částek jednotně s tisícovými oddělovači, jako všude jinde v appce.
@@ -60,7 +61,7 @@ export const PRAZDNA_DATA = {
 };
 
 const S = {
-  app: { fontFamily:"'DM Sans',sans-serif", background:"#f0f4f8", minHeight:"100vh", color:"#1A1A1A" },
+  app: { fontFamily: ui.pismo, background: ui.barvy.pozadi, minHeight:"100vh", color: ui.barvy.text },
   topBar: { background:"#ffffff", borderBottom:"1px solid #e2e8f0", padding:"12px 20px", display:"flex", alignItems:"center", gap:12, position:"sticky", top:0, zIndex:100 },
   scroll: { display:"flex", gap:14, padding:"16px 20px", overflowX:"auto", alignItems:"flex-start", minHeight:"calc(100vh - 110px)" },
   card: (a,barva) => ({ minWidth:310, maxWidth:310, background:"#ffffff", borderRadius:14, border:`1px solid ${a?barva:"#e2e8f0"}`, overflow:"hidden", flexShrink:0, transition:"border-color 0.15s" }),
@@ -69,7 +70,7 @@ const S = {
   lbl: { fontSize:10, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:0.8, display:"block", marginBottom:3 },
   val: { fontSize:13, color:"#1A1A1A", lineHeight:1.5 },
   inp: { background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:7, padding:"6px 10px", color:"#1A1A1A", fontSize:13, width:"100%", outline:"none", boxSizing:"border-box", resize:"none", fontFamily:"inherit" },
-  btn: (c="#0369a1") => ({ background:c, color:"#fff", border:"none", borderRadius:7, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }),
+  btn: (c) => ui.tlacitko(c, "male"),
   div: { borderBottom:"1px solid #e2e8f0", margin:"10px 0" },
   mono: { fontFamily:"monospace", fontSize:12, color:"#0369a1", background:"#1e3a5f22", borderRadius:4, padding:"2px 6px" },
   sCard: { background:"#f8fafc", borderRadius:8, padding:12, marginBottom:10, border:"1px solid #e2e8f0" },

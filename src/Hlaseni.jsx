@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { supabase } from "./supabase.js";
 import { VAPID_PUBLIC, urlB64ToUint8Array, jeIOS, jeNainstalovana, nazevZarizeni } from "./pushUtil.js";
+import * as ui from "./ui.js";
 
 // ─── Modul Hlášení ─────────────────────────────────────────────────────────
 // Nastavení push upozornění na telefon (Pushover a/nebo vlastní push v aplikaci). Admin tady definuje pravidla
@@ -693,7 +694,7 @@ function HistorieTab({ zpravy }) {
 
 const card = { background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px #0000000a" };
 const cardLabel = { fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, fontWeight: 700 };
-const btnPrimary = { background: "#F5C518", color: "#1A1A1A", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const btnPrimary = ui.tlacitko();
 const btnGhost = { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
 const selectS = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", color: "#1A1A1A", fontSize: 13, outline: "none" };
 const label = { display: "block", fontSize: 12, color: "#475569", fontWeight: 600, margin: "10px 0 4px" };

@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import { tryOrQueue } from "./offlineQueue.js";
+import * as ui from "./ui.js";
 
 const S = {
-  app:      { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px 28px" },
-  card:     { background: "#ffffff", borderRadius: 12, padding: 22, border: "1px solid #e2e8f0", marginBottom: 14, boxShadow: "0 1px 4px #0000000a" },
-  input:    { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box" },
-  btn:      (c = "#0369a1") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
-  btnGhost: { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  app:      { fontFamily: ui.pismo, background: ui.barvy.pozadi, minHeight: "100vh", color: ui.barvy.text, padding: "20px 28px" },
+  card:     { ...ui.karta, marginBottom: 14 },
+  input:    { ...ui.pole, padding: "8px 10px" },
+  btn:      (c) => ui.tlacitko(c),
+  btnGhost: ui.tlacitkoObrys(),
   modal:    { position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 400 },
   modalBox: { background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, width: 460, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
 };

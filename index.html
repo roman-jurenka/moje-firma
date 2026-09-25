@@ -18,7 +18,12 @@
          to kolidovalo s Reactem (chyba "removeChild... není potomkem tohoto
          uzlu"). notranslate + lang="cs" překladu úplně zabrání. -->
     <meta name="google" content="notranslate" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+    <!-- Pevná verze ikon — "latest" by mohla appku rozbít novou verzí bez varování. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.48.0/dist/tabler-icons.min.css" />
+    <!-- Písmo DM Sans — styly s ním počítaly, ale nikde se nenačítalo. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap" />
     <title>ProudOS</title>
   </head>
   <body>

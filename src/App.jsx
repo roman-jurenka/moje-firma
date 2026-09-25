@@ -19,6 +19,7 @@ import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
 import { compressImage } from "./imageUtils.js";
 import { StorageImg } from "./storageUrl.jsx";
+import * as ui from "./ui.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -410,40 +411,37 @@ const INV_COLORS = { Zaplacena: "#34d399", Čeká: "#f59e0b", "Po splatnosti": "
 const PROJ_COLORS = { Probíhá: "#0369a1", Plánováno: "#0369a1", Dokončeno: "#34d399", Pozastaveno: "#f87171" };
 const avatarColors = ["#0369a1", "#f59e0b", "#34d399", "#f87171", "#a78bfa", "#0369a1"];
 
+// Menu seřazené podle toho, jak se ve firmě pracuje. Odebrané moduly (starý
+// Obchodní případ, AI asistent, Projekty, samostatné Listy zakázek) mají data
+// v databázi dál; zakázkový list se otevírá ze zakázky, Náklady jsou záložkou
+// ve Finančním toku, Profil a OneDrive jsou pod jménem uživatele v menu.
+// Id záložek se nemění — používají je Oprávnění i pravidla v databázi.
 const NAV = [
-  { id: "dashboard", label: "Dashboard", icon: "ti-layout-dashboard", group: "CRM" },
-  { id: "customers", label: "Zákazníci", icon: "ti-users", group: "CRM" },
-  { id: "pricing", label: "Nacenění", icon: "ti-calculator", group: "CRM" },
-  { id: "deals", label: "Obchodní příp. (starý)", icon: "ti-briefcase", group: "CRM" },
-  // { id: "communication", label: "Komunikace", icon: "ti-message-circle", group: "CRM" }, // odebráno — data zachována pro detail zákazníka
-  { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "CRM" },
-  { id: "contracts", label: "Zakázky", icon: "ti-file-invoice", group: "CRM" },
-  { id: "sheets", label: "Listy zakázek", icon: "ti-clipboard-list", group: "CRM" },
-  { id: "fotoupload", label: "Nahrát fotky", icon: "ti-camera", group: "Osobní" },
-  { id: "tasks", label: "Úkoly", icon: "ti-checkbox", group: "CRM" },
-  { id: "invoices", label: "Fakturace", icon: "ti-receipt", group: "ERP" },
-  { id: "warehouse", label: "Sklad", icon: "ti-package", group: "ERP" },
-  { id: "hr", label: "Zaměstnanci", icon: "ti-user", group: "ERP" },
-  { id: "projects", label: "Projekty", icon: "ti-building", group: "ERP" },
-  { id: "costs", label: "Náklady", icon: "ti-trending-down", group: "ERP" },
-  { id: "finance", label: "Finanční tok", icon: "ti-cash", group: "ERP" },
-  { id: "uctenky", label: "Účtenky", icon: "ti-receipt-2", group: "Osobní" },
-  { id: "reports", label: "Reporty", icon: "ti-chart-line", group: "Analytika" },
-  { id: "ai", label: "AI Asistent", icon: "ti-robot", group: "Analytika" },
-  { id: "attendance", label: "Docházka", icon: "ti-clock", group: "Osobní" },
-  { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Osobní" },
-  { id: "knjiga", label: "Kniha jízd", icon: "ti-car", group: "Osobní" },
-  { id: "onedrive", label: "OneDrive", icon: "ti-cloud", group: "Osobní" },
-  { id: "podpisy", label: "Podpisy", icon: "ti-signature", group: "Osobní" },
-  { id: "profile", label: "Můj profil", icon: "ti-user-circle", group: "Osobní" },
-  { id: "permissions", label: "Oprávnění", icon: "ti-lock", group: "ERP" },
-  { id: "hlaseni", label: "Hlášení", icon: "ti-bell-ringing", group: "ERP" },
+  { id: "dashboard", label: "Přehled", icon: "ti-layout-dashboard", group: "Přehled" },
+  { id: "customers", label: "Zákazníci", icon: "ti-users", group: "Obchod" },
+  { id: "pricing", label: "Nacenění", icon: "ti-calculator", group: "Obchod" },
+  { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "Obchod" },
+  { id: "contracts", label: "Zakázky", icon: "ti-file-invoice", group: "Realizace" },
+  { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Realizace" },
+  { id: "tasks", label: "Úkoly", icon: "ti-checkbox", group: "Realizace" },
+  { id: "warehouse", label: "Sklad", icon: "ti-package", group: "Realizace" },
+  { id: "attendance", label: "Docházka", icon: "ti-clock", group: "Terén" },
+  { id: "fotoupload", label: "Fotky", icon: "ti-camera", group: "Terén" },
+  { id: "knjiga", label: "Kniha jízd", icon: "ti-car", group: "Terén" },
+  { id: "uctenky", label: "Účtenky", icon: "ti-receipt-2", group: "Terén" },
+  { id: "podpisy", label: "Podpisy", icon: "ti-signature", group: "Terén" },
+  { id: "invoices", label: "Fakturace", icon: "ti-receipt", group: "Finance" },
+  { id: "finance", label: "Finanční tok", icon: "ti-cash", group: "Finance" },
+  { id: "reports", label: "Reporty", icon: "ti-chart-line", group: "Finance" },
+  { id: "hr", label: "Zaměstnanci", icon: "ti-user", group: "Správa" },
+  { id: "permissions", label: "Oprávnění", icon: "ti-lock", group: "Správa" },
+  { id: "hlaseni", label: "Hlášení", icon: "ti-bell-ringing", group: "Správa" },
 ];
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 
 const S = {
-  app: { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100dvh", color: "#1A1A1A", display: "flex" },
+  app: { fontFamily: ui.pismo, background: ui.barvy.pozadi, minHeight: "100dvh", color: ui.barvy.text, display: "flex" },
   sidebar: (open) => ({ width: 220, background: "#0E3B5E", padding: "0", display: "flex", flexDirection: "column", position: "fixed", top: 0, bottom: 0, left: 0, overflowY: "auto", boxShadow: "2px 0 8px #0000001a", zIndex: 200, transition: "transform 0.25s ease" }),
   logo: { padding: "22px 20px 16px", fontSize: 19, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px", borderBottom: "1px solid rgba(255,255,255,0.12)" },
   logoA: { color: "#fff" },
@@ -452,10 +450,10 @@ const S = {
   navItem: (a) => ({ padding: "9px 16px", margin: "2px 10px", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 500, color: a ? "#fff" : "#B9CBDA", background: a ? "rgba(255,255,255,0.14)" : "transparent", transition: "all 0.12s" }),
   main: { marginLeft: 0, padding: "28px 32px", flex: 1, minHeight: "100dvh" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 },
-  h1: { fontSize: 24, fontWeight: 700, color: "#1A1A1A", margin: 0 },
-  btn: (c = "#F5C518") => ({ background: c, color: c === "#F5C518" ? "#1A1A1A" : "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
-  btnGhost: { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  card: { background: "#ffffff", borderRadius: 12, padding: 22, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px #0000000a" },
+  h1: ui.nadpis,
+  btn: (c) => ui.tlacitko(c),
+  btnGhost: ui.tlacitkoObrys(),
+  card: ui.karta,
   grid4: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 },
   grid3: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 24 },
   grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 },
@@ -463,15 +461,15 @@ const S = {
   statLabel: { fontSize: 11, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" },
   statValue: (c) => ({ fontSize: 26, fontWeight: 800, color: c }),
   table: { width: "100%", borderCollapse: "collapse" },
-  th: { textAlign: "left", padding: "9px 12px", fontSize: 11, color: "#475569", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" },
-  td: { padding: "11px 12px", fontSize: 13, borderBottom: "1px solid #f1f5f9", color: "#475569" },
-  tag: (c) => ({ background: c + "22", color: c, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700, display: "inline-block" }),
+  th: ui.th,
+  td: ui.td,
+  tag: (c) => ui.stitek(c),
   search: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 13px", color: "#1A1A1A", fontSize: 13, outline: "none", width: 240 },
-  modal: { position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 },
-  modalBox: { background: "#ffffff", borderRadius: 16, padding: 28, width: 440, maxWidth: "92vw", boxSizing: "border-box", border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
-  input: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
-  select: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
-  label: { fontSize: 11, color: "#475569", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
+  modal: ui.okno,
+  modalBox: { ...ui.oknoObsah, width: 440 },
+  input: { ...ui.pole, marginBottom: 10 },
+  select: { ...ui.pole, marginBottom: 10 },
+  label: ui.popisek,
   avatar: (c) => ({ width: 34, height: 34, borderRadius: "50%", background: c, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0 }),
   progress: (pct, c) => ({ height: 6, borderRadius: 3, background: "#e2e8f0", overflow: "hidden", position: "relative" }),
   progressBar: (pct, c) => ({ height: "100%", width: `${pct}%`, background: c, borderRadius: 3, transition: "width 0.4s" }),
@@ -899,8 +897,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [theme, setTheme] = useState(() => localStorage.getItem("proudos-theme") || "light");
-  useEffect(() => { localStorage.setItem("proudos-theme", theme); }, [theme]);
+  const [financePod, setFinancePod] = useState("tok");
   // Obnovit celou aplikaci: stáhne nejnovější verzi (service worker) a znovu
   // načte všechna data. Neuložené změny na obrazovce by se ztratily → potvrzení.
   const [obnovuji, setObnovuji] = useState(false);
@@ -1099,7 +1096,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const sPrubehem = (zakladTabs.includes("contracts") || zakladTabs.includes("deals")) && !zakladTabs.includes("prubeh") ? [...zakladTabs, "prubeh"] : zakladTabs;
   // Obchodní případy nahradil Průběh zakázek — starou záložku vidí už jen admin
   // (data v ní zůstávají, Průběh je používá na pozadí).
-  const allowedTabs = currentUser.role === "admin" ? sPrubehem : sPrubehem.filter(t => t !== "deals");
+  const bezDeals = currentUser.role === "admin" ? sPrubehem : sPrubehem.filter(t => t !== "deals");
+  // Náklady jsou teď záložkou ve Finančním toku — kdo má jen Náklady, vidí Finanční tok s nimi.
+  const allowedTabs = bezDeals.includes("costs") && !bezDeals.includes("finance") ? [...bezDeals, "finance"] : bezDeals;
   const visibleNav = NAV.filter(n => allowedTabs.includes(n.id));
   const groups = [...new Set(visibleNav.map(n => n.group))];
 
@@ -1158,7 +1157,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   };
   const gTotal = gResults ? gResults.customers.length + gResults.contracts.length + gResults.invoices.length + gResults.products.length : 0;
   const totalPayroll = employees.filter(e => e.status === "Aktivní").reduce((s, e) => s + e.salary, 0);
-  const activeProjects = projects.filter(p => p.status === "Probíhá").length;
 
 
   const toggleTaskGlobal = async (id) => {
@@ -1200,24 +1198,11 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   return (
     <>
       <button
-        className="pwa-top-btn" onClick={() => setTheme(t => t === "light" ? "dark" : "light")}
-        title={theme === "light" ? "Přepnout na tmavý motiv" : "Přepnout na světlý motiv"}
-        style={{
-          position: "fixed", top: 14, right: 16, zIndex: 500,
-          width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
-          background: "#fff", color: "#0E3B5E", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
-          boxShadow: "0 2px 8px #0002",
-        }}
-      >
-        <i className={`ti ${theme === "light" ? "ti-moon" : "ti-sun"}`} aria-hidden="true"></i>
-      </button>
-      <button
         className="pwa-top-btn" onClick={zpetNaPredchozi} disabled={!predchoziTab}
         title={predchoziTab ? `Zpět na: ${NAV.find(n => n.id === predchoziTab)?.label || "předchozí obrazovku"}` : "Zpět (zatím není kam)"}
         aria-label="Zpět na předchozí obrazovku"
         style={{
-          position: "fixed", top: 14, right: 154, zIndex: 500,
+          position: "fixed", top: 14, right: 108, zIndex: 500,
           width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
           background: "#fff", color: "#0E3B5E", cursor: predchoziTab ? "pointer" : "default",
           opacity: predchoziTab ? 1 : 0.4,
@@ -1231,7 +1216,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         className="pwa-top-btn" onClick={obnovitAplikaci} disabled={obnovuji}
         title="Obnovit celou aplikaci (nejnovější verze a data)" aria-label="Obnovit aplikaci"
         style={{
-          position: "fixed", top: 14, right: 108, zIndex: 500,
+          position: "fixed", top: 14, right: 62, zIndex: 500,
           width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
           background: "#fff", color: "#0E3B5E", cursor: obnovuji ? "wait" : "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
@@ -1244,7 +1229,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         className="pwa-top-btn" onClick={() => setGSearchOpen(o => !o)}
         title="Hledat" aria-label="Hledat napříč appkou"
         style={{
-          position: "fixed", top: 14, right: 62, zIndex: 500,
+          position: "fixed", top: 14, right: 16, zIndex: 500,
           width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
           background: "#fff", color: "#0E3B5E", cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
@@ -1258,7 +1243,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           className="pwa-top-btn" onClick={() => retryOfflineQueueNow()}
           title={!isOnline ? "Appka je offline — zápisy se ukládají do zařízení a odešlou se samy po obnovení signálu" : "Klikni pro okamžité odeslání čekajících záznamů"}
           style={{
-            position: "fixed", top: 14, right: 200, zIndex: 500,
+            position: "fixed", top: 14, right: 154, zIndex: 500,
             display: "flex", alignItems: "center", gap: 6,
             height: 38, borderRadius: 19, border: "1px solid #f59e0b",
             background: "#fff7ed", color: "#b45309", cursor: "pointer",
@@ -1355,12 +1340,15 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           {todayRecord?.checkout ? `Odchod ${todayRecord.checkout}` : todayRecord?.checkin ? `Zapsat odchod` : "Zapsat příchod"}
         </button>
       )}
-    <div data-app-theme={theme} style={{ ...S.app, ...(theme === "dark" ? { filter: "invert(1) hue-rotate(180deg)" } : {}) }}>
+    <div style={S.app}>
       <style>{`
-        /* Boční menu je na obou velikostech schované mimo obrazovku, dokud na něj
-           nenajedete myší (desktop, přes úzký proužek u levého okraje) nebo ho
-           neotevřete hamburgerem (mobil). Obsah proto nikdy nerezervuje 220px. */
+        /* Boční menu: na počítači pevně vlevo (obsah je odsazený o 220 px),
+           na mobilu schované a otevírá se hamburgerem nebo tlačítkem "Více". */
         .sidebar-nav { transform: translateX(-100%); padding-top: env(safe-area-inset-top) !important; padding-bottom: env(safe-area-inset-bottom) !important; }
+        @media (min-width: 769px) {
+          .sidebar-nav { transform: none; }
+          .main-content { margin-left: 220px !important; }
+        }
         /* iPhone: appka spuštěná z ikony na ploše jede přes celou obrazovku i pod výřez a home indikátor
            (viewport-fit=cover), proto vše pevně umístěné odsazujeme o bezpečné okraje. Mimo iPhone jsou
            env() hodnoty 0, takže se nic nemění. */
@@ -1375,13 +1363,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         .mobile-tabbar-item span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .mobile-tabbar-item.active { color: #F5821F; }
         .sidebar-nav.open { transform: translateX(0); }
-        /* Tmavý motiv: invertujeme celou plochu filtrem, ale obrázky (fotky ze
-           zakázek, loga apod.) invertujeme podruhé, aby zůstaly v přirozených
-           barvách. */
-        [data-app-theme="dark"] img,
-        [data-app-theme="dark"] video {
-          filter: invert(1) hue-rotate(180deg);
-        }
         @media (min-width: 769px) {
           .sidebar-backdrop { display: none !important; }
         }
@@ -1464,14 +1445,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           <i className="ti ti-menu-2" aria-hidden="true"></i><span>Více</span>
         </button>
       </nav>
-      {/* Úzký proužek u levého okraje — najetím myší na desktopu vyjede menu */}
-      <div className="sidebar-hover-zone" onMouseEnter={() => setSidebarOpen(true)}
-        style={{ position: "fixed", top: 0, bottom: 0, left: 0, width: 14, zIndex: 199 }} />
       {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "#0007", zIndex: 150 }} />}
 
       {/* SIDEBAR */}
-      <div className={`sidebar-nav${sidebarOpen ? " open" : ""}`} style={S.sidebar()}
-        onMouseLeave={() => setSidebarOpen(false)}>
+      <div className={`sidebar-nav${sidebarOpen ? " open" : ""}`} style={S.sidebar()}>
         <div style={{ ...S.logo, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <ProudOSMark size={26} />
@@ -1497,6 +1474,18 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
               {todayRecord?.checkout ? `✓ Odchod ${todayRecord.checkout}` : todayRecord?.checkin ? `⏱ Zapsat odchod (${todayRecord.checkin})` : "▶ Zapsat příchod"}
             </button>
           )}
+          {/* Osobní nastavení — dřív samostatné položky menu */}
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            {[["profile", "Můj profil", "ti-user-circle", true],
+              ["onedrive", "OneDrive", "ti-cloud", currentUser.role === "admin" || allowedTabs.includes("onedrive")]]
+              .filter(([, , , vidi]) => vidi)
+              .map(([id, label, icon]) => (
+                <button key={id} onClick={() => { setTab(id); setSidebarOpen(false); }}
+                  style={{ ...ui.tlacitkoObrys("male"), flex: 1, padding: "4px 6px", fontSize: 11, background: tab === id ? "#e0f2fe" : "transparent" }}>
+                  <i className={`ti ${icon}`} aria-hidden="true" style={{ marginRight: 4 }}></i>{label}
+                </button>
+              ))}
+          </div>
         </div>
 
         {groups.map(g => (
@@ -1505,9 +1494,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             {visibleNav.filter(n => n.group === g).map(n => (
               <div key={n.id} style={S.navItem(tab === n.id)} onClick={() => { setTab(n.id); setSearch(""); setSidebarOpen(false); }}>
                 <i className={`ti ${n.icon}`} style={{ fontSize: 16, width: 18, textAlign: "center" }} aria-hidden="true"></i> {n.label}
-                {n.id === "ai" && (
-                  <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: "#f59e0b", background: "#f59e0b22", border: "1px solid #f59e0b44", borderRadius: 5, padding: "1px 6px" }}>mimo provoz</span>
-                )}
               </div>
             ))}
           </div>
@@ -1547,7 +1533,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
               products={products} employees={employees} projects={projects}
               totalRevenue={totalRevenue} pendingRevenue={pendingRevenue}
               overdueRevenue={overdueRevenue} lowStock={lowStock}
-              totalPayroll={totalPayroll} activeProjects={activeProjects}
+              totalPayroll={totalPayroll}
               costs={costs} toggleTask={toggleTaskGlobal} setTab={setTab}
               contracts={contracts} attendance={attendance} costEntries={costEntries}
               dnMaterialCost={dnMaterialCostTotal} dnMaterialClient={dnMaterialClientTotal}
@@ -1636,7 +1622,26 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
 
-        {tab === "finance" && <FinanceModule currentUser={currentUser} employees={employees} contracts={contracts} />}
+        {/* ── FINANČNÍ TOK + NÁKLADY (dřív samostatná položka menu) ── */}
+        {tab === "finance" && (() => {
+          const maTok = bezDeals.includes("finance");
+          const maNaklady = allowedTabs.includes("costs");
+          const pod = maTok && maNaklady ? financePod : maNaklady ? "naklady" : "tok";
+          return (
+            <>
+              {maTok && maNaklady && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+                  {[["tok", "Finanční tok"], ["naklady", "Náklady"]].map(([id, label]) => (
+                    <button key={id} onClick={() => setFinancePod(id)} style={pod === id ? S.btn() : S.btnGhost}>{label}</button>
+                  ))}
+                </div>
+              )}
+              {pod === "tok"
+                ? <FinanceModule currentUser={currentUser} employees={employees} contracts={contracts} />
+                : <Costs costs={costs} setCosts={setCosts} contracts={contracts} modal={modal} setModal={setModal} closeModal={closeModal} />}
+            </>
+          );
+        })()}
 
         {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} />}
 
@@ -1978,7 +1983,6 @@ const DASH_WIDGETS = [
   { id: "zakazky", label: "Zakázky a fakturace", icon: "ti-file-invoice" },
   { id: "dochazka", label: "Docházka / HR", icon: "ti-users" },
   { id: "sklad", label: "Sklad / materiál", icon: "ti-package" },
-  { id: "projekty", label: "Projekty", icon: "ti-building" },
   { id: "rozpracovane", label: "Rozpracované zakázky", icon: "ti-progress" },
 ];
 
@@ -2001,7 +2005,7 @@ function widgetCardHeader(icon, label, color, action) {
 }
 
 function Dashboard({ customers, deals, tasks, invoices, products, employees, projects,
-  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, activeProjects, costs, toggleTask, setTab, contracts, attendance, onOpenSheet, costEntries, dnMaterialCost, dnMaterialClient }) {
+  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, costs, toggleTask, setTab, contracts, attendance, onOpenSheet, costEntries, dnMaterialCost, dnMaterialClient }) {
   const [sheetSearch, setSheetSearch] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [hiddenWidgets, setHiddenWidgets] = useState(() => {
@@ -2084,7 +2088,6 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
     { label: "Náklady tento měsíc", value: fmtKc(thisMonthCosts), color: "#f59e0b" },
     { label: "Produkty skladu", value: products.length, color: "#0369a1" },
     { label: "Zaměstnanci", value: employees.length, color: "#a78bfa" },
-    { label: "Aktivní projekty", value: activeProjects, color: "#34d399" },
     { label: "Mzdové náklady", value: fmtKc(totalPayroll), color: "#f59e0b" },
     { label: "Na pracovišti dnes", value: `${presentToday.length} / ${activeEmployees.length}`, color: "#0369a1" },
     { label: "Pohledávky po splatnosti", value: `${overdueReceivables.length} (${fmtKc(overdueReceivablesSum)})`, color: "#f87171" },
@@ -2222,27 +2225,6 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
           </div>
         )}
 
-        {/* Projekty */}
-        {!hiddenWidgets.includes("projekty") && (
-          <div style={S.card}>
-            {widgetCardHeader("ti-building", "Projekty", "#0369a1",
-              <span style={{ color: "#0369a1", fontSize: 12, cursor: "pointer" }} onClick={() => setTab("projects")}>Vše →</span>)}
-            {projects.length === 0 ? <div style={{ color: "#64748b", fontSize: 13 }}>Žádné projekty</div> :
-              projects.slice(0, 3).map(p => (
-                <div key={p.id} style={{ marginBottom: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, color: "#1A1A1A" }}>{p.name}</span>
-                    <span style={S.badge(PROJ_COLORS[p.status])}>{p.status}</span>
-                  </div>
-                  <div style={S.progress(p.progress)}>
-                    <div style={S.progressBar(p.progress, PROJ_COLORS[p.status])} />
-                  </div>
-                  <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>{p.progress}% dokončeno</div>
-                </div>
-              ))
-            }
-          </div>
-        )}
       </div>
 
       <div style={S.grid2}>

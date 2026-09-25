@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import { tryOrQueue } from "./offlineQueue.js";
 import { compressImage } from "./imageUtils.js";
+import * as ui from "./ui.js";
 
 // Čitelné zobrazení data pro uživatele — den v týdnu, den, měsíc slovem, rok (bez pomlček).
 const DNY_ZKR = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
@@ -178,19 +179,19 @@ function budgetLabel(actual, budget) {
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const S = {
-  card:     { background: "#ffffff", borderRadius: 12, padding: 22, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px #0000000a" },
-  input:    { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
-  select:   { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 10 },
-  label:    { fontSize: 11, color: "#475569", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
-  btn:      (c = "#0369a1") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
-  btnGhost: { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  card:     ui.karta,
+  input:    { ...ui.pole, marginBottom: 10 },
+  select:   { ...ui.pole, marginBottom: 10 },
+  label:    ui.popisek,
+  btn:      (c) => ui.tlacitko(c),
+  btnGhost: ui.tlacitkoObrys(),
   modal:    { position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 },
   modalBox: { background: "#ffffff", borderRadius: 16, padding: 28, width: 500, maxWidth: "92vw", boxSizing: "border-box", border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
   th:       { textAlign: "left", padding: "8px 10px", fontSize: 11, color: "#475569", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" },
   td:       { padding: "10px 10px", fontSize: 13, borderBottom: "1px solid #e2e8f0", color: "#475569" },
   table:    { width: "100%", borderCollapse: "collapse" },
-  tag:      (c) => ({ background: c + "22", color: c, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700, display: "inline-block" }),
-  badge:    (c) => ({ background: c + "22", color: c, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }),
+  tag:      (c) => ui.stitek(c),
+  badge:    (c) => ({ ...ui.stitek(c), borderRadius: 20, padding: "3px 10px" }),
   statCard: (c) => ({ background: "#ffffff", borderRadius: 12, padding: "16px 20px", border: `1px solid ${c}33`, boxShadow: "0 1px 4px #0000000a" }),
   statLabel: { fontSize: 11, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" },
   statValue: (c) => ({ fontSize: 22, fontWeight: 800, color: c }),

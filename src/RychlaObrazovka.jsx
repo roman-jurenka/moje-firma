@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import * as ui from "./ui.js";
 
 // Rychlá obrazovka po klepnutí na notifikaci o odpracovaném čase:
 // odpracovaný čas + velká tlačítka „Zapsat odchod“ a „Nahrát fotky“.
@@ -60,7 +61,7 @@ function VyberZakazky({ zakazky, hodnota, onVyber, onZavrit }) {
         {nalezene.length === 0 && <div style={{ opacity: 0.7, padding: 12 }}>Nic nenalezeno.</div>}
         {nalezene.map((z) => (
           <button key={z.id} onClick={() => onVyber(z.id)}
-            style={{ ...radek, ...(String(z.id) === String(hodnota) ? { background: "#F5C518", color: "#1A1A1A", borderColor: "#F5C518" } : {}) }}>
+            style={{ ...radek, ...(String(z.id) === String(hodnota) ? { background: ui.barvy.akcent, color: ui.barvy.text, borderColor: ui.barvy.akcent } : {}) }}>
             {z.name}
           </button>
         ))}
@@ -148,7 +149,7 @@ export default function RychlaObrazovka({ todayRecord, jmeno, zakazky = [], onZa
           <i className="ti ti-chevron-right" aria-hidden="true"></i>
         </button>
         {!hotovo && (
-          <button disabled={busy} onClick={zapsat} style={{ ...velke, background: otevrena ? "#F5C518" : "#34d399", color: "#1A1A1A" }}>
+          <button disabled={busy} onClick={zapsat} style={{ ...velke, background: otevrena ? ui.barvy.akcent : ui.barvy.uspech, color: otevrena ? ui.barvy.text : "#fff" }}>
             <i className={`ti ${otevrena ? "ti-player-stop" : "ti-player-play"}`} aria-hidden="true"></i>
             {busy ? "Zapisuji…" : otevrena ? "Zapsat odchod" : "Zapsat příchod"}
           </button>
@@ -178,7 +179,7 @@ export function PracePruh({ todayRecord, onOtevrit, onFotky }) {
       <div style={{ fontSize: 13, opacity: 0.8 }}>V práci od {hm(todayRecord.checkin)}</div>
       <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 12 }}>{trvani(min)}</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button onClick={onOtevrit} style={{ ...btn, background: "#F5C518", color: "#1A1A1A" }}>Zapsat odchod</button>
+        <button onClick={onOtevrit} style={{ ...btn, background: ui.barvy.akcent, color: ui.barvy.text }}>Zapsat odchod</button>
         <button onClick={onFotky} style={{ ...btn, background: "#ffffff1f", color: "#fff", border: "1px solid #ffffff40" }}>Nahrát fotky</button>
       </div>
     </div>

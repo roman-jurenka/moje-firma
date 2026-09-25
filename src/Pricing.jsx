@@ -5,15 +5,16 @@ import { vychoziSluzba } from "./fvePresets.js";
 import NabidkaNahled from "./NabidkaNahled.jsx";
 import { textyNabidky, seznamyPodleTypu } from "./nabidkaTexty.js";
 import { fazeById, terminFaze, planovaneMd } from "./prubehFaze.js";
+import * as ui from "./ui.js";
 
 const S = {
-  app:      { fontFamily: "'DM Sans', sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px 28px" },
-  card:     { background: "#ffffff", borderRadius: 12, padding: 22, border: "1px solid #e2e8f0", marginBottom: 16, boxShadow: "0 1px 4px #0000000a" },
-  input:    { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box" },
-  select:   { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", color: "#1A1A1A", fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box" },
-  label:    { fontSize: 11, color: "#475569", marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" },
-  btn:      (c = "#0369a1") => ({ background: c, color: "#fff", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
-  btnGhost: { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  app:      { fontFamily: ui.pismo, background: ui.barvy.pozadi, minHeight: "100vh", color: ui.barvy.text, padding: "20px 28px" },
+  card:     { ...ui.karta, marginBottom: 16 },
+  input:    { ...ui.pole, padding: "8px 10px" },
+  select:   { ...ui.pole, padding: "8px 10px" },
+  label:    ui.popisek,
+  btn:      (c) => ui.tlacitko(c),
+  btnGhost: ui.tlacitkoObrys(),
   th:       { textAlign: "left", padding: "7px 8px", fontSize: 11, color: "#475569", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.05em" },
   td:       { padding: "5px 8px", fontSize: 13, color: "#1A1A1A" },
 };

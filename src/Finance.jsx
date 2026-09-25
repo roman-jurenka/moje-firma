@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
 import { isConnected, uploadFileObject } from "./onedrive.js";
 import { StorageLink } from "./storageUrl.jsx";
+import * as ui from "./ui.js";
 
 // ─── Modul Finanční tok ───────────────────────────────────────────────────
 // Počáteční stav bankovního účtu + průběžná evidence odeslaných/přijatých
@@ -570,7 +571,7 @@ function EntryModal({ onSave, onClose, currentUser, restrictToReceipts = false, 
 
 const card = { background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e2e8f0", boxShadow: "0 1px 4px #0000000a" };
 const cardLabel = { fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, fontWeight: 700 };
-const btnPrimary = { background: "#F5C518", color: "#1A1A1A", border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const btnPrimary = ui.tlacitko();
 const btnGhost = { background: "transparent", color: "#0369a1", border: "1px solid #0369a1", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
 const modalOverlay = { position: "fixed", inset: 0, background: "#00000066", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 400 };
 const modalBox = { background: "#fff", borderRadius: 16, padding: 24, width: 440, maxWidth: "92vw", maxHeight: "88vh", overflowY: "auto", border: "1px solid #e2e8f0", boxShadow: "0 20px 60px #0000001a", boxSizing: "border-box" };

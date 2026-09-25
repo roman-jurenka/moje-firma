@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { login, logout, isConnected, getUser, backupToOneDrive, connectSharedAccount, getLastBackupInfo, recordBackupStatus } from "./onedrive.js";
+import * as ui from "./ui.js";
 
 const S = {
-  card: { background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px", marginBottom: 16, boxShadow: "0 1px 4px #0000000a" },
-  btn: (bg = "#0369a1") => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", cursor: "pointer", fontWeight: 600, fontSize: 13 }),
-  tag: (color) => ({ background: color + "22", color, border: `1px solid ${color}44`, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }),
+  card: { ...ui.karta, padding: "20px 24px", marginBottom: 16 },
+  btn: (bg) => ui.tlacitko(bg),
+  tag: (color) => ui.stitek(color),
 };
 
 export default function OneDrivePanel({ supabase }) {

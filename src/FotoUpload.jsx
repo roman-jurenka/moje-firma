@@ -4,12 +4,13 @@ import { uploadFileObject, isConnected, connectSharedAccount } from "./onedrive.
 import { FOTO_KATEGORIE } from "./ZakazkaSheet.jsx";
 import { tryOrQueue } from "./offlineQueue.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
+import * as ui from "./ui.js";
 
 const S = {
-  app: { fontFamily: "'DM Sans',sans-serif", background: "#f0f4f8", minHeight: "100vh", color: "#1A1A1A", padding: "20px" },
-  card: { background: "#ffffff", borderRadius: 12, border: "1px solid #e2e8f0", padding: "16px 18px", marginBottom: 12, boxShadow: "0 1px 4px #0000000a" },
-  inp: { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "9px 12px", color: "#1A1A1A", fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" },
-  btn: (c = "#0369a1") => ({ background: c, color: "#1A1A1A", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }),
+  app: { fontFamily: ui.pismo, background: ui.barvy.pozadi, minHeight: "100vh", color: ui.barvy.text, padding: "20px" },
+  card: { ...ui.karta, padding: "16px 18px", marginBottom: 12 },
+  inp: { ...ui.pole, fontSize: 14 },
+  btn: (c) => ui.tlacitko(c),
 };
 
 // Stejná konvence jako Docházka a záložka "Fotky" v Zakázkách — všechny
