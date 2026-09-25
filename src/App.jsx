@@ -567,6 +567,46 @@ function ContractPhotoPicker({ onSelect, onClose }) {
   );
 }
 
+// Hláška o zápisu, který databáze odmítla (viz hlídač v src/supabase.js).
+// Stejná chyba se ukáže nejvýš jednou za 5 minut — offline fronta zkouší
+// zaseknutou položku každých 30 s a hláška by jinak vyskakovala pořád.
+const DB_CHYBA_TEXTY = {
+  "42501": "Na tuhle akci nemáte oprávnění.",
+  "23503": "Záznam je navázaný na jiná data, proto ho nejde změnit ani smazat.",
+  "23502": "Chybí povinný údaj.",
+  "22P02": "Některé pole má neplatnou hodnotu.",
+};
+const dbChybaNaposledy = new Map();
+function DbChybaHlaska() {
+  const [chyba, setChyba] = useState(null);
+  useEffect(() => {
+    let timer;
+    const h = (e) => {
+      const d = e.detail || {};
+      const text = DB_CHYBA_TEXTY[d.code] || d.message || "Neznámá chyba.";
+      const klic = d.tabulka + "|" + text;
+      if (Date.now() - (dbChybaNaposledy.get(klic) || 0) < 5 * 60000) return;
+      dbChybaNaposledy.set(klic, Date.now());
+      console.error("Zápis do databáze se nepovedl:", d);
+      setChyba({ text, tabulka: d.tabulka });
+      clearTimeout(timer);
+      timer = setTimeout(() => setChyba(null), 8000);
+    };
+    window.addEventListener("dbChyba", h);
+    return () => { window.removeEventListener("dbChyba", h); clearTimeout(timer); };
+  }, []);
+  if (!chyba) return null;
+  return (
+    <div role="alert" onClick={() => setChyba(null)}
+      style={{ position: "fixed", left: "50%", bottom: 20, transform: "translateX(-50%)", zIndex: 1000, maxWidth: "min(92vw, 520px)",
+        background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: 10, padding: "12px 16px",
+        boxShadow: "0 8px 30px #0000002a", fontSize: 13, cursor: "pointer" }}>
+      <strong>⚠️ Neuloženo.</strong> {chyba.text}
+      <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 4 }}>Tabulka: {chyba.tabulka} · klepnutím zavřete</div>
+    </div>
+  );
+}
+
 function ModalHeader({ title, onClose }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -1053,10 +1093,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     return unsub;
   }, [loadAllData]);
 
-  // ── Supabase CRUD helpers ──
-  const dbAdd = async (table, data) => { const { data: row } = await supabase.from(table).insert(data).select().single(); return row; };
-  const dbUpdate = async (table, id, data) => { await supabase.from(table).update(data).eq("id", id); };
-  const dbDelete = async (table, id) => { await supabase.from(table).delete().eq("id", id); };
   // Nová záložka Průběh zakázek: kdo má povolené Zakázky, vidí i ji (i s
   // vlastním nastavením záložek v Oprávnění, kde by jinak chyběla).
   const zakladTabs = currentUser.navOverride || ROLES[currentUser.role]?.nav || [];
@@ -1290,6 +1326,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           </div>
         </>
       )}
+      <DbChybaHlaska />
       {/* Rychlý check-in/check-out — na mobilu je postranní panel schovaný za
           hamburgerem, takže bez tohohle by ho terénní pracovník musel nejdřív
           otevřít. Palcem dosažitelné tlačítko vpravo dole, viditelné jen na
