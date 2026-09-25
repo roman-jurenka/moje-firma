@@ -94,7 +94,7 @@ Změny databáze patří do nového souboru v `supabase/migrations/`.
 | `hlaseni-odeslat` | Hlášení (Pushover, push notifikace), docházka na pozadí, ranní úkoly; volá ji pg_cron každých 5 min | tajemství z Vaultu / přihlášený admin |
 | `invite-employee` | pozvánka nového zaměstnance e-mailem (HR) | přihlášený admin |
 | `faktury-prijem` | příjem faktur z e-mailu do fronty ke schválení | vlastní token `FAKTURY_PRIJEM_TOKEN` |
-| `check-urgence-notify` | starší předchůdce hlášení, nepoužívá se | **žádná — doporučeno smazat** |
+| `check-urgence-notify` | zrušená (vrací jen chybu 410), starší předchůdce hlášení | přihlášení — doporučeno smazat |
 | `swift-handler` | stará kopie `invite-employee` (zdroj není v repozitáři) | přihlášený admin — doporučeno smazat |
 
 Kód v `supabase/functions/` odpovídá verzím nasazeným v září 2026.
