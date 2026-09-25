@@ -1110,7 +1110,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "DM Sans, sans-serif" }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 28, fontWeight: 800, color: "#1A1A1A", marginBottom: 16 }}>Firma<span style={{ color: "#0369a1" }}>CRM</span><span style={{ color: "#F5821F" }}>+ERP</span></div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: "#1A1A1A", marginBottom: 16 }}><span style={{ color: "#0369a1" }}>Proud</span><span style={{ color: "#F5821F" }}>OS</span></div>
         <div style={{ color: "#475569", fontSize: 14 }}>Načítám data z databáze...</div>
         <div style={{ marginTop: 20, display: "flex", gap: 6, justifyContent: "center" }}>
           {[0,1,2].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: "#0369a1", animation: `pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />)}
@@ -9867,7 +9867,7 @@ export default function App() {
               </button>
             ))}
           </div>
-          <div style={{ textAlign: "center", marginTop: 12, e: 12, color: "#64748b" }}>© 2026 ProudOS</div>
+          <div style={{ textAlign: "center", marginTop: 12, fontSize: 12, color: "#64748b" }}>© 2026 ProudOS</div>
         </div>
       </div>
     );

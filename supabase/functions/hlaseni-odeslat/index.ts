@@ -6,6 +6,7 @@
 // Volání:
 //   - pg_cron každých 5 minut: hlavička x-cron-secret (tajemství z Vaultu), body {"akce":"tick"}
 //     -> ranní souhrn v nastavených časech + okamžitá upozornění (mimo klidné hodiny)
+//   - ranní připomínky úkolů zaměstnancům (akce "ukoly" + tick): úkoly s dnešním termínem, jednou za den
 //   - docházka na pozadí: akce "dochazka" (trigger na attendance + tick) posílá zaměstnancům notifikaci s odpracovaným časem
 //   - aplikace (jen přihlášený admin, JWT): akce "test" (volitelně kanal: pushover|webpush), "nahled", "souhrn_ted"
 //
@@ -146,7 +147,7 @@ async function webPushProfil(profileId: string, payload: PushPayload) {
   return odesliOdberum((odb || []) as Odber[], payload, 0)
 }
 
-type Nastaveni = { pushover: boolean; webpush: boolean; dochazka_zapnuto?: boolean; dochazka_interval_min?: number; [k: string]: unknown }
+type Nastaveni = { pushover: boolean; webpush: boolean; dochazka_zapnuto?: boolean; dochazka_interval_min?: number; ukoly_zapnuto?: boolean; [k: string]: unknown }
 
 // Pošle zprávu všemi zapnutými kanály; úspěch = aspoň jeden kanál doručil.
 async function posli(nast: Nastaveni, title: string, message: string, priorita: number) {
@@ -375,6 +376,61 @@ async function dochazkaTick(nast: { dochazka_zapnuto?: boolean; dochazka_interva
   return { stav: 'ok', odeslano }
 }
 
+// ── Ranní připomínky úkolů zaměstnancům ─────────────────────────────────────
+// Každé ráno od 7:00 (Praha) dostane zaměstnanec jednu notifikaci s jeho úkoly,
+// jejichž termín je dnes (tasks.assigned_to = jméno zaměstnance, nedokončené).
+// Každý úkol se pošle jen jednou za den (tabulka ukoly_push).
+const ukolyText = (n: number) => (n === 1 ? 'úkol' : n >= 2 && n <= 4 ? 'úkoly' : 'úkolů')
+
+async function ukolyTick(nast: { ukoly_zapnuto?: boolean }) {
+  if (nast.ukoly_zapnuto === false) return { stav: 'vypnuto' }
+  const { date, hm } = pragueNow()
+  const min = toMin(hm)
+  if (min < 7 * 60 || min >= 12 * 60) return { stav: 'mimo_okno' }
+
+  const { data: ukoly } = await db.from('tasks').select('id, title, assigned_to').eq('due', date).eq('done', false)
+  const vsechny = ((ukoly || []) as { id: number; title: string | null; assigned_to: string | null }[]).filter((t) => (t.assigned_to || '').trim())
+  if (!vsechny.length) return { stav: 'zadne', odeslano: 0 }
+
+  const { data: emps } = await db.from('employees').select('id, name')
+  const idPodleJmena = new Map<string, number[]>()
+  for (const e of (emps || []) as { id: number; name: string | null }[]) {
+    const k = (e.name || '').trim().toLowerCase()
+    if (!k) continue
+    idPodleJmena.set(k, [...(idPodleJmena.get(k) || []), Number(e.id)])
+  }
+
+  const { data: odb } = await db.from('push_odbery').select('profile_id, profiles!inner(employee_id)')
+  const profilyZamestnance = new Map<number, Set<string>>()
+  for (const o of (odb || []) as unknown as { profile_id: string; profiles: { employee_id: number | null } | { employee_id: number | null }[] }[]) {
+    const pr = Array.isArray(o.profiles) ? o.profiles[0] : o.profiles
+    if (pr?.employee_id == null) continue
+    const k = Number(pr.employee_id)
+    profilyZamestnance.set(k, (profilyZamestnance.get(k) || new Set()).add(o.profile_id))
+  }
+
+  // profil -> úkoly, které mu dnes ještě nebyly připomenuty
+  const proProfil = new Map<string, string[]>()
+  let odeslano = 0
+  for (const t of vsechny) {
+    const ids = idPodleJmena.get((t.assigned_to || '').trim().toLowerCase()) || []
+    const profily = new Set<string>()
+    for (const id of ids) for (const p of profilyZamestnance.get(id) || []) profily.add(p)
+    if (!profily.size) continue
+    const { data: claimed } = await db.from('ukoly_push').upsert({ task_id: t.id, den: date }, { onConflict: 'task_id,den', ignoreDuplicates: true }).select('task_id')
+    if (!claimed?.length) continue
+    for (const p of profily) proProfil.set(p, [...(proProfil.get(p) || []), t.title || 'Úkol'])
+  }
+
+  for (const [profil, tituly] of proProfil) {
+    const n = tituly.length
+    const ukazka = tituly.slice(0, 3).join(', ') + (n > 3 ? ` a další (${n - 3})` : '')
+    await webPushProfil(profil, { title: `Dnes máš ${n} ${ukolyText(n)}`, body: ukazka, tag: 'ukoly', url: APP_URL })
+    odeslano++
+  }
+  return { stav: 'ok', odeslano }
+}
+
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -406,6 +462,7 @@ Deno.serve(async (req) => {
     }
 
     if (akce === 'dochazka') return json({ status: 'ok', dochazka: await dochazkaTick(nast) })
+    if (akce === 'ukoly') return json({ status: 'ok', ukoly: await ukolyTick(nast) })
 
     if (akce === 'nahled') {
       const rules = await nactiPravidla()
@@ -427,6 +484,7 @@ Deno.serve(async (req) => {
     if (akce === 'tick') {
       const vysledek: Record<string, unknown> = {}
       vysledek.dochazka = await dochazkaTick(nast).catch((e) => ({ chyba: (e as Error).message }))
+      vysledek.ukoly = await ukolyTick(nast).catch((e) => ({ chyba: (e as Error).message }))
       if (!nast.zapnuto) return json({ status: 'vypnuto', ...vysledek })
       const rules = await nactiPravidla()
 
