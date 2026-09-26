@@ -655,7 +655,7 @@ export default function Prubeh({
     if (novyZak) {
       const { data: c, error: cErr } = await supabase.from("customers").insert({
         name: novyZak.name, phone: novyZak.phone.trim() || null, email: novyZak.email.trim() || null,
-        address: nova.adresa?.trim() || "", tag: "Nový",
+        address: (novyZak.adresa || "").trim() || nova.adresa?.trim() || "", tag: "Nový",
       }).select().single();
       if (cErr) { setPracuji(false); alert("Zákazníka se nepodařilo založit: " + cErr.message); return; }
       customerId = c.id;
@@ -714,7 +714,7 @@ export default function Prubeh({
             {frontaBtn("re", "Realizace", "#15803d")}
           </div>
           {smiNastavit && <button type="button" style={btnGhost} onClick={() => setNastaveniForm(Object.fromEntries(FAZE.map((f) => [f.id, { dny: f.dny, typy: Object.fromEntries(TYPY.map((t) => [t.id, pravidlo(f, t.id)])), ukoly: f.ukoly.map((u) => ({ ...u })) }])))}>⚙️ Nastavení fází</button>}
-          <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "", zakRezim: null, zakHledat: "", novyZak: { name: "", phone: "", email: "" } })}>+ Nová poptávka</button>
+          <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "", zakRezim: null, zakHledat: "", novyZak: { name: "", phone: "", email: "", adresa: "" } })}>+ Nová poptávka</button>
         </div>
       </div>
 
@@ -911,6 +911,11 @@ export default function Prubeh({
                 <div><label style={lbl} htmlFor="pr-nz-mail">E-mail</label>
                   <input id="pr-nz-mail" type="email" style={inp} value={nova.novyZak.email}
                     onChange={(e) => setNova({ ...nova, novyZak: { ...nova.novyZak, email: e.target.value } })} /></div>
+                {/* Adresa zákazníka — předvyplní i místo realizace (dá se níž přepsat) */}
+                <div style={{ gridColumn: "1 / -1" }}><label style={lbl} htmlFor="pr-nz-adr">Adresa zákazníka</label>
+                  <input id="pr-nz-adr" style={inp} value={nova.novyZak.adresa || ""} placeholder="ulice, obec"
+                    onChange={(e) => setNova({ ...nova, novyZak: { ...nova.novyZak, adresa: e.target.value },
+                      adresa: nova.adresa === (nova.novyZak.adresa || "") ? e.target.value : nova.adresa })} /></div>
               </div>
             )}
 

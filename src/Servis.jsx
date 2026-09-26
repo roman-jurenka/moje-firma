@@ -28,7 +28,7 @@ const dnes = () => new Date().toLocaleDateString("sv-SE");
 
 const prazdnyFormular = (contractId = "") => ({
   contract_id: contractId ? String(contractId) : "", customer_id: "", zakHledat: "", hledat: "",
-  zakRezim: "stavajici", novyZak: { name: "", phone: "", email: "" }, novaZakazka: false, nazev: "", popis: "", priorita: "Střední", placeny: false,
+  zakRezim: "stavajici", novyZak: { name: "", phone: "", email: "", adresa: "" }, novaZakazka: false, nazev: "", popis: "", priorita: "Střední", placeny: false,
   technik_id: "", termin: "", adresa: "", kontakt: "", telefon: "",
 });
 
@@ -124,13 +124,13 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
       if (novyKlient) {
         const { data: c, error } = await supabase.from("customers").insert({
           name: f.novyZak.name.trim(), phone: f.novyZak.phone.trim() || null, email: f.novyZak.email.trim() || null,
-          address: f.adresa.trim() || "", tag: "Nový",
+          address: (f.novyZak.adresa || "").trim() || f.adresa.trim() || "", tag: "Nový",
         }).select().single();
         if (error) throw new Error("Zákazníka se nepodařilo založit: " + error.message);
         setNoviZakaznici((z) => [...z, c]);
         onZakaznikZalozen?.(c);
         customerIdNovy = c.id;
-        const k = await zalozitServisniZakazku(c, f.adresa.trim());
+        const k = await zalozitServisniZakazku(c, f.adresa.trim() || (f.novyZak.adresa || "").trim());
         contractIdNovy = k.id;
       } else if (zalozitZakazku) {
         const k = await zalozitServisniZakazku(zakaznik(customerIdNovy), f.adresa.trim());
@@ -335,6 +335,10 @@ function FormularTicketu({ formular: f, setFormular, zakazky, zakaznici, zakazka
               <div><label style={ui.popisek} htmlFor="st-nz-mail">E-mail</label>
                 <input id="st-nz-mail" type="email" style={ui.pole} value={f.novyZak.email}
                   onChange={(e) => set({ novyZak: { ...f.novyZak, email: e.target.value } })} /></div>
+              {/* Adresa zákazníka — uloží se k zákazníkovi i zakázce a předvyplní adresu servisu */}
+              <div style={{ gridColumn: "1 / -1" }}><label style={ui.popisek} htmlFor="st-nz-adr">Adresa zákazníka</label>
+                <input id="st-nz-adr" style={ui.pole} value={f.novyZak.adresa || ""} placeholder="ulice, obec"
+                  onChange={(e) => set({ novyZak: { ...f.novyZak, adresa: e.target.value }, adresa: f.adresa === (f.novyZak.adresa || "") ? e.target.value : f.adresa })} /></div>
             </div>
             <div style={{ fontSize: 13, color: ui.barvy.textMekky, background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: "8px 12px" }}>
               <i className="ti ti-info-circle" aria-hidden="true"></i> Založí se zákazník a k němu servisní zakázka (SRV) — najdeš je pak i v Zákaznících, Zakázkách a Průběhu.
