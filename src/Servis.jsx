@@ -27,11 +27,18 @@ const fmtDatum = (iso) => (iso ? new Date(iso + "T00:00:00").toLocaleDateString(
 const dnes = () => new Date().toLocaleDateString("sv-SE");
 
 const prazdnyFormular = (contractId = "") => ({
-  contract_id: contractId ? String(contractId) : "", customer_id: "", zakHledat: "", hledat: "", nazev: "", popis: "", priorita: "Střední", placeny: false,
+  contract_id: contractId ? String(contractId) : "", customer_id: "", zakHledat: "", hledat: "",
+  zakRezim: "stavajici", novyZak: { name: "", phone: "", email: "" }, novaZakazka: false, nazev: "", popis: "", priorita: "Střední", placeny: false,
   technik_id: "", termin: "", adresa: "", kontakt: "", telefon: "",
 });
 
-export default function Servis({ contracts = [], customers = [], employees = [], currentUser, setCalendarEvents, contractId = null }) {
+export default function Servis({ contracts: zakazkyProps = [], customers: zakazniciProps = [], employees = [], currentUser, setCalendarEvents, contractId = null, onZakaznikZalozen, onZakazkaZalozena }) {
+  // Zákazníci a servisní zakázky založené přímo tady (nový klient) — než se
+  // promítnou do seznamů v appce, drží se lokálně.
+  const [noviZakaznici, setNoviZakaznici] = useState([]);
+  const [noveZakazky, setNoveZakazky] = useState([]);
+  const customers = [...zakazniciProps, ...noviZakaznici.filter((c) => !zakazniciProps.some((x) => x.id === c.id))];
+  const contracts = [...zakazkyProps, ...noveZakazky.filter((c) => !zakazkyProps.some((x) => x.id === c.id))];
   const vlozeny = !!contractId;
   const [tickety, setTickety] = useState([]);
   const [nacteno, setNacteno] = useState(false);
@@ -85,14 +92,56 @@ export default function Servis({ contracts = [], customers = [], employees = [],
     return { ...t, calendar_event_id: nova.id };
   };
 
+  // Nový klient / zákazník bez zakázky: založí se servisní zakázka (typ SRV)
+  // s kódem stejně jako v Zakázkách (SRV-RRM-INICIÁLY-0001).
+  const zalozitServisniZakazku = async (zak, adresa) => {
+    const ted = new Date();
+    const rok = ted.getFullYear() % 100, mesic = ted.getMonth() + 1;
+    const { data: poradi } = await supabase.rpc("next_contract_code_number", { p_type: "SRV", p_year: rok, p_month: mesic });
+    const inicialy = (currentUser?.name || "").trim().split(/\s+/).filter(Boolean).map((w) => w[0]).join("").toUpperCase().slice(0, 3) || "XX";
+    const kod = poradi != null ? `SRV-${rok}${mesic}-${inicialy}-${String(poradi).padStart(4, "0")}` : null;
+    const { data, error } = await supabase.from("contracts").insert({
+      name: `Servis · ${zak.name}`, customer_id: zak.id, type: "SRV", status: "Nová", code: kod, address: adresa || zak.address || null,
+    }).select().single();
+    if (error) throw new Error("Servisní zakázku se nepodařilo založit: " + error.message);
+    setNoveZakazky((z) => [...z, data]);
+    onZakazkaZalozena?.(data);
+    return data;
+  };
+
   const ulozitTicket = async () => {
     const f = formular;
-    if (!f.contract_id) { alert("Vyber zakázku, ke které servis patří."); return; }
+    const novyKlient = !f.id && f.zakRezim === "novy";
+    const zakBezZakazky = !f.id && !novyKlient && f.customer_id && !contracts.some((k) => k.customer_id === Number(f.customer_id));
+    const zalozitZakazku = !f.contract_id && (novyKlient || zakBezZakazky || (f.novaZakazka && f.customer_id));
+    if (novyKlient && !f.novyZak.name.trim()) { alert("Zadej jméno nového zákazníka."); return; }
+    if (!f.contract_id && !zalozitZakazku) { alert("Vyber zákazníka a zakázku, ke které servis patří."); return; }
     if (!f.nazev.trim()) { alert("Napiš krátce, co nefunguje."); return; }
     setUkladam(true);
-    const k = zakazka(f.contract_id);
+    let contractIdNovy = f.contract_id ? Number(f.contract_id) : null;
+    let customerIdNovy = f.customer_id ? Number(f.customer_id) : null;
+    try {
+      if (novyKlient) {
+        const { data: c, error } = await supabase.from("customers").insert({
+          name: f.novyZak.name.trim(), phone: f.novyZak.phone.trim() || null, email: f.novyZak.email.trim() || null,
+          address: f.adresa.trim() || "", tag: "Nový",
+        }).select().single();
+        if (error) throw new Error("Zákazníka se nepodařilo založit: " + error.message);
+        setNoviZakaznici((z) => [...z, c]);
+        onZakaznikZalozen?.(c);
+        customerIdNovy = c.id;
+        const k = await zalozitServisniZakazku(c, f.adresa.trim());
+        contractIdNovy = k.id;
+      } else if (zalozitZakazku) {
+        const k = await zalozitServisniZakazku(zakaznik(customerIdNovy), f.adresa.trim());
+        contractIdNovy = k.id;
+      }
+    } catch (e) {
+      setUkladam(false); alert(e.message); return;
+    }
+    const k = zakazka(contractIdNovy);
     const zaznam = {
-      contract_id: Number(f.contract_id), customer_id: (f.customer_id ? Number(f.customer_id) : null) || k?.customer_id || null, nazev: f.nazev.trim(), popis: f.popis.trim() || null,
+      contract_id: contractIdNovy, customer_id: customerIdNovy || k?.customer_id || null, nazev: f.nazev.trim(), popis: f.popis.trim() || null,
       priorita: f.priorita, placeny: f.placeny, technik_id: f.technik_id ? Number(f.technik_id) : null, termin: f.termin || null,
       adresa: f.adresa.trim() || null, kontakt: f.kontakt.trim() || null, telefon: f.telefon.trim() || null,
     };
@@ -257,67 +306,111 @@ function FormularTicketu({ formular: f, setFormular, zakazky, zakaznici, zakazka
       <div style={{ ...ui.oknoObsah, width: 560, textAlign: "left", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ fontSize: 18, fontWeight: 800 }}>{f.id ? "Upravit ticket" : "Nový servisní ticket"}</div>
 
-        {/* Zákazník — nejdřív on, pak jeho zakázka */}
-        <div>
-          <label style={ui.popisek}>Zákazník</label>
-          {vybranyZak ? (
-            <div style={vybranyBox}>
-              <i className="ti ti-user" aria-hidden="true" style={{ fontSize: 18, color: ui.barvy.primarni }}></i>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700 }}>{vybranyZak.name}{vybranyZak.company ? ` · ${vybranyZak.company}` : ""}</div>
-                <div style={{ fontSize: 12, color: ui.barvy.textSlaby }}>{[vybranyZak.phone, vybranyZak.address].filter(Boolean).join(" · ")}</div>
-              </div>
-              {!pevnaZakazka && !f.id && <button type="button" style={ui.tlacitkoObrys("male")} onClick={() => set({ customer_id: "", contract_id: "", zakHledat: "" })}>Změnit</button>}
-            </div>
-          ) : (
-            <>
-              <input style={ui.pole} autoFocus value={f.zakHledat || ""} placeholder="Hledat zákazníka podle jména, telefonu nebo firmy…" onChange={(e) => set({ zakHledat: e.target.value })} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6, maxHeight: 180, overflowY: "auto" }}>
-                {nalezeniZak.length === 0 && <div style={{ fontSize: 13, color: ui.barvy.textSlaby, padding: 6 }}>Nikdo nenalezen.</div>}
-                {nalezeniZak.map((z) => {
-                  const pocet = zakazky.filter((k) => k.customer_id === z.id).length;
-                  return (
-                    <button key={z.id} type="button" onClick={() => vybratZakaznika(z)} style={polozkaSeznamu}>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{z.name}</div>
-                      <div style={{ fontSize: 12, color: ui.barvy.textSlaby }}>{[z.company, z.phone, pocet ? `${pocet} ${pocet === 1 ? "zakázka" : pocet < 5 ? "zakázky" : "zakázek"}` : "bez zakázky"].filter(Boolean).join(" · ")}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
+        {/* Zákazník — stávající (hledání) nebo nový klient, který se právě ozval */}
+        {!f.id && !pevnaZakazka && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {[["stavajici", "ti-user-search", "Stávající zákazník"], ["novy", "ti-user-plus", "Nový zákazník"]].map(([id, icon, label]) => {
+              const aktivni = f.zakRezim === id;
+              return (
+                <button key={id} type="button" aria-pressed={aktivni}
+                  onClick={() => set({ zakRezim: id, ...(id === "novy" ? { customer_id: "", contract_id: "", novaZakazka: false } : {}) })}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "12px 8px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700,
+                    border: `2px solid ${aktivni ? ui.barvy.primarni : ui.barvy.okraj}`, background: aktivni ? "#e0f2fe" : "#fff", color: aktivni ? ui.barvy.primarni : "#334155" }}>
+                  <i className={`ti ${icon}`} aria-hidden="true" style={{ fontSize: 22 }}></i>{label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        <div>
-          <label style={ui.popisek}>Zakázka *</label>
-          {vybrana ? (
-            <div style={vybranyBox}>
-              <i className="ti ti-file-invoice" aria-hidden="true" style={{ fontSize: 18, color: ui.barvy.primarni }}></i>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700 }}>{[vybrana.code, vybrana.name].filter(Boolean).join(" · ")}</div>
-                <div style={{ fontSize: 12, color: ui.barvy.textSlaby }}>{[vybrana.address, vybrana.status].filter(Boolean).join(" · ")}</div>
-              </div>
-              {!pevnaZakazka && !f.id && <button type="button" style={ui.tlacitkoObrys("male")} onClick={() => set({ contract_id: "" })}>Změnit</button>}
+        {f.zakRezim === "novy" && !f.id ? (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ gridColumn: "1 / -1" }}><label style={ui.popisek} htmlFor="st-nz-jmeno">Jméno zákazníka *</label>
+                <input id="st-nz-jmeno" style={ui.pole} autoFocus value={f.novyZak.name} placeholder="Jan Novák"
+                  onChange={(e) => set({ novyZak: { ...f.novyZak, name: e.target.value }, kontakt: f.kontakt === f.novyZak.name ? e.target.value : f.kontakt })} /></div>
+              <div><label style={ui.popisek} htmlFor="st-nz-tel">Telefon</label>
+                <input id="st-nz-tel" type="tel" style={ui.pole} value={f.novyZak.phone}
+                  onChange={(e) => set({ novyZak: { ...f.novyZak, phone: e.target.value }, telefon: f.telefon === f.novyZak.phone ? e.target.value : f.telefon })} /></div>
+              <div><label style={ui.popisek} htmlFor="st-nz-mail">E-mail</label>
+                <input id="st-nz-mail" type="email" style={ui.pole} value={f.novyZak.email}
+                  onChange={(e) => set({ novyZak: { ...f.novyZak, email: e.target.value } })} /></div>
             </div>
-          ) : vybranyZak && nalezene.length === 0 && !q ? (
-            <div style={{ fontSize: 13, color: ui.barvy.varovani, background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: "8px 12px" }}>
-              Zákazník zatím nemá žádnou zakázku. Servis patří k zakázce — založ ji nejdřív (třeba jako SRV v Průběhu zakázek).
+            <div style={{ fontSize: 13, color: ui.barvy.textMekky, background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: "8px 12px" }}>
+              <i className="ti ti-info-circle" aria-hidden="true"></i> Založí se zákazník a k němu servisní zakázka (SRV) — najdeš je pak i v Zákaznících, Zakázkách a Průběhu.
             </div>
-          ) : (
-            <>
-              <input style={ui.pole} value={f.hledat} placeholder={vybranyZak ? `Zakázky zákazníka ${vybranyZak.name}…` : "…nebo rovnou hledat zakázku, kód, adresu"} onChange={(e) => set({ hledat: e.target.value })} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6, maxHeight: 200, overflowY: "auto" }}>
-                {nalezene.length === 0 && <div style={{ fontSize: 13, color: ui.barvy.textSlaby, padding: 6 }}>Žádná zakázka nenalezena.</div>}
-                {nalezene.map((k) => (
-                  <button key={k.id} type="button" onClick={() => vybratZakazku(k)} style={polozkaSeznamu}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{[k.code, k.name].filter(Boolean).join(" · ")}</div>
-                    <div style={{ fontSize: 12, color: ui.barvy.textSlaby }}>{[zakaznik(k.customer_id)?.name, k.address, k.status].filter(Boolean).join(" · ")}</div>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <label style={ui.popisek}>Zákazník</label>
+              {vybranyZak ? (
+                <div style={vybranyBox}>
+                  <i className="ti ti-user" aria-hidden="true" style={{ fontSize: 18, color: ui.barvy.primarni }}></i>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700 }}>{vybranyZak.name}{vybranyZak.company ? ` · ${vybranyZak.company}` : ""}</div>
+                    <div style={{ fontSize: 12, color: ui.barvy.textSlaby }}>{[vybranyZak.phone, vybranyZak.address].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  {!pevnaZakazka && !f.id && <button type="button" style={ui.tlacitkoObrys("male")} onClick={() => set({ customer_id: "", contract_id: "", zakHledat: "", novaZakazka: false })}>Změnit</button>}
+                </div>
+              ) : (
+                <>
+                  <input style={ui.pole} autoFocus value={f.zakHledat || ""} placeholder="Hledat zákazníka podle jména, telefonu nebo firmy…" onChange={(e) => set({ zakHledat: e.target.value })} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6, maxHeight: 180, overflowY: "auto" }}>
+                    {nalezeniZak.length === 0 && <div style={{ fontSize: 13, color: ui.barvy.textSlaby, padding: 6 }}>Nikdo nenalezen — zkus „Nový zákazník“.</div>}
+                    {nalezeniZak.map((z) => {
+                      const pocet = zakazky.filter((k) => k.customer_id === z.id).length;
+                      return (
+                        <button key={z.id} type="button" onClick={() => vybratZakaznika(z)} style={polozkaSeznamu}>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>{z.name}</div>
+                          <div style={{ fontSize: 12, color: ui.barvy.textSlaby }}>{[z.company, z.phone, pocet ? `${pocet} ${pocet === 1 ? "zakázka" : pocet < 5 ? "zakázky" : "zakázek"}` : "bez zakázky"].filter(Boolean).join(" · ")}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div>
+              <label style={ui.popisek}>Zakázka *</label>
+              {vybrana ? (
+                <div style={vybranyBox}>
+                  <i className="ti ti-file-invoice" aria-hidden="true" style={{ fontSize: 18, color: ui.barvy.primarni }}></i>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700 }}>{[vybrana.code, vybrana.name].filter(Boolean).join(" · ")}</div>
+                    <div style={{ fontSize: 12, color: ui.barvy.textSlaby }}>{[vybrana.address, vybrana.status].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  {!pevnaZakazka && !f.id && <button type="button" style={ui.tlacitkoObrys("male")} onClick={() => set({ contract_id: "" })}>Změnit</button>}
+                </div>
+              ) : vybranyZak && (f.novaZakazka || !zakazky.some((k) => k.customer_id === vybranyZak.id)) ? (
+                <div style={{ ...vybranyBox, background: "#f0fdf4", borderColor: "#bbf7d0" }}>
+                  <i className="ti ti-file-plus" aria-hidden="true" style={{ fontSize: 18, color: ui.barvy.uspech }}></i>
+                  <div style={{ flex: 1, fontSize: 13 }}>Založí se nová servisní zakázka (SRV) pro {vybranyZak.name}.</div>
+                  {f.novaZakazka && <button type="button" style={ui.tlacitkoObrys("male")} onClick={() => set({ novaZakazka: false })}>Vybrat existující</button>}
+                </div>
+              ) : (
+                <>
+                  <input style={ui.pole} value={f.hledat} placeholder={vybranyZak ? `Zakázky zákazníka ${vybranyZak.name}…` : "…nebo rovnou hledat zakázku, kód, adresu"} onChange={(e) => set({ hledat: e.target.value })} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6, maxHeight: 200, overflowY: "auto" }}>
+                    {nalezene.length === 0 && <div style={{ fontSize: 13, color: ui.barvy.textSlaby, padding: 6 }}>Žádná zakázka nenalezena.</div>}
+                    {nalezene.map((k) => (
+                      <button key={k.id} type="button" onClick={() => vybratZakazku(k)} style={polozkaSeznamu}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{[k.code, k.name].filter(Boolean).join(" · ")}</div>
+                        <div style={{ fontSize: 12, color: ui.barvy.textSlaby }}>{[zakaznik(k.customer_id)?.name, k.address, k.status].filter(Boolean).join(" · ")}</div>
+                      </button>
+                    ))}
+                    {vybranyZak && !pevnaZakazka && (
+                      <button type="button" onClick={() => set({ novaZakazka: true })} style={{ ...polozkaSeznamu, background: "#fff", borderStyle: "dashed", color: ui.barvy.primarni, fontWeight: 600 }}>
+                        <i className="ti ti-plus" aria-hidden="true"></i> Nová servisní zakázka pro {vybranyZak.name}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        )}
 
         <div><label style={ui.popisek} htmlFor="st-nazev">Co nefunguje *</label>
           <input id="st-nazev" style={ui.pole} value={f.nazev} placeholder="např. Střídač hlásí chybu izolace" onChange={(e) => set({ nazev: e.target.value })} /></div>

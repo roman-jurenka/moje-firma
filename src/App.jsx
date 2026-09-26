@@ -1649,7 +1649,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} />}
 
-        {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents} />}
+        {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents}
+          onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
+          onZakazkaZalozena={(k) => setContracts(prev => [...prev, k])} />}
 
         {tab === "hlaseni" && <HlaseniModule currentUser={currentUser} />}
 
