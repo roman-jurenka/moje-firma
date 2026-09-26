@@ -7,6 +7,7 @@
 //   - pg_cron každých 5 minut: hlavička x-cron-secret (tajemství z Vaultu), body {"akce":"tick"}
 //     -> ranní souhrn v nastavených časech + okamžitá upozornění (mimo klidné hodiny)
 //   - ranní připomínky úkolů zaměstnancům (akce "ukoly" + tick): úkoly s dnešním termínem, jednou za den
+//   - servisní ticket (akce "ticket", id): push přiřazenému technikovi (trigger service_tickets_push)
 //   - docházka na pozadí: akce "dochazka" (trigger na attendance + tick) posílá zaměstnancům notifikaci s odpracovaným časem
 //   - aplikace (jen přihlášený admin, JWT): akce "test" (volitelně kanal: pushover|webpush), "nahled", "souhrn_ted"
 //
@@ -431,6 +432,22 @@ async function ukolyTick(nast: { ukoly_zapnuto?: boolean }) {
   return { stav: 'ok', odeslano }
 }
 
+// ── Servisní ticket přiřazený technikovi ────────────────────────────────────
+// Volá trigger service_tickets_push při přiřazení (změně) technika.
+async function ticketPush(id: number) {
+  const { data: t } = await db.from('service_tickets').select('id, cislo, nazev, termin, adresa, technik_id, priorita').eq('id', id).maybeSingle()
+  if (!t?.technik_id) return { stav: 'bez_technika' }
+  const { data: profily } = await db.from('profiles').select('id').eq('employee_id', t.technik_id)
+  if (!profily?.length) return { stav: 'technik_bez_uctu' }
+  const body = [t.nazev, t.termin ? `termín ${csDate(t.termin)}` : null, t.adresa].filter(Boolean).join(' · ')
+  let odeslano = 0
+  for (const p of profily as { id: string }[]) {
+    const r = await webPushProfil(p.id, { title: `🔧 Servis ${t.cislo}${t.priorita === 'Vysoká' ? ' — spěchá' : ''}`, body, tag: `ticket-${t.id}`, url: APP_URL })
+    if (r.ok) odeslano++
+  }
+  return { stav: 'ok', odeslano }
+}
+
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -463,6 +480,7 @@ Deno.serve(async (req) => {
 
     if (akce === 'dochazka') return json({ status: 'ok', dochazka: await dochazkaTick(nast) })
     if (akce === 'ukoly') return json({ status: 'ok', ukoly: await ukolyTick(nast) })
+    if (akce === 'ticket') return json({ status: 'ok', ticket: await ticketPush(Number(body.id)) })
 
     if (akce === 'nahled') {
       const rules = await nactiPravidla()

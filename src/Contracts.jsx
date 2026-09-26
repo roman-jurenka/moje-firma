@@ -1,5 +1,6 @@
 import { isConnected, uploadFileObject } from "./onedrive.js";
 import { OneDriveThumb, StorageImg, StorageLink } from "./storageUrl.jsx";
+import Servis from "./Servis.jsx";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import { tryOrQueue } from "./offlineQueue.js";
@@ -1050,7 +1051,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 {view === "prehled" && (<>
                 {/* TABS */}
                 <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2e8f0", marginBottom: 20 }}>
-                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["faktury",`📄 Faktury (${contInvoices.length})`], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
+                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["faktury",`📄 Faktury (${contInvoices.length})`], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["servis","🔧 Servis"], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
                     <button key={t} onClick={() => setTab(contract.id, t)}
                       style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #0369a1" : "2px solid transparent", color: tab === t ? "#0369a1" : "#475569", padding: "8px 16px", fontSize: 13, cursor: "pointer", fontWeight: tab === t ? 600 : 400 }}>
                       {label}
@@ -1288,6 +1289,11 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                     currentUser={currentUser}
                     onUpload={(file, desc) => uploadPhoto(contract.id, file, desc)}
                   />
+                )}
+
+                {/* TAB: SERVIS — servisní tickety této zakázky */}
+                {tab === "servis" && (
+                  <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} contractId={contract.id} />
                 )}
 
                 {/* TAB: KOMUNIKACE */}

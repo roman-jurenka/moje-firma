@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
-import { isConnected, connectSharedAccount, uploadFileObject } from "./onedrive.js";
-import { compressImage } from "./imageUtils.js";
+import { nahratFotkuZakazky, pocetFotekText } from "./fotkyZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
@@ -312,29 +311,13 @@ export default function Prubeh({
     const { zak, faze, ukol } = cil;
     const kategorie = ukol.fotky;
     setNahravam(kategorie);
-    const nazevSlozky = (contractById(zak.contract_id)?.name || zak.nazev || String(zak.id)).replace(/[/\\?%*:|"<>]/g, "_");
-    const pripojeno = isConnected() || await connectSharedAccount();
     let nahrano = 0;
     for (const puvodni of files) {
       try {
-        const file = await compressImage(puvodni);
-        let url, storagePath, itemId = null;
-        if (pripojeno) {
-          const r = await uploadFileObject(`FirmaCRM/Zakázky/${nazevSlozky}/Fotky`, file);
-          url = r.webUrl; itemId = r.itemId; storagePath = "onedrive:" + file.name;
-        } else {
-          const ext = (file.name || "foto.jpg").split(".").pop();
-          const path = `prubeh-${zak.id}/${crypto.randomUUID()}.${ext}`;
-          const { error } = await supabase.storage.from("zakazky-fotky").upload(path, file);
-          if (error) throw error;
-          url = supabase.storage.from("zakazky-fotky").getPublicUrl(path).data.publicUrl;
-          storagePath = path;
-        }
-        const { data: row, error } = await supabase.from("contract_photos").insert({
-          contract_id: zak.contract_id || null, prubeh_id: zak.id, date: dnesIso(), url,
-          storage_path: storagePath, item_id: itemId, category: kategorie, uploaded_by: currentUser?.employeeId || null,
-        }).select().single();
-        if (error) throw error;
+        const row = await nahratFotkuZakazky(puvodni, {
+          slozka: contractById(zak.contract_id)?.name || zak.nazev || String(zak.id),
+          contractId: zak.contract_id || null, prubehId: zak.id, kategorie, nahral: currentUser?.employeeId || null,
+        });
         setFotkyZ((m) => ({ ...m, [zak.id]: [row, ...(m[zak.id] || [])] }));
         nahrano++;
       } catch (e) {
@@ -343,7 +326,7 @@ export default function Prubeh({
     }
     setNahravam(null);
     if (!nahrano) return;
-    ukazHlasku(`✓ Nahráno ${nahrano} ${nahrano === 1 ? "fotka" : nahrano < 5 ? "fotky" : "fotek"}`);
+    ukazHlasku(`✓ Nahráno ${pocetFotekText(nahrano)}`);
     // Úkol „fotky uložené“ se po nahrání sám odškrtne.
     const aktualni = rows.find((r) => r.id === zak.id) || zak;
     if (!ukolHotovy(aktualni, faze, ukol, autoZ(aktualni))) await toggleUkol(aktualni, faze, ukol);

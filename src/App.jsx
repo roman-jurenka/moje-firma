@@ -10,6 +10,7 @@ import OneDrivePanel from "./OneDrivePanel.jsx";
 import PodpisyModule, { SignFlow } from "./Podpisy.jsx";
 import FinanceModule, { ReceiptsModule } from "./Finance.jsx";
 import HlaseniModule from "./Hlaseni.jsx";
+import Servis from "./Servis.jsx";
 import RychlaObrazovka, { PracePruh } from "./RychlaObrazovka.jsx";
 import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
@@ -423,6 +424,7 @@ const NAV = [
   { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "Obchod" },
   { id: "contracts", label: "Zakázky", icon: "ti-file-invoice", group: "Realizace" },
   { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Realizace" },
+  { id: "servis", label: "Servis", icon: "ti-tool", group: "Realizace" },
   { id: "tasks", label: "Úkoly", icon: "ti-checkbox", group: "Realizace" },
   { id: "warehouse", label: "Sklad", icon: "ti-package", group: "Realizace" },
   { id: "attendance", label: "Docházka", icon: "ti-clock", group: "Terén" },
@@ -1098,7 +1100,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // (data v ní zůstávají, Průběh je používá na pozadí).
   const bezDeals = currentUser.role === "admin" ? sPrubehem : sPrubehem.filter(t => t !== "deals");
   // Náklady jsou teď záložkou ve Finančním toku — kdo má jen Náklady, vidí Finanční tok s nimi.
-  const allowedTabs = bezDeals.includes("costs") && !bezDeals.includes("finance") ? [...bezDeals, "finance"] : bezDeals;
+  const sFinanci = bezDeals.includes("costs") && !bezDeals.includes("finance") ? [...bezDeals, "finance"] : bezDeals;
+  // Servis vidí každý, kdo pracuje se zakázkami nebo v terénu (kancelář i technici).
+  const allowedTabs = !sFinanci.includes("servis") && (sFinanci.includes("contracts") || sFinanci.includes("attendance")) ? [...sFinanci, "servis"] : sFinanci;
   const visibleNav = NAV.filter(n => allowedTabs.includes(n.id));
   const groups = [...new Set(visibleNav.map(n => n.group))];
 
@@ -1433,7 +1437,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       <div className="safe-top-strip" aria-hidden="true" />
       {/* Spodní navigační lišta (jen mobil): 4 nejčastější sekce podle oprávnění + "Více" otevře celé menu */}
       <nav className="mobile-tabbar" aria-label="Hlavní navigace">
-        {["dashboard", "contracts", "tasks", "attendance", "fotoupload", "calendar", "customers", "invoices"]
+        {["dashboard", "contracts", "tasks", "attendance", "servis", "fotoupload", "calendar", "customers", "invoices"]
           .map(id => visibleNav.find(n => n.id === id)).filter(Boolean).slice(0, 4)
           .map(n => (
             <button key={n.id} className={`mobile-tabbar-item${tab === n.id ? " active" : ""}`}
@@ -1644,6 +1648,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         })()}
 
         {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} />}
+
+        {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents} />}
 
         {tab === "hlaseni" && <HlaseniModule currentUser={currentUser} />}
 
