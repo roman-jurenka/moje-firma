@@ -567,3 +567,18 @@ export async function downloadReminderPDF(invoice, customer, level) {
     document.body.removeChild(el);
   }
 }
+
+// Číslo nové faktury: RRRR + 5místné pořadí (např. 202600001) — nejvyšší
+// použité v daném roce + 1. Volá se s čerstvě načtenými čísly z databáze;
+// srážku dvou souběžných faktur hlídá UNIQUE na invoices.number (volající
+// při chybě 23505 zkusí znovu).
+export const nextInvNum = (invoices) => {
+  const prefix = String(new Date().getFullYear());
+  const maxSeq = invoices.reduce((max, inv) => {
+    const num = String(inv.number || "");
+    if (!num.startsWith(prefix)) return max;
+    const seq = parseInt(num.slice(prefix.length), 10);
+    return isNaN(seq) ? max : Math.max(max, seq);
+  }, 0);
+  return `${prefix}${String(maxSeq + 1).padStart(5, "0")}`;
+};

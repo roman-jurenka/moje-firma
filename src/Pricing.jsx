@@ -536,7 +536,7 @@ function NahledSekcove({ type, data, setData, cilovaCena, dphPct, customer, quot
   );
 }
 
-export default function Pricing({ customers, currentUser, onConvertToDeal }) {
+export default function Pricing({ customers, currentUser, onConvertToDeal, initialQuoteId, onClearInitial }) {
   const [quotes, setQuotes] = useState([]);
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState(null);
@@ -663,6 +663,15 @@ export default function Pricing({ customers, currentUser, onConvertToDeal }) {
     setData(fresh);
     savedSnapshotRef.current = JSON.stringify({ name: "", customerId: "", status: "Návrh", type: "", data: fresh });
   };
+
+  // Otevřít konkrétní nabídku po příchodu odjinud (např. „Nacenit“ ze servisního ticketu).
+  useEffect(() => {
+    if (!initialQuoteId || !quotes.length) return;
+    const q = quotes.find((x) => x.id === initialQuoteId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (q) openQuote(q);
+    onClearInitial?.();
+  }, [initialQuoteId, quotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const closeQuote = () => { setActiveId(null); setData(null); setNahledOtevren(false); savedSnapshotRef.current = null; };
 

@@ -14,7 +14,7 @@ import Servis from "./Servis.jsx";
 import RychlaObrazovka, { PracePruh } from "./RychlaObrazovka.jsx";
 import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
-import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel } from "./invoicingUtils.js";
+import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
@@ -508,19 +508,6 @@ const loadEmployeesWithRates = async () => {
 
 const getInitial = (name) => name?.charAt(0).toUpperCase() || "?";
 const fmtKc = (v) => `${Number(v).toLocaleString("cs-CZ")} Kč`;
-// Formát čísla faktury: RRRR + 5místné pořadové číslo (např. 202600001).
-// Pořadové číslo se počítá z nejvyššího dosud použitého v daném roce, ne
-// jen z počtu faktur — díky tomu nekolidují čísla ani po smazání faktury.
-const nextInvNum = (invoices) => {
-  const prefix = String(new Date().getFullYear());
-  const maxSeq = invoices.reduce((max, inv) => {
-    const num = String(inv.number || "");
-    if (!num.startsWith(prefix)) return max;
-    const seq = parseInt(num.slice(prefix.length), 10);
-    return isNaN(seq) ? max : Math.max(max, seq);
-  }, 0);
-  return `${prefix}${String(maxSeq + 1).padStart(5, "0")}`;
-};
 
 // ─── CONTRACT PHOTO PICKER ────────────────────────────────────────────────────
 function ContractPhotoPicker({ onSelect, onClose }) {
@@ -868,8 +855,13 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
   // Obecný event pro přepnutí hlavní záložky odjinud (např. tlačítko
   // "Otevřít modul Fakturace" na záložce Faktury u zakázky v Contracts.jsx).
+  // detail.quoteId = rovnou otevřít konkrétní nabídku v Nacenění (např. ze servisního ticketu).
+  const [pricingInitialId, setPricingInitialId] = useState(null);
   useEffect(() => {
-    const handler = (e) => { if (e.detail?.tab) setTab(e.detail.tab); };
+    const handler = (e) => {
+      if (e.detail?.quoteId) setPricingInitialId(e.detail.quoteId);
+      if (e.detail?.tab) setTab(e.detail.tab);
+    };
     window.addEventListener("gotoTab", handler);
     return () => window.removeEventListener("gotoTab", handler);
   }, [setTab]);
@@ -1557,6 +1549,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* ── NACENĚNÍ ── */}
         {tab === "pricing" && <Pricing
           customers={customers} employees={employees} currentUser={currentUser}
+          initialQuoteId={pricingInitialId} onClearInitial={() => setPricingInitialId(null)}
           onConvertToDeal={(deal, cust, prubehId) => {
             if (deal) setDeals(prev => (prev.some(d => d.id === deal.id) ? prev : [deal, ...prev]));
             if (allowedTabs.includes("prubeh")) { setPrubehInitialId(prubehId || null); setTab("prubeh"); } else setTab("deals");
@@ -1651,7 +1644,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents}
           onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
-          onZakazkaZalozena={(k) => setContracts(prev => [...prev, k])} />}
+          onZakazkaZalozena={(k) => setContracts(prev => [...prev, k])}
+          onFakturaVystavena={(inv) => setInvoices(prev => [...prev, { ...inv, customerId: inv.customer_id }])} />}
 
         {tab === "hlaseni" && <HlaseniModule currentUser={currentUser} />}
 

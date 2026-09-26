@@ -12,6 +12,7 @@ import { supabase } from "./supabase.js";
 import * as ui from "./ui.js";
 import { nahratFotkuZakazky, pocetFotekText } from "./fotkyZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
+import { computeInvoiceTotals, nextInvNum } from "./invoicingUtils.js";
 
 const STAVY_TICKETU = ["Nový", "Naplánovaný", "V řešení", "Čeká na díl", "Vyřešený", "Vyfakturovaný", "Zrušený"];
 const STAV_BARVA = {
@@ -25,6 +26,7 @@ const DOPRAVA_KC_KM = 6.5; // stejná sazba jako v Knize jízd
 const fmtKc = (n) => `${Math.round(Number(n) || 0).toLocaleString("cs-CZ")} Kč`;
 const fmtDatum = (iso) => (iso ? new Date(iso + "T00:00:00").toLocaleDateString("cs-CZ") : "");
 const dnes = () => new Date().toLocaleDateString("sv-SE");
+const zaDni = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString("sv-SE"); };
 
 const prazdnyFormular = (contractId = "") => ({
   contract_id: contractId ? String(contractId) : "", customer_id: "", zakHledat: "", hledat: "",
@@ -32,7 +34,7 @@ const prazdnyFormular = (contractId = "") => ({
   technik_id: "", termin: "", adresa: "", kontakt: "", telefon: "",
 });
 
-export default function Servis({ contracts: zakazkyProps = [], customers: zakazniciProps = [], employees = [], currentUser, setCalendarEvents, contractId = null, onZakaznikZalozen, onZakazkaZalozena }) {
+export default function Servis({ contracts: zakazkyProps = [], customers: zakazniciProps = [], employees = [], currentUser, setCalendarEvents, contractId = null, onZakaznikZalozen, onZakazkaZalozena, onFakturaVystavena }) {
   // Zákazníci a servisní zakázky založené přímo tady (nový klient) — než se
   // promítnou do seznamů v appce, drží se lokálně.
   const [noviZakaznici, setNoviZakaznici] = useState([]);
@@ -259,7 +261,8 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
       {detail && !formular && (
         <DetailTicketu key={detail.id} t={detail} zakazka={zakazka(detail.contract_id)} zakaznik={zakaznik(detail.customer_id)} technik={technik(detail.technik_id)}
           employees={employees} currentUser={currentUser} onZavrit={() => setDetailId(null)} onUpravit={() => otevritFormular(detail)}
-          onStav={(s) => zmenitStav(detail, s)} onReseni={(r) => ulozitReseni(detail, r)} />
+          onStav={(s) => zmenitStav(detail, s)} onReseni={(r) => ulozitReseni(detail, r)}
+          onZmena={(nove) => setTickety((ts) => ts.map((x) => (x.id === nove.id ? nove : x)))} onFakturaVystavena={onFakturaVystavena} />
       )}
     </div>
   );
@@ -465,7 +468,7 @@ function FormularTicketu({ formular: f, setFormular, zakazky, zakaznici, zakazka
 }
 
 // ── Detail ticketu: stav, řešení, fotky, práce a materiál ──
-function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, onZavrit, onUpravit, onStav, onReseni }) {
+function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, onZavrit, onUpravit, onStav, onReseni, onZmena, onFakturaVystavena }) {
   const [reseni, setReseni] = useState(t.reseni || "");
   const [fotky, setFotky] = useState([]);
   const [naklady, setNaklady] = useState([]);
@@ -513,6 +516,10 @@ function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, 
       description: `[${t.cislo}] ${p.popis || p.typ}`, quantity: mn, unit: p.jednotka,
       unit_price_cost: naklad, unit_price_client: klient, amount_cost: mn * naklad, amount_client: mn * klient,
       employee_id: p.typ === "práce" ? (t.technik_id || currentUser?.employeeId || null) : null,
+      // Placený servis: položka je rovnou schválená k fakturaci (fakturuje se
+      // z ticketu, nebo souhrnně v zakázce „K fakturaci“). Záruka: zákazník
+      // nic neplatí, takže se nemá kde objevit k fakturaci — rovnou vyřízená.
+      approved: true, billed: !t.placeny, billed_at: t.placeny ? null : new Date().toISOString(),
     }).select().single();
     if (error) { alert("Položku se nepodařilo uložit: " + error.message); return; }
     setNaklady((n) => [...n, data]);
@@ -629,7 +636,199 @@ function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, 
             </table>
           )}
         </div>
+
+        <NaceneniAFaktura t={t} zakaznik={zakaznik} naklady={naklady} setNaklady={setNaklady} onZmena={onZmena} onFakturaVystavena={onFakturaVystavena} />
       </div>
+    </div>
+  );
+}
+
+// ── Nacenění před opravou a faktura (jen placený servis) ──
+// Nacenit: v Nacenění se založí nabídka typu SRV k zákazníkovi a otevře se.
+// Faktura: když zákazník nabídku schválil, fakturuje se podle ní (sekce
+// nabídky / cena bez DPH); jinak podle skutečnosti — práce, materiál a doprava
+// zapsané u ticketu (cena pro zákazníka). Položky ticketu se pak označí jako
+// vyfakturované, ať se znovu nenabídnou v zakázce „K fakturaci“.
+const prazdnaNabidka = (t) => ({
+  interni: { sazbaMd: 3200, sazbaBod: 0, sazbaHod: 0, radky: [], polozky: [] },
+  zakaznik: { cilovaCena: "", marzePct: "", dph: 21, sekce: [] },
+  denniPlan: [], fve: null,
+  notes: [`Servis ${t.cislo}: ${t.nazev}`, t.popis].filter(Boolean).join("\n"),
+});
+
+// DPH z nabídky, jen povolené sazby (jinak 21 %).
+const dphZNabidky = (d) => ([0, 12, 21].includes(d) ? d : 21);
+
+function NaceneniAFaktura({ t, zakaznik, naklady, setNaklady, onZmena, onFakturaVystavena }) {
+  const [nabidka, setNabidka] = useState(null);
+  const [faktura, setFaktura] = useState(null);
+  const [panel, setPanel] = useState(null);           // { dph, splatnost } — příprava faktury
+  const [pracuji, setPracuji] = useState(false);
+
+  useEffect(() => {
+    if (!t.quote_id) return;
+    supabase.from("quotes").select("id, name, cislo, status, type, data").eq("id", t.quote_id).maybeSingle().then(({ data }) => setNabidka(data));
+  }, [t.quote_id]);
+  useEffect(() => {
+    if (!t.invoice_id) return;
+    supabase.from("invoices").select("id, number, amount, tax, status").eq("id", t.invoice_id).maybeSingle().then(({ data }) => setFaktura(data));
+  }, [t.invoice_id]);
+
+  const otevritNabidku = (id) => window.dispatchEvent(new CustomEvent("gotoTab", { detail: { tab: "pricing", quoteId: id } }));
+
+  const nacenit = async () => {
+    setPracuji(true);
+    const { data: q, error } = await supabase.from("quotes").insert({
+      name: `Servis ${t.cislo} · ${t.nazev}`, customer_id: t.customer_id, type: "SRV", status: "Návrh", data: prazdnaNabidka(t),
+    }).select().single();
+    if (error) { setPracuji(false); alert("Nabídku se nepodařilo založit: " + error.message); return; }
+    const { data: nove, error: e2 } = await supabase.from("service_tickets").update({ quote_id: q.id }).eq("id", t.id).select().single();
+    setPracuji(false);
+    if (e2) { alert("Nabídka je založená, ale nepodařilo se ji připojit k ticketu: " + e2.message); return; }
+    onZmena(nove);
+    otevritNabidku(q.id);
+  };
+
+  const schvalena = nabidka?.status === "Schváleno";
+  const cenaNabidky = Math.round(Number(nabidka?.data?.zakaznik?.cilovaCena) || 0);
+  const nevyfakturovane = naklady.filter((x) => !x.billed && Number(x.amount_client) > 0);
+
+  // Položky faktury podle zvoleného základu.
+  const polozkyFaktury = (dph) => {
+    if (schvalena) {
+      const sekce = (nabidka.data?.zakaznik?.sekce || []).filter((s) => Number(s.castka) > 0);
+      return sekce.length
+        ? sekce.map((s) => ({ desc: s.nazev || "Servis", qty: 1, unit: "ks", price: Math.round(Number(s.castka)), vatRate: dph }))
+        : [{ desc: `Servis dle nabídky ${nabidka.cislo || nabidka.name}`, qty: 1, unit: "ks", price: cenaNabidky, vatRate: dph }];
+    }
+    return nevyfakturovane.map((x) => ({
+      desc: String(x.description || x.cost_type).replace(`[${t.cislo}] `, ""), qty: Number(x.quantity) || 1, unit: x.unit || "ks",
+      price: Number(x.unit_price_client) || 0, vatRate: dph,
+    }));
+  };
+
+  const pripravit = () => setPanel({ dph: dphZNabidky(Number(nabidka?.data?.zakaznik?.dph)), splatnost: zakaznik?.payment_terms_days || 14 });
+
+  const vystavit = async () => {
+    const polozky = polozkyFaktury(Number(panel.dph));
+    const { total, totalTax } = computeInvoiceTotals(polozky);
+    if (!polozky.length || total <= 0) { alert("Není co fakturovat — zapiš práci/materiál s cenou pro zákazníka, nebo nech zákazníka schválit nabídku."); return; }
+    if (!t.customer_id) { alert("Ticket nemá zákazníka — doplň ho přes Upravit."); return; }
+    setPracuji(true);
+    const vystaveno = dnes();
+    const splatno = zaDni(Number(panel.splatnost) || 14);
+    let row = null;
+    // Číslo faktury stejně jako ve Fakturaci; při srážce dvou faktur zkusit další.
+    for (let pokus = 0; pokus < 5 && !row; pokus++) {
+      const { data: cisla } = await supabase.from("invoices").select("number");
+      const cislo = nextInvNum(cisla || []);
+      const { data, error } = await supabase.from("invoices").insert({
+        number: cislo, customer_id: t.customer_id, amount: total - totalTax, tax: totalTax, status: "Čeká",
+        issued: vystaveno, due: splatno, items: polozky, invoice_type: "vydaná", is_deposit: false,
+        order_ref: t.cislo, variable_symbol: cislo.replace(/\D/g, ""), contract_id: t.contract_id,
+      }).select().single();
+      if (!error) row = data;
+      else if (error.code !== "23505") { setPracuji(false); alert("Fakturu se nepodařilo vystavit: " + error.message); return; }
+    }
+    if (!row) { setPracuji(false); alert("Fakturu se nepodařilo vystavit (číslo faktury se opakovaně srazilo), zkus to znovu."); return; }
+    await supabase.from("invoice_events").insert({ invoice_id: row.id, type: "vystavena" });
+    // Všechny dosud nevyfakturované položky ticketu jsou tímto vyřízené.
+    const idPolozek = naklady.filter((x) => !x.billed).map((x) => x.id);
+    if (idPolozek.length) {
+      const ted = new Date().toISOString();
+      await supabase.from("contract_cost_entries").update({ billed: true, billed_at: ted }).in("id", idPolozek);
+      setNaklady((n) => n.map((x) => (idPolozek.includes(x.id) ? { ...x, billed: true, billed_at: ted } : x)));
+    }
+    const { data: nove } = await supabase.from("service_tickets")
+      .update({ invoice_id: row.id, stav: "Vyfakturovaný", vyreseno_at: t.vyreseno_at || new Date().toISOString() }).eq("id", t.id).select().single();
+    if (nove) onZmena(nove);
+    setFaktura(row);
+    onFakturaVystavena?.(row);
+    setPanel(null);
+    setPracuji(false);
+  };
+
+  const sekce = { borderTop: `1px solid ${ui.barvy.okraj}`, paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 };
+  if (!t.placeny) {
+    return (
+      <div style={sekce}>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>Nacenění a faktura</div>
+        <div style={{ fontSize: 13, color: ui.barvy.textSlaby }}>Záruční oprava — zákazník neplatí, nefakturuje se. (Druh jde změnit přes Upravit.)</div>
+      </div>
+    );
+  }
+  const nahled = panel ? computeInvoiceTotals(polozkyFaktury(Number(panel.dph))) : null;
+  const pocetText = (n) => `${n} ${n === 1 ? "položka" : n < 5 ? "položky" : "položek"}`;
+
+  return (
+    <div style={sekce}>
+      <div style={{ fontWeight: 800, fontSize: 14 }}>Nacenění a faktura</div>
+
+      {!t.quote_id ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: ui.barvy.textMekky, flex: 1 }}>Před opravou můžeš servis nacenit a poslat zákazníkovi nabídku ke schválení.</span>
+          <button type="button" style={ui.tlacitkoObrys("male")} disabled={pracuji} onClick={nacenit}><i className="ti ti-calculator" aria-hidden="true"></i> Nacenit</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: ui.barvy.poleBg, border: `1px solid ${ui.barvy.okraj}`, borderRadius: 10, padding: "8px 12px" }}>
+          <i className="ti ti-calculator" aria-hidden="true" style={{ fontSize: 18, color: ui.barvy.primarni }}></i>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>{nabidka ? [nabidka.cislo, nabidka.name].filter(Boolean).join(" · ") : "Nabídka"}</div>
+            <div style={{ fontSize: 12, color: ui.barvy.textSlaby }}>{nabidka ? (cenaNabidky ? `${fmtKc(cenaNabidky)} bez DPH` : "zatím bez ceny") : "načítám…"}</div>
+          </div>
+          {nabidka && <span style={ui.stitek(schvalena ? ui.barvy.uspech : nabidka.status === "Zamítnuto" ? ui.barvy.chyba : ui.barvy.primarni)}>{nabidka.status}</span>}
+          <button type="button" style={ui.tlacitkoObrys("male")} onClick={() => otevritNabidku(t.quote_id)}>Otevřít v Nacenění</button>
+        </div>
+      )}
+
+      {t.invoice_id ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "8px 12px" }}>
+          <i className="ti ti-receipt" aria-hidden="true" style={{ fontSize: 18, color: ui.barvy.uspech }}></i>
+          <div style={{ flex: 1, fontSize: 13 }}>
+            Vyfakturováno{faktura ? `: faktura ${faktura.number} · ${fmtKc(Number(faktura.amount) + Number(faktura.tax || 0))} s DPH · ${faktura.status}` : ""}
+          </div>
+          <button type="button" style={ui.tlacitkoObrys("male")} onClick={() => window.dispatchEvent(new CustomEvent("gotoTab", { detail: { tab: "invoices" } }))}>Otevřít Fakturaci</button>
+        </div>
+      ) : !panel ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: ui.barvy.textMekky, flex: 1 }}>
+            {schvalena ? "Zákazník nabídku schválil — faktura se vystaví podle nabídky."
+              : nevyfakturovane.length ? `Faktura se vystaví podle skutečnosti (${pocetText(nevyfakturovane.length)} práce a materiálu).`
+                : "Zatím není co fakturovat — zapiš práci a materiál, nebo nech zákazníka schválit nabídku."}
+          </span>
+          <button type="button" style={ui.tlacitko(undefined, "male")} disabled={!schvalena && !nevyfakturovane.length} onClick={pripravit}>
+            <i className="ti ti-receipt" aria-hidden="true"></i> Vystavit fakturu</button>
+        </div>
+      ) : (
+        <div style={{ background: ui.barvy.poleBg, border: `1px solid ${ui.barvy.okraj}`, borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Faktura {schvalena ? "podle schválené nabídky" : "podle skutečnosti"}</div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>{["Položka", "Množství", "Cena / j. bez DPH", "Celkem bez DPH"].map((h) => <th key={h} style={ui.th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {nahled.lines.map((l, i) => (
+                <tr key={i}><td style={ui.td}>{l.desc}</td><td style={ui.td}>{l.qty} {l.unit}</td><td style={ui.td}>{fmtKc(l.price)}</td><td style={ui.td}>{fmtKc(l.zaklad)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
+            <div><label style={ui.popisek}>DPH</label>
+              <select style={{ ...ui.pole, width: 110 }} value={panel.dph} onChange={(e) => setPanel({ ...panel, dph: Number(e.target.value) })}>
+                <option value={21}>21 %</option><option value={12}>12 %</option><option value={0}>0 %</option>
+              </select></div>
+            <div><label style={ui.popisek}>Splatnost (dní)</label>
+              <input style={{ ...ui.pole, width: 110 }} type="number" min="0" value={panel.splatnost} onChange={(e) => setPanel({ ...panel, splatnost: e.target.value })} /></div>
+            <div style={{ marginLeft: "auto", textAlign: "right", fontSize: 13 }}>
+              <div>Bez DPH {fmtKc(nahled.total - nahled.totalTax)} · DPH {fmtKc(nahled.totalTax)}</div>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>Celkem {fmtKc(nahled.total)}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button type="button" style={ui.tlacitkoObrys("male")} onClick={() => setPanel(null)}>Zrušit</button>
+            <button type="button" style={ui.tlacitko(ui.barvy.uspech, "male")} disabled={pracuji} onClick={vystavit}>{pracuji ? "Vystavuji…" : "Vystavit fakturu"}</button>
+          </div>
+          <div style={{ fontSize: 11, color: ui.barvy.textSlaby }}>Fakturu pak najdeš ve Fakturaci (PDF, odeslání, platby). Ticket se přepne na Vyfakturovaný.</div>
+        </div>
+      )}
     </div>
   );
 }
