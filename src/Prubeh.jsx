@@ -6,6 +6,8 @@ import { nahratFotkuZakazky, pocetFotekText } from "./fotkyZakazky.js";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
+import { UZAVIRACI_EMAIL_KEY, VYCHOZI_UZAVIRACI_EMAIL, ZNACKY_UZAVIRACIHO_EMAILU, vyplnitSablonu } from "./uzaviraciEmail.js";
+import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
@@ -72,7 +74,7 @@ const btn = (bg, fg = "#fff", extra = {}) => ({ background: bg, color: fg, borde
 const btnGhost = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 13px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
 const inp = { width: "100%", boxSizing: "border-box", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 10px", fontSize: 14, fontFamily: "inherit", color: "#0f172a", background: "#fff" };
 const lbl = { fontSize: 12, fontWeight: 700, color: "#475569", display: "block", marginBottom: 4 };
-const TYP_BARVY = { FVE: ["#fef3c7", "#92400e"], FVR: ["#ffedd5", "#9a3412"], FVO: ["#fef9c3", "#854d0e"], SRV: ["#dcfce7", "#166534"], HRM: ["#ede9fe", "#5b21b6"], ELK: ["#e0f2fe", "#075985"] };
+const TYP_BARVY = { FVE: ["#fef3c7", "#92400e"], FVR: ["#ffedd5", "#9a3412"], FVO: ["#fef9c3", "#854d0e"], REA: ["#f1f5f9", "#334155"], SRV: ["#dcfce7", "#166534"], HRM: ["#ede9fe", "#5b21b6"], ELK: ["#e0f2fe", "#075985"] };
 
 function Fajfka({ barva = "#15803d", size = 16 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={barva} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>;
@@ -174,6 +176,7 @@ export default function Prubeh({
   const prepnoutPruvodce = () => setPruvodceMin((m) => { try { localStorage.setItem("proudos-pruvodce-min", m ? "0" : "1"); } catch { /* bez úložiště */ } return !m; });
   const [dodatekForm, setDodatekForm] = useState(null); // { popis, cena_nova, termin, aktualizovatCenu }
   const [viceForm, setViceForm] = useState(null); // víc zakázek z jedné nabídky: { radky: [{ id?, nazev, misto, hodnota }] }
+  const [uzavEmail, setUzavEmail] = useState(null); // uzavírací e-mail objednateli: { zakId, komu, predmet, text, sablona, nacitam, … }
   const fotoInput = useRef(null);
   const fotoCil = useRef(null);                       // { z, faze, ukol } pro vybrané soubory
   const vybranyRadek = rows.find((r) => r.id === vybrano);
@@ -689,6 +692,50 @@ export default function Prubeh({
     if (ok) ukazHlasku(qq ? "✓ Nabídka propojená" : "Nabídka odpojená");
   };
 
+  // ── Uzavírací e-mail objednateli (realizace na objednávku) ──
+  // Předvyplní se ze šablony: odkaz na složku s fotkami na OneDrivu (sdílený
+  // „jen pro čtení“), místo, datum, podpis. Otevře se v poště (mailto),
+  // předávací protokol se přikládá ručně.
+  const FOTKY_REALIZACE = ["Před montáží", "Průběh montáže", "Po montáži", "Detail střídač/baterie"];
+  const otevritUzaviraciEmail = async (zak) => {
+    const zk = zakaznik(zak.customer_id) || {};
+    const k = contractById(zak.contract_id);
+    const fotky = (fotkyZ[zak.id] || []).filter((p) => FOTKY_REALIZACE.includes(p.category));
+    const protokol = (fotkyZ[zak.id] || []).find((p) => p.category === "Předávací protokol") || null;
+    const zaklad = { zakId: zak.id, komu: zk.email || zk.email_contact || "", predmet: "", text: "", nacitam: true, fotek: fotky.length, protokol, upravaSablony: null };
+    setUzavEmail(zaklad);
+    const { data: nast } = await supabase.from("app_settings").select("value").eq("key", UZAVIRACI_EMAIL_KEY).maybeSingle();
+    const sablona = { ...VYCHOZI_UZAVIRACI_EMAIL, ...Object.fromEntries(Object.entries(nast?.value || {}).filter(([, v]) => String(v ?? "").trim())) };
+    // Fotky jsou ve složce zakázky na OneDrivu (stejná cesta jako při nahrávání).
+    const slozka = String(k?.name || zak.nazev || zak.id).replace(/[/\\?%*:|"<>]/g, "_");
+    let odkaz = null;
+    try { if (isConnected() || await connectSharedAccount()) odkaz = await odkazNaSlozku(`FirmaCRM/Zakázky/${slozka}/Fotky`); } catch { /* bez OneDrivu */ }
+    if (!odkaz) {
+      const odkazy = fotky.map((p) => p.url).filter((u) => u && !u.includes("/storage/v1/object/"));
+      odkaz = odkazy.length ? odkazy.join("\n") : "[doplň odkaz na fotky]";
+    }
+    const hodnoty = {
+      objednatel: zk.name || "", zakazka: zak.nazev || "", cislo: k?.code ? ` (${k.code})` : "",
+      misto: zak.misto_adresa || zk.address || "", datum: new Date().toLocaleDateString("cs-CZ"),
+      odkaz_fotky: odkaz, pocet_fotek: pocetFotekText(fotky.length), podpis: ja,
+    };
+    setUzavEmail({ ...zaklad, predmet: vyplnitSablonu(sablona.predmet, hodnoty), text: vyplnitSablonu(sablona.text, hodnoty), sablona, nacitam: false, bezOdkazu: odkaz.startsWith("[") });
+  };
+  const uzavEmailOdeslan = async (zak) => {
+    const hotove = { ...(zak.hotove_ukoly || {}), "odeslani.email": true };
+    if (await uloz(zak, { hotove_ukoly: hotove }, `Uzavírací e-mail odeslaný objednateli${uzavEmail.komu ? ` (${uzavEmail.komu})` : ""}.`)) {
+      setUzavEmail(null);
+      ukazHlasku("✓ Uzavírací e-mail zapsaný jako odeslaný");
+    }
+  };
+  const ulozitSablonuEmailu = async () => {
+    const s = uzavEmail.upravaSablony;
+    const { error } = await supabase.from("app_settings").upsert({ key: UZAVIRACI_EMAIL_KEY, value: { predmet: s.predmet, text: s.text }, updated_at: new Date().toISOString() });
+    if (error) { alert("Šablonu se nepodařilo uložit: " + error.message); return; }
+    setUzavEmail({ ...uzavEmail, sablona: s, upravaSablony: null });
+    ukazHlasku("✓ Šablona uzavíracího e-mailu uložená — použije se u dalších zakázek");
+  };
+
   // ── Víc zakázek z jedné nabídky ──
   // Zákazník schválí jednu nabídku, ale dělá se víc stejných zakázek (např. FVE
   // na dvou domech). Každá má vlastní průběh, místo, cenu a později i vlastní
@@ -1054,6 +1101,67 @@ export default function Prubeh({
     );
   };
 
+  // ── Uzavírací e-mail: úprava, otevření v poště, zápis odeslání ──
+  const vykresliUzavEmail = () => {
+    if (!uzavEmail) return null;
+    const z = rows.find((r) => r.id === uzavEmail.zakId);
+    if (!z) return null;
+    const e = uzavEmail;
+    const set = (patch) => setUzavEmail({ ...e, ...patch });
+    const mailto = `mailto:${encodeURIComponent(e.komu.trim()).replace(/%40/g, "@").replace(/%2C/gi, ",")}?subject=${encodeURIComponent(e.predmet)}&body=${encodeURIComponent(e.text)}`;
+    const kopirovat = async () => {
+      try { await navigator.clipboard.writeText(`${e.predmet}\n\n${e.text}`); ukazHlasku("✓ Předmět a text zkopírované"); }
+      catch { alert("Kopírování se nepovedlo — označ text ručně."); }
+    };
+    return (
+      <div role="dialog" aria-modal="true" aria-label="Uzavírací e-mail objednateli" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        onClick={(ev) => { if (ev.target === ev.currentTarget) setUzavEmail(null); }}>
+        <div style={{ ...karta, width: "min(720px, 100%)", maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>✉️ Uzavírací e-mail objednateli</div>
+          {e.nacitam ? <div style={{ color: "#475569", fontSize: 14 }}>Připravuji e-mail a odkaz na fotky…</div> : <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 13 }}>
+              <span style={{ background: e.fotek ? "#dcfce7" : "#fef2f2", color: e.fotek ? "#166534" : "#991b1b", borderRadius: 7, padding: "3px 8px", fontWeight: 700 }}>
+                {e.fotek ? `📷 ${pocetFotekText(e.fotek)} z realizace` : "📷 Žádné fotky z realizace"}
+              </span>
+              <span style={{ background: e.protokol ? "#dcfce7" : "#fffbeb", color: e.protokol ? "#166534" : "#92400e", borderRadius: 7, padding: "3px 8px", fontWeight: 700 }}>
+                {e.protokol ? "📄 Sken protokolu nahraný" : "📄 Sken podepsaného protokolu chybí"}
+              </span>
+              {e.protokol && <StorageLink href={e.protokol.url} target="_blank" rel="noopener noreferrer" style={{ color: "#0369a1", fontWeight: 600 }}>Otevřít sken (k přiložení)</StorageLink>}
+            </div>
+            {e.bezOdkazu && <div style={{ fontSize: 12, color: "#b45309" }}>Odkaz na složku s fotkami se nepodařilo vytvořit (OneDrive nepřipojený nebo fotky ve složce nejsou) — doplň ho do textu ručně.</div>}
+            <div><label style={lbl} htmlFor="pr-ue-komu">Komu</label>
+              <input id="pr-ue-komu" style={inp} value={e.komu} placeholder="e-mail objednatele" onChange={(ev) => set({ komu: ev.target.value })} /></div>
+            <div><label style={lbl} htmlFor="pr-ue-predmet">Předmět</label>
+              <input id="pr-ue-predmet" style={inp} value={e.predmet} onChange={(ev) => set({ predmet: ev.target.value })} /></div>
+            <div><label style={lbl} htmlFor="pr-ue-text">Text</label>
+              <textarea id="pr-ue-text" style={{ ...inp, minHeight: 260, resize: "vertical", fontFamily: "inherit", lineHeight: 1.4 }} value={e.text} onChange={(ev) => set({ text: ev.target.value })} /></div>
+            <div style={{ fontSize: 12, color: "#475569" }}>„Otevřít v poště“ spustí tvůj poštovní program s vyplněným e-mailem — podepsaný předávací protokol k němu přilož a odešli. Pak klikni „Odesláno“.</div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              {smiNastavit && !e.upravaSablony && <button type="button" style={{ ...btnGhost, marginRight: "auto" }} onClick={() => set({ upravaSablony: { ...e.sablona } })}>Upravit výchozí šablonu</button>}
+              <button type="button" style={btnGhost} onClick={() => setUzavEmail(null)}>Zavřít</button>
+              <button type="button" style={btnGhost} onClick={kopirovat}>Kopírovat text</button>
+              <a href={mailto} style={{ ...btn("#0369a1"), textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Otevřít v poště</a>
+              <button type="button" style={btn("#15803d")} onClick={() => uzavEmailOdeslan(z)}>✓ Odesláno</button>
+            </div>
+            {e.upravaSablony && (
+              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontWeight: 800 }}>Výchozí šablona uzavíracího e-mailu</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>Značky se doplní samy: {ZNACKY_UZAVIRACIHO_EMAILU.map(([k, popis]) => <span key={k} title={popis} style={{ fontFamily: "monospace", background: "#f1f5f9", borderRadius: 4, padding: "0 4px", marginRight: 4 }}>{`{${k}}`}</span>)}</div>
+                <input aria-label="Předmět šablony" style={inp} value={e.upravaSablony.predmet} onChange={(ev) => set({ upravaSablony: { ...e.upravaSablony, predmet: ev.target.value } })} />
+                <textarea aria-label="Text šablony" style={{ ...inp, minHeight: 200, resize: "vertical", fontFamily: "inherit" }} value={e.upravaSablony.text} onChange={(ev) => set({ upravaSablony: { ...e.upravaSablony, text: ev.target.value } })} />
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" style={btnGhost} onClick={() => set({ upravaSablony: { ...VYCHOZI_UZAVIRACI_EMAIL } })}>Vrátit původní znění</button>
+                  <button type="button" style={btnGhost} onClick={() => set({ upravaSablony: null })}>Zrušit</button>
+                  <button type="button" style={btn("#0369a1")} onClick={ulozitSablonuEmailu}>Uložit šablonu</button>
+                </div>
+              </div>
+            )}
+          </>}
+        </div>
+      </div>
+    );
+  };
+
   // ── Víc zakázek z jedné nabídky: seznam zakázek (stávající + nové) ──
   const vykresliVice = () => {
     if (!viceForm || !vybranyRadek) return null;
@@ -1141,6 +1249,7 @@ export default function Prubeh({
       {vykresliPruvodce()}
       {vykresliDodatek()}
       {vykresliVice()}
+      {vykresliUzavEmail()}
       {/* Výběr fotek pro tlačítko „Nahrát fotky“ u úkolu fáze (na mobilu nabídne i fotoaparát). */}
       <input ref={fotoInput} type="file" accept="image/*" multiple style={{ display: "none" }}
         onChange={(e) => { const files = [...e.target.files]; e.target.value = ""; nahratFotky(files); }} />
@@ -1659,6 +1768,11 @@ export default function Prubeh({
                         {u.smlouva && (
                           <button type="button" style={tlAkce} disabled={generuji} onClick={(e) => akce(e, () => vygenerovatSmlouvu(z))}>
                             <i className="ti ti-file-text" aria-hidden="true"></i> {generuji ? "Generuji…" : "Vygenerovat smlouvu"}
+                          </button>
+                        )}
+                        {u.email && (
+                          <button type="button" style={tlAkce} onClick={(e) => akce(e, () => otevritUzaviraciEmail(z))}>
+                            <i className="ti ti-mail" aria-hidden="true"></i> Připravit uzavírací e-mail
                           </button>
                         )}
                       </label>

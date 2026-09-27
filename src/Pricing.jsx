@@ -30,6 +30,7 @@ const JOB_TYPES = [
   { id: "FVE", label: "FVE — Fotovoltaika" },
   { id: "FVR", label: "FVR — FVE rozšíření" },
   { id: "FVO", label: "FVO — FVE ohřev vody" },
+  { id: "REA", label: "REA — Realizace na objednávku" },
   { id: "HRM", label: "HRM — Hromosvody" },
   { id: "ELK", label: "ELK — Elektroinstalace" },
   { id: "SRV", label: "SRV — Servis" },
@@ -39,7 +40,7 @@ const JOB_TYPES = [
 // N-FVE-2026-0001. Pořadí se počítá zvlášť pro každý typ a rok z čerstvých
 // dat v databázi (ne z lokálního stavu), duplicitu hlídá UNIQUE index
 // quotes_cislo_key (sql-cislo-nabidky.sql).
-const CISLOVANE_TYPY = ["FVE", "FVR", "FVO", "SRV", "HRM", "ELK"];
+const CISLOVANE_TYPY = ["FVE", "FVR", "FVO", "SRV", "HRM", "ELK", "REA"];
 // Hromosvody a elektroinstalace: nabídka pro zákazníka se skládá ze sekcí
 // (název, popis, cena bez DPH) — cílová cena je u nich BEZ DPH.
 const SEKCOVE_TYPY = ["HRM", "ELK"];
@@ -1098,7 +1099,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     .filter(q => typeFilter === "vse" || q.type === typeFilter || (typeFilter === "bez" && !q.type))
     .filter(q => statusFilter === "vse" || q.status === statusFilter);
 
-  const typeBadgeColor = (id) => ({ FVE: "#f59e0b", FVR: "#ea580c", FVO: "#ca8a04", HRM: "#a78bfa", ELK: "#0369a1", SRV: "#34d399" }[id] || "#475569");
+  const typeBadgeColor = (id) => ({ FVE: "#f59e0b", FVR: "#ea580c", FVO: "#ca8a04", REA: "#334155", HRM: "#a78bfa", ELK: "#0369a1", SRV: "#34d399" }[id] || "#475569");
   const statusColor = (s) => ({ "Návrh": "#64748b", "Odesláno": "#0369a1", "Schváleno": "#34d399", "Zamítnuto": "#ef4444" }[s] || "#64748b");
 
   // KPI nad seznamem — kolik nabídek je rozpracovaných/schválených a jaká je

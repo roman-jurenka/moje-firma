@@ -27,6 +27,7 @@ export const NAVOD = {
   zprovozneni: "Zprovozni a otestuj zařízení.",
   revize: "Nech udělat revizi a ulož revizní zprávu.",
   predani: "Vygeneruj předávací protokol, předej dílo, seznam zákazníka s obsluhou a nech protokol podepsat.",
+  odeslani: "Pošli objednateli fotky z realizace a podepsaný předávací protokol. Tlačítkem „Připravit uzavírací e-mail“ se ti předvyplní e-mail s odkazem na fotky.",
   pripojeni: "Zajisti uvedení do provozu u distributora.",
   vyuctovani: "Vystav konečnou fakturu a zkontroluj doplatek.",
   archiv: "Ulož dokumenty a naplánuj servisní / revizní termín.",

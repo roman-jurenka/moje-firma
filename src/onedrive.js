@@ -285,6 +285,23 @@ export async function uploadFile(folderPath, fileName, content, contentType = "a
   return { webUrl, itemId: result.id };
 }
 
+// Odkaz ke sdílení celé složky (např. fotky zakázky pro objednatele) —
+// anonymní „jen prohlížení“, kde to tenant nedovolí, aspoň odkaz na složku.
+// Vrací null, když složka neexistuje nebo OneDrive není připojený.
+export async function odkazNaSlozku(folderPath) {
+  try {
+    const item = await graphGet(`/me/drive/root:/${folderPath}`);
+    try {
+      const share = await graphPost(`/me/drive/items/${item.id}/createLink`, { type: "view", scope: "anonymous" });
+      return share.link?.webUrl || item.webUrl || null;
+    } catch {
+      return item.webUrl || null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 // Verze pro File objekt z input[type=file]
 export async function uploadFileObject(folderPath, file) {
   const buffer = await file.arrayBuffer();

@@ -16,46 +16,46 @@ export const sekceById = Object.fromEntries(SEKCE.map((s) => [s.id, s]));
 // dny = běžná doba fáze; po ní zakázka svítí „déle než obvykle“ a podle ní
 // se předvyplní termín dalšího kroku. Admin je může upravit (Nastavení fází).
 const ZAKLAD_FAZI = [
-  { id: "poptavka", sekce: "ob", nazev: "Poptávka", ukoly: [
+  { id: "poptavka", sekce: "ob", nazev: "Poptávka", nazevTyp: { REA: "Objednávka" }, ukoly: [
     { id: "kontakt", text: "Kontakt a adresa zapsané" },
     { id: "pozadavek", text: "Vyjasněno, co zákazník chce" },
   ] },
   // fotky: u úkolu je tlačítko Nahrát fotky (hodnota = kategorie fotky).
   // udaje: u úkolu je formulář technických údajů odběrného místa.
   // smlouva: u úkolu je tlačítko Vygenerovat smlouvu.
-  { id: "obhlidka", sekce: "ob", nazev: "Obhlídka", nazevTyp: { SRV: "Diagnostika" }, ukoly: [
+  { id: "obhlidka", sekce: "ob", nazev: "Obhlídka", nazevTyp: { SRV: "Diagnostika" }, typy: { REA: "-" }, ukoly: [
     { id: "provedena", text: "Obhlídka / diagnostika provedená" },
     { id: "podklady", text: "Fotky a zaměření uložené", fotky: "Obhlídka" },
     { id: "udaje", text: "Technické údaje (EAN, jistič, fáze)", udaje: true, auto: "udajeVyplnene" },
   ] },
-  { id: "nabidka", sekce: "ob", nazev: "Nabídka", ukoly: [
+  { id: "nabidka", sekce: "ob", nazev: "Nabídka", typy: { REA: "-" }, ukoly: [
     { id: "nacenena", text: "Nabídka naceněná", auto: "nabidkaPropojena" },
     { id: "odeslana", text: "Nabídka odeslaná zákazníkovi", auto: "nabidkaOdeslana" },
   ] },
-  { id: "jednani", sekce: "ob", nazev: "Jednání", ukoly: [
+  { id: "jednani", sekce: "ob", nazev: "Jednání", typy: { REA: "-" }, ukoly: [
     { id: "odpoved", text: "Zákazník se k nabídce vyjádřil", auto: "nabidkaRozhodnuta" },
   ] },
-  { id: "smlouva", sekce: "ob", nazev: "Smlouva", nazevTyp: { SRV: "Objednávka" }, ukoly: [
+  { id: "smlouva", sekce: "ob", nazev: "Smlouva", nazevTyp: { SRV: "Objednávka" }, typy: { REA: "-" }, ukoly: [
     { id: "podpis", text: "Smlouva / objednávka podepsaná", brana: true, smlouva: true },
   ] },
 
-  { id: "zaloha", sekce: "bo", nazev: "Záloha", typy: { SRV: "o" }, ukoly: [
+  { id: "zaloha", sekce: "bo", nazev: "Záloha", typy: { SRV: "o", REA: "-" }, ukoly: [
     { id: "faktura", text: "Zálohová faktura vystavená" },
     { id: "zaplacena", text: "Záloha zaplacená", brana: true },
   ] },
-  { id: "dokumentace", sekce: "bo", nazev: "Dokumentace", typy: { FVR: "o", SRV: "-", HRM: "o", ELK: "o" }, ukoly: [
+  { id: "dokumentace", sekce: "bo", nazev: "Dokumentace", typy: { FVR: "o", SRV: "-", HRM: "o", ELK: "o", REA: "-" }, ukoly: [
     { id: "projekt", text: "Projekt / schéma zapojení hotové" },
   ] },
-  { id: "distributor", sekce: "bo", nazev: "Distributor", typy: { FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "o" }, ukoly: [
+  { id: "distributor", sekce: "bo", nazev: "Distributor", typy: { FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "o", REA: "-" }, ukoly: [
     { id: "zadost", text: "Žádost u distributora podaná" },
     { id: "souhlas", text: "Souhlas distributora", brana: true },
   ] },
-  { id: "dotace", sekce: "bo", nazev: "Dotace", typy: { FVE: "o", FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "-" }, ukoly: [
+  { id: "dotace", sekce: "bo", nazev: "Dotace", typy: { FVE: "o", FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "-", REA: "-" }, ukoly: [
     { id: "zadost", text: "Žádost o dotaci podaná" },
   ] },
-  { id: "material", sekce: "bo", nazev: "Materiál a termín", nazevTyp: { SRV: "Termín" }, ukoly: [
+  { id: "material", sekce: "bo", nazev: "Materiál a termín", nazevTyp: { SRV: "Termín", REA: "Termín a materiál" }, ukoly: [
     { id: "objednan", text: "Materiál objednaný (nebo skladem)", brana: true },
-    { id: "termin", text: "Termín potvrzený zákazníkem", brana: true },
+    { id: "termin", text: "Termín potvrzený zákazníkem / objednatelem", brana: true },
     { id: "tym", text: "Tým naplánovaný" },
   ] },
 
@@ -67,10 +67,10 @@ const ZAKLAD_FAZI = [
     { id: "hotovo", text: "Práce na místě dokončené" },
     { id: "fotky", text: "Fotky z realizace uložené", fotky: "Po montáži" },
   ] },
-  { id: "zprovozneni", sekce: "re", nazev: "Zprovoznění", typy: { SRV: "-", HRM: "-" }, ukoly: [
+  { id: "zprovozneni", sekce: "re", nazev: "Zprovoznění", typy: { SRV: "-", HRM: "-", REA: "o" }, ukoly: [
     { id: "test", text: "Zprovozněno a otestováno" },
   ] },
-  { id: "revize", sekce: "re", nazev: "Revize", typy: { SRV: "o" }, ukoly: [
+  { id: "revize", sekce: "re", nazev: "Revize", typy: { SRV: "o", REA: "o" }, ukoly: [
     { id: "zprava", text: "Revizní zpráva hotová", brana: true },
   ] },
   { id: "predani", sekce: "re", nazev: "Předání", ukoly: [
@@ -78,8 +78,15 @@ const ZAKLAD_FAZI = [
     { id: "zaskoleni", text: "Zákazník seznámený s obsluhou" },
   ] },
 
-  { id: "pripojeni", sekce: "uz", nazev: "Připojení", typy: { FVR: "o", SRV: "-", HRM: "-", ELK: "o" }, ukoly: [
+  { id: "pripojeni", sekce: "uz", nazev: "Připojení", typy: { FVR: "o", SRV: "-", HRM: "-", ELK: "o", REA: "-" }, ukoly: [
     { id: "ppp", text: "Uvedeno do provozu u distributora" },
+  ] },
+  // Jen u realizace na objednávku (REA): objednatel dostane fotky, předávací
+  // protokol a uzavírací e-mail (tlačítko Připravit uzavírací e-mail).
+  { id: "odeslani", sekce: "uz", nazev: "Odeslání objednateli", vychozi: "-", typy: { REA: "v" }, ukoly: [
+    { id: "fotky", text: "Fotky z realizace odeslané objednateli" },
+    { id: "protokol", text: "Předávací protokol odeslaný objednateli" },
+    { id: "email", text: "Uzavírací e-mail odeslaný", brana: true, email: true },
   ] },
   { id: "vyuctovani", sekce: "uz", nazev: "Vyúčtování", ukoly: [
     { id: "faktura", text: "Konečná faktura vystavená" },
@@ -90,7 +97,7 @@ const ZAKLAD_FAZI = [
     { id: "servis", text: "Servisní / revizní termín naplánovaný" },
   ] },
 ];
-const BEZNE_DNY = { poptavka: 2, obhlidka: 7, nabidka: 5, jednani: 14, smlouva: 7, zaloha: 7, dokumentace: 7, distributor: 30, dotace: 14, material: 14, priprava: 2, montaz: 5, zprovozneni: 2, revize: 7, predani: 3, pripojeni: 30, vyuctovani: 14, archiv: 7 };
+const BEZNE_DNY = { poptavka: 2, obhlidka: 7, nabidka: 5, jednani: 14, smlouva: 7, zaloha: 7, dokumentace: 7, distributor: 30, dotace: 14, material: 14, priprava: 2, montaz: 5, zprovozneni: 2, revize: 7, predani: 3, odeslani: 2, pripojeni: 30, vyuctovani: 14, archiv: 7 };
 ZAKLAD_FAZI.forEach((f) => { f.dny = BEZNE_DNY[f.id] || 7; });
 
 // Platná konfigurace = základ + úpravy admina (app_settings, klíč NASTAVENI_KEY):
@@ -108,7 +115,7 @@ export function pouzijNastaveni(nastaveni) {
     const ukoly = Array.isArray(u.ukoly) && u.ukoly.length
       ? u.ukoly.filter((x) => String(x.text || "").trim()).map((x) => {
         const z = f.ukoly.find((b) => b.id === x.id);
-        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, ...x } : x;
+        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, ...x } : x;
       })
       : f.ukoly;
     return {
@@ -131,6 +138,7 @@ export const TYPY = [
   { id: "FVE", label: "FVE — Fotovoltaika" },
   { id: "FVR", label: "FVR — FVE rozšíření" },
   { id: "FVO", label: "FVO — FVE ohřev vody" },
+  { id: "REA", label: "REA — Realizace na objednávku" },
   { id: "HRM", label: "HRM — Hromosvody" },
   { id: "ELK", label: "ELK — Elektroinstalace" },
   { id: "SRV", label: "SRV — Servis" },
@@ -166,7 +174,8 @@ export function planovaneMd(qd, typ) {
 }
 
 export const nazevFaze = (f, typ) => (f?.nazevTyp?.[typ]) || f?.nazev || "";
-export const pravidlo = (f, typ) => (f.typy && f.typy[typ]) || "v";
+// vychozi = pravidlo pro typy, které fáze nevyjmenovává (např. fáze jen pro REA).
+export const pravidlo = (f, typ) => (f.typy && f.typy[typ]) || f.vychozi || "v";
 
 // Platí fáze pro tuhle zakázku? "-" nikdy; "o" jen když ji zakázka potřebuje
 // nebo o ní ještě nerozhodla (pak se na ni appka zeptá); přeskočené ne.
