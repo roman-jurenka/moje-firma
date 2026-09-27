@@ -5,6 +5,7 @@ import Docxtemplater from "docxtemplater";
 import { nahratFotkuZakazky, pocetFotekText } from "./fotkyZakazky.js";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
+import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
@@ -95,6 +96,33 @@ function BunkaSekce({ z, sekceIds }) {
       </div>
       <div style={{ fontSize: 12, color: "#334155", marginTop: 4 }}>{p.sekce === "uz" ? "Uzavření · " : ""}{p.poradi} {p.nazev}</div>
     </div>
+  );
+}
+
+// Panáček průvodce — elektrikář v helmě. Nálada podle stavu zakázky:
+// ok = úsměv, pozor = nejistý, chyba = lekl se (otevřená pusa).
+function Panacek({ nalada = "ok", size = 48 }) {
+  const pusa = nalada === "chyba"
+    ? <ellipse cx="32" cy="45" rx="4" ry="5" fill="#7c2d12" />
+    : nalada === "pozor"
+      ? <path d="M25 46 L39 44" stroke="#7c2d12" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+      : <path d="M24 42 Q32 50 40 42" stroke="#7c2d12" strokeWidth="2.6" strokeLinecap="round" fill="none" />;
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <circle cx="32" cy="38" r="17" fill="#fcd9b6" />
+      {/* helma */}
+      <path d="M13 31 Q13 13 32 13 Q51 13 51 31 Z" fill="#F5821F" />
+      <rect x="10" y="29" width="44" height="5" rx="2.5" fill="#d9690e" />
+      <rect x="29" y="11" width="6" height="12" rx="3" fill="#ffb36b" />
+      {/* blesk na helmě */}
+      <path d="M33 16 L28 24 L32 24 L30 30 L36 21 L32 21 Z" fill="#0369a1" />
+      {/* oči */}
+      {nalada === "chyba"
+        ? <><circle cx="25" cy="38" r="3" fill="#1e293b" /><circle cx="39" cy="38" r="3" fill="#1e293b" /></>
+        : <><circle cx="25" cy="38" r="2.2" fill="#1e293b" /><circle cx="39" cy="38" r="2.2" fill="#1e293b" /></>}
+      {nalada === "pozor" && <path d="M21 33 L28 34 M43 33 L36 34" stroke="#1e293b" strokeWidth="1.8" strokeLinecap="round" />}
+      {pusa}
+    </svg>
   );
 }
 
@@ -380,7 +408,7 @@ export default function Prubeh({
       udaje: zak.udaje || {},
       cena: castNabidky
         ? { bezDph: Number(zak.hodnota), dphPct: Number(q?.data?.zakaznik?.dph ?? 21), sDph: null }
-        : { bezDph: Number(q?.data?.zakaznik?.cilovaCena) || Number(zak.hodnota) || Number(k?.price) || 0, dphPct: Number(q?.data?.zakaznik?.dph ?? 21), sDph: Number(q?.data?.zakaznik?.cenaSDph) || null },
+        : { bezDph: konecnaCenaNabidky(q?.data).bez || Number(zak.hodnota) || Number(k?.price) || 0, dphPct: Number(q?.data?.zakaznik?.dph ?? 21), sDph: konecnaCenaNabidky(q?.data).s || null },
       nabidka: q ? { cislo: q.cislo || q.name } : null,
       cisloOP: q?.data?.fve?.cisloOP || "",
       specifikace: specifikaceZNabidky(q?.data, TYPY.find((t) => t.id === zak.typ)?.label.replace(/^[A-Z]+ — /, "")),
@@ -572,9 +600,15 @@ export default function Prubeh({
   const posunDal = async (zak) => {
     const f = fazeById[zak.faze];
     if (!fazeHotova(zak, f, autoZ(zak))) { alert("Nejdřív dokonči úkoly této fáze."); return; }
-    const chyby = kontrolyZ(zak).filter((x) => x.blokuje);
+    const kontroly = kontrolyZ(zak);
+    const chyby = kontroly.filter((x) => x.blokuje);
     if (chyby.length) { alert("Než zakázku posuneš dál, oprav:\n\n" + chyby.map((x) => "• " + x.text).join("\n")); return; }
+    // Upozornění (oranžová, hlavně z dřívějších fází) posun natvrdo neblokují — u starších
+    // převzatých zakázek by jinak nešlo nic posunout — ale musí se vědomě odkliknout.
+    const pozor = kontroly.filter((x) => x.uroven === "pozor");
+    if (pozor.length && !window.confirm(`Zakázka má ještě ${pozor.length === 1 ? "nevyřešené upozornění" : `${pozor.length} nevyřešená upozornění`}:\n\n${pozor.map((x) => "• " + x.text).join("\n")}\n\nPosunout dál i tak?`)) return;
     setPracuji(true);
+    if (pozor.length) await pridatPoznamku(zak, `Posunuto dál přes upozornění: ${pozor.map((x) => x.text).join("; ")}`, true);
     const cil = dalsiFaze(zak);
     if (!cil) {
       await uloz(zak, { stav: "uzavrena", dalsi_krok: null, dalsi_krok_termin: null, duvod_cekani: null }, "Zakázka uzavřená.");
@@ -649,7 +683,7 @@ export default function Prubeh({
 
   const propojitNabidku = async (zak, quoteId) => {
     const qq = quoteById(Number(quoteId));
-    const cena = Number(qq?.data?.zakaznik?.cilovaCena) || null;
+    const cena = konecnaCenaNabidky(qq?.data).bez || null;
     const ok = await uloz(zak, { quote_id: qq ? qq.id : null, ...(cena && !zak.hodnota ? { hodnota: cena } : {}) },
       qq ? `Propojeno s nabídkou ${qq.cislo || qq.name}.` : "Nabídka odpojená.");
     if (ok) ukazHlasku(qq ? "✓ Nabídka propojená" : "Nabídka odpojená");
@@ -662,7 +696,7 @@ export default function Prubeh({
   const zakazkyNabidky = (zak) => (zak?.quote_id
     ? rows.filter((r) => r.quote_id === zak.quote_id && r.stav !== "prohrana").sort((a, b) => a.id - b.id)
     : []);
-  const cenaNabidky = (q) => Number(q?.data?.zakaznik?.cilovaCena) || 0;
+  const cenaNabidky = (q) => konecnaCenaNabidky(q?.data).bez;
   const otevritVice = (zak) => {
     const stavajici = zakazkyNabidky(zak);
     const radky = (stavajici.length ? stavajici : [zak]).map((r) => ({
@@ -870,7 +904,6 @@ export default function Prubeh({
     const rozhodnout = fazeKRozhodnuti(f, z);
     const nehotovy = prvniNehotovy(z, f, auto);
     const dalsi = dalsiFaze(z);
-    const muzeDal = !rozhodnout && !nehotovy && !chyby.length;
     const iTed = FAZE.findIndex((x) => x.id === z.faze);
     const odSmlouvy = iTed >= FAZE.findIndex((x) => x.id === "smlouva");
     const odPredani = iTed >= FAZE.findIndex((x) => x.id === "montaz");
@@ -898,24 +931,47 @@ export default function Prubeh({
     };
     const ikona = { chyba: ["ti-circle-x", "#dc2626"], pozor: ["ti-alert-triangle", "#d97706"], ok: ["ti-circle-check", "#16a34a"] };
 
+    const nalada = chyby.length ? "chyba" : upozorneni.length ? "pozor" : "ok";
     if (pruvodceMin) {
+      // Schovaný průvodce = panáček vpravo dole; v bublině hlásí, co je teď nejdůležitější.
+      const pocet = chyby.length || upozorneni.length;
+      const hlaseni = chyby.length ? chyby[0].text
+        : rozhodnout ? `Rozhodni o fázi ${nazevFaze(f, z.typ)}`
+          : nehotovy ? `Dokonči: ${nehotovy.text}`
+            : upozorneni.length ? upozorneni[0].text
+              : dalsi ? `Hotovo — můžeš do fáze ${nazevFaze(dalsi, z.typ)}` : "Hotovo — můžeš zakázku uzavřít";
+      const barvaOdznaku = chyby.length ? "#dc2626" : "#d97706";
       return (
-        <button type="button" className="pr-pruvodce" onClick={prepnoutPruvodce} aria-label="Otevřít průvodce"
-          style={{ position: "fixed", right: 16, zIndex: 900, background: chyby.length ? "#dc2626" : s.barva, color: "#fff", border: "none", borderRadius: 999, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 6px 20px rgba(0,0,0,.25)" }}>
-          <i className="ti ti-compass" aria-hidden="true"></i> Průvodce{chyby.length ? ` · ${chyby.length} ${chyby.length === 1 ? "chyba" : chyby.length < 5 ? "chyby" : "chyb"}` : muzeDal ? " · můžeš dál" : ""}
-        </button>
+        <div className="pr-pruvodce-mini" style={{ position: "fixed", right: 16, zIndex: 900, display: "flex", alignItems: "flex-end", gap: 8 }}>
+          <button type="button" onClick={prepnoutPruvodce} className="pr-bublina"
+            style={{ maxWidth: 230, background: "#fff", border: `1px solid ${chyby.length ? "#fecaca" : "#e2e8f0"}`, borderRadius: "12px 12px 2px 12px", padding: "7px 10px", fontSize: 12, lineHeight: 1.3, color: chyby.length ? "#991b1b" : "#1e293b", fontWeight: chyby.length ? 700 : 500, textAlign: "left", cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 14px rgba(0,0,0,.15)", marginBottom: 30 }}>
+            {hlaseni}
+          </button>
+          <button type="button" onClick={prepnoutPruvodce} className={chyby.length ? "pr-panacek pr-panacek-hlasi" : "pr-panacek"}
+            aria-label={`Otevřít průvodce${chyby.length ? ` — ${chyby.length} ${chyby.length === 1 ? "chyba" : "chyby"}` : upozorneni.length ? ` — ${upozorneni.length} upozornění` : ""}`}
+            title="Otevřít průvodce"
+            style={{ position: "relative", width: 64, height: 64, borderRadius: "50%", background: "#fff", border: `3px solid ${chyby.length ? "#dc2626" : s.barva}`, padding: 0, cursor: "pointer", boxShadow: "0 6px 20px rgba(0,0,0,.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Panacek nalada={nalada} size={54} />
+            {pocet > 0 && (
+              <span aria-hidden="true" style={{ position: "absolute", top: -6, right: -6, minWidth: 22, height: 22, borderRadius: 999, background: barvaOdznaku, color: "#fff", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", border: "2px solid #fff" }}>{pocet}</span>
+            )}
+          </button>
+        </div>
       );
     }
     return (
       <div className="pr-pruvodce" role="complementary" aria-label="Průvodce zakázkou"
         style={{ position: "fixed", right: 16, width: 360, maxHeight: "60vh", overflowY: "auto", zIndex: 900, background: "#fff", border: `2px solid ${s.barva}`, borderRadius: 14, boxShadow: "0 12px 36px rgba(0,0,0,.22)", textAlign: "left", fontSize: 13 }}>
         <div style={{ background: s.svetla, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, position: "sticky", top: 0 }}>
-          <i className="ti ti-compass" aria-hidden="true" style={{ fontSize: 18, color: s.tmava }}></i>
+          <Panacek nalada={nalada} size={34} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, color: s.tmava }}>Průvodce · {nazevFaze(f, z.typ)}</div>
             <div style={{ fontSize: 11, color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.nazev} · {z.nazev}</div>
           </div>
-          <button type="button" aria-label="Zmenšit průvodce" onClick={prepnoutPruvodce} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#475569" }}><i className="ti ti-minus" aria-hidden="true"></i></button>
+          <button type="button" aria-label="Schovat průvodce do panáčka" title="Schovat do panáčka" onClick={prepnoutPruvodce}
+            style={{ ...btnGhost, padding: "4px 10px", fontSize: 12, display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+            <i className="ti ti-chevron-down" aria-hidden="true"></i> Schovat
+          </button>
         </div>
         <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
           <div><b>Co teď:</b> {rozhodnout ? `Rozhodni, jestli je u zakázky potřeba fáze „${nazevFaze(f, z.typ)}“ (v Úkolech fáze).` : NAVOD[f.id] || "Dokonči úkoly fáze."}</div>
@@ -1068,9 +1124,14 @@ export default function Prubeh({
       <style>{CSS}</style>
       {hlaskaEl}
       <style>{`
-        .pr-pruvodce { bottom: 16px; }
+        .pr-pruvodce, .pr-pruvodce-mini { bottom: 16px; }
+        .pr-panacek:hover { transform: scale(1.06); }
+        .pr-panacek-hlasi { animation: pr-hlasi 1.6s ease-in-out infinite; }
+        @keyframes pr-hlasi { 0%, 70%, 100% { transform: translateY(0); } 80% { transform: translateY(-7px); } 90% { transform: translateY(0); } }
+        @media (prefers-reduced-motion: reduce) { .pr-panacek-hlasi { animation: none; } }
         @media (max-width: 768px) {
-          .pr-pruvodce { bottom: calc(84px + env(safe-area-inset-bottom)); right: 8px !important; }
+          .pr-pruvodce, .pr-pruvodce-mini { bottom: calc(84px + env(safe-area-inset-bottom)); right: 8px !important; }
+          .pr-bublina { max-width: 170px !important; }
           div.pr-pruvodce { left: 8px; width: auto !important; }
           .pr-vice-hlavicka { display: none !important; }
           .pr-vice-radek { grid-template-columns: 28px 1fr 32px !important; }

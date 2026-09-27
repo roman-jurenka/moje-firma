@@ -5,6 +5,7 @@ import { vychoziSluzba } from "./fvePresets.js";
 import NabidkaNahled from "./NabidkaNahled.jsx";
 import { textyNabidky, seznamyPodleTypu } from "./nabidkaTexty.js";
 import { fazeById, terminFaze, planovaneMd } from "./prubehFaze.js";
+import { vypocetSlevy, textSlevy } from "./slevaNabidky.js";
 import * as ui from "./ui.js";
 
 const S = {
@@ -139,8 +140,9 @@ function computeQuoteTotals(qdata, typ) {
   const celkemMaterial = radkyV.reduce((s, v) => s + v.material, 0);
   const celkemPrace = radkyV.reduce((s, v) => s + v.laborKc, 0) + celkemPolozkyKc;
   const celkemNaklad = celkemDoprava + celkemMaterial + celkemPrace;
-  const cilovaCena = cenaNabidkyBezDph(d, typ, celkemNaklad); // bez DPH
-  return { celkemNaklad, cilovaCena };
+  const zaklad = cenaNabidkyBezDph(d, typ, celkemNaklad); // bez DPH, před slevou
+  const sl = vypocetSlevy(zaklad, d?.zakaznik?.cenaSDph, d?.zakaznik?.dph ?? 21, d?.zakaznik?.sleva);
+  return { celkemNaklad, cilovaCena: sl ? sl.poBez : zaklad };
 }
 
 // Rozpis materiálu na položky (kusovník) — když u řádku existuje, materiál
@@ -468,7 +470,7 @@ function DenniPlanTabulka({ plan, setPlan }) {
 // Náhled nabídky pro hromosvody (HRM) a elektroinstalace (ELK): položky =
 // sekce (název, popis, cena bez DPH), specifikace = u HRM rozpis materiálu
 // z kusovníků, u ELK počet bodů / hodin. Úpravy textů jdou do data.zakaznik.nahled.
-function NahledSekcove({ type, data, setData, cilovaCena, dphPct, customer, quote, currentUser, odeslane, onOdeslano, onSave }) {
+function NahledSekcove({ type, data, setData, cilovaCena, dphPct, sleva, customer, quote, currentUser, odeslane, onOdeslano, onSave }) {
   const sekce = data.zakaznik.sekce || [];
   const ukony = sekce
     .filter(s => (s.nazev || "").trim() || (s.popis || "").trim())
@@ -511,8 +513,9 @@ function NahledSekcove({ type, data, setData, cilovaCena, dphPct, customer, quot
       onUkonyChange={(nove) => nastavZakaznik({
         sekce: sekce.map(s => { const x = nove.find(n => n.id === s.id); return x ? { ...s, nazev: x.nazev, popis: x.popis } : s; }),
       })}
-      cenaSDph={cenaSDph}
-      cenaBezDph={cenaBezDph}
+      cenaSDph={sleva ? sleva.poS : cenaSDph}
+      cenaBezDph={sleva ? sleva.poBez : cenaBezDph}
+      sleva={sleva}
       dphPct={dphPct}
       zahrnuto={zahrnuto}
       nezahrnuto={nezahrnuto}
@@ -603,6 +606,93 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     return () => { zruseno = true; };
   }, [activeId]);
 
+  // ── Historie nabídky: automatické záznamy (stav, cena, sleva, verze,
+  // odeslání) + ručně zapsané informace („klient chce menší baterii“…). ──
+  const [historie, setHistorie] = useState([]);
+  const [novaInfo, setNovaInfo] = useState("");
+  const aktivniRef = useRef(null);
+  useEffect(() => {
+    aktivniRef.current = activeId;
+    let zruseno = false;
+    if (!activeId) return undefined;
+    supabase.from("nabidky_historie").select("*").eq("quote_id", activeId).order("created_at", { ascending: false })
+      .then(({ data: rows }) => { if (!zruseno) setHistorie(rows || []); });
+    return () => { zruseno = true; };
+  }, [activeId]);
+  const zapsatHistorii = async (quoteId, zaznamy) => {
+    const rows = zaznamy.filter(Boolean).map((z) => ({ quote_id: quoteId, kdo: currentUser?.name || null, typ: z.typ, text: z.text }));
+    if (!quoteId || !rows.length) return true;
+    const { data: nove, error } = await supabase.from("nabidky_historie").insert(rows).select();
+    if (error) { console.warn("Historii nabídky se nepodařilo zapsat:", error.message); return false; }
+    if (quoteId === aktivniRef.current) setHistorie((h) => [...(nove || []).reverse(), ...h]);
+    return true;
+  };
+  const pridatInfo = async () => {
+    const text = novaInfo.trim();
+    if (!text) return;
+    if (!activeId) { alert("Nabídku nejdřív ulož."); return; }
+    if (await zapsatHistorii(activeId, [{ typ: "poznamka", text }])) { setNovaInfo(""); ukazHlasku("✓ Informace zapsaná k nabídce"); }
+    else alert("Informaci se nepodařilo zapsat.");
+  };
+
+  // ── Verze nabídky: klient chce víc variant → kopie propojené s první nabídkou ──
+  const korenVerze = (q) => (q ? q.verze_od || q.id : null);
+  const verzeNabidky = (q) => {
+    const k = korenVerze(q);
+    return k ? quotes.filter((x) => (x.verze_od || x.id) === k).sort((a, b) => (a.verze || 1) - (b.verze || 1)) : [];
+  };
+  const novaVerze = async () => {
+    const q = quotes.find((x) => x.id === activeId);
+    if (!q) { alert("Nabídku nejdřív ulož."); return; }
+    if (hasUnsavedChanges()) { alert("Máš neuložené změny — nejdřív nabídku ulož (💾 Uložit), nová verze vznikne z uložené podoby."); return; }
+    const koren = quotes.find((x) => x.id === korenVerze(q)) || q;
+    const n = Math.max(...verzeNabidky(q).map((x) => x.verze || 1)) + 1;
+    const row = {
+      name: `${(koren.name || "Nabídka").replace(/ – verze \d+$/, "")} – verze ${n}`,
+      customer_id: q.customer_id, status: "Návrh", type: q.type, data: q.data, deal_id: q.deal_id || null,
+      verze_od: koren.id, verze: n, updated_at: new Date().toISOString(),
+      ...(koren.cislo ? { cislo: `${koren.cislo}-V${n}`, vystaveno: new Date().toLocaleDateString("sv-SE") } : {}),
+    };
+    setSaving(true);
+    const { data: inserted, error } = await supabase.from("quotes").insert(row).select().single();
+    setSaving(false);
+    if (error) { alert("Novou verzi se nepodařilo založit: " + error.message); return; }
+    setQuotes((qs) => [inserted, ...qs]);
+    await zapsatHistorii(q.id, [{ typ: "verze", text: `Vytvořena verze ${n}${inserted.cislo ? ` (${inserted.cislo})` : ""}.` }]);
+    await zapsatHistorii(inserted.id, [{ typ: "verze", text: `Verze ${n} vznikla kopií nabídky ${q.cislo || q.name}.` }]);
+    openQuote(inserted);
+    ukazHlasku(`✓ Založena verze ${n}${inserted.cislo ? ` — ${inserted.cislo}` : ""}. Uprav ji a ulož.`);
+  };
+
+  // Klient schválil jednu z verzí: ostatní verze → Zamítnuto (nevybráno) a
+  // zakázka v Průběhu se přepojí na schválenou verzi.
+  const poSchvaleniVerze = async (q, cenaBez) => {
+    const skupina = verzeNabidky(q).filter((x) => x.id !== q.id);
+    if (!skupina.length) return;
+    const oznaceni = `verzi ${q.verze || 1}${q.cislo ? ` (${q.cislo})` : ""}`;
+    const otevrene = skupina.filter((x) => x.status !== "Zamítnuto");
+    if (otevrene.length && confirm(`Klient schválil ${oznaceni}.\n\nOstatní verze (${otevrene.map((x) => x.cislo || x.name).join(", ")}) označit jako Zamítnuto — nevybrané?`)) {
+      const { error } = await supabase.from("quotes").update({ status: "Zamítnuto", updated_at: new Date().toISOString() }).in("id", otevrene.map((x) => x.id));
+      if (error) alert("Ostatní verze se nepodařilo označit: " + error.message);
+      else {
+        setQuotes((qs) => qs.map((x) => (otevrene.some((o) => o.id === x.id) ? { ...x, status: "Zamítnuto" } : x)));
+        for (const o of otevrene) await zapsatHistorii(o.id, [{ typ: "stav", text: `Stav: ${o.status} → Zamítnuto — klient vybral ${oznaceni}.` }]);
+      }
+    }
+    const { data: zakazky } = await supabase.from("zakazky_prubeh").select("id, quote_id").in("quote_id", skupina.map((x) => x.id));
+    if (zakazky?.length) {
+      // Cenu přepsat jen u jediné zakázky (víc zakázek z nabídky mají ceny rozdělené).
+      const patch = { quote_id: q.id, updated_at: new Date().toISOString(), ...(zakazky.length === 1 && cenaBez > 0 ? { hodnota: cenaBez } : {}) };
+      const { error } = await supabase.from("zakazky_prubeh").update(patch).in("id", zakazky.map((z) => z.id));
+      if (error) { alert("Zakázku v Průběhu se nepodařilo přepojit na schválenou verzi: " + error.message); return; }
+      await supabase.from("zakazky_poznamky").insert(zakazky.map((z) => ({
+        prubeh_id: z.id, kdo: currentUser?.name || "Systém", system: true,
+        text: `Klient schválil ${oznaceni} — zakázka přepojená na ni${patch.hodnota ? ` (cena ${fmtKc(patch.hodnota)} bez DPH)` : ""}.`,
+      })));
+      await zapsatHistorii(q.id, [{ typ: "verze", text: `Zakázka v Průběhu přepojená na tuto verzi.` }]);
+    }
+  };
+
   // Nabídka odeslána zákazníkovi: uloží přesnou kopii a přepne stav na Odesláno
   // (Schváleno/Zamítnuto se nepřepisuje). Jen pro uloženou nabídku bez
   // neuložených změn, ať kopie odpovídá tomu, co je v databázi.
@@ -614,6 +704,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
       quote_id: activeId, cislo, cena: Math.round(Number(cena) || 0), html, odeslal: currentUser?.name || null,
     });
     if (error) { alert("Kopii nabídky se nepodařilo uložit: " + error.message); return; }
+    await zapsatHistorii(activeId, [{ typ: "odeslano", text: `Odesláno zákazníkovi — ${fmtKc(cena)} s DPH.` }]);
     if (status === "Návrh") {
       const { error: e2 } = await supabase.from("quotes").update({ status: "Odesláno", updated_at: new Date().toISOString() }).eq("id", activeId);
       if (e2) { alert("Kopie je uložená, ale stav se nepodařilo změnit: " + e2.message); }
@@ -669,7 +760,6 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
   useEffect(() => {
     if (!initialQuoteId || !quotes.length) return;
     const q = quotes.find((x) => x.id === initialQuoteId);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (q) openQuote(q);
     onClearInitial?.();
   }, [initialQuoteId, quotes]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -701,7 +791,11 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
   const dphPct = data?.zakaznik?.dph ?? 21;
   // u kalkulace přesně její cena s DPH (FVE se zaokrouhluje na tisíce), jinak dopočet
   const cenaSDph = kalkulacni && data?.zakaznik?.cenaSDph ? Math.round(Number(data.zakaznik.cenaSDph)) : Math.round(cilovaCena * (1 + dphPct / 100));
-  const marze = cilovaCena - nakladNabidky;
+  // Dodatečná sleva nad hotovou cenou → konečná cena, kterou zákazník platí.
+  const slevaInfo = data ? vypocetSlevy(cilovaCena, cenaSDph, dphPct, data.zakaznik.sleva) : null;
+  const cenaBezFinal = slevaInfo ? slevaInfo.poBez : cilovaCena;
+  const cenaSFinal = slevaInfo ? slevaInfo.poS : cenaSDph;
+  const marze = cenaBezFinal - nakladNabidky;
   const marzePct = nakladNabidky > 0 ? Math.round((marze / nakladNabidky) * 1000) / 10 : null; // přirážka k nákladu
 
   const sekceSuma = data ? data.zakaznik.sekce.reduce((s, x) => s + (Number(x.castka) || 0), 0) : 0;
@@ -724,13 +818,15 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     // současně, hlídá UNIQUE index) se zkusí další volné číslo.
     const puvodni = activeId ? quotes.find(q => q.id === activeId) : null;
     const potrebaCislo = CISLOVANE_TYPY.includes(type) && !puvodni?.cislo;
+    // Konečná cena (po slevě) se ukládá s nabídkou — odtud ji bere Průběh, dokumenty i faktury.
+    const dataUloz = { ...data, zakaznik: { ...data.zakaznik, cenaKonecna: { bez: cenaBezFinal, s: cenaSFinal } } };
     for (let pokus = 0; pokus < 5; pokus++) {
       const row = {
         name: name.trim(),
         customer_id: customerId ? Number(customerId) : null,
         status,
         type: type || null,
-        data,
+        data: dataUloz,
         updated_at: new Date().toISOString(),
       };
       if (potrebaCislo) {
@@ -756,12 +852,37 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
         setSaving(false);
         return;
       }
-      if (activeId) setQuotes(quotes.map(q => q.id === activeId ? { ...q, ...row } : q));
-      else if (inserted) { setQuotes([inserted, ...quotes]); setActiveId(inserted.id); }
+      // Historie: co se tímhle uložením změnilo
+      const idNabidky = activeId || inserted?.id;
+      const zmeny = [];
+      if (!puvodni) zmeny.push({ typ: "zmena", text: "Nabídka založená." });
+      if (row.cislo) zmeny.push({ typ: "zmena", text: `Přiděleno číslo ${row.cislo}.` });
+      if (puvodni) {
+        if ((puvodni.name || "") !== row.name) zmeny.push({ typ: "zmena", text: `Název: „${puvodni.name || ""}“ → „${row.name}“.` });
+        if ((puvodni.status || "Návrh") !== status) zmeny.push({ typ: "stav", text: `Stav: ${puvodni.status || "Návrh"} → ${status}.` });
+        if ((puvodni.customer_id || null) !== row.customer_id) zmeny.push({ typ: "zmena", text: `Zákazník: ${customers.find(c => c.id === puvodni.customer_id)?.name || "—"} → ${customers.find(c => c.id === row.customer_id)?.name || "—"}.` });
+        if ((puvodni.type || null) !== row.type) zmeny.push({ typ: "zmena", text: `Typ: ${puvodni.type || "—"} → ${row.type || "—"}.` });
+        const cenaDriv = computeQuoteTotals(puvodni.data, puvodni.type).cilovaCena;
+        if (Math.abs(cenaDriv - cenaBezFinal) >= 1) zmeny.push({ typ: "cena", text: `Cena bez DPH: ${fmtKc(cenaDriv)} → ${fmtKc(cenaBezFinal)}.` });
+      }
+      const slevaDriv = puvodni?.data?.zakaznik?.sleva;
+      const slevaTed = data.zakaznik.sleva;
+      const slevaKlic = (s) => (Number(s?.hodnota) > 0 ? JSON.stringify([s.zpusob, Number(s.hodnota), s.popisek || "", s.duvod || ""]) : "");
+      if (slevaKlic(slevaDriv) !== slevaKlic(slevaTed)) {
+        zmeny.push({ typ: "sleva", text: slevaInfo
+          ? `Sleva: ${textSlevy(slevaTed, slevaInfo)}${slevaInfo.duvod ? ` — důvod: ${slevaInfo.duvod}` : ""}. Cena po slevě ${fmtKc(cenaBezFinal)} bez DPH.`
+          : "Sleva zrušená." });
+      }
+      await zapsatHistorii(idNabidky, zmeny);
+      const ulozena = { ...(puvodni || inserted), ...row };
+      if (activeId) setQuotes(qs => qs.map(q => q.id === activeId ? ulozena : q));
+      else if (inserted) { setQuotes(qs => [inserted, ...qs]); setActiveId(inserted.id); }
       setName(row.name);
-      savedSnapshotRef.current = JSON.stringify({ name: row.name, customerId, status, type, data });
+      setData(dataUloz);
+      savedSnapshotRef.current = JSON.stringify({ name: row.name, customerId, status, type, data: dataUloz });
       setSaving(false);
       ukazHlasku(row.cislo ? `✓ Nabídka uložena — přiděleno číslo ${row.cislo}` : "✓ Nabídka uložena");
+      if (status === "Schváleno" && puvodni && puvodni.status !== "Schváleno") await poSchvaleniVerze(ulozena, cenaBezFinal);
       return;
     }
     alert("Nabídku se nepodařilo uložit: nepodařilo se přidělit volné číslo nabídky. Zkus to prosím znovu.");
@@ -823,7 +944,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     }
     if (!dealRow) {
       const { data, error } = await supabase.from("deals").insert({
-        name, value: Math.round(cilovaCena), stage: "Nabídka",
+        name, value: Math.round(cenaBezFinal), stage: "Nabídka",
         customer_id: customerId ? Number(customerId) : null,
         assigned_to: currentUser?.name || "",
         type: type || null,
@@ -839,7 +960,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     if (dealRow) {
       const { data: pr, error: prErr } = await supabase.from("zakazky_prubeh").insert({
         nazev: name || "Zakázka", customer_id: customerId ? Number(customerId) : null, typ: type || null,
-        hodnota: Math.round(cilovaCena) || null, deal_id: dealRow.id, quote_id: activeId, faze: "jednani", stav: "otevrena",
+        hodnota: Math.round(cenaBezFinal) || null, deal_id: dealRow.id, quote_id: activeId, faze: "jednani", stav: "otevrena",
         vlastnik_obchod: currentUser?.name || null, dalsi_krok: "Zákazník se k nabídce vyjádřil", dalsi_krok_kdo: currentUser?.name || null,
         dalsi_krok_termin: terminFaze(fazeById.jednani), misto_adresa: cust?.address || null,
       }).select().single();
@@ -1065,6 +1186,14 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
                     <span style={{ background: statusColor(q.status) + "22", color: statusColor(q.status), border: "1px solid " + statusColor(q.status), borderRadius: 6, padding: "1px 8px", fontSize: 10, fontWeight: 700 }}>
                       {q.status}
                     </span>
+                    {verzeNabidky(q).length > 1 && (
+                      <span title={`Nabídka má ${verzeNabidky(q).length} verze`} style={{ background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 6, padding: "1px 8px", fontSize: 10, fontWeight: 700 }}>
+                        V{q.verze || 1}/{verzeNabidky(q).length}
+                      </span>
+                    )}
+                    {Number(q.data?.zakaznik?.sleva?.hodnota) > 0 && (
+                      <span style={{ background: "#fff7ed", color: "#c2410c", border: "1px solid #fdba74", borderRadius: 6, padding: "1px 8px", fontSize: 10, fontWeight: 700 }}>sleva</span>
+                    )}
                   </div>
                   <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{q.cislo ? <b>{q.cislo} · </b> : ""}{cust ? cust.name : "bez zákazníka"} · {fmtKc(computeQuoteTotals(q.data, q.type).cilovaCena)} bez DPH</div>
                 </div>
@@ -1110,6 +1239,32 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
         </div>
       </div>
 
+      {/* VERZE NABÍDKY — klient chce víc variant (jiná baterie, bez wallboxu…) */}
+      {activeId && (() => {
+        const aktivni = quotes.find(q => q.id === activeId);
+        const skupina = verzeNabidky(aktivni);
+        return (
+          <div style={{ ...S.card, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "10px 14px" }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>Verze nabídky:</span>
+            {skupina.length <= 1 && <span style={{ fontSize: 12, color: "#64748b" }}>zatím jen jedna — když klient chce jinou variantu, založ novou verzi.</span>}
+            {skupina.length > 1 && skupina.map(q => {
+              const ted = q.id === activeId;
+              return (
+                <button key={q.id} type="button" aria-current={ted ? "true" : undefined} onClick={() => { if (!ted) openQuote(q); }}
+                  title={`${q.name} · ${fmtKc(computeQuoteTotals(q.data, q.type).cilovaCena)} bez DPH`}
+                  style={{ border: "1px solid " + (ted ? "#0369a1" : "#cbd5e1"), background: ted ? "#0369a1" : "#fff", color: ted ? "#fff" : "#334155",
+                    borderRadius: 8, padding: "4px 10px", fontSize: 12, fontWeight: 700, cursor: ted ? "default" : "pointer", fontFamily: "inherit" }}>
+                  V{q.verze || 1} · {fmtKc(computeQuoteTotals(q.data, q.type).cilovaCena)}
+                  <span style={{ marginLeft: 6, fontWeight: 600, color: ted ? "#e0f2fe" : statusColor(q.status) }}>{q.status}</span>
+                </button>
+              );
+            })}
+            <button type="button" style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12, marginLeft: "auto" }} disabled={saving} onClick={novaVerze}
+              title="Kopie téhle nabídky jako další verze se stejným zákazníkem a číslem s příponou -V2, -V3…">➕ Nová verze</button>
+          </div>
+        );
+      })()}
+
       {/* FVE KALKULAČKA — u FVE i FVR (rozšíření stávající instalace) přesně
           podle Excelu; u SRV (servis stávající FVE) slouží k popisu
           servisované soustavy a vygenerování servisní nabídky (Word) */}
@@ -1132,6 +1287,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
           onUZakaznika={setUZakaznika}
           onSave={save}
           cenaVNabidce={data.zakaznik}
+          slevaNabidky={data.zakaznik.sleva}
           onUseAsTarget={({ cenaBezDph, cenaSDph: sDphKalk, dphPct: dphKalk, naklad }) => setData({ ...data, zakaznik: {
             ...data.zakaznik, cilovaCena: String(cenaBezDph), cenaSDph: String(sDphKalk), dph: dphKalk,
             ...(naklad != null ? { nakladKalkulace: String(naklad) } : {}),
@@ -1228,6 +1384,46 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
             </div>
           </div>
         )}
+        {/* DODATEČNÁ SLEVA — nad hotovou cenou, zákazník ji v nabídce uvidí jako řádek slevy */}
+        {(() => {
+          const sl = data.zakaznik.sleva || { zpusob: "kc", hodnota: "", popisek: "", duvod: "" };
+          const nastav = (patch) => setData({ ...data, zakaznik: { ...data.zakaznik, sleva: { ...sl, ...patch } } });
+          const zapnuta = data.zakaznik.sleva != null;
+          return (
+            <div style={{ background: zapnuta ? "#fff7ed" : "#f8fafc", border: "1px solid " + (zapnuta ? "#fdba74" : "#e2e8f0"), borderRadius: 10, padding: "10px 12px", marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A1A" }}>🏷️ Dodatečná sleva{slevaInfo && <span style={{ fontWeight: 600, color: "#c2410c" }}> — {textSlevy(sl, slevaInfo)}, cena po slevě <b>{fmtKc(cenaBezFinal)}</b> bez DPH / <b>{fmtKc(cenaSFinal)}</b> s DPH</span>}</div>
+                {zapnuta
+                  ? <button type="button" style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => { const z = { ...data.zakaznik }; delete z.sleva; setData({ ...data, zakaznik: z }); }}>Zrušit slevu</button>
+                  : <button type="button" style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => nastav({})}>+ Přidat slevu</button>}
+              </div>
+              {zapnuta && (
+                <div style={{ display: "grid", gridTemplateColumns: "150px 130px 1fr 1fr", gap: 10, marginTop: 10, alignItems: "end" }}>
+                  <div>
+                    <label style={S.label} htmlFor="nb-sleva-zpusob">Sleva v</label>
+                    <select id="nb-sleva-zpusob" style={S.select} value={sl.zpusob || "kc"} onChange={e => nastav({ zpusob: e.target.value })}>
+                      <option value="kc">Kč bez DPH</option>
+                      <option value="pct">% z ceny</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={S.label} htmlFor="nb-sleva-hodnota">{sl.zpusob === "pct" ? "Kolik %" : "Kolik Kč"}</label>
+                    <input id="nb-sleva-hodnota" type="number" min="0" step={sl.zpusob === "pct" ? "0.5" : "100"} style={S.input} value={sl.hodnota ?? ""} onChange={e => nastav({ hodnota: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={S.label} htmlFor="nb-sleva-popisek">Text v nabídce</label>
+                    <input id="nb-sleva-popisek" style={S.input} value={sl.popisek ?? ""} placeholder="Sleva" onChange={e => nastav({ popisek: e.target.value })} />
+                  </div>
+                  <div>
+                    <label style={S.label} htmlFor="nb-sleva-duvod">Důvod (interní)</label>
+                    <input id="nb-sleva-duvod" style={S.input} value={sl.duvod ?? ""} placeholder="např. sousedé, věrný zákazník, dorovnání konkurence" onChange={e => nastav({ duvod: e.target.value })} />
+                  </div>
+                </div>
+              )}
+              {zapnuta && marze < 0 && <div style={{ fontSize: 12, color: "#b91c1c", marginTop: 8 }}>⚠️ Po slevě je cena pod nákladem ({fmtKc(nakladNabidky)}) — zakázka by byla ztrátová.</div>}
+            </div>
+          );
+        })()}
         {sekcova && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginBottom: 14 }}>
             <div>
@@ -1282,7 +1478,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
         {sekcova && nahledOtevren && (
           <div ref={nahledRef}>
             <NahledSekcove
-              type={type} data={data} setData={setData} cilovaCena={cilovaCena} dphPct={dphPct}
+              type={type} data={data} setData={setData} cilovaCena={cilovaCena} dphPct={dphPct} sleva={slevaInfo}
               customer={customers.find(c => c.id === Number(customerId))}
               quote={quotes.find(q => q.id === activeId)} currentUser={currentUser}
               odeslane={activeId ? odeslane : []} onOdeslano={oznacitOdeslano} onSave={save}
@@ -1296,10 +1492,44 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
         <textarea style={{ ...S.input, minHeight: 70, resize: "vertical", fontFamily: "inherit" }} value={data.notes} onChange={e => setData({ ...data, notes: e.target.value })} />
       </div>}
 
+      {/* HISTORIE A INFORMACE — co se s nabídkou dělo + ručně zapsané informace */}
+      {activeId && !(uZakaznika && kalkulacni) && (
+        <div style={S.card}>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 4 }}>📜 Historie a informace k nabídce</div>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>Změny stavu, ceny, slevy, verze a odeslání se zapisují samy. Sem připiš, co klient chtěl nebo co se domluvilo — zákazník to nevidí.</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <input aria-label="Nová informace k nabídce" style={{ ...S.input, flex: 1 }} value={novaInfo} placeholder="např. Klient volal — chce variantu s menší baterií a bez wallboxu"
+              onChange={e => setNovaInfo(e.target.value)} onKeyDown={e => { if (e.key === "Enter") pridatInfo(); }} />
+            <button type="button" style={S.btn("#0369a1")} disabled={!novaInfo.trim()} onClick={pridatInfo}>Zapsat</button>
+          </div>
+          {historie.filter(h => h.quote_id === activeId).length === 0
+            ? <div style={{ fontSize: 13, color: "#64748b" }}>Zatím žádné záznamy — první se zapíšou při uložení.</div>
+            : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+                {historie.filter(h => h.quote_id === activeId).map(h => {
+                  const ikona = { poznamka: "💬", stav: "🔄", cena: "💰", sleva: "🏷️", verze: "🗂️", odeslano: "📤" }[h.typ] || "✏️";
+                  return (
+                    <div key={h.id} style={{ display: "flex", gap: 10, fontSize: 13, padding: "6px 10px", borderRadius: 8, background: h.typ === "poznamka" ? "#eff6ff" : "#f8fafc", border: "1px solid " + (h.typ === "poznamka" ? "#bfdbfe" : "#e2e8f0") }}>
+                      <span aria-hidden="true">{ikona}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ color: "#1A1A1A" }}>{h.text}</div>
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{new Date(h.created_at).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}{h.kdo ? ` · ${h.kdo}` : ""}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+        </div>
+      )}
+
       <div style={{ ...S.card, background: "#f8fafc" }}>
         {!(uZakaznika && kalkulacni) && <div style={{ marginBottom: 14 }}>
-          <RetezecCeny naklad={nakladNabidky} marzeKc={marze} marzePct={marzePct} cenaBez={cilovaCena} dphPct={dphPct} cenaS={cenaSDph}
-            poznamka={nakladZKalkulace ? "Náklad a marže z kalkulace FVE výše." : type === "SRV" ? "Cena = součet úkonů servisu, náklad = interní nacenění." : "Marže je přirážka k nákladu. Všechny částky kromě poslední jsou bez DPH."} />
+          <RetezecCeny naklad={nakladNabidky} marzeKc={marze} marzePct={marzePct} cenaBez={cenaBezFinal} dphPct={dphPct} cenaS={cenaSFinal}
+            poznamka={[
+              nakladZKalkulace ? "Náklad a marže z kalkulace FVE výše." : type === "SRV" ? "Cena = součet úkonů servisu, náklad = interní nacenění." : "Marže je přirážka k nákladu. Všechny částky kromě poslední jsou bez DPH.",
+              slevaInfo && `Ceny jsou po slevě ${textSlevy(data.zakaznik.sleva, slevaInfo)} — před slevou ${fmtKc(cilovaCena)} bez DPH, marže ${fmtKc(cilovaCena - nakladNabidky)}.`,
+            ].filter(Boolean).join(" ")} />
         </div>}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button style={S.btn("#34d399")} onClick={save} disabled={saving}>{saving ? "Ukládám…" : "💾 Uložit nabídku"}</button>

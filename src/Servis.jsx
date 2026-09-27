@@ -13,6 +13,7 @@ import * as ui from "./ui.js";
 import { nahratFotkuZakazky, pocetFotekText } from "./fotkyZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import { computeInvoiceTotals, nextInvNum } from "./invoicingUtils.js";
+import { konecnaCenaNabidky, vypocetSlevy } from "./slevaNabidky.js";
 
 const STAVY_TICKETU = ["Nový", "Naplánovaný", "V řešení", "Čeká na díl", "Vyřešený", "Vyfakturovaný", "Zrušený"];
 const STAV_BARVA = {
@@ -690,7 +691,9 @@ function NaceneniAFaktura({ t, zakaznik, naklady, setNaklady, onZmena, onFaktura
   };
 
   const schvalena = nabidka?.status === "Schváleno";
-  const cenaNabidky = Math.round(Number(nabidka?.data?.zakaznik?.cilovaCena) || 0);
+  const cenaNabidky = konecnaCenaNabidky(nabidka?.data).bez; // po případné slevě
+  const zn = nabidka?.data?.zakaznik || {};
+  const slevaNab = vypocetSlevy(zn.cilovaCena, zn.cenaSDph, zn.dph ?? 21, zn.sleva);
   const nevyfakturovane = naklady.filter((x) => !x.billed && Number(x.amount_client) > 0);
 
   // Položky faktury podle zvoleného základu.
@@ -698,7 +701,10 @@ function NaceneniAFaktura({ t, zakaznik, naklady, setNaklady, onZmena, onFaktura
     if (schvalena) {
       const sekce = (nabidka.data?.zakaznik?.sekce || []).filter((s) => Number(s.castka) > 0);
       return sekce.length
-        ? sekce.map((s) => ({ desc: s.nazev || "Servis", qty: 1, unit: "ks", price: Math.round(Number(s.castka)), vatRate: dph }))
+        ? [
+          ...sekce.map((s) => ({ desc: s.nazev || "Servis", qty: 1, unit: "ks", price: Math.round(Number(s.castka)), vatRate: dph })),
+          ...(slevaNab ? [{ desc: slevaNab.popisek, qty: 1, unit: "ks", price: -slevaNab.bez, vatRate: dph }] : []),
+        ]
         : [{ desc: `Servis dle nabídky ${nabidka.cislo || nabidka.name}`, qty: 1, unit: "ks", price: cenaNabidky, vatRate: dph }];
     }
     return nevyfakturovane.map((x) => ({

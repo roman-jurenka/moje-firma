@@ -5,6 +5,7 @@ import Docxtemplater from "docxtemplater";
 import { PRAZDNA_FVE, applyPreset, POLOZKY_NOVE_INSTALACE, zapnutePolozkyNoveInstalace } from "./fvePresets.js";
 import { DRUHY_SERVISU, UKON_DOPRAVA, ZMENA_PRIPOJENI, textyNabidky, ukonyZCfg, cenaUkonu, soucetUkonu, ukonBezCeny, seznamyPodleTypu, maSeznamNoveFve, odhadVynosu } from "./nabidkaTexty.js";
 import NabidkaNahled from "./NabidkaNahled.jsx";
+import { vypocetSlevy } from "./slevaNabidky.js";
 
 // ─── FVE kalkulačka — přesně podle Excelu "Kalkulačka sestav" ──────────────
 // Materiál/práce/služby se vybírají z ceníku (tabulka fve_cenik_items),
@@ -155,7 +156,7 @@ function SyncCilovaCena({ cenaBezDph, cenaSDph, dphPct, naklad, aktualni, onSync
   return null;
 }
 
-export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave, cenaVNabidce, cisloNabidky, vystaveno, customerAddress, customerEmail, odeslane, onOdeslano, uZakaznika, onUZakaznika }) {
+export default function FveCalculator({ value, onChange, currentUser, onUseAsTarget, S, customerName, quoteName, jobType, onSave, cenaVNabidce, slevaNabidky, cisloNabidky, vystaveno, customerAddress, customerEmail, odeslane, onOdeslano, uZakaznika, onUZakaznika }) {
   const cfg = value || PRAZDNA_FVE();
   const set = (patch) => onChange({ ...cfg, ...patch });
   const setItem = (key, patch) => onChange({ ...cfg, [key]: { ...cfg[key], ...patch } });
@@ -403,6 +404,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const cenaNabidkyBezDph = jobType === "SRV" ? soucetUkonu(ukonyNabidky) : null;
   const cenaNabidkySDph = jobType === "SRV" ? Math.round(cenaNabidkyBezDph * (1 + dph)) : cenaDphRounded;
   const cenaNabidkyBezDphFinal = jobType === "SRV" ? cenaNabidkyBezDph : Math.round(cenaNabidkySDph / (1 + dph));
+  // Dodatečná sleva z nabídky (zadává se v Nacenění pod kalkulací) — v náhledu jako řádek slevy.
+  const slevaNahledu = vypocetSlevy(Math.round(cenaNabidkyBezDphFinal), Math.round(cenaNabidkySDph), Math.round(dph * 100), slevaNabidky);
   const dotaceNabidky = jobType !== "SRV" && cfg.dotaceOn ? Math.round(dotace) : 0;
   const textyNahledu = maNahled ? textyNabidky({
     jobType,
@@ -918,8 +921,9 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
           texty={textyNahledu}
           ukony={ukonyNabidky}
           onUkonyChange={(ukony) => set({ ukony })}
-          cenaSDph={cenaNabidkySDph}
-          cenaBezDph={cenaNabidkyBezDphFinal}
+          cenaSDph={slevaNahledu ? slevaNahledu.poS : cenaNabidkySDph}
+          cenaBezDph={slevaNahledu ? slevaNahledu.poBez : cenaNabidkyBezDphFinal}
+          sleva={slevaNahledu}
           dphPct={Math.round(dph * 100)}
           seznamNoveFve={seznamNoveFve}
           zahrnuto={zahrnutoNahled}

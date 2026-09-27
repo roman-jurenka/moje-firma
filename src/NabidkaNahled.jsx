@@ -301,6 +301,7 @@ export default function NabidkaNahled({
   poznamkaVychozi = "", // předvyplněná poznámka (u HRM/ELK poznámka k nabídce)
   upozorneni = [],     // další chybějící údaje od volající stránky
   customerEmail = "",  // e-mail zákazníka — předvyplní se do "Komu" v e-mailu
+  sleva = null,        // dodatečná sleva (vypocetSlevy) — cenaBezDph/cenaSDph jsou už po slevě
 }) {
   const nastaveniKlic = klicNastaveni(typ);
   const [nastaveni, setNastaveni] = useState(PRAZDNE_NASTAVENI);
@@ -487,9 +488,10 @@ export default function NabidkaNahled({
   // E-mail zákazníkovi: předvyplní se ze šablony, před odesláním jde upravit.
   const [email, setEmail] = useState(null); // { komu, predmet, text } — null = zavřeno
   const doplnitEmail = (sablona) => {
-    const cenaText = dotaceKc > 0
+    const cenaText = (dotaceKc > 0
       ? `${fmtKc(cenaBezDph)} bez DPH, ${fmtKc(cenaSDph)} vč. DPH ${dphPct} %, po odečtení dotace ${fmtKc(cenaSDph - dotaceKc)}`
-      : `${fmtKc(cenaBezDph)} bez DPH, ${fmtKc(cenaSDph)} vč. DPH ${dphPct} %`;
+      : `${fmtKc(cenaBezDph)} bez DPH, ${fmtKc(cenaSDph)} vč. DPH ${dphPct} %`)
+      + (sleva ? ` (po slevě ${fmtKc(sleva.s)} vč. DPH)` : "");
     const hodnoty = {
       cislo: cisloNabidky || "(číslo se přidělí při uložení)",
       popis: String(u.podnadpis ?? texty.podnadpis ?? "").trim(),
@@ -749,7 +751,15 @@ export default function NabidkaNahled({
                 dotace a cena po dotaci). Zvýrazněná je částka, kterou zákazník platí. */}
             <table className="nb-cenabox-tab">
               <tbody>
-                <tr><td>Cena{dotaceKc > 0 ? " díla" : ""} bez DPH</td><td>{fmtKc(cenaBezDph)}</td></tr>
+                {sleva ? (
+                  <>
+                    <tr><td>Cena bez DPH</td><td>{fmtKc(sleva.zakladBez)}</td></tr>
+                    <tr className="nb-dotace"><td>{sleva.popisek}</td><td>− {fmtKc(sleva.bez)}</td></tr>
+                    <tr><td>Cena{dotaceKc > 0 ? " díla" : ""} po slevě bez DPH</td><td>{fmtKc(cenaBezDph)}</td></tr>
+                  </>
+                ) : (
+                  <tr><td>Cena{dotaceKc > 0 ? " díla" : ""} bez DPH</td><td>{fmtKc(cenaBezDph)}</td></tr>
+                )}
                 <tr><td>DPH {dphPct} %</td><td>{fmtKc(cenaSDph - cenaBezDph)}</td></tr>
                 {dotaceKc > 0 ? (
                   <>
@@ -786,7 +796,11 @@ export default function NabidkaNahled({
                       <td className="nb-kc">{ukonBezCeny(x) ? <Chybi co="cena" /> : fmtKc(cenaUkonu(x))}</td>
                     </tr>
                   ))}
-                  <tr className="nb-soucet"><td colSpan={ukonyMajiKs ? 3 : 2} className="nb-l2">Cena celkem bez DPH</td><td className="nb-kc">{fmtKc(cenaBezDph)}</td></tr>
+                  {sleva && <>
+                    <tr className="nb-soucet"><td colSpan={ukonyMajiKs ? 3 : 2} className="nb-l2">Součet bez DPH</td><td className="nb-kc">{fmtKc(sleva.zakladBez)}</td></tr>
+                    <tr className="nb-soucet"><td colSpan={ukonyMajiKs ? 3 : 2} className="nb-l2">{sleva.popisek}</td><td className="nb-kc">− {fmtKc(sleva.bez)}</td></tr>
+                  </>}
+                  <tr className="nb-soucet"><td colSpan={ukonyMajiKs ? 3 : 2} className="nb-l2">Cena celkem{sleva ? " po slevě" : ""} bez DPH</td><td className="nb-kc">{fmtKc(cenaBezDph)}</td></tr>
                   <tr className="nb-soucet"><td colSpan={ukonyMajiKs ? 3 : 2} className="nb-l2">DPH {dphPct} %</td><td className="nb-kc">{fmtKc(cenaSDph - cenaBezDph)}</td></tr>
                   <tr className="nb-soucet nb-soucet-hl"><td colSpan={ukonyMajiKs ? 3 : 2} className="nb-l2" style={{ color: "#16324F", fontWeight: 700 }}>Cena celkem s DPH</td><td className="nb-kc">{fmtKc(cenaSDph)}</td></tr>
                 </tbody>

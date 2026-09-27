@@ -6,6 +6,7 @@
 // nezaseknou zpětně).
 
 import { FAZE, fazePlati } from "./prubehFaze.js";
+import { konecnaCenaNabidky } from "./slevaNabidky.js";
 
 export const MIN_FOTEK = { "Obhlídka": 3, "Po montáži": 5 };
 
@@ -41,7 +42,7 @@ export function kontrolyZakazky(z, ctx) {
   const fotky = ctx.fotky || [];
   const kat = (k) => fotky.filter((p) => p.category === k).length;
   const q = ctx.quote;
-  const cenaNabidky = Math.round(Number(q?.data?.zakaznik?.cilovaCena) || 0);
+  const cenaNabidky = konecnaCenaNabidky(q?.data).bez; // po případné slevě
   const dok = z.dokumenty || {};
   const vysledky = [];
 
