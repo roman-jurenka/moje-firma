@@ -16,11 +16,12 @@ function obal(titulek, telo) {
 <head><meta charset="utf-8"><title>${esc(titulek)}</title>
 <style>
   @page { size: 21cm 29.7cm; margin: 2cm; }
-  body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.35; }
+  body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.15; }
+  p { margin: 0 0 5pt; }
   h1 { font-size: 16pt; text-align: center; margin: 0 0 4pt; }
   .pod { text-align: center; font-size: 10pt; color: #444; margin-bottom: 14pt; }
   .navrh { border: 1px solid #d97706; background: #fffbeb; color: #92400e; padding: 6pt; font-size: 9pt; margin-bottom: 12pt; }
-  h2 { font-size: 12pt; margin: 14pt 0 4pt; }
+  h2 { font-size: 12pt; margin: 12pt 0 3pt; }
   table { border-collapse: collapse; width: 100%; }
   td, th { border: 1px solid #999; padding: 4pt 6pt; vertical-align: top; font-size: 10.5pt; }
   th { background: #f1f5f9; text-align: left; }
