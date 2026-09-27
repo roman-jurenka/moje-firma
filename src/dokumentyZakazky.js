@@ -166,6 +166,30 @@ ${podpisy(d)}`;
   return obal(`Dodatek ${dod.cislo} ${d.cisloZakazky || ""}`, telo);
 }
 
+// Specifikace díla z nabídky: u FVE/FVR komponenty z kalkulace („12 ks: Fotovoltaické
+// panely …“), jinak sekce nabídky. Řádky oddělené \n (šablona je zalomí).
+export function specifikaceZNabidky(data, predmet) {
+  const fve = data?.fve;
+  const ks = (x) => Number(x?.qty) || 0;
+  if (fve) {
+    const radky = [];
+    const pridat = (x, text) => { if (ks(x) > 0 && x.name) radky.push(`${ks(x)} ks: ${text}`); };
+    pridat(fve.panel, `Fotovoltaické panely ${fve.panel?.name}`);
+    if (ks(fve.konstrukce) > 0) radky.push(`${ks(fve.konstrukce)} ks: Konstrukce pro uchycení panelů`);
+    pridat(fve.stridac, `Střídač ${fve.stridac?.name}`);
+    pridat(fve.baterie, `Bateriové úložiště ${fve.baterie?.name}${ks(fve.bms) > 0 ? " + BMS" : ""}`);
+    pridat(fve.backup, `Back-up: ${fve.backup?.name}`);
+    pridat(fve.wallbox, `Dobíjecí stanice ${fve.wallbox?.name}`);
+    pridat(fve.regulace, `Regulace ${fve.regulace?.name}`);
+    pridat(fve.bojler, fve.bojler?.name);
+    (fve.customRows || []).filter((r) => r.sekce === "material" && r.name && ks(r) > 0).forEach((r) => radky.push(`${ks(r)} ks: ${r.name}`));
+    radky.push("1 ks: elektroinstalační práce a materiál");
+    return radky.join("\n");
+  }
+  const sekce = (data?.zakaznik?.sekce || []).map((s) => s.nazev).filter(Boolean);
+  return sekce.length ? sekce.join("\n") : (predmet || "");
+}
+
 // Stáhne HTML jako dokument Wordu (.doc) — Word ho otevře a dá se upravit.
 export function stahnoutWord(nazev, html) {
   const blob = new Blob(["﻿", html], { type: "application/msword" });

@@ -3,7 +3,7 @@ import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { nahratFotkuZakazky, pocetFotekText } from "./fotkyZakazky.js";
-import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord } from "./dokumentyZakazky.js";
+import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import {
@@ -374,14 +374,56 @@ export default function Prubeh({
       misto: zak.misto_adresa || zak_.address || "",
       zakaznik: zak_,
       udaje: zak.udaje || {},
-      cena: { bezDph: Number(q?.data?.zakaznik?.cilovaCena) || Number(zak.hodnota) || Number(k?.price) || 0, dphPct: Number(q?.data?.zakaznik?.dph ?? 21) },
+      cena: { bezDph: Number(q?.data?.zakaznik?.cilovaCena) || Number(zak.hodnota) || Number(k?.price) || 0, dphPct: Number(q?.data?.zakaznik?.dph ?? 21), sDph: Number(q?.data?.zakaznik?.cenaSDph) || null },
       nabidka: q ? { cislo: q.cislo || q.name } : null,
+      cisloOP: q?.data?.fve?.cisloOP || "",
+      specifikace: specifikaceZNabidky(q?.data, TYPY.find((t) => t.id === zak.typ)?.label.replace(/^[A-Z]+ — /, "")),
       zastupce: zak.vlastnik_obchod || ja || "",
     };
   };
   const zapsatDokument = async (zak, klic, hodnota, poznamka) => {
     const dokumenty = { ...(zak.dokumenty || {}), [klic]: hodnota };
     await uloz(zak, { dokumenty }, poznamka);
+  };
+  // Firemní Word šablona, když v appce je — nejdřív pro typ zakázky
+  // (public/templates/<druh>_<typ>_sablona.docx, FVE i rozšíření FVE = „fve“),
+  // pak obecná <druh>_sablona.docx. Vyplní se značkami {zakaznikJmeno}, {specifikace}…
+  // Vrací false, když šablona není (pak se použije obecný návrh).
+  const SABLONA_TYPU = { FVE: "fve", FVR: "fve" };
+  const nactiSablonu = async (soubor) => {
+    const res = await fetch(`/templates/${soubor}`);
+    return res.ok && !(res.headers.get("content-type") || "").includes("text/html") ? res : null;
+  };
+  const zVlastniSablony = async (druh, hodnoty, nazevSouboru, typ) => {
+    const res = (SABLONA_TYPU[typ] && await nactiSablonu(`${druh}_${SABLONA_TYPU[typ]}_sablona.docx`))
+      || await nactiSablonu(`${druh}_sablona.docx`);
+    if (!res) return false;
+    const doc = new Docxtemplater(new PizZip(await res.arrayBuffer()), { paragraphLoop: true, linebreaks: true, nullGetter: () => "" });
+    doc.render(hodnoty);
+    const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${nazevSouboru}.docx`.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim();
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    return true;
+  };
+  // Značky dostupné ve firemních šablonách (stejné pro všechny dokumenty).
+  const znackySablony = (d, dod) => {
+    const kc = (n) => (n ? Math.round(Number(n)).toLocaleString("cs-CZ") : "");
+    const bez = Math.round(Number(d.cena.bezDph) || 0);
+    return {
+      datum: d.datum, cisloZakazky: d.cisloZakazky, nazevZakazky: d.nazev, typZakazky: d.predmet,
+      zakaznikJmeno: d.zakaznik.name || "", zakaznikFirma: d.zakaznik.company || "", zakaznikAdresa: d.zakaznik.address || "",
+      zakaznikTelefon: d.zakaznik.phone || "", zakaznikEmail: d.zakaznik.email || "", mistoRealizace: d.misto,
+      ean: d.udaje.ean || "", jistic: d.udaje.jistic_a ? `${d.udaje.jistic_a} A` : "", pocetFazi: d.udaje.faze ? `${d.udaje.faze}f` : "",
+      cena: kc(bez), dph: String(d.cena.dphPct), cenaSDph: kc(d.cena.sDph || bez * (1 + d.cena.dphPct / 100)),
+      cisloNabidky: d.nabidka?.cislo || "", obchodnik: d.zastupce,
+      cisloOP: d.cisloOP || d.cisloZakazky, specifikace: d.specifikace,
+      dodatekCislo: dod ? String(dod.cislo) : "", dodatekPopis: dod?.popis || "",
+      cenaPuvodni: dod ? kc(dod.cena_puvodni) : "", cenaNova: dod ? kc(dod.cena_nova) : "",
+      novyTermin: dod?.termin ? new Date(dod.termin + "T00:00:00").toLocaleDateString("cs-CZ") : "",
+    };
   };
   const vygenerovatDokument = async (zak, druh, dodatek) => {
     setGeneruji(true);
@@ -390,35 +432,19 @@ export default function Prubeh({
       const jmeno = d.zakaznik.name || zak.nazev || "";
       const zaznam = { at: new Date().toISOString(), kdo: ja || null };
       if (druh === "smlouva") {
-        const res = await fetch("/templates/smlouva_sablona.docx");
-        const vlastni = res.ok && !(res.headers.get("content-type") || "").includes("text/html");
-        if (vlastni) {
-          const doc = new Docxtemplater(new PizZip(await res.arrayBuffer()), { paragraphLoop: true, linebreaks: true, nullGetter: () => "" });
-          doc.render({
-            datum: d.datum, cisloZakazky: d.cisloZakazky, nazevZakazky: d.nazev, typZakazky: d.predmet,
-            zakaznikJmeno: d.zakaznik.name || "", zakaznikFirma: d.zakaznik.company || "", zakaznikAdresa: d.zakaznik.address || "",
-            zakaznikTelefon: d.zakaznik.phone || "", zakaznikEmail: d.zakaznik.email || "", mistoRealizace: d.misto,
-            ean: d.udaje.ean || "", jistic: d.udaje.jistic_a ? `${d.udaje.jistic_a} A` : "", pocetFazi: d.udaje.faze ? `${d.udaje.faze}f` : "",
-            cena: d.cena.bezDph ? Math.round(d.cena.bezDph).toLocaleString("cs-CZ") : "", obchodnik: d.zastupce,
-          });
-          const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = `Smlouva ${d.cisloZakazky} ${jmeno}.docx`.replace(/s+/g, " ").trim();
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-        } else {
-          stahnoutWord(`Smlouva o dílo ${d.cisloZakazky} ${jmeno}`, htmlSmlouvy(d));
-        }
+        const nazev = `Smlouva o dílo ${d.cisloOP || d.cisloZakazky} ${jmeno}`;
+        if (!(await zVlastniSablony("smlouva", znackySablony(d), nazev, zak.typ))) stahnoutWord(nazev, htmlSmlouvy(d));
         await zapsatDokument(zak, "smlouva", zaznam, "Vygenerovaný návrh smlouvy o dílo.");
       } else if (druh === "protokol") {
-        stahnoutWord(`Předávací protokol ${d.cisloZakazky} ${jmeno}`, htmlProtokolu(d));
+        const nazev = `Předávací protokol ${d.cisloOP || d.cisloZakazky} ${jmeno}`;
+        if (!(await zVlastniSablony("protokol", znackySablony(d), nazev, zak.typ))) stahnoutWord(nazev, htmlProtokolu(d));
         await zapsatDokument(zak, "protokol", zaznam, "Vygenerovaný předávací protokol.");
       } else if (druh === "dodatek") {
         const dodatky = zak.dokumenty?.dodatky || [];
         const { aktualizovatCenu, ...udajeDodatku } = dodatek;
         const dod = { ...udajeDodatku, cislo: dodatky.length + 1, cena_puvodni: d.cena.bezDph, ...zaznam };
-        stahnoutWord(`Dodatek ${dod.cislo} ${d.cisloZakazky} ${jmeno}`, htmlDodatku(d, dod));
+        const nazev = `Dodatek ${dod.cislo} ${d.cisloZakazky} ${jmeno}`;
+        if (!(await zVlastniSablony("dodatek", znackySablony(d, dod), nazev, zak.typ))) stahnoutWord(nazev, htmlDodatku(d, dod));
         const patch = { dokumenty: { ...(zak.dokumenty || {}), dodatky: [...dodatky, dod] } };
         if (aktualizovatCenu && dod.cena_nova !== "" && dod.cena_nova != null) patch.hodnota = Number(dod.cena_nova);
         await uloz(zak, patch, `Dodatek č. ${dod.cislo}: ${dodatek.popis || "změna"}${patch.hodnota != null ? ` (nová cena ${fmtKc(patch.hodnota)})` : ""}.`);
