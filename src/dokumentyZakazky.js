@@ -53,6 +53,12 @@ function podpisy(d) {
 <td><div class="cara">objednatel<br>${hod(d.zakaznik?.name)}</div></td></tr></table>`;
 }
 
+// Hlavní komponenty z nabídky (d.specifikace, řádky oddělené \n).
+function komponenty(d) {
+  if (!d.specifikace) return "";
+  return `<p><b>Hlavní komponenty systému:</b><br>${esc(d.specifikace).replace(/\n/g, "<br>")}</p>`;
+}
+
 const NAVRH = `<div class="navrh"><b>NÁVRH</b> — před podpisem zkontrolujte a doplňte vyznačená místa (……). Tento řádek před tiskem smažte.</div>`;
 
 // ── Smlouva o dílo (návrh) ──
@@ -71,6 +77,7 @@ ${strany(d)}
 <h2>Čl. II — Předmět díla</h2>
 <p>1. Zhotovitel se zavazuje provést pro objednatele dílo: <b>${hod(d.predmet)}</b> (dále jen „dílo“) na adrese <b>${hod(d.misto)}</b>.</p>
 <p>2. Rozsah díla je dán cenovou nabídkou zhotovitele ${d.nabidka?.cislo ? `č. <b>${esc(d.nabidka.cislo)}</b>` : MEZERA}, která je přílohou č. 1 a nedílnou součástí této smlouvy.</p>
+${komponenty(d)}
 <p>3. Technické údaje odběrného místa:</p>
 ${technicke(d)}
 <p>4. Součástí díla nejsou práce a dodávky, které nejsou uvedené v nabídce; ty lze sjednat písemným dodatkem k této smlouvě.</p>
@@ -114,6 +121,7 @@ ${strany(d)}
 
 <h2>Předmět předání</h2>
 <p>Dílo <b>${hod(d.predmet)}</b> na adrese <b>${hod(d.misto)}</b>, provedené podle smlouvy o dílo č. ${hod(d.cisloZakazky)}${d.nabidka?.cislo ? ` a nabídky č. ${esc(d.nabidka.cislo)}` : ""}.</p>
+${komponenty(d)}
 ${technicke(d)}
 
 <h2>Instalovaná zařízení</h2>
@@ -149,6 +157,7 @@ ${strany(d)}
 <h2>Čl. I — Předmět dodatku</h2>
 <p>Smluvní strany se dohodly na této změně díla:</p>
 <p style="border:1px solid #999; padding:6pt; min-height:60pt">${dod.popis ? esc(dod.popis).replace(/\n/g, "<br>") : MEZERA}</p>
+${komponenty(d)}
 
 <h2>Čl. II — Cena díla</h2>
 ${nova != null && nova !== puvodni ? `<table>

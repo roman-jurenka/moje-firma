@@ -412,6 +412,9 @@ export default function Prubeh({
   const znackySablony = (d, dod) => {
     const kc = (n) => (n ? Math.round(Number(n)).toLocaleString("cs-CZ") : "");
     const bez = Math.round(Number(d.cena.bezDph) || 0);
+    const puvodni = Math.round(Number(dod?.cena_puvodni) || 0);
+    const nova = dod && dod.cena_nova !== "" && dod.cena_nova != null ? Math.round(Number(dod.cena_nova)) : null;
+    const rozdil = nova != null ? nova - puvodni : 0;
     return {
       datum: d.datum, cisloZakazky: d.cisloZakazky, nazevZakazky: d.nazev, typZakazky: d.predmet,
       zakaznikJmeno: d.zakaznik.name || "", zakaznikFirma: d.zakaznik.company || "", zakaznikAdresa: d.zakaznik.address || "",
@@ -421,7 +424,9 @@ export default function Prubeh({
       cisloNabidky: d.nabidka?.cislo || "", obchodnik: d.zastupce,
       cisloOP: d.cisloOP || d.cisloZakazky, specifikace: d.specifikace,
       dodatekCislo: dod ? String(dod.cislo) : "", dodatekPopis: dod?.popis || "",
-      cenaPuvodni: dod ? kc(dod.cena_puvodni) : "", cenaNova: dod ? kc(dod.cena_nova) : "",
+      cenaPuvodni: dod ? kc(dod.cena_puvodni) || "…………" : "", cenaNova: dod ? kc(dod.cena_nova) : "",
+      zmenaCeny: nova != null && rozdil !== 0,
+      cenaRozdil: rozdil ? `${rozdil > 0 ? "+" : "−"}${kc(Math.abs(rozdil))}` : "",
       novyTermin: dod?.termin ? new Date(dod.termin + "T00:00:00").toLocaleDateString("cs-CZ") : "",
     };
   };
