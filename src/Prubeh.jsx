@@ -370,6 +370,7 @@ export default function Prubeh({
       datum: new Date().toLocaleDateString("cs-CZ"),
       cisloZakazky: k?.code || (q?.cislo ? `SOD-${q.cislo}` : ""),
       nazev: zak.nazev || "",
+      typ: zak.typ,
       predmet: TYPY.find((t) => t.id === zak.typ)?.label.replace(/^[A-Z]+ — /, "") || zak.nazev || "",
       misto: zak.misto_adresa || zak_.address || "",
       zakaznik: zak_,
@@ -390,6 +391,12 @@ export default function Prubeh({
   // pak obecná <druh>_sablona.docx. Vyplní se značkami {zakaznikJmeno}, {specifikace}…
   // Vrací false, když šablona není (pak se použije obecný návrh).
   const SABLONA_TYPU = { FVE: "fve", FVR: "fve" };
+  // Název systému v protokolu podle typu zakázky (1. a 2. pád). Pro FVE na ohřev
+  // vody stačí přidat typ sem a do SABLONA_TYPU.
+  const ELEKTRARNA_TYPU = {
+    FVE: ["SOLÁRNÍ ELEKTRÁRNA", "SOLÁRNÍ ELEKTRÁRNY"],
+    FVR: ["SOLÁRNÍ ELEKTRÁRNA", "SOLÁRNÍ ELEKTRÁRNY"],
+  };
   const nactiSablonu = async (soubor) => {
     const res = await fetch(`/templates/${soubor}`);
     return res.ok && !(res.headers.get("content-type") || "").includes("text/html") ? res : null;
@@ -425,6 +432,9 @@ export default function Prubeh({
       cisloOP: d.cisloOP || d.cisloZakazky, specifikace: d.specifikace,
       dodatekCislo: dod ? String(dod.cislo) : "", dodatekPopis: dod?.popis || "",
       cenaPuvodni: dod ? kc(dod.cena_puvodni) || "…………" : "", cenaNova: dod ? kc(dod.cena_nova) : "",
+      // Věta v předávacím protokolu FVE („… JE PŘEDÁNA A PŘEVZATA / PŘEVZETÍ … BYLO ODMÍTNUTO“)
+      elektrarna: ELEKTRARNA_TYPU[d.typ]?.[0] || "SOLÁRNÍ ELEKTRÁRNA",
+      elektrarny: ELEKTRARNA_TYPU[d.typ]?.[1] || "SOLÁRNÍ ELEKTRÁRNY",
       zmenaCeny: nova != null && rozdil !== 0,
       cenaRozdil: rozdil ? `${rozdil > 0 ? "+" : "−"}${kc(Math.abs(rozdil))}` : "",
       novyTermin: dod?.termin ? new Date(dod.termin + "T00:00:00").toLocaleDateString("cs-CZ") : "",
