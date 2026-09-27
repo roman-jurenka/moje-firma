@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
@@ -101,6 +101,48 @@ function BunkaSekce({ z, sekceIds }) {
   );
 }
 
+// Prohlížeč fotek přes celou obrazovku: šipky / klávesy ← → / tažení prstem,
+// Esc zavře. fotky = řádky contract_photos, i = index zobrazené fotky.
+function ProhlizecFotek({ fotky, i, onI, onClose }) {
+  const p = fotky[i];
+  const tah = useRef(null);
+  useEffect(() => {
+    const klavesa = (e) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft" && i > 0) onI(i - 1);
+      else if (e.key === "ArrowRight" && i < fotky.length - 1) onI(i + 1);
+    };
+    window.addEventListener("keydown", klavesa);
+    return () => window.removeEventListener("keydown", klavesa);
+  }, [i, fotky.length, onI, onClose]);
+  if (!p) return null;
+  const sipka = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 48, height: 48, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.9)", color: "#0f172a", fontSize: 26, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Prohlížeč fotek" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onTouchStart={(e) => { tah.current = e.touches[0].clientX; }}
+      onTouchEnd={(e) => {
+        if (tah.current == null) return;
+        const dx = e.changedTouches[0].clientX - tah.current;
+        tah.current = null;
+        if (dx > 50 && i > 0) onI(i - 1);
+        else if (dx < -50 && i < fotky.length - 1) onI(i + 1);
+      }}
+      style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(15,23,42,.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16, gap: 10 }}>
+      <div style={{ position: "absolute", top: 12, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center", color: "#fff", gap: 10 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{i + 1} / {fotky.length} · {p.category || "Bez kategorie"}{p.date ? ` · ${new Date(p.date + "T00:00:00").toLocaleDateString("cs-CZ")}` : ""}</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <StorageLink href={p.url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontSize: 13, fontWeight: 600, border: "1px solid rgba(255,255,255,.5)", borderRadius: 8, padding: "6px 10px", textDecoration: "none" }}>Otevřít originál</StorageLink>
+          <button type="button" aria-label="Zavřít prohlížeč" onClick={onClose} style={{ background: "rgba(255,255,255,.15)", color: "#fff", border: "none", borderRadius: 8, width: 36, height: 34, fontSize: 18, cursor: "pointer" }}>✕</button>
+        </div>
+      </div>
+      <OneDriveThumb key={p.id} itemId={p.item_id} fallbackUrl={p.url} alt={`${p.category || "Fotka"} ${i + 1} z ${fotky.length}`}
+        style={{ maxWidth: "min(1200px, 92vw)", maxHeight: "80vh", objectFit: "contain", borderRadius: 8, background: "#0f172a", minWidth: 120, minHeight: 120 }} />
+      {i > 0 && <button type="button" aria-label="Předchozí fotka" onClick={() => onI(i - 1)} style={{ ...sipka, left: 16 }}>‹</button>}
+      {i < fotky.length - 1 && <button type="button" aria-label="Další fotka" onClick={() => onI(i + 1)} style={{ ...sipka, right: 16 }}>›</button>}
+    </div>
+  );
+}
+
 // Panáček průvodce — elektrikář v helmě. Nálada podle stavu zakázky:
 // ok = úsměv, pozor = nejistý, chyba = lekl se (otevřená pusa).
 function Panacek({ nalada = "ok", size = 48 }) {
@@ -176,6 +218,10 @@ export default function Prubeh({
   const prepnoutPruvodce = () => setPruvodceMin((m) => { try { localStorage.setItem("proudos-pruvodce-min", m ? "0" : "1"); } catch { /* bez úložiště */ } return !m; });
   const [dodatekForm, setDodatekForm] = useState(null); // { popis, cena_nova, termin, aktualizovatCenu }
   const [viceForm, setViceForm] = useState(null); // víc zakázek z jedné nabídky: { radky: [{ id?, nazev, misto, hodnota }] }
+  const [galerieKat, setGalerieKat] = useState({ zakId: null, kat: "vse" }); // filtr karty Fotky zakázky
+  const [prohlizec, setProhlizec] = useState(null);   // { fotky, i } — prohlížeč fotek přes celou obrazovku
+  const zmenitFotku = useCallback((i) => setProhlizec((p) => (p ? { ...p, i } : p)), []);
+  const zavritProhlizec = useCallback(() => setProhlizec(null), []);
   const [uzavEmail, setUzavEmail] = useState(null); // uzavírací e-mail objednateli: { zakId, komu, predmet, text, sablona, nacitam, … }
   const fotoInput = useRef(null);
   const fotoCil = useRef(null);                       // { z, faze, ukol } pro vybrané soubory
@@ -1250,6 +1296,7 @@ export default function Prubeh({
       {vykresliDodatek()}
       {vykresliVice()}
       {vykresliUzavEmail()}
+      {prohlizec && <ProhlizecFotek fotky={prohlizec.fotky} i={prohlizec.i} onI={zmenitFotku} onClose={zavritProhlizec} />}
       {/* Výběr fotek pro tlačítko „Nahrát fotky“ u úkolu fáze (na mobilu nabídne i fotoaparát). */}
       <input ref={fotoInput} type="file" accept="image/*" multiple style={{ display: "none" }}
         onChange={(e) => { const files = [...e.target.files]; e.target.value = ""; nahratFotky(files); }} />
@@ -1804,13 +1851,16 @@ export default function Prubeh({
 
                       {fotkyUkolu.length > 0 && (
                         <div style={{ display: "flex", gap: 6, padding: "0 12px 10px 40px", flexWrap: "wrap" }}>
-                          {fotkyUkolu.slice(0, 6).map((p) => (
-                            <StorageLink key={p.id} href={p.url} target="_blank" rel="noopener noreferrer"
-                              style={{ display: "block", width: 56, height: 56, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0" }}>
-                              <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt={p.category} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                            </StorageLink>
+                          {fotkyUkolu.slice(0, 6).map((p, j) => (
+                            <button key={p.id} type="button" onClick={() => setProhlizec({ fotky: fotkyUkolu, i: j })} aria-label={`Zobrazit fotku ${j + 1} z ${fotkyUkolu.length}`}
+                              style={{ display: "block", width: 56, height: 56, padding: 0, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", cursor: "zoom-in", background: "#f1f5f9" }}>
+                              <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                            </button>
                           ))}
-                          {fotkyUkolu.length > 6 && <span style={{ alignSelf: "center", fontSize: 12, color: "#64748b" }}>+{fotkyUkolu.length - 6}</span>}
+                          {fotkyUkolu.length > 6 && (
+                            <button type="button" onClick={() => setProhlizec({ fotky: fotkyUkolu, i: 6 })}
+                              style={{ ...btnGhost, alignSelf: "center", padding: "4px 10px", fontSize: 12 }}>+{fotkyUkolu.length - 6} další</button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1957,6 +2007,51 @@ export default function Prubeh({
             ))}
           </div>
         </div>;
+    // Všechny nahrané fotky zakázky (obhlídka, montáž, protokol…) podle kategorie;
+    // klik otevře prohlížeč přes celou obrazovku.
+    const vsechnyFotky = fotkyZ[z.id] || [];
+    const poradiKat = ["Obhlídka", "Smlouva", "Před montáží", "Průběh montáže", "Po montáži", "Detail střídač/baterie", "Předávací protokol", "Servis"];
+    const katFotek = [...new Set(vsechnyFotky.map((p) => p.category || "Bez kategorie"))]
+      .sort((a, b) => ((poradiKat.indexOf(a) + 1) || 99) - ((poradiKat.indexOf(b) + 1) || 99));
+    const vybranaKat = galerieKat.zakId === z.id && katFotek.includes(galerieKat.kat) ? galerieKat.kat : "vse";
+    const zobrazeneFotky = vybranaKat === "vse" ? vsechnyFotky : vsechnyFotky.filter((p) => (p.category || "Bez kategorie") === vybranaKat);
+    const cipKat = (id, text, pocet) => (
+      <button key={id} type="button" aria-pressed={vybranaKat === id} onClick={() => setGalerieKat({ zakId: z.id, kat: id })}
+        style={{ border: "1px solid " + (vybranaKat === id ? "#0369a1" : "#cbd5e1"), background: vybranaKat === id ? "#0369a1" : "#fff", color: vybranaKat === id ? "#fff" : "#334155", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+        {text} ({pocet})
+      </button>
+    );
+    const kFotky = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>📷 Fotky zakázky{vsechnyFotky.length ? ` (${vsechnyFotky.length})` : ""}</div>
+            {otevrena && (
+              <select aria-label="Nahrát fotky do kategorie" value="" disabled={!!nahravam} style={{ ...inp, width: "auto", padding: "5px 8px", fontSize: 13 }}
+                onChange={(e) => { if (e.target.value) vybratFotkyKategorie(z, e.target.value); }}>
+                <option value="">{nahravam ? "Nahrávám…" : "+ Nahrát fotky do…"}</option>
+                {poradiKat.map((k) => <option key={k} value={k}>{k}</option>)}
+              </select>
+            )}
+          </div>
+          {vsechnyFotky.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#94a3b8" }}>Zatím žádné fotky — nahrávají se u úkolů fází (obhlídka, montáž) nebo tady.</div>
+          ) : <>
+            {katFotek.length > 1 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {cipKat("vse", "Vše", vsechnyFotky.length)}
+                {katFotek.map((k) => cipKat(k, k, vsechnyFotky.filter((p) => (p.category || "Bez kategorie") === k).length))}
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6, maxHeight: 380, overflowY: "auto" }}>
+              {zobrazeneFotky.map((p, i) => (
+                <button key={p.id} type="button" onClick={() => setProhlizec({ fotky: zobrazeneFotky, i })}
+                  aria-label={`Zobrazit fotku ${i + 1} z ${zobrazeneFotky.length}${p.category ? ` (${p.category})` : ""}`} title={p.category || ""}
+                  style={{ padding: 0, border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", aspectRatio: "1 / 1", cursor: "zoom-in", background: "#f1f5f9" }}>
+                  <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                </button>
+              ))}
+            </div>
+          </>}
+        </div>;
     const kBrana = otevrena && brana.length > 0 && (
           <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 9 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1983,7 +2078,7 @@ export default function Prubeh({
     if (!siroky) {
       return (
         <div className="pr-panel" id="pr-panel">
-          {kHlavicka}{kPrubeh}{kDalsiKrok}{kUkolyFaze}{kProc}{kMisto}{kUkoly}{kZpravy}{kHistorie}{kBrana}{kKdo}
+          {kHlavicka}{kPrubeh}{kDalsiKrok}{kUkolyFaze}{kFotky}{kProc}{kMisto}{kUkoly}{kZpravy}{kHistorie}{kBrana}{kKdo}
         </div>
       );
     }
@@ -1993,7 +2088,7 @@ export default function Prubeh({
         <div className="pr-cela">{kHlavicka}</div>
         <div className="pr-cela">{kPrubeh}</div>
         <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}</div>
-        <div className="pr-sloupec">{kProc}{kHistorie}</div>
+        <div className="pr-sloupec">{kFotky}{kProc}{kHistorie}</div>
         <div className="pr-sloupec">{kMisto}{kUkoly}{kZpravy}{kKdo}</div>
       </div>
     );
