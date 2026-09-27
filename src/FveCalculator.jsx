@@ -159,6 +159,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
   const cfg = value || PRAZDNA_FVE();
   const set = (patch) => onChange({ ...cfg, ...patch });
   const setItem = (key, patch) => onChange({ ...cfg, [key]: { ...cfg[key], ...patch } });
+  // Nová instalace — FVE i FVE na ohřev vody (FVO) se kalkulují a nabízejí stejně.
+  const jeNovaFve = jobType === "FVE" || jobType === "FVO";
 
   const [cenik, setCenik] = useState(null); // { panely: [...], ... }
   const [adminOpen, setAdminOpen] = useState(false);
@@ -317,7 +319,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       const rocniVynos = cfg.rocniVynosOverride || (vykonFve > 0 ? `${fmt1(vykonFve * 1.0)}–${fmt1(vykonFve * 1.1)}` : "");
       // FVR (rozšíření stávající FVE) má jinou úvodní větu než FVE (nová
       // instalace) — šablona teď má na tomto místě placeholder {fveVeta}.
-      const fveVeta = jobType === "FVR" ? "na rozšíření stávající fotovoltaické elektrárny" : "fotovoltaické elektrárny";
+      const fveVeta = jobType === "FVR" ? "na rozšíření stávající fotovoltaické elektrárny"
+        : jobType === "FVO" ? "fotovoltaického ohřevu vody" : "fotovoltaické elektrárny";
 
       doc.render({
         fveVeta,
@@ -371,7 +374,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     bms: "BMS", rozvadecDc: "Rozvaděč DC", ostatniFixed: "Ostatní elektro materiál", backup: "Back-up",
     wallbox: "Wallbox / nabíjení EV", regulace: "Regulace", bojler: "Bojler",
   };
-  const maNahled = jobType === "SRV" || jobType === "FVR" || jobType === "FVE";
+  const maNahled = jobType === "SRV" || jobType === "FVR" || jeNovaFve;
   // Cena nabídky se u všech tří typů bere automaticky z kalkulace.
   const synchronizovatCenu = maNahled;
   const ukonyNabidky = ukonyZCfg(cfg);
@@ -383,11 +386,11 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     backup: "Záložní napájení (back-up)", regulace: "Regulace do TUV", wallbox: "Elektromobilita", bojler: "Bojler",
   };
   const radkyNabidky = matRows
-    .filter(([key, item, cfgItem]) => vNabidce(item, cfgItem) && (jobType !== "FVE" || FVE_RADKY[key]))
+    .filter(([key, item, cfgItem]) => vNabidce(item, cfgItem) && (!jeNovaFve || FVE_RADKY[key]))
     .map(([key, item, cfgItem]) => ({
-      label: (jobType === "FVE" ? FVE_RADKY[key] : RADEK_LABELS[key]) || key,
+      label: (jeNovaFve ? FVE_RADKY[key] : RADEK_LABELS[key]) || key,
       hodnota: key === "baterie" && bateriKwh > 0
-        ? `${item.name} (celkem ${fmtCz(bateriKwh)} kWh)${jobType === "FVE" && vNabidce(bms, cfg.bms) ? " + BMS" : ""}`
+        ? `${item.name} (celkem ${fmtCz(bateriKwh)} kWh)${jeNovaFve && vNabidce(bms, cfg.bms) ? " + BMS" : ""}`
         : item.name,
       ks: String(cfgItem.qty),
     }));
@@ -906,7 +909,7 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       )}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         {maNahled && <button style={S.btn("#0369a1")} onClick={() => setNahledOtevren((v) => !v)}>📝 {nahledOtevren ? "Skrýt náhled nabídky" : "Náhled nabídky pro zákazníka"}</button>}
-        {jobType === "FVE" && (
+        {jeNovaFve && (
           <button style={S.btnGhost} onClick={generateWordOffer} title="Původní Word šablona — bez čísla nabídky a evidence odeslání">📄 Word (původní šablona)</button>
         )}
       </div>

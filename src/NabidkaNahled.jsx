@@ -12,8 +12,8 @@ import { cenaUkonu, ukonBezCeny, ukonyMajiMaterial, DUVERA } from "./nabidkaText
 
 // Nová FVE má jiné podmínky (platnost, termín, záruky) než servis a menší
 // zakázky — proto vlastní sadu výchozích hodnot.
-const klicNastaveni = (typ) => (typ === "FVE" ? "nabidky_vychozi_FVE" : "nabidky_vychozi");
-const popisNastaveni = (typ) => (typ === "FVE" ? "nabídky nové FVE" : "servis, rozšíření, hromosvody a elektroinstalace");
+const klicNastaveni = (typ) => (typ === "FVE" || typ === "FVO" ? "nabidky_vychozi_FVE" : "nabidky_vychozi");
+const popisNastaveni = (typ) => (typ === "FVE" || typ === "FVO" ? "nabídky nové FVE" : "servis, rozšíření, hromosvody a elektroinstalace");
 const FIRMA_EMAIL = "info@jurenkaelektro.cz";
 const FIRMA_TELEFON = "+420 702 172 622";
 const fmtCas = (iso) => new Date(iso).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });

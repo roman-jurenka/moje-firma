@@ -24,6 +24,7 @@ const fmtDateCz = (v) => {
 const TYPY_ZAKAZEK = [
   { id: "FVE", label: "FVE — Fotovoltaika" },
   { id: "FVR", label: "FVR — FVE rozšíření" },
+  { id: "FVO", label: "FVO — FVE ohřev vody" },
   { id: "HRM", label: "HRM — Hromosvody" },
   { id: "ELK", label: "ELK — Elektroinstalace" },
   { id: "SRV", label: "SRV — Servis" },

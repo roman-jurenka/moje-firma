@@ -1,5 +1,5 @@
 // Texty nabídek pro zákazníka podle typu zakázky — nová FVE (FVE), servis
-// (SRV), rozšíření FVE (FVR), hromosvody (HRM) a elektroinstalace (ELK).
+// (SRV), rozšíření FVE (FVR), FVE na ohřev vody (FVO), hromosvody (HRM) a elektroinstalace (ELK).
 // Všechny typy se zobrazují stejným náhledem (NabidkaNahled.jsx), liší se
 // jen tím, co se do něj napíše. Samostatný soubor (ne komponenta), ať se dá
 // použít odkudkoliv a ať je na jednom místě vidět, jak nabídka pro který typ zní.
@@ -113,7 +113,7 @@ export const odhadVynosu = (vykonKwp) => (vykonKwp > 0 ? `${fmtCislo(vykonKwp * 
 
 /**
  * @param {object} p
- * @param {"FVE"|"SRV"|"FVR"|"HRM"|"ELK"} p.jobType
+ * @param {"FVE"|"SRV"|"FVR"|"FVO"|"HRM"|"ELK"} p.jobType
  * @param {{nazev: string, popis: string, ks?: string|number}[]} [p.ukony]  úkony (SRV) nebo položky nabídky (HRM, ELK)
  * @param {{label: string, hodnota: string, ks: string}[]} [p.radky]  komponenty / materiál do specifikace
  *        (u FVE celá sestava, u SRV stávající soustava, u FVR to, co se přidává, u HRM rozpis materiálu)
@@ -126,7 +126,7 @@ export const odhadVynosu = (vykonKwp) => (vykonKwp > 0 ? `${fmtCislo(vykonKwp * 
  * @param {string} [p.cisloOP]   (FVE) číslo obchodního případu
  */
 export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, bateriKwh = 0, sDotaci = false, rocniVynos = "", maBaterii = false, prodlouzenaZarukaStridace = false, cisloOP = "" }) {
-  if (jobType === "FVE") return textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, prodlouzenaZarukaStridace, cisloOP });
+  if (jobType === "FVE" || jobType === "FVO") return textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, prodlouzenaZarukaStridace, cisloOP, ohrevVody: jobType === "FVO" });
   if (jobType === "HRM" || jobType === "ELK") return textyElektro({ jobType, ukony, radky });
 
   if (jobType === "FVR") {
@@ -210,12 +210,16 @@ export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, ba
 // Nová fotovoltaická elektrárna — obsah podle dřívější Word šablony
 // (nabidka_fve_sablona.docx): sestava, záruky výrobců, dotace NZÚ, platby
 // po podpisu smlouvy / předávacího protokolu, 5 kroků k vlastní FVE.
-function textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, prodlouzenaZarukaStridace, cisloOP }) {
-  const podnadpis = ["Fotovoltaická elektrárna pro Váš rodinný dům"];
+// ohrevVody = FVO: fotovoltaika jen na ohřev vody (bez připojení k síti).
+function textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, prodlouzenaZarukaStridace, cisloOP, ohrevVody = false }) {
+  const co = ohrevVody ? "fotovoltaického ohřevu vody" : "fotovoltaické elektrárny";
+  const podnadpis = [ohrevVody ? "Fotovoltaický ohřev vody pro Váš rodinný dům" : "Fotovoltaická elektrárna pro Váš rodinný dům"];
   if (vykonKwp > 0) podnadpis.push(`${fmtCislo(vykonKwp)} kWp`);
   if (bateriKwh > 0) podnadpis.push(`baterie ${fmtCislo(bateriKwh)} kWh`);
 
-  const prinos = bateriKwh > 0
+  const prinos = ohrevVody
+    ? "abyste vodu ohřívali vlastní elektřinou ze slunce a snížili účty za energie"
+    : bateriKwh > 0
     ? "abyste si vyráběli vlastní elektřinu, snížili účty za energie a vyrobenou energii využili i večer a v noci"
     : "abyste si vyráběli vlastní elektřinu a snížili účty za energie";
   const velikost = vykonKwp > 0
@@ -232,14 +236,14 @@ function textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, 
     nadpis: "CENOVÁ NABÍDKA",
     podnadpis: podnadpis.join(" · "),
     metaNavic: cisloOP ? `Obchodní případ: ${cisloOP}` : "",
-    uvod: `na základě Vašeho zájmu Vám posíláme nabídku fotovoltaické elektrárny${velikost} — ${prinos}.${
+    uvod: `na základě Vašeho zájmu Vám posíláme nabídku ${co}${velikost} — ${prinos}.${
       sDotaci ? " Sestava je navržená tak, aby splňovala podmínky dotačního programu Nová zelená úsporám." : ""}`,
-    cenaNadpis: "Cena fotovoltaické elektrárny",
+    cenaNadpis: `Cena ${co}`,
     maUkony: false,
     ukony: [],
-    zpracovani: `Nabídku jsme připravili na míru podle Vaší poptávky, spotřeby a možností Vaší střechy. Postaráme se o vše od návrhu přes vyřízení připojení k distribuční síti${
-      sDotaci ? " a dotace" : ""} až po instalaci, spuštění a předání elektrárny.`,
-    nadpisSpecifikace: "Návrh řešení fotovoltaické elektrárny",
+    zpracovani: `Nabídku jsme připravili na míru podle Vaší poptávky, spotřeby a možností Vaší střechy. Postaráme se o vše od návrhu${ohrevVody ? (sDotaci ? " přes vyřízení dotace" : "") : ` přes vyřízení připojení k distribuční síti${
+      sDotaci ? " a dotace" : ""}`} až po instalaci, spuštění a předání ${ohrevVody ? "systému" : "elektrárny"}.`,
+    nadpisSpecifikace: `Návrh řešení ${co}`,
     specRadky,
     terminPred: "Instalaci provedeme do",
     terminOd: "od podpisu smlouvy a zaplacení zálohy",
@@ -255,7 +259,7 @@ function textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, 
     krok1: "Nezávazná poptávka",
     krok2: "Prohlídka a návrh sestavy",
     krok3: "Nabídka na míru (tento dokument)",
-    krok4: `Podpis smlouvy, vyřízení připojení${sDotaci ? " a dotace" : ""}`,
+    krok4: ohrevVody ? `Podpis smlouvy${sDotaci ? ", vyřízení dotace" : ""}` : `Podpis smlouvy, vyřízení připojení${sDotaci ? " a dotace" : ""}`,
     krok5: `Instalace, spuštění a předání${sDotaci ? ", vyplacení dotace" : ""}`,
   };
 }

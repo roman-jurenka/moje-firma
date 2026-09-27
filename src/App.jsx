@@ -402,6 +402,7 @@ const STAGE_COLORS = { Nový: "#0369a1", Jednání: "#f59e0b", Nabídka: "#a78bf
 const JOB_TYPES = [
   { id: "FVE", label: "FVE — Fotovoltaika" },
   { id: "FVR", label: "FVR — FVE rozšíření" },
+  { id: "FVO", label: "FVO — FVE ohřev vody" },
   { id: "HRM", label: "HRM — Hromosvody" },
   { id: "ELK", label: "ELK — Elektroinstalace" },
   { id: "SRV", label: "SRV — Servis" },

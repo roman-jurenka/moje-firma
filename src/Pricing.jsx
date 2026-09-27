@@ -28,6 +28,7 @@ const RATE_PER_KM = 6.5; // Kč/km — stejný paušál jako v Knize jízd
 const JOB_TYPES = [
   { id: "FVE", label: "FVE — Fotovoltaika" },
   { id: "FVR", label: "FVR — FVE rozšíření" },
+  { id: "FVO", label: "FVO — FVE ohřev vody" },
   { id: "HRM", label: "HRM — Hromosvody" },
   { id: "ELK", label: "ELK — Elektroinstalace" },
   { id: "SRV", label: "SRV — Servis" },
@@ -37,7 +38,7 @@ const JOB_TYPES = [
 // N-FVE-2026-0001. Pořadí se počítá zvlášť pro každý typ a rok z čerstvých
 // dat v databázi (ne z lokálního stavu), duplicitu hlídá UNIQUE index
 // quotes_cislo_key (sql-cislo-nabidky.sql).
-const CISLOVANE_TYPY = ["FVE", "FVR", "SRV", "HRM", "ELK"];
+const CISLOVANE_TYPY = ["FVE", "FVR", "FVO", "SRV", "HRM", "ELK"];
 // Hromosvody a elektroinstalace: nabídka pro zákazníka se skládá ze sekcí
 // (název, popis, cena bez DPH) — cílová cena je u nich BEZ DPH.
 const SEKCOVE_TYPY = ["HRM", "ELK"];
@@ -87,7 +88,7 @@ const PRAZDNA_NABIDKA = () => ({
 // U hromosvodů, elektroinstalací a nabídek bez typu je náklad z interního
 // nacenění a marže se zadává v % jako přirážka k nákladu.
 const VYCHOZI_MARZE = 25;
-const KALKULACNI_TYPY = ["FVE", "FVR", "SRV"];
+const KALKULACNI_TYPY = ["FVE", "FVR", "FVO", "SRV"];
 function marzeNabidky(d, naklad) {
   const z = d?.zakaznik || {};
   if (z.marzePct !== undefined && z.marzePct !== "" && z.marzePct !== null) return Number(z.marzePct) || 0;
@@ -693,7 +694,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
   // U FVE/FVR je náklad z kalkulace (materiál, práce, služby), u ostatních
   // z interního nacenění níže.
   const kalkulacni = KALKULACNI_TYPY.includes(type);
-  const nakladZKalkulace = type === "FVE" || type === "FVR";
+  const nakladZKalkulace = type === "FVE" || type === "FVR" || type === "FVO";
   const nakladNabidky = nakladZKalkulace ? Math.round(Number(data?.zakaznik?.nakladKalkulace) || 0) : celkemNaklad;
   const marzeZadana = kalkulacni ? null : marzeNabidky(data, celkemNaklad);
   const cilovaCena = data ? cenaNabidkyBezDph(data, type, celkemNaklad) : 0; // cena BEZ DPH
@@ -891,7 +892,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
       return "<h2 style='margin-top:22px;font-size:15px;color:#111;font-weight:700'>Rozsah prací</h2>" +
         "<table><thead><tr><th>Ukazatel</th><th>Hodnota</th></tr></thead><tbody>" + radkyHtml + "</tbody></table>";
     }
-    if ((type === "FVE" || type === "FVR") && data.fve) {
+    if ((type === "FVE" || type === "FVR" || type === "FVO") && data.fve) {
       const cfg = data.fve;
       const { data: items } = await supabase.from("fve_cenik_items").select("*").eq("active", true);
       const najdi = (kat, nazev) => (items || []).find(i => i.category === kat && i.name === nazev) || {};
@@ -976,7 +977,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     .filter(q => typeFilter === "vse" || q.type === typeFilter || (typeFilter === "bez" && !q.type))
     .filter(q => statusFilter === "vse" || q.status === statusFilter);
 
-  const typeBadgeColor = (id) => ({ FVE: "#f59e0b", FVR: "#ea580c", HRM: "#a78bfa", ELK: "#0369a1", SRV: "#34d399" }[id] || "#475569");
+  const typeBadgeColor = (id) => ({ FVE: "#f59e0b", FVR: "#ea580c", FVO: "#ca8a04", HRM: "#a78bfa", ELK: "#0369a1", SRV: "#34d399" }[id] || "#475569");
   const statusColor = (s) => ({ "Návrh": "#64748b", "Odesláno": "#0369a1", "Schváleno": "#34d399", "Zamítnuto": "#ef4444" }[s] || "#64748b");
 
   // KPI nad seznamem — kolik nabídek je rozpracovaných/schválených a jaká je
@@ -1112,7 +1113,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
       {/* FVE KALKULAČKA — u FVE i FVR (rozšíření stávající instalace) přesně
           podle Excelu; u SRV (servis stávající FVE) slouží k popisu
           servisované soustavy a vygenerování servisní nabídky (Word) */}
-      {(type === "FVE" || type === "FVR" || type === "SRV") && (
+      {(type === "FVE" || type === "FVR" || type === "FVO" || type === "SRV") && (
         <FveCalculator
           value={data.fve || ((type === "FVR" || type === "SRV") ? vychoziSluzba(type) : null)}
           onChange={(fve) => setData({ ...data, fve })}
@@ -1314,7 +1315,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
           {activeId && <button style={S.btn("#F5C518")} disabled={converting} onClick={convertToDeal}>{converting ? "Předávám…" : "➡️ Předat do Průběhu zakázek"}</button>}
         </div>
         {!type && <div style={{ fontSize: 12, color: "#b45309", marginTop: 10 }}>Vyber nahoře typ zakázky — podle něj se připraví nabídka pro zákazníka s číslem, podmínkami a evidencí odeslání.</div>}
-        {(type === "FVE" || type === "FVR" || type === "SRV") && <div style={{ fontSize: 12, color: "#475569", marginTop: 10 }}>Nabídku pro zákazníka otevřeš tlačítkem „📝 Náhled nabídky pro zákazníka“ v kalkulaci nahoře.</div>}
+        {(type === "FVE" || type === "FVR" || type === "FVO" || type === "SRV") && <div style={{ fontSize: 12, color: "#475569", marginTop: 10 }}>Nabídku pro zákazníka otevřeš tlačítkem „📝 Náhled nabídky pro zákazníka“ v kalkulaci nahoře.</div>}
       </div>
     </div>
   );

@@ -46,11 +46,11 @@ const ZAKLAD_FAZI = [
   { id: "dokumentace", sekce: "bo", nazev: "Dokumentace", typy: { FVR: "o", SRV: "-", HRM: "o", ELK: "o" }, ukoly: [
     { id: "projekt", text: "Projekt / schéma zapojení hotové" },
   ] },
-  { id: "distributor", sekce: "bo", nazev: "Distributor", typy: { FVR: "o", SRV: "-", HRM: "-", ELK: "o" }, ukoly: [
+  { id: "distributor", sekce: "bo", nazev: "Distributor", typy: { FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "o" }, ukoly: [
     { id: "zadost", text: "Žádost u distributora podaná" },
     { id: "souhlas", text: "Souhlas distributora", brana: true },
   ] },
-  { id: "dotace", sekce: "bo", nazev: "Dotace", typy: { FVE: "o", FVR: "o", SRV: "-", HRM: "-", ELK: "-" }, ukoly: [
+  { id: "dotace", sekce: "bo", nazev: "Dotace", typy: { FVE: "o", FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "-" }, ukoly: [
     { id: "zadost", text: "Žádost o dotaci podaná" },
   ] },
   { id: "material", sekce: "bo", nazev: "Materiál a termín", nazevTyp: { SRV: "Termín" }, ukoly: [
@@ -130,6 +130,7 @@ export const PRVNI_FAZE = "poptavka";
 export const TYPY = [
   { id: "FVE", label: "FVE — Fotovoltaika" },
   { id: "FVR", label: "FVR — FVE rozšíření" },
+  { id: "FVO", label: "FVO — FVE ohřev vody" },
   { id: "HRM", label: "HRM — Hromosvody" },
   { id: "ELK", label: "ELK — Elektroinstalace" },
   { id: "SRV", label: "SRV — Servis" },
@@ -154,7 +155,7 @@ export const nazevDuvodu = (id) => DUVODY_CEKANI.find((d) => d.id === id)?.label
 // + samostatné položky; řádky po bodech/hodinách do MD nepočítají).
 export function planovaneMd(qd, typ) {
   if (!qd) return 0;
-  if (typ === "FVE" || typ === "FVR") {
+  if (typ === "FVE" || typ === "FVR" || typ === "FVO") {
     const f = qd.fve || {};
     return (Number(f.mdElektro) || 0) + (Number(f.mdStrecha) || 0) + (Number(f.mdInstalater) || 0);
   }

@@ -71,7 +71,7 @@ const btn = (bg, fg = "#fff", extra = {}) => ({ background: bg, color: fg, borde
 const btnGhost = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 13px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
 const inp = { width: "100%", boxSizing: "border-box", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 10px", fontSize: 14, fontFamily: "inherit", color: "#0f172a", background: "#fff" };
 const lbl = { fontSize: 12, fontWeight: 700, color: "#475569", display: "block", marginBottom: 4 };
-const TYP_BARVY = { FVE: ["#fef3c7", "#92400e"], FVR: ["#ffedd5", "#9a3412"], SRV: ["#dcfce7", "#166534"], HRM: ["#ede9fe", "#5b21b6"], ELK: ["#e0f2fe", "#075985"] };
+const TYP_BARVY = { FVE: ["#fef3c7", "#92400e"], FVR: ["#ffedd5", "#9a3412"], FVO: ["#fef9c3", "#854d0e"], SRV: ["#dcfce7", "#166534"], HRM: ["#ede9fe", "#5b21b6"], ELK: ["#e0f2fe", "#075985"] };
 
 function Fajfka({ barva = "#15803d", size = 16 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={barva} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>;
@@ -390,12 +390,12 @@ export default function Prubeh({
   // (public/templates/<druh>_<typ>_sablona.docx, FVE i rozšíření FVE = „fve“),
   // pak obecná <druh>_sablona.docx. Vyplní se značkami {zakaznikJmeno}, {specifikace}…
   // Vrací false, když šablona není (pak se použije obecný návrh).
-  const SABLONA_TYPU = { FVE: "fve", FVR: "fve" };
-  // Název systému v protokolu podle typu zakázky (1. a 2. pád). Pro FVE na ohřev
-  // vody stačí přidat typ sem a do SABLONA_TYPU.
+  const SABLONA_TYPU = { FVE: "fve", FVR: "fve", FVO: "fve" };
+  // Název systému v protokolu podle typu zakázky (1. a 2. pád).
   const ELEKTRARNA_TYPU = {
     FVE: ["SOLÁRNÍ ELEKTRÁRNA", "SOLÁRNÍ ELEKTRÁRNY"],
     FVR: ["SOLÁRNÍ ELEKTRÁRNA", "SOLÁRNÍ ELEKTRÁRNY"],
+    FVO: ["SOLÁRNÍ ELEKTRÁRNA NA OHŘEV VODY", "SOLÁRNÍ ELEKTRÁRNY NA OHŘEV VODY"],
   };
   const nactiSablonu = async (soubor) => {
     const res = await fetch(`/templates/${soubor}`);
