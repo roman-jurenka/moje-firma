@@ -145,6 +145,7 @@ export default function Prubeh({
   const [pruvodceMin, setPruvodceMin] = useState(() => { try { return localStorage.getItem("proudos-pruvodce-min") === "1"; } catch { return false; } });
   const prepnoutPruvodce = () => setPruvodceMin((m) => { try { localStorage.setItem("proudos-pruvodce-min", m ? "0" : "1"); } catch { /* bez úložiště */ } return !m; });
   const [dodatekForm, setDodatekForm] = useState(null); // { popis, cena_nova, termin, aktualizovatCenu }
+  const [viceForm, setViceForm] = useState(null); // víc zakázek z jedné nabídky: { radky: [{ id?, nazev, misto, hodnota }] }
   const fotoInput = useRef(null);
   const fotoCil = useRef(null);                       // { z, faze, ukol } pro vybrané soubory
   const vybranyRadek = rows.find((r) => r.id === vybrano);
@@ -366,6 +367,8 @@ export default function Prubeh({
     const zak_ = zakaznik(zak.customer_id) || {};
     const k = contractById(zak.contract_id);
     const q = zak.quote_id ? quoteById(zak.quote_id) : null;
+    // Víc zakázek z jedné nabídky → do dokumentů jde cena téhle zakázky, ne celé nabídky.
+    const castNabidky = zakazkyNabidky(zak).length > 1 && Number(zak.hodnota) > 0;
     return {
       datum: new Date().toLocaleDateString("cs-CZ"),
       cisloZakazky: k?.code || (q?.cislo ? `SOD-${q.cislo}` : ""),
@@ -375,7 +378,9 @@ export default function Prubeh({
       misto: zak.misto_adresa || zak_.address || "",
       zakaznik: zak_,
       udaje: zak.udaje || {},
-      cena: { bezDph: Number(q?.data?.zakaznik?.cilovaCena) || Number(zak.hodnota) || Number(k?.price) || 0, dphPct: Number(q?.data?.zakaznik?.dph ?? 21), sDph: Number(q?.data?.zakaznik?.cenaSDph) || null },
+      cena: castNabidky
+        ? { bezDph: Number(zak.hodnota), dphPct: Number(q?.data?.zakaznik?.dph ?? 21), sDph: null }
+        : { bezDph: Number(q?.data?.zakaznik?.cilovaCena) || Number(zak.hodnota) || Number(k?.price) || 0, dphPct: Number(q?.data?.zakaznik?.dph ?? 21), sDph: Number(q?.data?.zakaznik?.cenaSDph) || null },
       nabidka: q ? { cislo: q.cislo || q.name } : null,
       cisloOP: q?.data?.fve?.cisloOP || "",
       specifikace: specifikaceZNabidky(q?.data, TYPY.find((t) => t.id === zak.typ)?.label.replace(/^[A-Z]+ — /, "")),
@@ -505,8 +510,12 @@ export default function Prubeh({
       || quotes.filter((x) => zak.deal_id && x.deal_id === zak.deal_id).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0];
     const qd = nabidka?.data;
     if (!qd) return;
-    const md = planovaneMd(qd, nabidka.type || zak.typ);
-    const dny = (qd.denniPlan || []).filter((p) => p.datum);
+    // Víc zakázek z jedné nabídky: každá dostane podíl plánu podle své ceny
+    // a rozvrh po dnech se nepřebírá (platil pro celou nabídku).
+    const celkem = cenaNabidky(nabidka);
+    const podil = celkem > 0 && Number(zak.hodnota) > 0 && Number(zak.hodnota) < celkem ? Number(zak.hodnota) / celkem : 1;
+    const md = planovaneMd(qd, nabidka.type || zak.typ) * podil;
+    const dny = podil < 1 ? [] : (qd.denniPlan || []).filter((p) => p.datum);
     if (!md && !dny.length) return;
     try {
       const { data: proj, error } = await supabase.from("projects").insert({
@@ -644,6 +653,76 @@ export default function Prubeh({
     const ok = await uloz(zak, { quote_id: qq ? qq.id : null, ...(cena && !zak.hodnota ? { hodnota: cena } : {}) },
       qq ? `Propojeno s nabídkou ${qq.cislo || qq.name}.` : "Nabídka odpojená.");
     if (ok) ukazHlasku(qq ? "✓ Nabídka propojená" : "Nabídka odpojená");
+  };
+
+  // ── Víc zakázek z jedné nabídky ──
+  // Zákazník schválí jednu nabídku, ale dělá se víc stejných zakázek (např. FVE
+  // na dvou domech). Každá má vlastní průběh, místo, cenu a později i vlastní
+  // číslo zakázky; spojuje je společná nabídka (quote_id).
+  const zakazkyNabidky = (zak) => (zak?.quote_id
+    ? rows.filter((r) => r.quote_id === zak.quote_id && r.stav !== "prohrana").sort((a, b) => a.id - b.id)
+    : []);
+  const cenaNabidky = (q) => Number(q?.data?.zakaznik?.cilovaCena) || 0;
+  const otevritVice = (zak) => {
+    const stavajici = zakazkyNabidky(zak);
+    const radky = (stavajici.length ? stavajici : [zak]).map((r) => ({
+      id: r.id, nazev: r.nazev || "", misto: r.misto_adresa || "", hodnota: r.hodnota != null ? String(Math.round(r.hodnota)) : "",
+    }));
+    const zaklad = radky[0].nazev.replace(/ · \d+$/, "");
+    radky.push({ nazev: `${zaklad} · ${radky.length + 1}`, misto: "", hodnota: radky[0].hodnota });
+    setViceForm({ radky });
+  };
+  const zapsatVice = async (zak) => {
+    const radky = viceForm.radky.map((r) => ({ ...r, nazev: r.nazev.trim(), misto: r.misto.trim() }));
+    if (radky.some((r) => !r.nazev)) { alert("Každá zakázka musí mít název."); return; }
+    const nove = radky.filter((r) => !r.id);
+    if (!nove.length) { setViceForm(null); return; }
+    const q = quoteById(zak.quote_id);
+    const oznaceni = q?.cislo || q?.name || "";
+    setPracuji(true);
+    // Stávající zakázky: změněný název, místo nebo cena
+    for (const r of radky.filter((x) => x.id)) {
+      const puv = rows.find((x) => x.id === r.id);
+      const patch = {};
+      if (puv.nazev !== r.nazev) patch.nazev = r.nazev;
+      if ((puv.misto_adresa || "") !== r.misto) patch.misto_adresa = r.misto || null;
+      const h = r.hodnota === "" ? null : Math.round(Number(r.hodnota));
+      if ((puv.hodnota == null ? null : Math.round(puv.hodnota)) !== h) patch.hodnota = h;
+      if (Object.keys(patch).length && !(await uloz(puv, patch))) { setPracuji(false); return; }
+    }
+    // Nové zakázky: stejná fáze a hotové úkoly jako tahle, vlastní obchodní případ
+    const zalozene = [];
+    for (const r of nove) {
+      const hodnota = r.hodnota === "" ? null : Math.round(Number(r.hodnota));
+      const { data: d, error: dErr } = await supabase.from("deals").insert({
+        name: r.nazev, value: hodnota, stage: STAGE_Z_FAZE[zak.faze] || (sekceZ(zak) === "ob" ? "Nový" : "Vyhráno"),
+        customer_id: zak.customer_id || null, assigned_to: zak.vlastnik_obchod || ja || null, type: zak.typ || null,
+        site_address: r.misto || null,
+      }).select().single();
+      if (dErr) { setPracuji(false); alert("Zakázku „" + r.nazev + "“ se nepodařilo založit: " + dErr.message); break; }
+      if (onDealZalozen) onDealZalozen(d);
+      const { data: row, error } = await supabase.from("zakazky_prubeh").insert({
+        nazev: r.nazev, customer_id: zak.customer_id, typ: zak.typ, hodnota, deal_id: d.id, quote_id: zak.quote_id,
+        faze: zak.faze, stav: "otevrena", hotove_ukoly: zak.hotove_ukoly || {}, preskocene: zak.preskocene || [], potrebne: zak.potrebne || [],
+        dalsi_krok: zak.dalsi_krok, dalsi_krok_termin: zak.dalsi_krok_termin, dalsi_krok_kdo: zak.dalsi_krok_kdo,
+        vlastnik_obchod: zak.vlastnik_obchod, vlastnik_bo: zak.vlastnik_bo, vlastnik_re: zak.vlastnik_re,
+        misto_adresa: r.misto || null,
+      }).select().single();
+      if (error) { setPracuji(false); alert("Zakázku „" + r.nazev + "“ se nepodařilo založit: " + error.message); break; }
+      zalozene.push(row);
+      setRows((rs) => [row, ...rs]);
+      // Už za obchodem (back office a dál) → hned i vlastní zakázka s číslem, jako při přesunu.
+      if (sekceZ(zak) !== "ob") {
+        const contractId = await zajistitZakazku(row);
+        if (contractId && await uloz(row, { contract_id: contractId })) await synchronizovatStare(row, row.faze, contractId);
+      }
+      await pridatPoznamku(row, `Zapsáno z nabídky ${oznaceni} spolu se zakázkou „${zak.nazev}“.`, true);
+    }
+    setPracuji(false);
+    if (!zalozene.length) return;
+    await pridatPoznamku(zak, `Z nabídky ${oznaceni} zapsané další zakázky: ${zalozene.map((x) => x.nazev).join(", ")}.`, true);
+    setViceForm(null);
+    ukazHlasku(`✓ Zapsáno ${zalozene.length === 1 ? "1 další zakázka" : `${zalozene.length} další zakázky`} z nabídky ${oznaceni}`);
   };
 
   // Obchodní případ (deals) běží pod průběhem dál kvůli úkolům, zprávám a
@@ -919,6 +998,62 @@ export default function Prubeh({
     );
   };
 
+  // ── Víc zakázek z jedné nabídky: seznam zakázek (stávající + nové) ──
+  const vykresliVice = () => {
+    if (!viceForm || !vybranyRadek) return null;
+    const z = vybranyRadek;
+    const q = quoteById(z.quote_id);
+    const celkem = cenaNabidky(q);
+    const radky = viceForm.radky;
+    const setRadek = (i, patch) => setViceForm({ radky: radky.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+    const zaklad = (radky[0]?.nazev || z.nazev).replace(/ · \d+$/, "");
+    const soucet = radky.reduce((s, r) => s + (Number(r.hodnota) || 0), 0);
+    const nastavCeny = (fn) => setViceForm({ radky: radky.map((r, i) => ({ ...r, hodnota: String(fn(i)) })) });
+    const novych = radky.filter((r) => !r.id).length;
+    return (
+      <div role="dialog" aria-modal="true" aria-label="Víc zakázek z jedné nabídky" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        onClick={(e) => { if (e.target === e.currentTarget && !pracuji) setViceForm(null); }}>
+        <div style={{ ...karta, width: "min(760px, 100%)", maxHeight: "90vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>Víc zakázek z nabídky {q?.cislo || q?.name}</div>
+          <div style={{ fontSize: 13, color: "#475569" }}>
+            Každá zakázka pojede samostatně — vlastní průběh, místo realizace, cena, fotky, smlouva i číslo zakázky. Nové začnou ve stejné fázi jako tahle ({nazevFaze(fazeById[z.faze], z.typ)}).
+          </div>
+          <div className="pr-vice-hlavicka" style={{ display: "grid", gridTemplateColumns: "28px 1.3fr 1.3fr 120px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
+            <span>#</span><span>Název zakázky</span><span>Místo realizace</span><span>Cena bez DPH</span><span />
+          </div>
+          {radky.map((r, i) => (
+            <div key={r.id || `n${i}`} className="pr-vice-radek" style={{ display: "grid", gridTemplateColumns: "28px 1.3fr 1.3fr 120px 32px", gap: 8, alignItems: "center" }}>
+              <span style={{ fontWeight: 800, color: r.id ? "#334155" : "#0369a1" }} title={r.id ? "Už zapsaná zakázka" : "Nová zakázka"}>{i + 1}.</span>
+              <input aria-label={`Název zakázky ${i + 1}`} style={inp} value={r.nazev} onChange={(e) => setRadek(i, { nazev: e.target.value })} />
+              <input aria-label={`Místo realizace ${i + 1}`} style={inp} value={r.misto} placeholder={zakaznik(z.customer_id)?.address || "adresa"} onChange={(e) => setRadek(i, { misto: e.target.value })} />
+              <input aria-label={`Cena zakázky ${i + 1}`} type="number" min="0" style={inp} value={r.hodnota} onChange={(e) => setRadek(i, { hodnota: e.target.value })} />
+              {r.id ? <span /> : (
+                <button type="button" aria-label={`Odebrat zakázku ${i + 1}`} title="Odebrat" style={{ ...btnGhost, padding: "4px 8px" }}
+                  onClick={() => setViceForm({ radky: radky.filter((_, j) => j !== i) })}>✕</button>
+              )}
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" style={btnGhost} onClick={() => setViceForm({ radky: [...radky, { nazev: `${zaklad} · ${radky.length + 1}`, misto: "", hodnota: radky[radky.length - 1]?.hodnota || "" }] })}>+ Další zakázka</button>
+            {celkem > 0 && <>
+              <button type="button" style={btnGhost} onClick={() => nastavCeny((i) => Math.round(celkem / radky.length) + (i === 0 ? celkem - Math.round(celkem / radky.length) * radky.length : 0))}>Rozpočítat cenu nabídky</button>
+              <button type="button" style={btnGhost} onClick={() => nastavCeny(() => Math.round(celkem))}>Každá za cenu nabídky</button>
+            </>}
+          </div>
+          <div style={{ fontSize: 13, color: "#475569" }}>
+            Součet: <b>{fmtKc(soucet)}</b>{celkem > 0 && <> · nabídka: {fmtKc(celkem)}{Math.round(soucet) !== Math.round(celkem) && ` (${soucet > celkem ? "o " + fmtKc(soucet - celkem) + " víc" : "o " + fmtKc(celkem - soucet) + " míň"})`}</>}
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button type="button" style={btnGhost} disabled={pracuji} onClick={() => setViceForm(null)}>Zrušit</button>
+            <button type="button" style={btn("#0369a1")} disabled={pracuji || !novych} onClick={() => zapsatVice(z)}>
+              {pracuji ? "Zapisuji…" : novych ? `Zapsat ${novych === 1 ? "1 novou zakázku" : `${novych} nové zakázky`}` : "Přidej další zakázku"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── Vykreslení ──
   const hlaskaEl = hlaska && (
     <div role="status" onClick={() => setHlaska(null)} style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "#15803d", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, boxShadow: "0 6px 20px rgba(0,0,0,.2)", maxWidth: "90vw" }}>{hlaska}</div>
@@ -937,10 +1072,14 @@ export default function Prubeh({
         @media (max-width: 768px) {
           .pr-pruvodce { bottom: calc(84px + env(safe-area-inset-bottom)); right: 8px !important; }
           div.pr-pruvodce { left: 8px; width: auto !important; }
+          .pr-vice-hlavicka { display: none !important; }
+          .pr-vice-radek { grid-template-columns: 28px 1fr 32px !important; }
+          .pr-vice-radek > input:nth-of-type(2), .pr-vice-radek > input:nth-of-type(3) { grid-column: 2 / 3; }
         }
       `}</style>
       {vykresliPruvodce()}
       {vykresliDodatek()}
+      {vykresliVice()}
       {/* Výběr fotek pro tlačítko „Nahrát fotky“ u úkolu fáze (na mobilu nabídne i fotoaparát). */}
       <input ref={fotoInput} type="file" accept="image/*" multiple style={{ display: "none" }}
         onChange={(e) => { const files = [...e.target.files]; e.target.value = ""; nahratFotky(files); }} />
@@ -1297,6 +1436,7 @@ export default function Prubeh({
     const zakZ = zakaznik(z.customer_id);
     const ukolyZ = ukolyZakazky(z);
     const zpravyZ = zpravyZakazky(z);
+    const zNabidky = zakazkyNabidky(z);
 
     // Celý průběh: všechny fáze, které se zakázky týkají, a kde je teď.
     const iTed = FAZE.findIndex((x) => x.id === z.faze);
@@ -1334,7 +1474,23 @@ export default function Prubeh({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
             {k && onOtevritZakazku && <button type="button" style={{ ...btnGhost, padding: "5px 10px", fontSize: 13 }} onClick={() => onOtevritZakazku(k.id)}>Otevřít zakázku {k.code || ""}</button>}
             {onOtevritNaceneni && <button type="button" style={{ ...btnGhost, padding: "5px 10px", fontSize: 13 }} onClick={() => onOtevritNaceneni(z.quote_id)}>{qq ? `Nabídka ${qq.cislo || qq.name}` : "Nacenění"}</button>}
+            {otevrena && qq && (qq.status === "Schváleno" || iTed >= FAZE.findIndex((x) => x.id === "smlouva")) && (
+              <button type="button" style={{ ...btnGhost, padding: "5px 10px", fontSize: 13 }} onClick={() => otevritVice(z)}
+                title="Zákazník schválil jednu nabídku, ale bude se dělat víc stejných zakázek (každá s vlastním průběhem, místem a cenou)">➕ Zapsat víc zakázek z nabídky</button>
+            )}
           </div>
+          {zNabidky.length > 1 && (
+            <div style={{ marginTop: 6, fontSize: 13, color: "#475569", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              <span>Z nabídky {qq?.cislo || qq?.name} je {zNabidky.length} {zNabidky.length < 5 ? "zakázky" : "zakázek"}:</span>
+              {zNabidky.map((r, i) => (
+                <button key={r.id} type="button" onClick={() => { vybrat(r.id); if (jednaId) setJednaId(r.id); }} aria-current={r.id === z.id ? "true" : undefined}
+                  style={{ border: "1px solid #cbd5e1", borderRadius: 7, padding: "3px 8px", fontSize: 12, fontFamily: "inherit", cursor: r.id === z.id ? "default" : "pointer",
+                    background: r.id === z.id ? "#0369a1" : "#fff", color: r.id === z.id ? "#fff" : "#334155", fontWeight: 700 }}>
+                  {i + 1}. {r.nazev}{r.hodnota ? ` · ${fmtKc(r.hodnota)}` : ""}
+                </button>
+              ))}
+            </div>
+          )}
           {otevrena && f.sekce === "ob" && (
             <div style={{ marginTop: 6 }}>
               <label style={lbl} htmlFor="pr-nab">Propojená nabídka {qq ? "" : "(úkoly nabídky se pak odškrtnou samy)"}</label>
