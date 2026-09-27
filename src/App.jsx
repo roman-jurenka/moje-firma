@@ -1762,7 +1762,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           onDealZalozen={(d) => setDeals(prev => (prev.some(x => x.id === d.id) ? prev : [d, ...prev]))}
           onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
           onOtevritZakazku={(id) => { setContractInitialId(id); setTab("contracts"); }}
-          onOtevritNaceneni={() => setTab("pricing")}
+          onOtevritNaceneni={(id) => { if (id) setPricingInitialId(id); setTab("pricing"); }}
         />}
 
         {/* ── ZAKÁZKY ── */}
