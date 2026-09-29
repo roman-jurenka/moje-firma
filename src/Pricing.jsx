@@ -611,6 +611,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
   // odeslání) + ručně zapsané informace („klient chce menší baterii“…). ──
   const [historie, setHistorie] = useState([]);
   const [novaInfo, setNovaInfo] = useState("");
+  const [upravaMarze, setUpravaMarze] = useState(null); // cílová marže (%) v rámečku slevy; null = zavřeno
   const aktivniRef = useRef(null);
   useEffect(() => {
     aktivniRef.current = activeId;
@@ -742,6 +743,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     setType(ty);
     setData(normalized);
     setNahledOtevren(false);
+    setUpravaMarze(null);
     savedSnapshotRef.current = JSON.stringify({ name: q.name, customerId: cId, status: st, type: ty, data: normalized });
   };
 
@@ -1394,10 +1396,52 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
             <div style={{ background: zapnuta ? "#fff7ed" : "#f8fafc", border: "1px solid " + (zapnuta ? "#fdba74" : "#e2e8f0"), borderRadius: 10, padding: "10px 12px", marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A1A" }}>🏷️ Dodatečná sleva{slevaInfo && <span style={{ fontWeight: 600, color: "#c2410c" }}> — {textSlevy(sl, slevaInfo)}, cena po slevě <b>{fmtKc(cenaBezFinal)}</b> bez DPH / <b>{fmtKc(cenaSFinal)}</b> s DPH</span>}</div>
-                {zapnuta
-                  ? <button type="button" style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => { const z = { ...data.zakaznik }; delete z.sleva; setData({ ...data, zakaznik: z }); }}>Zrušit slevu</button>
-                  : <button type="button" style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => nastav({})}>+ Přidat slevu</button>}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button type="button" style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 12 }} aria-expanded={upravaMarze != null}
+                    title="Zadej, na jakou marži můžeš jít — sleva se dopočítá"
+                    onClick={() => setUpravaMarze(v => (v == null ? (marzePct != null ? String(marzePct) : "") : null))}>📊 Upravit marži</button>
+                  {zapnuta
+                    ? <button type="button" style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => { const z = { ...data.zakaznik }; delete z.sleva; setData({ ...data, zakaznik: z }); }}>Zrušit slevu</button>
+                    : <button type="button" style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => nastav({})}>+ Přidat slevu</button>}
+                </div>
               </div>
+              {/* ÚPRAVA MARŽE: cílová marže (přirážka k nákladu) → sleva, která na ni cenu srazí */}
+              {upravaMarze != null && (() => {
+                const cil = upravaMarze === "" ? null : Number(String(upravaMarze).replace(",", "."));
+                const cenaCil = cil != null && Number.isFinite(cil) ? Math.round(nakladNabidky * (1 + cil / 100)) : null;
+                const slevaKc = cenaCil != null ? cilovaCena - cenaCil : null;
+                const marzePred = nakladNabidky > 0 ? Math.round(((cilovaCena - nakladNabidky) / nakladNabidky) * 1000) / 10 : null;
+                return (
+                  <div style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: "10px 12px", marginTop: 10, display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
+                    {nakladNabidky <= 0 ? (
+                      <div style={{ color: "#b45309" }}>Nabídka zatím nemá náklad{nakladZKalkulace ? " z kalkulace" : " (vyplň interní nacenění)"} — marži není z čeho počítat.</div>
+                    ) : <>
+                      <div style={{ color: "#475569" }}>
+                        Náklad <b>{fmtKc(nakladNabidky)}</b> · cena bez slevy <b>{fmtKc(cilovaCena)}</b> (marže {String(marzePred).replace(".", ",")} %)
+                        {slevaInfo && <> · teď po slevě <b>{fmtKc(cenaBezFinal)}</b> (marže {String(marzePct).replace(".", ",")} %)</>}
+                      </div>
+                      <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
+                        <div style={{ width: 150 }}>
+                          <label style={S.label} htmlFor="nb-marze-cil">Marže po slevě (%)</label>
+                          <input id="nb-marze-cil" type="number" step="0.5" style={S.input} value={upravaMarze} autoFocus onChange={e => setUpravaMarze(e.target.value)} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 200, paddingBottom: 8, color: slevaKc != null && slevaKc < 0 ? "#b45309" : "#1A1A1A" }}>
+                          {cenaCil == null ? "Zadej marži, na kterou můžeš jít."
+                            : slevaKc < 0 ? `Marže ${String(cil).replace(".", ",")} % je vyšší než cena bez slevy — sleva není potřeba.`
+                              : <>Cena po slevě <b>{fmtKc(cenaCil)}</b> bez DPH · sleva <b>{fmtKc(slevaKc)}</b> ({String(Math.round((slevaKc / cilovaCena) * 1000) / 10).replace(".", ",")} %)
+                                {cil < 0 && <span style={{ color: "#b91c1c" }}> — pod nákladem, ztráta!</span>}</>}
+                        </div>
+                        <button type="button" style={S.btn("#0369a1")} disabled={cenaCil == null || slevaKc < 0}
+                          onClick={() => { nastav({ zpusob: "kc", hodnota: String(slevaKc) }); setUpravaMarze(null); }}>
+                          Použít jako slevu
+                        </button>
+                        <button type="button" style={S.btnGhost} onClick={() => setUpravaMarze(null)}>Zavřít</button>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b" }}>Marže = přirážka k nákladu, stejně jako v řetězci ceny dole. Sleva se zapíše v Kč bez DPH; text pro zákazníka a důvod doplň níž.</div>
+                    </>}
+                  </div>
+                );
+              })()}
               {zapnuta && (
                 <div style={{ display: "grid", gridTemplateColumns: "150px 130px 1fr 1fr", gap: 10, marginTop: 10, alignItems: "end" }}>
                   <div>
