@@ -674,12 +674,64 @@ export default function Prubeh({
     setPracuji(false);
   };
 
+  // Předchozí fáze včetně kroku přeskočeného tlačítkem „Přeskočit krok“
+  // (volitelné fáze vyřazené jako nepotřebné se dál přeskakují).
+  const jePreskocenyKrok = (zak, f) => !!(zak.hotove_ukoly || {})[`${f.id}.__preskoceno`];
+  const predchozi = (zak) => {
+    const i = FAZE.findIndex((f) => f.id === zak.faze);
+    return FAZE.slice(0, Math.max(0, i)).reverse()
+      .find((f) => pravidlo(f, zak.typ) !== "-" && (!(zak.preskocene || []).includes(f.id) || jePreskocenyKrok(zak, f))) || predchoziFaze(zak);
+  };
   const vratit = async (zak) => {
-    const cil = predchoziFaze(zak);
+    const cil = predchozi(zak);
     if (!cil) return;
     if (!window.confirm(`Vrátit zakázku zpět do fáze „${nazevFaze(cil, zak.typ)}“?`)) return;
     setPracuji(true);
-    await presun(zak, cil, `Vráceno zpět do fáze ${nazevFaze(cil, zak.typ)}.`);
+    let nz = zak;
+    if (jePreskocenyKrok(zak, cil)) {
+      // vrácení do přeskočeného kroku → krok zase platí
+      const hotove = { ...(zak.hotove_ukoly || {}) };
+      delete hotove[`${cil.id}.__preskoceno`];
+      nz = { ...zak, preskocene: (zak.preskocene || []).filter((id) => id !== cil.id), hotove_ukoly: hotove };
+      if (!(await uloz(zak, { preskocene: nz.preskocene, hotove_ukoly: hotove }))) { setPracuji(false); return; }
+    }
+    await presun(nz, cil, `Vráceno zpět do fáze ${nazevFaze(cil, zak.typ)}.`);
+    setPracuji(false);
+  };
+
+  // Přeskočit (ignorovat) krok: zakázka jde dál, i když úkoly fáze nejsou hotové
+  // nebo průvodce hlásí chyby. Fáze se zapíše jako přeskočená (v průběhu
+  // přeškrtnutá) a značka "<faze>.__preskoceno" umožní se do ní vrátit.
+  const preskocitKrok = async (zak) => {
+    const f = fazeById[zak.faze];
+    const auto = autoZ(zak);
+    const nedodelane = [
+      ...f.ukoly.filter((u) => !ukolHotovy(zak, f, u, auto)).map((u) => u.text),
+      ...kontrolyZ(zak).filter((x) => x.blokuje).map((x) => x.text),
+    ];
+    const nz = { ...zak, preskocene: [...new Set([...(zak.preskocene || []), f.id])] };
+    const cil = dalsiFaze(nz);
+    const duvod = window.prompt(
+      `Přeskočit krok „${nazevFaze(f, zak.typ)}“ a pokračovat ${cil ? `do fáze „${nazevFaze(cil, zak.typ)}“` : "uzavřením zakázky"}?`
+      + (nedodelane.length ? `\n\nZůstane nedodělané:\n${nedodelane.map((t) => "• " + t).join("\n")}` : "")
+      + "\n\nNapiš důvod (zapíše se do historie):",
+    );
+    if (duvod === null) return;
+    if (!duvod.trim()) { alert("Napiš prosím důvod, proč se krok přeskakuje."); return; }
+    setPracuji(true);
+    const poznamka = `Krok ${nazevFaze(f, zak.typ)} přeskočen: ${duvod.trim()}${nedodelane.length ? ` (nedodělané: ${nedodelane.join("; ")})` : ""}.`;
+    const hotove = { ...(zak.hotove_ukoly || {}), [`${f.id}.__preskoceno`]: true };
+    const ok = await uloz(zak, { preskocene: nz.preskocene, hotove_ukoly: hotove }, poznamka);
+    if (ok) {
+      if (cil) {
+        const nz2 = { ...nz, hotove_ukoly: hotove };
+        if (await presun(nz2, cil, null)) ukazHlasku(`⏭ Krok přeskočen — teď ${nazevFaze(cil, zak.typ)}`);
+      } else {
+        await uloz(zak, { stav: "uzavrena", dalsi_krok: null, dalsi_krok_termin: null, duvod_cekani: null }, "Zakázka uzavřená.");
+        if (zak.contract_id) await supabase.from("contracts").update({ status: "Fakturována" }).eq("id", zak.contract_id);
+        ukazHlasku("✓ Zakázka uzavřená a přesunutá do archivu");
+      }
+    }
     setPracuji(false);
   };
 
@@ -1102,6 +1154,10 @@ export default function Prubeh({
                 style={btn(s.barva, "#fff", { width: "100%", display: "flex", justifyContent: "center", gap: 6 })}>
                 {dalsi ? <>Hotovo → {dalsi.sekce !== f.sekce ? sekceById[dalsi.sekce].nazev : nazevFaze(dalsi, z.typ)} <i className="ti ti-arrow-right" aria-hidden="true"></i></> : "Uzavřít zakázku"}
               </button>
+            )}
+            {!rozhodnout && (chyby.length > 0 || nehotovy) && (
+              <button type="button" disabled={pracuji} onClick={() => preskocitKrok(z)}
+                style={{ ...btnGhost, width: "100%", marginTop: 6, padding: "6px 10px", fontSize: 12 }}>⏭ Přeskočit krok a pokračovat</button>
             )}
           </div>
         </div>
@@ -1640,7 +1696,7 @@ export default function Prubeh({
     const hotovaFaze = fazeHotova(z, f, auto);
     const rozhodnuti = fazeKRozhodnuti(f, z);
     const dalsi = dalsiFaze(z);
-    const pred = predchoziFaze(z);
+    const pred = predchozi(z);
     const brana = branaSekce(z, auto);
     const k = contractById(z.contract_id);
     const qq = z.quote_id ? quoteById(z.quote_id) : null;
@@ -1875,10 +1931,14 @@ export default function Prubeh({
                   {dalsi ? `Hotovo → ${dalsi.sekce !== f.sekce ? sekceById[dalsi.sekce].nazev : nazevFaze(dalsi, z.typ)}` : "Uzavřít zakázku"}
                 </button>
               )}
+              {!rozhodnuti && otevrena && (!hotovaFaze || kontrolyZ(z).some((x) => x.blokuje)) && (
+                <button type="button" style={{ ...btnGhost, padding: "8px 11px" }} disabled={pracuji} onClick={() => preskocitKrok(z)}
+                  title="Pustit zakázku dál, i když krok není hotový — zeptá se na důvod a zapíše ho do historie">⏭ Přeskočit krok</button>
+              )}
               {pred && <button type="button" style={{ ...btnGhost, padding: "8px 11px" }} disabled={pracuji} onClick={() => vratit(z)}>← Zpět</button>}
               {f.sekce === "ob" && <button type="button" style={{ ...btnGhost, color: "#b91c1c", borderColor: "#fca5a5" }} onClick={() => prohrano(z)}>Prohráno</button>}
             </div>
-            {!hotovaFaze && !rozhodnuti && <div style={{ fontSize: 12, color: "#64748b" }}>Dál to pustí, až budou všechny úkoly fáze hotové.</div>}
+            {!hotovaFaze && !rozhodnuti && <div style={{ fontSize: 12, color: "#64748b" }}>Dál to pustí, až budou všechny úkoly fáze hotové — nebo krok přeskoč (⏭).</div>}
             {dalsi && dalsi.sekce !== f.sekce && f.sekce === "ob" && !z.contract_id && <div style={{ fontSize: 12, color: "#64748b" }}>Předáním do back office se založí zakázka (kód, náklady, docházka).</div>}
           </div>
         );
