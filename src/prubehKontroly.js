@@ -7,6 +7,7 @@
 
 import { FAZE, fazePlati, ukolyPro } from "./prubehFaze.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
+import { pocetVyplnenych } from "./podkladyZakazky.js";
 
 export const MIN_FOTEK = { "Obhlídka": 3, "Po montáži": 5 };
 
@@ -102,6 +103,10 @@ export function kontrolyZakazky(z, ctx) {
   if (sFotkamiDila && nMont >= 1 && nMont < MIN_FOTEK["Po montáži"] && iTed >= poradi("montaz")) {
     vysledky.push({ uroven: "pozor", text: `Jen ${pocetFotek(nMont)} po montáži — doporučeno aspoň ${MIN_FOTEK["Po montáži"]}.`, akce: "fotky:Po montáži" });
   }
+
+  // Podklady pro realizaci (předávací list) — před realizací by je měli mít lidé v kalendáři
+  const pv = pocetVyplnenych(z.podklady);
+  pridat("material", pv.hotovo > 0, "Podklady pro realizaci nejsou vyplněné (pokyny pro střechaře, elektrikáře, sklad).", `Podklady pro realizaci: vyplněno ${pv.hotovo}/${pv.celkem}`, "podklady", true);
 
   const skenProt = kat("Předávací protokol");
   pridat("predani", !!dok.protokol || skenProt > 0, "Předávací protokol není vygenerovaný ani nahraný.",

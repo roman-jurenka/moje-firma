@@ -22,6 +22,7 @@ import { compressImage } from "./imageUtils.js";
 import { StorageImg } from "./storageUrl.jsx";
 import * as ui from "./ui.js";
 import { DOVEDNOSTI, dovednost, NA_STAROSTI, naStarosti, umi, seraditPodleDovednosti } from "./dovednosti.js";
+import { PodkladyNahled } from "./PodkladyZakazky.jsx";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -6974,6 +6975,21 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
   const [showAdd, setShowAdd] = useState(false);
   const [editEventId, setEditEventId] = useState(null); // null = přidání nové události, id = úprava existující
   const [detailEvent, setDetailEvent] = useState(null);
+  // Podklady k zakázce otevřené akce (předávací list, specifikace z nabídky)
+  const [detailPodklady, setDetailPodklady] = useState(null); // { eventId, zak, quote }
+  useEffect(() => {
+    if (!detailEvent || (!detailEvent.prubeh_id && !detailEvent.contract_id)) return undefined;
+    let zruseno = false;
+    (async () => {
+      const dotaz = supabase.from("zakazky_prubeh").select("*");
+      const { data: zaky } = detailEvent.prubeh_id ? await dotaz.eq("id", detailEvent.prubeh_id) : await dotaz.eq("contract_id", detailEvent.contract_id);
+      const zak = (zaky || [])[0];
+      if (!zak || zruseno) return;
+      const { data: quote } = zak.quote_id ? await supabase.from("quotes").select("id, cislo, name, type, data").eq("id", zak.quote_id).maybeSingle() : { data: null };
+      if (!zruseno) setDetailPodklady({ eventId: detailEvent.id, zak, quote });
+    })();
+    return () => { zruseno = true; };
+  }, [detailEvent]);
   const [form, setForm] = useState({
     date: fmt(today), work_type: "Zakázka", title: "",
     customer_name: "", customer_company: "", address: "",
@@ -7525,7 +7541,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
         const canEdit = isAdmin || detailEvent.employee_id === currentUser?.id;
         return (
           <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setDetailEvent(null)}>
-            <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 460, maxWidth: "92vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 560, maxWidth: "94vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
                 <span style={{ background: wt.bg, color: wt.color, border: `1px solid ${wt.color}44`, borderRadius: 20, padding: "4px 14px", fontSize: 13, fontWeight: 700 }}>{detailEvent.work_type}</span>
                 <span style={{ fontSize: 14, color: "#475569" }}>{fmtDateCz(detailEvent.date)}</span>
@@ -7581,6 +7597,18 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
                 </div>
               )}
 
+
+              {detailPodklady?.eventId === detailEvent.id && (() => {
+                const zak = detailPodklady.zak;
+                const tym = calendarEvents.filter(e => e.prubeh_id === zak.id || (zak.contract_id && e.contract_id === zak.contract_id))
+                  .map(e => ({ id: e.id, na_starosti: e.na_starosti, employee_name: e.employee_name, date: e.date }));
+                return (
+                  <div style={{ marginBottom: 16, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: "#1A1A1A", marginBottom: 10 }}>📋 Podklady k zakázce — {zak.nazev}</div>
+                    <PodkladyNahled zak={zak} quote={detailPodklady.quote} zakaznik={(customers || []).find(c => c.id === zak.customer_id)} tym={tym} naStarostiId={detailEvent.na_starosti} />
+                  </div>
+                );
+              })()}
 
               <div style={{ display: "flex", gap: 10 }}>
                 {canEdit && <button onClick={() => startEditEvent(detailEvent)} style={{ ...S.btn(), flex: 1 }}>✏️ Upravit</button>}

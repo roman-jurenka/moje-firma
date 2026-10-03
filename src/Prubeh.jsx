@@ -11,6 +11,8 @@ import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js"
 import { STAVY_MATERIALU, JEDNOTKY_MATERIALU, stavMaterialu, VZTAHY_KONTAKTU, ROZPAD_KEY, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu, stavSkladu, predvyplnitZeSkladu } from "./materialZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import { NA_STAROSTI, naStarosti, umi, dovednost, seraditPodleDovednosti } from "./dovednosti.js";
+import { pocetVyplnenych } from "./podkladyZakazky.js";
+import { PodkladyNahled, PodkladyFormular } from "./PodkladyZakazky.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
   nazevFaze, ukolyPro, nazevCasti, CASTI_MONTAZE, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
@@ -877,6 +879,26 @@ export default function Prubeh({
     if (ok) ukazHlasku(qq ? "✓ Nabídka propojená" : "Nabídka odpojená");
   };
 
+  // ── Podklady pro realizaci (předávací list) ──
+  const [podkladyForm, setPodkladyForm] = useState(null); // { zakId, podklady }
+  const otevritPodklady = (zak) => {
+    const p = JSON.parse(JSON.stringify(zak.podklady || {}));
+    // předvyplnit, co appka už ví (obchodník, konstrukce a back-up z nabídky)
+    const fve = zak.quote_id ? quoteById(zak.quote_id)?.data?.fve : null;
+    p.obecne = { ...(p.obecne || {}) };
+    if (!p.obecne.oz && zak.vlastnik_obchod) p.obecne.oz = zak.vlastnik_obchod;
+    p.technicka = { ...(p.technicka || {}) };
+    if (!p.technicka.konstrukce && fve?.konstrukce?.name && !/^bez\b/i.test(fve.konstrukce.name)) p.technicka.konstrukce = fve.konstrukce.name;
+    if (!p.technicka.backup && fve?.backup?.name && !/^bez\b/i.test(fve.backup.name)) p.technicka.backup = fve.backup.name;
+    setPodkladyForm({ zakId: zak.id, podklady: p });
+  };
+  const ulozitPodklady = async (zak) => {
+    if (await uloz(zak, { podklady: podkladyForm.podklady }, "Podklady pro realizaci upravené.")) {
+      setPodkladyForm(null);
+      ukazHlasku("✓ Podklady pro realizaci uložené — zaměstnanci je uvidí v kalendáři");
+    }
+  };
+
   // ── Plánování lidí do kalendáře (kdo dělá střechu / elektro / uzemnění) ──
   // Akce v kalendáři patří k zakázce přes prubeh_id (nebo contract_id u starších).
   const [planForm, setPlanForm] = useState(null); // { zakId, na_starosti, date, employee_id, poznamka }
@@ -1280,6 +1302,7 @@ export default function Prubeh({
       if (akce === "protokol") return <span style={{ display: "flex", gap: 4 }}>
         <button type="button" style={tl} disabled={generuji} onClick={() => vygenerovatDokument(z, "protokol")}>Vygenerovat</button>
         <button type="button" style={tl} disabled={!!nahravam} onClick={() => vybratFotkyKategorie(z, "Předávací protokol")}>Sken</button></span>;
+      if (akce === "podklady") return <button type="button" style={tl} onClick={() => otevritPodklady(z)}>Vyplnit</button>;
       if (akce === "misto") return <button type="button" style={tl} onClick={() => setEditMisto({ adresa: z.misto_adresa || zakaznik(z.customer_id)?.address || "", kontakt: z.misto_kontakt || "", telefon: z.misto_telefon || "", vztah: z.misto_vztah || "" })}>Doplnit</button>;
       return null;
     };
@@ -1406,6 +1429,27 @@ export default function Prubeh({
               await vygenerovatDokument(z, "dodatek", { popis: d.popis.trim(), cena_nova: d.cena_nova, termin: d.termin || null, aktualizovatCenu: d.aktualizovatCenu });
               setDodatekForm(null);
             }}>{generuji ? "Generuji…" : "Vygenerovat dodatek"}</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Formulář podkladů pro realizaci ──
+  const vykresliPodklady = () => {
+    if (!podkladyForm) return null;
+    const z = rows.find((r) => r.id === podkladyForm.zakId);
+    if (!z) return null;
+    return (
+      <div role="dialog" aria-modal="true" aria-label="Podklady pro realizaci" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        onClick={(e) => { if (e.target === e.currentTarget) setPodkladyForm(null); }}>
+        <div style={{ ...karta, width: "min(820px, 100%)", maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>📋 Podklady pro realizaci — {z.nazev}</div>
+          <div style={{ fontSize: 13, color: "#475569" }}>Předávací list od obchodníka. Zaměstnanec naplánovaný v kalendáři ho uvidí v detailu akce — pokyny pro jeho část (střecha / elektro) nahoře. Panely, střídač, baterie a regulace se berou z nabídky, sem dopiš jen to, co v ní není. Kontakty a technické údaje odběrného místa (EAN, jistič) jsou u zakázky.</div>
+          <PodkladyFormular podklady={podkladyForm.podklady} onChange={(p) => setPodkladyForm({ ...podkladyForm, podklady: p })} inp={inp} lbl={lbl} />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: -16, background: "#fff", padding: "8px 0" }}>
+            <button type="button" style={btnGhost} onClick={() => setPodkladyForm(null)}>Zrušit</button>
+            <button type="button" style={btn("#0369a1")} disabled={pracuji} onClick={() => ulozitPodklady(z)}>Uložit podklady</button>
           </div>
         </div>
       </div>
@@ -1763,6 +1807,7 @@ export default function Prubeh({
           div.pr-pruvodce { left: 8px; width: auto !important; }
           .pr-vice-hlavicka { display: none !important; }
           .pr-kontakt-radek { grid-template-columns: 1fr !important; }
+          .pr-podklady-pole { grid-template-columns: 1fr !important; }
           .pr-mat-radek { grid-template-columns: 1fr 150px !important; }
           .pr-mat-radek > .pr-mat-stav { grid-column: 1 / -1; }
           .pr-mat-hlavicka { display: none !important; }
@@ -1779,6 +1824,7 @@ export default function Prubeh({
       {vykresliUzavEmail()}
       {vykresliMaterial()}
       {vykresliPlan()}
+      {vykresliPodklady()}
       {vykresliRozpad()}
       {dotaz && (
         <div role="dialog" aria-modal="true" aria-label={dotaz.titulek} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
@@ -2661,6 +2707,18 @@ export default function Prubeh({
         {text} ({pocet})
       </button>
     );
+    const pv = pocetVyplnenych(z.podklady);
+    const kPodklady = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>📋 Podklady pro realizaci <span style={{ fontSize: 12, fontWeight: 600, color: pv.hotovo ? "#475569" : "#b45309" }}>· vyplněno {pv.hotovo}/{pv.celkem}</span></div>
+            <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => otevritPodklady(z)}>{pv.hotovo ? "Upravit" : "Vyplnit"}</button>
+          </div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>Takhle to uvidí zaměstnanec v detailu akce v kalendáři:</div>
+          <div style={{ maxHeight: 420, overflowY: "auto" }}>
+            <PodkladyNahled zak={z} quote={z.quote_id ? quoteById(z.quote_id) : null} zakaznik={zakZ}
+              tym={akceZakazky(z).map((e) => ({ id: e.id, na_starosti: e.na_starosti, employee_name: e.employee_name, date: e.date }))} />
+          </div>
+        </div>;
     const kFotky = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontWeight: 800, fontSize: 16 }}>📷 Fotky zakázky{vsechnyFotky.length ? ` (${vsechnyFotky.length})` : ""}</div>
@@ -2718,7 +2776,7 @@ export default function Prubeh({
     if (!siroky) {
       return (
         <div className="pr-panel" id="pr-panel">
-          {kHlavicka}{kPrubeh}{kDalsiKrok}{kUkolyFaze}{kFotky}{kProc}{kMisto}{kUkoly}{kZpravy}{kHistorie}{kBrana}{kKdo}
+          {kHlavicka}{kPrubeh}{kDalsiKrok}{kUkolyFaze}{kPodklady}{kFotky}{kProc}{kMisto}{kUkoly}{kZpravy}{kHistorie}{kBrana}{kKdo}
         </div>
       );
     }
@@ -2729,7 +2787,7 @@ export default function Prubeh({
         <div className="pr-cela">{kHlavicka}</div>
         <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}</div>
         <div className="pr-sloupec">{kFotky}{kProc}{kHistorie}</div>
-        <div className="pr-sloupec">{kMisto}{kUkoly}{kZpravy}{kKdo}</div>
+        <div className="pr-sloupec">{kMisto}{kPodklady}{kUkoly}{kZpravy}{kKdo}</div>
       </div>
     );
   }
