@@ -12,7 +12,7 @@ import { STAVY_MATERIALU, JEDNOTKY_MATERIALU, stavMaterialu, VZTAHY_KONTAKTU, RO
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
-  nazevFaze, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
+  nazevFaze, ukolyPro, nazevCasti, CASTI_MONTAZE, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
   branaSekce, NAZEV_BRANY, postupSekce, FAZE_ZE_STAVU_ZAKAZKY, FAZE_ZE_STAGE, STAV_ZAKAZKY_ZE_SEKCE, STAGE_Z_FAZE,
   NASTAVENI_KEY, pouzijNastaveni, zakladFaze, pravidlo, PRAVIDLA_TYPU, terminFaze, planovaneMd,
 } from "./prubehFaze.js";
@@ -471,7 +471,7 @@ export default function Prubeh({
   // Když je v aktuální fázi úkol s fotkami té kategorie, po nahrání se odškrtne.
   const vybratFotkyKategorie = (zak, kategorie) => {
     const f = fazeById[zak.faze];
-    const ukol = f?.ukoly.find((u) => u.fotky === kategorie) || null;
+    const ukol = (f ? ukolyPro(f, zak.typ) : []).find((u) => u.fotky === kategorie && !ukolHotovy(zak, f, u, autoZ(zak))) || (f ? ukolyPro(f, zak.typ) : []).find((u) => u.fotky === kategorie) || null;
     fotoCil.current = { zak, faze: ukol ? f : null, ukol, kategorie };
     fotoInput.current?.click();
   };
@@ -788,7 +788,7 @@ export default function Prubeh({
     const f = fazeById[zak.faze];
     const auto = autoZ(zak);
     const nedodelane = [
-      ...f.ukoly.filter((u) => !ukolHotovy(zak, f, u, auto)).map((u) => u.text),
+      ...ukolyPro(f, zak.typ).filter((u) => !ukolHotovy(zak, f, u, auto)).map((u) => u.text),
       ...kontrolyZ(zak).filter((x) => x.blokuje).map((x) => x.text),
     ];
     const nz = { ...zak, preskocene: [...new Set([...(zak.preskocene || []), f.id])] };
@@ -847,7 +847,7 @@ export default function Prubeh({
   const krokHotovo = async (zak) => {
     const f = fazeById[zak.faze];
     const auto = autoZ(zak);
-    const ukol = f.ukoly.find((u) => u.text === zak.dalsi_krok && !ukolHotovy(zak, f, u, auto));
+    const ukol = ukolyPro(f, zak.typ).find((u) => u.text === zak.dalsi_krok && !ukolHotovy(zak, f, u, auto));
     let nz = zak;
     const patch = {};
     if (ukol) {
@@ -2052,6 +2052,11 @@ export default function Prubeh({
                         {v.ukoly.map((u, i) => (
                           <div key={u.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                             <input aria-label="Úkol" style={{ ...inp, padding: "6px 8px" }} value={u.text} onChange={(e) => zmenUkol(f.id, i, { text: e.target.value })} />
+                            {(u.jenTypy || u.krome || u.cast) && (
+                              <span style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap" }} title="Pro které typy zakázek úkol platí">
+                                {u.cast ? `${CASTI_MONTAZE[u.cast]?.ikona || ""} ` : ""}{u.jenTypy ? u.jenTypy.join(", ") : `kromě ${u.krome.join(", ")}`}
+                              </span>
+                            )}
                             <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, whiteSpace: "nowrap" }} title="Podmínka brány do další sekce">
                               <input type="checkbox" checked={!!u.brana} onChange={(e) => zmenUkol(f.id, i, { brana: e.target.checked })} />brána
                             </label>
@@ -2272,14 +2277,22 @@ export default function Prubeh({
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
-                {f.ukoly.map((u, i) => {
+                {ukolyPro(f, z.typ).map((u, i, vsechny) => {
                   const hot = ukolHotovy(z, f, u, auto);
+                  // Nadpis části montáže (Střecha / Elektro / Uzemnění) před jejím prvním úkolem
+                  const castUkoly = u.cast ? vsechny.filter((x) => x.cast === u.cast) : [];
+                  const nadpisCasti = u.cast && vsechny[i - 1]?.cast !== u.cast ? (
+                    <div key={`cast-${u.cast}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f1f5f9", borderTop: i ? "1px solid #e2e8f0" : "none", fontSize: 13, fontWeight: 800, color: "#334155" }}>
+                      <span>{CASTI_MONTAZE[u.cast]?.ikona} {nazevCasti(u.cast, z.typ)}</span>
+                      <span style={{ fontWeight: 600, color: castUkoly.every((x) => ukolHotovy(z, f, x, auto)) ? "#15803d" : "#64748b" }}>{castUkoly.filter((x) => ukolHotovy(z, f, x, auto)).length}/{castUkoly.length} hotovo</span>
+                    </div>
+                  ) : null;
                   const zAuto = u.auto && auto[u.auto];
                   const fotkyUkolu = u.fotky ? (fotkyZ[z.id] || []).filter((p) => p.category === u.fotky) : [];
                   const akce = (e, fn) => { e.preventDefault(); e.stopPropagation(); fn(); };
                   const tlAkce = { ...btnGhost, padding: "5px 10px", fontSize: 13, whiteSpace: "nowrap" };
-                  return (
-                    <div key={u.id} style={{ borderTop: i ? "1px solid #f1f5f9" : "none", background: hot ? "#fff" : "#fffbeb" }}>
+                  return [nadpisCasti, (
+                    <div key={u.id} style={{ borderTop: i && !nadpisCasti ? "1px solid #f1f5f9" : "none", background: hot ? "#fff" : "#fffbeb" }}>
                       <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", fontSize: 14, cursor: zAuto ? "default" : "pointer", flexWrap: "wrap" }}>
                         <input type="checkbox" checked={hot} disabled={!!zAuto} onChange={() => (u.material && !hot ? otevritMaterial(z) : toggleUkol(z, f, u))} style={{ width: 18, height: 18, accentColor: s.barva }} />
                         <span style={{ flex: "1 1 0%", minWidth: 0, fontWeight: hot ? 400 : 700 }}>{u.text}</span>
@@ -2362,7 +2375,7 @@ export default function Prubeh({
                         </div>
                       )}
                     </div>
-                  );
+                  )];
                 })}
               </div>
             )}

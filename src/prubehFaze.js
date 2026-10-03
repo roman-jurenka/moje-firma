@@ -63,25 +63,24 @@ const ZAKLAD_FAZI = [
     { id: "vydan", text: "Materiál vydaný / naložený" },
     { id: "lide", text: "Lidé a doprava zajištění" },
   ] },
-  // FVE a hromosvody mají montáž rozdělenou podle party: FVE střecha + elektro,
-  // hromosvod střecha (jímací soustava) + uzemnění. Ostatní typy jednu Montáž.
-  { id: "montaz", sekce: "re", nazev: "Montáž", nazevTyp: { SRV: "Servis" }, typy: { FVE: "-", FVO: "-", FVR: "-", HRM: "-" }, ukoly: [
-    { id: "hotovo", text: "Práce na místě dokončené" },
-    { id: "fotky", text: "Fotky z realizace uložené", fotky: "Po montáži" },
-  ] },
-  { id: "montaz_strecha", sekce: "re", nazev: "Montáž — střecha", nazevTyp: { HRM: "Střecha — jímací soustava" }, vychozi: "-", typy: { FVE: "v", FVO: "v", FVR: "o", HRM: "v" }, ukoly: [
-    { id: "hotovo", text: "Práce na střeše dokončené" },
-    { id: "fotky", text: "Fotky ze střechy uložené", fotky: "Střecha" },
-  ] },
-  { id: "montaz_elektro", sekce: "re", nazev: "Montáž — elektro", vychozi: "-", typy: { FVE: "v", FVO: "v", FVR: "v" }, ukoly: [
-    { id: "hotovo", text: "Elektroinstalace hotová (střídač, rozvaděče, kabeláž)" },
-    { id: "fotky", text: "Fotky elektra a hotového díla uložené", fotky: "Po montáži" },
-  ] },
-  { id: "uzemneni", sekce: "re", nazev: "Uzemnění", vychozi: "-", typy: { HRM: "v" }, ukoly: [
-    { id: "zemnic", text: "Zemnič uložený a propojený se svody" },
-    { id: "mereni", text: "Zemní odpor změřený" },
-    { id: "fotky", text: "Fotky uzemnění uložené", fotky: "Uzemnění" },
-    { id: "hotove", text: "Fotky hotového díla uložené", fotky: "Po montáži" },
+  // Montáž je jeden krok; u FVE a hromosvodu se dělí na části (cast), které
+  // dělají různé party v libovolném pořadí: FVE střecha + elektro, hromosvod
+  // střecha (jímací soustava) + uzemnění. jenTypy / krome = pro které typy
+  // zakázky úkol platí (ostatní typy mají jednoduchou Montáž).
+  { id: "montaz", sekce: "re", nazev: "Montáž", nazevTyp: { SRV: "Servis" }, ukoly: [
+    { id: "hotovo", text: "Práce na místě dokončené", krome: ["FVE", "FVO", "FVR", "HRM"] },
+    { id: "fotky", text: "Fotky z realizace uložené", fotky: "Po montáži", krome: ["FVE", "FVO", "FVR", "HRM"] },
+    // FVE (i ohřev vody a rozšíření)
+    { id: "strecha", cast: "strecha", text: "Konstrukce a panely na střeše namontované", jenTypy: ["FVE", "FVO", "FVR"] },
+    { id: "strecha_fotky", cast: "strecha", text: "Fotky ze střechy uložené", fotky: "Střecha", jenTypy: ["FVE", "FVO", "FVR"] },
+    { id: "elektro", cast: "elektro", text: "Elektroinstalace hotová (střídač, rozvaděče, kabeláž)", jenTypy: ["FVE", "FVO", "FVR"] },
+    { id: "elektro_fotky", cast: "elektro", text: "Fotky elektra a hotového díla uložené", fotky: "Po montáži", jenTypy: ["FVE", "FVO", "FVR"] },
+    // Hromosvod
+    { id: "jimaci", cast: "strecha", text: "Jímací soustava a svody namontované", jenTypy: ["HRM"] },
+    { id: "jimaci_fotky", cast: "strecha", text: "Fotky ze střechy uložené", fotky: "Střecha", jenTypy: ["HRM"] },
+    { id: "zemnic", cast: "uzemneni", text: "Zemnič uložený a propojený se svody", jenTypy: ["HRM"] },
+    { id: "mereni", cast: "uzemneni", text: "Zemní odpor změřený", jenTypy: ["HRM"] },
+    { id: "uzemneni_fotky", cast: "uzemneni", text: "Fotky uzemnění a hotového díla uložené", fotky: "Uzemnění", jenTypy: ["HRM"] },
   ] },
   { id: "zprovozneni", sekce: "re", nazev: "Zprovoznění", typy: { SRV: "-", HRM: "-", REA: "o" }, ukoly: [
     { id: "test", text: "Zprovozněno a otestováno" },
@@ -113,7 +112,7 @@ const ZAKLAD_FAZI = [
     { id: "servis", text: "Servisní / revizní termín naplánovaný" },
   ] },
 ];
-const BEZNE_DNY = { poptavka: 2, obhlidka: 7, nabidka: 5, jednani: 14, smlouva: 7, zaloha: 7, dokumentace: 7, distributor: 30, dotace: 14, material: 14, priprava: 2, montaz: 5, montaz_strecha: 3, montaz_elektro: 3, uzemneni: 2, zprovozneni: 2, revize: 7, predani: 3, odeslani: 2, pripojeni: 30, vyuctovani: 14, archiv: 7 };
+const BEZNE_DNY = { poptavka: 2, obhlidka: 7, nabidka: 5, jednani: 14, smlouva: 7, zaloha: 7, dokumentace: 7, distributor: 30, dotace: 14, material: 14, priprava: 2, montaz: 5, zprovozneni: 2, revize: 7, predani: 3, odeslani: 2, pripojeni: 30, vyuctovani: 14, archiv: 7 };
 ZAKLAD_FAZI.forEach((f) => { f.dny = BEZNE_DNY[f.id] || 7; });
 
 // Platná konfigurace = základ + úpravy admina (app_settings, klíč NASTAVENI_KEY):
@@ -131,7 +130,7 @@ export function pouzijNastaveni(nastaveni) {
     const ukoly = Array.isArray(u.ukoly) && u.ukoly.length
       ? u.ukoly.filter((x) => String(x.text || "").trim()).map((x) => {
         const z = f.ukoly.find((b) => b.id === x.id);
-        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, ...x } : x;
+        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, cast: z.cast, jenTypy: z.jenTypy, krome: z.krome, ...x } : x;
       })
       : f.ukoly;
     return {
@@ -217,24 +216,35 @@ export function predchoziFaze(z) {
   return FAZE.slice(0, Math.max(0, i)).reverse().find((f) => fazePlati(f, z)) || null;
 }
 
+// Úkoly fáze, které platí pro daný typ zakázky (jenTypy / krome).
+export const ukolyPro = (faze, typ) => (faze?.ukoly || []).filter((u) => (!u.jenTypy || u.jenTypy.includes(typ)) && !(u.krome || []).includes(typ));
+
+// Části montáže (úkoly s „cast“) — dělají je různé party v libovolném pořadí.
+export const CASTI_MONTAZE = {
+  strecha: { nazev: "Střecha", ikona: "🏠", nazevTyp: { HRM: "Střecha — jímací soustava" } },
+  elektro: { nazev: "Elektro", ikona: "⚡" },
+  uzemneni: { nazev: "Uzemnění", ikona: "⏚" },
+};
+export const nazevCasti = (id, typ) => CASTI_MONTAZE[id]?.nazevTyp?.[typ] || CASTI_MONTAZE[id]?.nazev || id;
+
 // Úkol je hotový ručně (hotove_ukoly) nebo automaticky z propojené nabídky.
 export function ukolHotovy(z, faze, ukol, auto = {}) {
   if (ukol.auto && auto[ukol.auto]) return true;
   return !!(z.hotove_ukoly || {})[`${faze.id}.${ukol.id}`];
 }
-export const fazeHotova = (z, faze, auto) => faze.ukoly.every((u) => ukolHotovy(z, faze, u, auto));
+export const fazeHotova = (z, faze, auto) => ukolyPro(faze, z.typ).every((u) => ukolHotovy(z, faze, u, auto));
 // Termín podle běžné doby fáze (od vstupu do fáze).
 export function terminFaze(faze, odIso) {
   const d = odIso ? new Date(odIso) : new Date();
   d.setDate(d.getDate() + (Number(faze?.dny) || 7));
   return d.toLocaleDateString("sv-SE");
 }
-export const prvniNehotovy = (z, faze, auto) => faze.ukoly.find((u) => !ukolHotovy(z, faze, u, auto)) || null;
+export const prvniNehotovy = (z, faze, auto) => ukolyPro(faze, z.typ).find((u) => !ukolHotovy(z, faze, u, auto)) || null;
 
 // Brána = úkoly označené "brana" ve fázích sekce, kde zakázka právě je.
 export function branaSekce(z, auto) {
   const sekce = fazeById[z.faze]?.sekce;
-  return fazeSekce(z, sekce).flatMap((f) => f.ukoly.filter((u) => u.brana)
+  return fazeSekce(z, sekce).flatMap((f) => ukolyPro(f, z.typ).filter((u) => u.brana)
     .map((u) => ({ text: u.text, hotovo: ukolHotovy(z, f, u, auto) })));
 }
 export const NAZEV_BRANY = { ob: "Brána do back office", bo: "Brána do realizace", re: "Brána k uzavření", uz: "Uzavření zakázky" };

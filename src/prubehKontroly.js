@@ -5,7 +5,7 @@
 // nesplněná kontrola ukazuje jen jako upozornění (starší zakázky se tak
 // nezaseknou zpětně).
 
-import { FAZE, fazePlati } from "./prubehFaze.js";
+import { FAZE, fazePlati, ukolyPro } from "./prubehFaze.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 
 export const MIN_FOTEK = { "Obhlídka": 3, "Po montáži": 5 };
@@ -23,10 +23,7 @@ export const NAVOD = {
   dotace: "Podej žádost o dotaci.",
   material: "Objednej materiál, potvrď se zákazníkem termín a naplánuj tým.",
   priprava: "Vydej a nalož materiál, zajisti lidi a dopravu.",
-  montaz: "Proveď práce a nafoť hotové dílo (aspoň 5 fotek). Změny oproti smlouvě řeš dodatkem.",
-  montaz_strecha: "Namontuj na střechu konstrukci a panely (u hromosvodu jímací soustavu a svody) a nafoť střechu.",
-  montaz_elektro: "Zapoj střídač, baterie a rozvaděče, dotáhni kabeláž a nafoť elektro i hotové dílo (aspoň 5 fotek).",
-  uzemneni: "Ulož a propoj zemnič se svody, změř zemní odpor a nafoť uzemnění i hotové dílo (aspoň 5 fotek).",
+  montaz: "Proveď práce a nafoť hotové dílo (aspoň 5 fotek). U FVE a hromosvodu je montáž rozdělená na části (střecha, elektro / uzemnění) — můžou běžet v libovolném pořadí. Změny oproti smlouvě řeš dodatkem.",
   zprovozneni: "Zprovozni a otestuj zařízení.",
   revize: "Nech udělat revizi a ulož revizní zprávu.",
   predani: "Vygeneruj předávací protokol, předej dílo, seznam zákazníka s obsluhou a nech protokol podepsat.",
@@ -91,13 +88,18 @@ export function kontrolyZakazky(z, ctx) {
     vysledky.push({ uroven: "pozor", text: "Podepsaná smlouva zatím není nahraná (foto / sken).", akce: "sken:Smlouva" });
   }
 
-  // Fotky hotového díla se hlídají v posledním montážním kroku typu zakázky
-  // (FVE: elektro, hromosvod: uzemnění, ostatní: Montáž).
-  const montazFaze = ["uzemneni", "montaz_elektro", "montaz_strecha", "montaz"]
-    .find((id) => { const f = FAZE.find((x) => x.id === id); return f && fazePlati(f, z); }) || "montaz";
+  // Montáž: fotky každé části (FVE střecha + elektro, hromosvod střecha +
+  // uzemnění) — kategorie podle úkolů s fotkami, které pro typ zakázky platí.
+  const fMontaz = FAZE.find((x) => x.id === "montaz");
+  const katMontaze = [...new Set(ukolyPro(fMontaz, z.typ).filter((u) => u.fotky && u.fotky !== "Po montáži").map((u) => u.fotky))];
+  katMontaze.forEach((k) => {
+    const n = kat(k);
+    pridat("montaz", n >= 1, `Nemáš nahrané fotky: ${k.toLowerCase()}.`, `${pocetFotek(n)} — ${k.toLowerCase()}`, `fotky:${k}`);
+  });
+  const sFotkamiDila = ukolyPro(fMontaz, z.typ).some((u) => u.fotky === "Po montáži");
   const nMont = kat("Po montáži");
-  pridat(montazFaze, nMont >= 1, "Nemáš nahrané fotky hotového díla.", `${pocetFotek(nMont)} po montáži`, "fotky:Po montáži");
-  if (nMont >= 1 && nMont < MIN_FOTEK["Po montáži"] && iTed >= poradi(montazFaze)) {
+  if (sFotkamiDila) pridat("montaz", nMont >= 1, "Nemáš nahrané fotky hotového díla.", `${pocetFotek(nMont)} po montáži`, "fotky:Po montáži");
+  if (sFotkamiDila && nMont >= 1 && nMont < MIN_FOTEK["Po montáži"] && iTed >= poradi("montaz")) {
     vysledky.push({ uroven: "pozor", text: `Jen ${pocetFotek(nMont)} po montáži — doporučeno aspoň ${MIN_FOTEK["Po montáži"]}.`, akce: "fotky:Po montáži" });
   }
 
