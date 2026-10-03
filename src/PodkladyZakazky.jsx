@@ -1,5 +1,6 @@
 // ─── Podklady pro realizaci — náhled (kalendář, Průběh) a formulář (Průběh) ───
-import { SEKCE_PODKLADU, hodnota, vyplneneSekce, sekceProNaStarosti } from "./podkladyZakazky.js";
+import { SEKCE_PODKLADU, hodnota, vyplneneSekce, sekceProNaStarosti, moznostiPole } from "./podkladyZakazky.js";
+import PoleSNabidkou from "./PoleSNabidkou.jsx";
 import { specifikaceZNabidky } from "./dokumentyZakazky.js";
 import { naStarosti } from "./dovednosti.js";
 
@@ -85,10 +86,18 @@ export function PodkladyNahled({ zak, quote, zakaznik, tym = [], naStarostiId = 
   );
 }
 
-// Formulář: podklady = { [sekce]: { [pole]: text } }, onChange(nove)
-export function PodkladyFormular({ podklady, onChange, inp, lbl }) {
+// Formulář: podklady = { [sekce]: { [pole]: text } }, onChange(nove),
+// ciselniky = { zamestnanci, cenik } pro nabídky hodnot v polích
+export function PodkladyFormular({ podklady, onChange, inp, lbl, ciselniky = {} }) {
   const p = podklady || {};
   const nastav = (sekce, pole, v) => onChange({ ...p, [sekce]: { ...(p[sekce] || {}), [pole]: v } });
+  // Úprava ELMR: jen varianty vybrané distribuce (ČEZ / EG.D / PRE)
+  const distribuce = String(hodnota(p, "odberne", "distribuce")).trim().toUpperCase();
+  const nabidka = (s, f) => {
+    const m = moznostiPole(f, ciselniky);
+    if (s.id === "odberne" && f.id === "uprava_elmr" && ["ČEZ", "EG.D", "PRE"].includes(distribuce)) return m.filter((x) => x.toUpperCase().includes(distribuce));
+    return m;
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {SEKCE_PODKLADU.map((s) => (
@@ -100,7 +109,9 @@ export function PodkladyFormular({ podklady, onChange, inp, lbl }) {
                 <label style={lbl} htmlFor={`pod-${s.id}-${f.id}`}>{f.label}</label>
                 {f.dlouhe
                   ? <textarea id={`pod-${s.id}-${f.id}`} style={{ ...inp, minHeight: 64, resize: "vertical" }} value={hodnota(p, s.id, f.id)} onChange={(e) => nastav(s.id, f.id, e.target.value)} />
-                  : <input id={`pod-${s.id}-${f.id}`} type={f.typ === "odkaz" ? "url" : "text"} style={inp} value={hodnota(p, s.id, f.id)} onChange={(e) => nastav(s.id, f.id, e.target.value)} />}
+                  : nabidka(s, f).length
+                    ? <PoleSNabidkou id={`pod-${s.id}-${f.id}`} moznosti={nabidka(s, f)} style={inp} value={hodnota(p, s.id, f.id)} placeholder="vyber nebo napiš" onChange={(v) => nastav(s.id, f.id, v)} />
+                    : <input id={`pod-${s.id}-${f.id}`} type={f.typ === "odkaz" ? "url" : "text"} style={inp} value={hodnota(p, s.id, f.id)} onChange={(e) => nastav(s.id, f.id, e.target.value)} />}
               </div>
             ))}
           </div>

@@ -3,28 +3,32 @@
 // Stejná definice slouží formuláři v Průběhu i náhledu v detailu akce
 // v kalendáři. `pro` = komu sekce hlavně patří (podle „Na starosti“ v
 // kalendáři se zaměstnanci zvýrazní jeho pokyny).
+// moznosti = nabídka hodnot v poli (dá se napsat i jiná), z = doplnit
+// z číselníku: "zamestnanci" nebo "cenik:<kategorie>" (ceník FVE kalkulačky).
+
+const BACKUP = ["Celý dům — automatické přepnutí", "Celý dům — ruční přepínač", "Vybrané okruhy", "Bez back-upu"];
 
 export const SEKCE_PODKLADU = [
   { id: "obecne", nazev: "Obecné", ikona: "📁", pole: [
     { id: "odkaz_slozka", label: "Odkaz na složku zakázky (SharePoint / OneDrive)", typ: "odkaz" },
-    { id: "oz", label: "Obchodník (OZ)" },
+    { id: "oz", label: "Obchodník (OZ)", z: "zamestnanci" },
   ] },
   { id: "technicka", nazev: "Technická specifikace", ikona: "⚙️", pole: [
-    { id: "optimizery", label: "Odpojovače / optimizéry" },
-    { id: "sklon", label: "Sklon střechy (°)" },
-    { id: "vyska_domu", label: "Výška domu (m)" },
-    { id: "krytina", label: "Střešní krytina" },
-    { id: "konstrukce", label: "Konstrukce" },
-    { id: "prurez_dc", label: "Průřez DC kabelu" },
+    { id: "optimizery", label: "Odpojovače / optimizéry", moznosti: ["Bez optimizérů", "Tigo TS4-A-O (optimizér)", "Tigo TS4-A-2F (rychlé odpojení, 2 panely)", "Tigo TS4-A-F (rychlé odpojení)", "Huawei SUN2000-450W-P", "SolarEdge"] },
+    { id: "sklon", label: "Sklon střechy (°)", moznosti: ["0–5 (rovná)", "10", "15", "20", "25", "30", "35", "40", "45", "50"] },
+    { id: "vyska_domu", label: "Výška domu (m)", moznosti: ["do 4 (přízemní)", "6", "8", "10", "nad 10 — lešení / plošina"] },
+    { id: "krytina", label: "Střešní krytina", moznosti: ["Taška — standard", "Taška — pálená", "Taška — bobrovka", "Betonová taška", "Plech — trapéz", "Plech — falc", "Plech — tašková tabule", "Vláknocement / eternit", "Asfaltový šindel", "Lepenka / fólie (rovná střecha)"] },
+    { id: "konstrukce", label: "Konstrukce", z: "cenik:konstrukce", moznosti: ["Háky (taška)", "Háky (bobrovka)", "Trapéz — krátké profily", "Falc — svorky", "Rovná — zátěžová (balast)", "Rovná — kotvená"] },
+    { id: "prurez_dc", label: "Průřez DC kabelu", moznosti: ["4 mm²", "6 mm²", "10 mm²"] },
     { id: "stringy", label: "Stringy (MPPT, počet panelů, orientace)", dlouhe: true },
-    { id: "monitoring", label: "Připojení monitoringu" },
-    { id: "backup", label: "Back-up" },
+    { id: "monitoring", label: "Připojení monitoringu", moznosti: ["WiFi", "LAN", "GSM / 4G", "WiFi + extender", "Smartrouter"] },
+    { id: "backup", label: "Back-up", moznosti: BACKUP },
   ] },
   { id: "odberne", nazev: "Odběrné místo", ikona: "🔌", pole: [
-    { id: "distribuce", label: "Distribuce" },
-    { id: "umisteni_elmr", label: "Umístění ELMR" },
-    { id: "jistic_novy", label: "Výměna hl. jističe na" },
-    { id: "uprava_elmr", label: "Úprava ELMR" },
+    { id: "distribuce", label: "Distribuce", moznosti: ["ČEZ", "EG.D", "PRE"] },
+    { id: "umisteni_elmr", label: "Umístění ELMR", moznosti: ["Na fasádě domu", "Na fasádě do dvora", "V pilíři na hranici pozemku", "Na sloupu", "V domě"] },
+    { id: "jistic_novy", label: "Výměna hl. jističe na", moznosti: ["Bez výměny", "B25/3", "B32/3", "B40/3", "B50/3", "B63/3"] },
+    { id: "uprava_elmr", label: "Úprava ELMR", z: "cenik:elmr" },
     { id: "rezervovany_vykon", label: "Rezervovaný výkon (kW)" },
   ] },
   { id: "planovac", nazev: "Pokyny pro plánovače", ikona: "🗓️", pro: ["cela"], pole: [
@@ -43,10 +47,10 @@ export const SEKCE_PODKLADU = [
   { id: "elektrikar", nazev: "Pokyny pro elektrikáře", ikona: "⚡", pro: ["elektro", "uzemneni", "elektroinstalace", "revize", "servis"], pole: [
     { id: "stridac", label: "Umístění střídače (materiál zdi)", dlouhe: true },
     { id: "ac_trasa", label: "AC trasa", dlouhe: true },
-    { id: "hdo", label: "HDO trasa" },
-    { id: "mereni", label: "Měření střídače (trasa, umístění)" },
-    { id: "regulace", label: "Regulace (trasa, umístění)" },
-    { id: "backup", label: "Back-up (trasa, rozsah)" },
+    { id: "hdo", label: "HDO trasa", moznosti: ["Stejná jako AC", "Bezdrátové HDO", "Bez HDO"] },
+    { id: "mereni", label: "Měření střídače (trasa, umístění)", moznosti: ["V HDR spojeném s ELMR", "V ELMR", "U střídače", "V podružném rozvaděči"] },
+    { id: "regulace", label: "Regulace (trasa, umístění)", moznosti: ["Stejně jako měření", "U střídače", "V HDR", "U bojleru"] },
+    { id: "backup", label: "Back-up (trasa, rozsah)", moznosti: BACKUP },
     { id: "poznamka", label: "Další pokyny", dlouhe: true },
   ] },
 ];
@@ -65,3 +69,12 @@ export const vyplneneSekce = (podklady) => SEKCE_PODKLADU.filter((s) => s.pole.s
 
 // Komu sekce patří — zaměstnanci s daným „Na starosti“ se zvýrazní.
 export const sekceProNaStarosti = (sekce, naStarostiId) => !!naStarostiId && (sekce.pro || []).includes(naStarostiId);
+
+// Nabídka hodnot pro pole: pevné možnosti + položky z číselníku.
+// ciselniky = { zamestnanci: [jména], cenik: { [kategorie]: [názvy] } }
+export function moznostiPole(pole, ciselniky = {}) {
+  const z = pole.z === "zamestnanci" ? (ciselniky.zamestnanci || [])
+    : pole.z?.startsWith("cenik:") ? (ciselniky.cenik?.[pole.z.slice(6)] || []).filter((x) => !/^bez\b/i.test(x))
+      : [];
+  return [...new Set([...z, ...(pole.moznosti || [])])];
+}

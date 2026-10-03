@@ -13,6 +13,7 @@ import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import { NA_STAROSTI, naStarosti, umi, dovednost, seraditPodleDovednosti } from "./dovednosti.js";
 import { pocetVyplnenych } from "./podkladyZakazky.js";
 import { PodkladyNahled, PodkladyFormular } from "./PodkladyZakazky.jsx";
+import PoleSNabidkou from "./PoleSNabidkou.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
   nazevFaze, ukolyPro, nazevCasti, CASTI_MONTAZE, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
@@ -101,48 +102,6 @@ function BunkaSekce({ z, sekceIds }) {
         ))}
       </div>
       <div style={{ fontSize: 12, color: "#334155", marginTop: 4 }}>{p.sekce === "uz" ? "Uzavření · " : ""}{p.poradi} {p.nazev}</div>
-    </div>
-  );
-}
-
-// Pole s nabídkou hodnot — vlastní rozbalovací seznam přímo pod polem (místo
-// <datalist>, který některé prohlížeče vykreslí mimo pole). Dá se psát i vlastní
-// hodnota; šipky ↑↓ + Enter vyberou, Esc zavře, ▾ rozbalí celý seznam.
-function PoleSNabidkou({ id, value, onChange, moznosti, placeholder, style }) {
-  const [otevreno, setOtevreno] = useState(false);
-  const [aktivni, setAktivni] = useState(-1);
-  const pole = useRef(null);
-  const q = String(value || "").trim().toLowerCase();
-  const presna = moznosti.some((m) => m.toLowerCase() === q);
-  const seznam = !q || presna ? moznosti : moznosti.filter((m) => m.toLowerCase().includes(q));
-  const vybrat = (m) => { onChange(m); setOtevreno(false); setAktivni(-1); };
-  return (
-    <div style={{ position: "relative" }}>
-      <input id={id} ref={pole} role="combobox" aria-expanded={otevreno && seznam.length > 0} aria-autocomplete="list" aria-controls={`${id}-seznam`}
-        autoComplete="off" style={{ ...style, paddingRight: 34 }} value={value} placeholder={placeholder}
-        onChange={(e) => { onChange(e.target.value); setOtevreno(true); setAktivni(-1); }}
-        onFocus={() => setOtevreno(true)}
-        onBlur={() => setTimeout(() => setOtevreno(false), 120)}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown") { e.preventDefault(); setOtevreno(true); setAktivni((a) => Math.min(a + 1, seznam.length - 1)); }
-          else if (e.key === "ArrowUp") { e.preventDefault(); setAktivni((a) => Math.max(a - 1, 0)); }
-          else if (e.key === "Enter" && otevreno && aktivni >= 0 && seznam[aktivni]) { e.preventDefault(); vybrat(seznam[aktivni]); }
-          else if (e.key === "Escape") setOtevreno(false);
-        }} />
-      <button type="button" tabIndex={-1} aria-label="Zobrazit nabídku" onMouseDown={(e) => { e.preventDefault(); setOtevreno((o) => !o); pole.current?.focus(); }}
-        style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", color: "#64748b", fontSize: 14, cursor: "pointer", padding: "4px 8px" }}>▾</button>
-      {otevreno && seznam.length > 0 && (
-        <ul id={`${id}-seznam`} role="listbox"
-          style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 60, margin: "4px 0 0", padding: 4, listStyle: "none", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, boxShadow: "0 8px 24px rgba(15,23,42,.15)", maxHeight: 220, overflowY: "auto", textAlign: "left" }}>
-          {seznam.map((m, i) => (
-            <li key={m} role="option" aria-selected={i === aktivni || m.toLowerCase() === q}
-              onMouseDown={(e) => { e.preventDefault(); vybrat(m); }} onMouseEnter={() => setAktivni(i)}
-              style={{ padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 14, background: i === aktivni ? "#e0f2fe" : m.toLowerCase() === q ? "#f1f5f9" : "transparent", fontWeight: m.toLowerCase() === q ? 700 : 400 }}>
-              {m}
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
@@ -890,7 +849,14 @@ export default function Prubeh({
     p.technicka = { ...(p.technicka || {}) };
     if (!p.technicka.konstrukce && fve?.konstrukce?.name && !/^bez\b/i.test(fve.konstrukce.name)) p.technicka.konstrukce = fve.konstrukce.name;
     if (!p.technicka.backup && fve?.backup?.name && !/^bez\b/i.test(fve.backup.name)) p.technicka.backup = fve.backup.name;
-    setPodkladyForm({ zakId: zak.id, podklady: p });
+    const zamestnanci = employees.filter((e) => !e.archived).map((e) => e.name).filter(Boolean);
+    setPodkladyForm({ zakId: zak.id, podklady: p, ciselniky: { zamestnanci, cenik: {} } });
+    // ceník FVE kalkulačky (konstrukce, úpravy ELMR) pro nabídky v polích
+    supabase.from("fve_cenik_items").select("name, category").neq("active", false).order("sort_order").then(({ data }) => {
+      const cenik = {};
+      (data || []).forEach((c) => { (cenik[c.category] = cenik[c.category] || []).push(c.name); });
+      setPodkladyForm((f) => (f && f.zakId === zak.id ? { ...f, ciselniky: { ...f.ciselniky, cenik } } : f));
+    });
   };
   const ulozitPodklady = async (zak) => {
     if (await uloz(zak, { podklady: podkladyForm.podklady }, "Podklady pro realizaci upravené.")) {
@@ -1446,7 +1412,7 @@ export default function Prubeh({
         <div style={{ ...karta, width: "min(820px, 100%)", maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
           <div style={{ fontSize: 18, fontWeight: 800 }}>📋 Podklady pro realizaci — {z.nazev}</div>
           <div style={{ fontSize: 13, color: "#475569" }}>Předávací list od obchodníka. Zaměstnanec naplánovaný v kalendáři ho uvidí v detailu akce — pokyny pro jeho část (střecha / elektro) nahoře. Panely, střídač, baterie a regulace se berou z nabídky, sem dopiš jen to, co v ní není. Kontakty a technické údaje odběrného místa (EAN, jistič) jsou u zakázky.</div>
-          <PodkladyFormular podklady={podkladyForm.podklady} onChange={(p) => setPodkladyForm({ ...podkladyForm, podklady: p })} inp={inp} lbl={lbl} />
+          <PodkladyFormular podklady={podkladyForm.podklady} ciselniky={podkladyForm.ciselniky} onChange={(p) => setPodkladyForm({ ...podkladyForm, podklady: p })} inp={inp} lbl={lbl} />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: -16, background: "#fff", padding: "8px 0" }}>
             <button type="button" style={btnGhost} onClick={() => setPodkladyForm(null)}>Zrušit</button>
             <button type="button" style={btn("#0369a1")} disabled={pracuji} onClick={() => ulozitPodklady(z)}>Uložit podklady</button>
