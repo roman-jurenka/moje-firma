@@ -63,9 +63,25 @@ const ZAKLAD_FAZI = [
     { id: "vydan", text: "Materiál vydaný / naložený" },
     { id: "lide", text: "Lidé a doprava zajištění" },
   ] },
-  { id: "montaz", sekce: "re", nazev: "Montáž", nazevTyp: { SRV: "Servis" }, ukoly: [
+  // FVE a hromosvody mají montáž rozdělenou podle party: FVE střecha + elektro,
+  // hromosvod střecha (jímací soustava) + uzemnění. Ostatní typy jednu Montáž.
+  { id: "montaz", sekce: "re", nazev: "Montáž", nazevTyp: { SRV: "Servis" }, typy: { FVE: "-", FVO: "-", FVR: "-", HRM: "-" }, ukoly: [
     { id: "hotovo", text: "Práce na místě dokončené" },
     { id: "fotky", text: "Fotky z realizace uložené", fotky: "Po montáži" },
+  ] },
+  { id: "montaz_strecha", sekce: "re", nazev: "Montáž — střecha", nazevTyp: { HRM: "Střecha — jímací soustava" }, vychozi: "-", typy: { FVE: "v", FVO: "v", FVR: "o", HRM: "v" }, ukoly: [
+    { id: "hotovo", text: "Práce na střeše dokončené" },
+    { id: "fotky", text: "Fotky ze střechy uložené", fotky: "Střecha" },
+  ] },
+  { id: "montaz_elektro", sekce: "re", nazev: "Montáž — elektro", vychozi: "-", typy: { FVE: "v", FVO: "v", FVR: "v" }, ukoly: [
+    { id: "hotovo", text: "Elektroinstalace hotová (střídač, rozvaděče, kabeláž)" },
+    { id: "fotky", text: "Fotky elektra a hotového díla uložené", fotky: "Po montáži" },
+  ] },
+  { id: "uzemneni", sekce: "re", nazev: "Uzemnění", vychozi: "-", typy: { HRM: "v" }, ukoly: [
+    { id: "zemnic", text: "Zemnič uložený a propojený se svody" },
+    { id: "mereni", text: "Zemní odpor změřený" },
+    { id: "fotky", text: "Fotky uzemnění uložené", fotky: "Uzemnění" },
+    { id: "hotove", text: "Fotky hotového díla uložené", fotky: "Po montáži" },
   ] },
   { id: "zprovozneni", sekce: "re", nazev: "Zprovoznění", typy: { SRV: "-", HRM: "-", REA: "o" }, ukoly: [
     { id: "test", text: "Zprovozněno a otestováno" },
@@ -97,7 +113,7 @@ const ZAKLAD_FAZI = [
     { id: "servis", text: "Servisní / revizní termín naplánovaný" },
   ] },
 ];
-const BEZNE_DNY = { poptavka: 2, obhlidka: 7, nabidka: 5, jednani: 14, smlouva: 7, zaloha: 7, dokumentace: 7, distributor: 30, dotace: 14, material: 14, priprava: 2, montaz: 5, zprovozneni: 2, revize: 7, predani: 3, odeslani: 2, pripojeni: 30, vyuctovani: 14, archiv: 7 };
+const BEZNE_DNY = { poptavka: 2, obhlidka: 7, nabidka: 5, jednani: 14, smlouva: 7, zaloha: 7, dokumentace: 7, distributor: 30, dotace: 14, material: 14, priprava: 2, montaz: 5, montaz_strecha: 3, montaz_elektro: 3, uzemneni: 2, zprovozneni: 2, revize: 7, predani: 3, odeslani: 2, pripojeni: 30, vyuctovani: 14, archiv: 7 };
 ZAKLAD_FAZI.forEach((f) => { f.dny = BEZNE_DNY[f.id] || 7; });
 
 // Platná konfigurace = základ + úpravy admina (app_settings, klíč NASTAVENI_KEY):

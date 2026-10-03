@@ -24,6 +24,9 @@ export const NAVOD = {
   material: "Objednej materiál, potvrď se zákazníkem termín a naplánuj tým.",
   priprava: "Vydej a nalož materiál, zajisti lidi a dopravu.",
   montaz: "Proveď práce a nafoť hotové dílo (aspoň 5 fotek). Změny oproti smlouvě řeš dodatkem.",
+  montaz_strecha: "Namontuj na střechu konstrukci a panely (u hromosvodu jímací soustavu a svody) a nafoť střechu.",
+  montaz_elektro: "Zapoj střídač, baterie a rozvaděče, dotáhni kabeláž a nafoť elektro i hotové dílo (aspoň 5 fotek).",
+  uzemneni: "Ulož a propoj zemnič se svody, změř zemní odpor a nafoť uzemnění i hotové dílo (aspoň 5 fotek).",
   zprovozneni: "Zprovozni a otestuj zařízení.",
   revize: "Nech udělat revizi a ulož revizní zprávu.",
   predani: "Vygeneruj předávací protokol, předej dílo, seznam zákazníka s obsluhou a nech protokol podepsat.",
@@ -88,9 +91,13 @@ export function kontrolyZakazky(z, ctx) {
     vysledky.push({ uroven: "pozor", text: "Podepsaná smlouva zatím není nahraná (foto / sken).", akce: "sken:Smlouva" });
   }
 
+  // Fotky hotového díla se hlídají v posledním montážním kroku typu zakázky
+  // (FVE: elektro, hromosvod: uzemnění, ostatní: Montáž).
+  const montazFaze = ["uzemneni", "montaz_elektro", "montaz_strecha", "montaz"]
+    .find((id) => { const f = FAZE.find((x) => x.id === id); return f && fazePlati(f, z); }) || "montaz";
   const nMont = kat("Po montáži");
-  pridat("montaz", nMont >= 1, "Nemáš nahrané fotky hotového díla.", `${pocetFotek(nMont)} po montáži`, "fotky:Po montáži");
-  if (nMont >= 1 && nMont < MIN_FOTEK["Po montáži"] && iTed >= poradi("montaz")) {
+  pridat(montazFaze, nMont >= 1, "Nemáš nahrané fotky hotového díla.", `${pocetFotek(nMont)} po montáži`, "fotky:Po montáži");
+  if (nMont >= 1 && nMont < MIN_FOTEK["Po montáži"] && iTed >= poradi(montazFaze)) {
     vysledky.push({ uroven: "pozor", text: `Jen ${pocetFotek(nMont)} po montáži — doporučeno aspoň ${MIN_FOTEK["Po montáži"]}.`, akce: "fotky:Po montáži" });
   }
 

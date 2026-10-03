@@ -349,6 +349,21 @@ export default function Prubeh({
           console.warn("Převzetí zakázek do průběhu selhalo:", error.message);
         }
       }
+      // Otevřená zakázka v kroku, který její typ už nepoužívá (např. FVE v
+      // „Montáž“ po rozdělení na střechu a elektro) → přesunout do dalšího
+      // platného kroku a zapsat to.
+      const presunute = prubeh.filter((r) => r.stav === "otevrena" && fazeById[r.faze] && pravidlo(fazeById[r.faze], r.typ) === "-")
+        .map((r) => ({ r, cil: dalsiFaze(r) })).filter((x) => x.cil);
+      for (const { r, cil } of presunute) {
+        const patch = { faze: cil.id, faze_od: tedIso(), updated_at: tedIso() };
+        const { error } = await supabase.from("zakazky_prubeh").update(patch).eq("id", r.id);
+        if (error) continue;
+        const puvodni = nazevFaze(fazeById[r.faze], r.typ);
+        Object.assign(r, patch);
+        const { data: pzp } = await supabase.from("zakazky_poznamky").insert({ prubeh_id: r.id, kdo: "Systém", system: true,
+          text: `Krok „${puvodni}“ se u tohoto typu zakázky už nepoužívá (montáž je rozdělená) — zakázka pokračuje krokem ${nazevFaze(cil, r.typ)}.` }).select();
+        novePozn = [...(pzp || []), ...novePozn];
+      }
       if (zruseno) return;
       setRows(prubeh);
       setPoznamky([...novePozn, ...(pz.data || [])]);
@@ -936,7 +951,7 @@ export default function Prubeh({
   // Předvyplní se ze šablony: odkaz na složku s fotkami na OneDrivu (sdílený
   // „jen pro čtení“), místo, datum, podpis. Otevře se v poště (mailto),
   // předávací protokol se přikládá ručně.
-  const FOTKY_REALIZACE = ["Před montáží", "Průběh montáže", "Po montáži", "Detail střídač/baterie"];
+  const FOTKY_REALIZACE = ["Před montáží", "Průběh montáže", "Střecha", "Uzemnění", "Po montáži", "Detail střídač/baterie"];
   const otevritUzaviraciEmail = async (zak) => {
     const zk = zakaznik(zak.customer_id) || {};
     const k = contractById(zak.contract_id);
@@ -2498,7 +2513,7 @@ export default function Prubeh({
     // Všechny nahrané fotky zakázky (obhlídka, montáž, protokol…) podle kategorie;
     // klik otevře prohlížeč přes celou obrazovku.
     const vsechnyFotky = fotkyZ[z.id] || [];
-    const poradiKat = ["Obhlídka", "Smlouva", "Před montáží", "Průběh montáže", "Po montáži", "Detail střídač/baterie", "Předávací protokol", "Servis"];
+    const poradiKat = ["Obhlídka", "Smlouva", "Před montáží", "Průběh montáže", "Střecha", "Uzemnění", "Po montáži", "Detail střídač/baterie", "Předávací protokol", "Servis"];
     const katFotek = [...new Set(vsechnyFotky.map((p) => p.category || "Bez kategorie"))]
       .sort((a, b) => ((poradiKat.indexOf(a) + 1) || 99) - ((poradiKat.indexOf(b) + 1) || 99));
     const vybranaKat = galerieKat.zakId === z.id && katFotek.includes(galerieKat.kat) ? galerieKat.kat : "vse";
