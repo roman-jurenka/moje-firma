@@ -102,6 +102,48 @@ function BunkaSekce({ z, sekceIds }) {
   );
 }
 
+// Pole s nabídkou hodnot — vlastní rozbalovací seznam přímo pod polem (místo
+// <datalist>, který některé prohlížeče vykreslí mimo pole). Dá se psát i vlastní
+// hodnota; šipky ↑↓ + Enter vyberou, Esc zavře, ▾ rozbalí celý seznam.
+function PoleSNabidkou({ id, value, onChange, moznosti, placeholder, style }) {
+  const [otevreno, setOtevreno] = useState(false);
+  const [aktivni, setAktivni] = useState(-1);
+  const pole = useRef(null);
+  const q = String(value || "").trim().toLowerCase();
+  const presna = moznosti.some((m) => m.toLowerCase() === q);
+  const seznam = !q || presna ? moznosti : moznosti.filter((m) => m.toLowerCase().includes(q));
+  const vybrat = (m) => { onChange(m); setOtevreno(false); setAktivni(-1); };
+  return (
+    <div style={{ position: "relative" }}>
+      <input id={id} ref={pole} role="combobox" aria-expanded={otevreno && seznam.length > 0} aria-autocomplete="list" aria-controls={`${id}-seznam`}
+        autoComplete="off" style={{ ...style, paddingRight: 34 }} value={value} placeholder={placeholder}
+        onChange={(e) => { onChange(e.target.value); setOtevreno(true); setAktivni(-1); }}
+        onFocus={() => setOtevreno(true)}
+        onBlur={() => setTimeout(() => setOtevreno(false), 120)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); setOtevreno(true); setAktivni((a) => Math.min(a + 1, seznam.length - 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setAktivni((a) => Math.max(a - 1, 0)); }
+          else if (e.key === "Enter" && otevreno && aktivni >= 0 && seznam[aktivni]) { e.preventDefault(); vybrat(seznam[aktivni]); }
+          else if (e.key === "Escape") setOtevreno(false);
+        }} />
+      <button type="button" tabIndex={-1} aria-label="Zobrazit nabídku" onMouseDown={(e) => { e.preventDefault(); setOtevreno((o) => !o); pole.current?.focus(); }}
+        style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", color: "#64748b", fontSize: 14, cursor: "pointer", padding: "4px 8px" }}>▾</button>
+      {otevreno && seznam.length > 0 && (
+        <ul id={`${id}-seznam`} role="listbox"
+          style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 60, margin: "4px 0 0", padding: 4, listStyle: "none", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10, boxShadow: "0 8px 24px rgba(15,23,42,.15)", maxHeight: 220, overflowY: "auto", textAlign: "left" }}>
+          {seznam.map((m, i) => (
+            <li key={m} role="option" aria-selected={i === aktivni || m.toLowerCase() === q}
+              onMouseDown={(e) => { e.preventDefault(); vybrat(m); }} onMouseEnter={() => setAktivni(i)}
+              style={{ padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 14, background: i === aktivni ? "#e0f2fe" : m.toLowerCase() === q ? "#f1f5f9" : "transparent", fontWeight: m.toLowerCase() === q ? 700 : 400 }}>
+              {m}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // Prohlížeč fotek přes celou obrazovku: šipky / klávesy ← → / tažení prstem,
 // Esc zavře. fotky = řádky contract_photos, i = index zobrazené fotky.
 function ProhlizecFotek({ fotky, i, onI, onClose }) {
@@ -1438,7 +1480,6 @@ export default function Prubeh({
             Nadefinuj, z čeho se komponenta skládá. U <b>konstrukce</b> se množství zadává <b>na 1 panel</b> — checklist materiálu ho vynásobí počtem panelů z nabídky.
             „Pevně“ = navíc jednou na celou instalaci. Kusy se zaokrouhlují nahoru, metry a kilogramy na setiny.
           </div>
-          <datalist id="pr-rozpad-komponenty">{r.nazvy.map((n) => <option key={n} value={n} />)}</datalist>
           {r.sablony == null ? <div style={{ color: "#64748b" }}>Načítám…</div> : <>
             {r.sablony.length === 0 && <div style={{ fontSize: 13, color: "#94a3b8" }}>Zatím žádná šablona.</div>}
             {r.sablony.map((sab, i) => (
@@ -1446,8 +1487,8 @@ export default function Prubeh({
                 <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
                   <div style={{ flex: 1 }}>
                     <label style={lbl} htmlFor={`pr-roz-k-${sab.id}`}>Komponenta z nabídky (název přesně jako v ceníku)</label>
-                    <input id={`pr-roz-k-${sab.id}`} list="pr-rozpad-komponenty" style={inp} value={sab.komponenta || ""} placeholder="např. Šikmá střecha"
-                      onChange={(e) => setSablona(i, { komponenta: e.target.value })} />
+                    <PoleSNabidkou id={`pr-roz-k-${sab.id}`} moznosti={r.nazvy} style={inp} value={sab.komponenta || ""} placeholder="např. Šikmá střecha"
+                      onChange={(v) => setSablona(i, { komponenta: v })} />
                   </div>
                   <button type="button" style={{ ...btnGhost, color: "#b91c1c" }} onClick={() => setSablony(r.sablony.filter((_, j) => j !== i))}>Smazat šablonu</button>
                 </div>
@@ -1659,7 +1700,6 @@ export default function Prubeh({
         </div>
       )}
       {prohlizec && <ProhlizecFotek fotky={prohlizec.fotky} i={prohlizec.i} onI={zmenitFotku} onClose={zavritProhlizec} />}
-      <datalist id="pr-vztahy">{VZTAHY_KONTAKTU.map((v) => <option key={v} value={v} />)}</datalist>
       {/* Výběr fotek pro tlačítko „Nahrát fotky“ u úkolu fáze (na mobilu nabídne i fotoaparát). */}
       <input ref={fotoInput} type="file" accept="image/*" multiple style={{ display: "none" }}
         onChange={(e) => { const files = [...e.target.files]; e.target.value = ""; nahratFotky(files); }} />
@@ -1917,8 +1957,8 @@ export default function Prubeh({
                 <input id="pr-kon-tel" type="tel" style={inp} value={nova.kontakt?.telefon || ""}
                   onChange={(e) => setNova({ ...nova, kontakt: { ...(nova.kontakt || {}), telefon: e.target.value } })} /></div>
               <div><label style={lbl} htmlFor="pr-kon-vz">Vztah k zákazníkovi</label>
-                <input id="pr-kon-vz" list="pr-vztahy" style={inp} value={nova.kontakt?.vztah || ""} placeholder="manželka, syn, soused…"
-                  onChange={(e) => setNova({ ...nova, kontakt: { ...(nova.kontakt || {}), vztah: e.target.value } })} /></div>
+                <PoleSNabidkou id="pr-kon-vz" moznosti={VZTAHY_KONTAKTU} style={inp} value={nova.kontakt?.vztah || ""} placeholder="manželka, syn, soused…"
+                  onChange={(v) => setNova({ ...nova, kontakt: { ...(nova.kontakt || {}), vztah: v } })} /></div>
             </div>
             <div style={{ fontSize: 12, color: "#64748b" }}>{nova.zakRezim === "novy" ? "Zákazník se založí spolu s poptávkou (najdeš ho pak i v Zákaznících). " : ""}Zakázka se sama založí, až poptávka projde do back office.</div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -2374,7 +2414,7 @@ export default function Prubeh({
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <div><label style={lbl} htmlFor="pr-mkon">Kontaktní osoba na místě</label><input id="pr-mkon" style={inp} value={editMisto.kontakt} onChange={(e) => setEditMisto({ ...editMisto, kontakt: e.target.value })} /></div>
                 <div><label style={lbl} htmlFor="pr-mtel">Telefon</label><input id="pr-mtel" type="tel" style={inp} value={editMisto.telefon} onChange={(e) => setEditMisto({ ...editMisto, telefon: e.target.value })} /></div>
-                <div style={{ gridColumn: "1 / -1" }}><label style={lbl} htmlFor="pr-mvz">Vztah k zákazníkovi</label><input id="pr-mvz" list="pr-vztahy" style={inp} value={editMisto.vztah || ""} placeholder="manželka, syn, soused, stavbyvedoucí…" onChange={(e) => setEditMisto({ ...editMisto, vztah: e.target.value })} /></div>
+                <div style={{ gridColumn: "1 / -1" }}><label style={lbl} htmlFor="pr-mvz">Vztah k zákazníkovi</label><PoleSNabidkou id="pr-mvz" moznosti={VZTAHY_KONTAKTU} style={inp} value={editMisto.vztah || ""} placeholder="manželka, syn, soused, stavbyvedoucí…" onChange={(v) => setEditMisto({ ...editMisto, vztah: v })} /></div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button type="button" style={btn("#0369a1")} onClick={ulozMisto}>Uložit</button>
