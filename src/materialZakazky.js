@@ -4,11 +4,44 @@
 // je potřeba ji objednat, nebo už je objednaná. Ukládá se do
 // zakazky_prubeh.material jako [{ id, nazev, ks, jednotka, stav, skladem, poznamka }].
 
+// vyreseno = materiál je zajištěný (skladem / objednaný); pozor = objednaný,
+// ale je potřeba hlídat; problem = musí se ještě objednat nebo řešit.
 export const STAVY_MATERIALU = [
-  { id: "sklad", label: "Na skladě", barva: "#15803d", svetla: "#dcfce7" },
-  { id: "objednano", label: "Objednáno", barva: "#0369a1", svetla: "#e0f2fe" },
-  { id: "objednat", label: "Objednat", barva: "#b45309", svetla: "#fef3c7" },
+  { id: "sklad", label: "Na skladě", ikona: "✓", barva: "#15803d", svetla: "#dcfce7", druh: "vyreseno" },
+  { id: "objednat", label: "Objednat", ikona: "⚠", barva: "#b45309", svetla: "#fef3c7", druh: "problem" },
+  { id: "objednano", label: "Objednáno", ikona: "🛒", barva: "#0369a1", svetla: "#e0f2fe", druh: "vyreseno" },
+  { id: "ceka", label: "Čeká na vyjádření dodavatele", ikona: "⏳", barva: "#7c3aed", svetla: "#ede9fe", druh: "pozor" },
+  { id: "na_ceste", label: "Na cestě", ikona: "🚚", barva: "#0e7490", svetla: "#cffafe", druh: "vyreseno" },
+  { id: "zpozdeni", label: "Dodavatel má zpoždění", ikona: "⏰", barva: "#c2410c", svetla: "#ffedd5", druh: "pozor" },
+  { id: "zniceno", label: "Zničeno / poškozeno", ikona: "✕", barva: "#b91c1c", svetla: "#fee2e2", druh: "problem" },
 ];
+export const stavMaterialu = (id) => STAVY_MATERIALU.find((s) => s.id === id) || null;
+
+// ── Rozpad materiálu (šablony) ──
+// Komponenta z nabídky (typicky konstrukce „Šikmá střecha“) se v checklistu
+// rozloží na díly: množství na 1 kus komponenty (u konstrukce = na 1 panel)
+// × počet + pevné množství na celou instalaci. Šablony se definují v Průběhu
+// (🧩 Rozpad materiálu) a ukládají do app_settings pod ROZPAD_KEY:
+// { sablony: [{ id, komponenta, polozky: [{ id, nazev, naKus, pevne, jednotka }] }] }
+export const ROZPAD_KEY = "material_rozpad";
+
+const zaokrouhlit = (x, jednotka) => (/^(ks|kus|sada|bal)/i.test(jednotka || "ks") ? Math.ceil(x - 1e-9) : Math.round(x * 100) / 100);
+
+export function najdiSablonu(nazevKomponenty, sablony) {
+  const n = String(nazevKomponenty || "").trim().toLowerCase();
+  return (sablony || []).find((s) => String(s.komponenta || "").trim().toLowerCase() === n && (s.polozky || []).some((p) => String(p.nazev || "").trim())) || null;
+}
+
+// [{ nazev, ks, jednotka }] pro daný počet (u konstrukce počet panelů)
+export function rozpadKomponenty(sablona, pocet) {
+  return (sablona?.polozky || [])
+    .filter((p) => String(p.nazev || "").trim())
+    .map((p) => {
+      const jednotka = p.jednotka || "ks";
+      return { nazev: p.nazev.trim(), jednotka, ks: zaokrouhlit((Number(p.naKus) || 0) * (Number(pocet) || 0) + (Number(p.pevne) || 0), jednotka) };
+    })
+    .filter((p) => p.ks > 0);
+}
 
 // Vztahy kontaktní osoby k zákazníkovi — nabídka v poli (dá se napsat i jiný).
 export const VZTAHY_KONTAKTU = ["manželka", "manžel", "partner/ka", "syn", "dcera", "rodiče", "soused", "stavbyvedoucí", "správce objektu", "nájemník", "kolega"];
@@ -21,22 +54,32 @@ const FVE_KOMPONENTY = [
 
 const novaId = () => Math.random().toString(36).slice(2, 10);
 
-// Položky z nabídky (bez stavu — ten se vybírá v checklistu).
-export function polozkyZNabidky(quote) {
+// Položky z nabídky (bez stavu — ten se vybírá v checklistu). Komponenta,
+// pro kterou existuje šablona rozpadu, se vypíše po dílech.
+export function polozkyZNabidky(quote, sablony = []) {
   const d = quote?.data || {};
   const radky = [];
+  let extra = {}; // doplňující údaje k právě přidávaným řádkům (odkud jsou z rozpadu)
   const pridat = (nazev, ks, jednotka = "ks") => {
     const n = String(nazev || "").trim();
     const k = Number(ks) || 0;
     if (!n || k <= 0 || /^bez\b/i.test(n)) return;
     const stejna = radky.find((r) => r.nazev.toLowerCase() === n.toLowerCase() && r.jednotka === jednotka);
     if (stejna) stejna.ks = Math.round((stejna.ks + k) * 100) / 100;
-    else radky.push({ id: novaId(), nazev: n, ks: Math.round(k * 100) / 100, jednotka, stav: "", skladem: "", poznamka: "" });
+    else radky.push({ id: novaId(), nazev: n, ks: Math.round(k * 100) / 100, jednotka, stav: "", skladem: "", poznamka: "", ...extra });
   };
   if (d.fve) {
     FVE_KOMPONENTY.forEach(([k, popis]) => {
       const x = d.fve[k];
       if (!x?.name) return;
+      const sablona = najdiSablonu(x.name, sablony);
+      if (sablona && (Number(x.qty) || 0) > 0) {
+        // rozpad: u konstrukce je qty počet panelů
+        extra = { zRozpadu: `${popis} — ${x.name} (${x.qty} ${k === "konstrukce" ? "panelů" : "ks"})` };
+        rozpadKomponenty(sablona, x.qty).forEach((r) => pridat(r.nazev, r.ks, r.jednotka));
+        extra = {};
+        return;
+      }
       pridat(k === "konstrukce" ? `${popis} — ${x.name}` : x.name, x.qty);
     });
     (d.fve.customRows || []).filter((r) => r.sekce === "material").forEach((r) => pridat(r.name, r.qty));
@@ -89,11 +132,17 @@ export const prazdnaPolozka = () => ({ id: novaId(), nazev: "", ks: 1, jednotka:
 
 export function souhrnMaterialu(polozky) {
   const p = (polozky || []).filter((x) => String(x.nazev || "").trim());
+  const pocty = Object.fromEntries(STAVY_MATERIALU.map((s) => [s.id, p.filter((x) => x.stav === s.id).length]));
+  const podleDruhu = (d) => p.filter((x) => stavMaterialu(x.stav)?.druh === d).length;
   return {
     celkem: p.length,
-    sklad: p.filter((x) => x.stav === "sklad").length,
-    objednano: p.filter((x) => x.stav === "objednano").length,
-    objednat: p.filter((x) => x.stav === "objednat").length,
-    nevyplneno: p.filter((x) => !x.stav).length,
+    pocty,
+    sklad: pocty.sklad,
+    objednano: pocty.objednano,
+    objednat: pocty.objednat,
+    vyreseno: podleDruhu("vyreseno"),
+    pozor: podleDruhu("pozor"),
+    problem: podleDruhu("problem"),
+    nevyplneno: p.filter((x) => !stavMaterialu(x.stav)).length,
   };
 }

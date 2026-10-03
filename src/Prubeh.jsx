@@ -8,7 +8,7 @@ import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { UZAVIRACI_EMAIL_KEY, VYCHOZI_UZAVIRACI_EMAIL, ZNACKY_UZAVIRACIHO_EMAILU, vyplnitSablonu } from "./uzaviraciEmail.js";
 import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js";
-import { STAVY_MATERIALU, VZTAHY_KONTAKTU, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu, stavSkladu, predvyplnitZeSkladu } from "./materialZakazky.js";
+import { STAVY_MATERIALU, stavMaterialu, VZTAHY_KONTAKTU, ROZPAD_KEY, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu, stavSkladu, predvyplnitZeSkladu } from "./materialZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
@@ -824,22 +824,49 @@ export default function Prubeh({
   // Objednat). Stav jde ručně změnit (Objednáno, jiný počet…).
   const otevritMaterial = async (zak, znovuZNabidky = false) => {
     const ulozene = !znovuZNabidky && Array.isArray(zak.material) && zak.material.length ? zak.material : null;
-    const zNabidky = ulozene || polozkyZNabidky(zak.quote_id ? quoteById(zak.quote_id) : null);
-    setMaterialForm((f) => ({ zakId: zak.id, polozky: zNabidky.length ? zNabidky : [prazdnaPolozka()], produkty: f?.zakId === zak.id ? f.produkty : null, zNabidky: !ulozene && zNabidky.length > 0 }));
-    const { data, error } = await supabase.from("products").select("id, name, sku, stock, unit");
-    const produkty = error ? [] : (data || []);
+    setMaterialForm((f) => ({ zakId: zak.id, polozky: ulozene || (f?.zakId === zak.id ? f.polozky : []), produkty: null, nacitam: true, zNabidky: false }));
+    // sklad + šablony rozpadu (konstrukce na díly)
+    const [{ data: prod, error: pe }, { data: nast }] = await Promise.all([
+      supabase.from("products").select("id, name, sku, stock, unit"),
+      supabase.from("app_settings").select("value").eq("key", ROZPAD_KEY).maybeSingle(),
+    ]);
+    const produkty = pe ? [] : (prod || []);
+    const zNabidky = ulozene ? null : polozkyZNabidky(zak.quote_id ? quoteById(zak.quote_id) : null, nast?.value?.sablony || []);
     setMaterialForm((f) => (f && f.zakId === zak.id ? {
-      ...f, produkty,
+      ...f, produkty, nacitam: false,
       // nový seznam (ne uložený) se předvyplní podle skladu
-      polozky: ulozene ? f.polozky : predvyplnitZeSkladu(f.polozky, produkty),
+      polozky: ulozene || (zNabidky.length ? predvyplnitZeSkladu(zNabidky, produkty) : [prazdnaPolozka()]),
+      zNabidky: !ulozene && zNabidky.length > 0,
     } : f));
+  };
+
+  // ── Šablony rozpadu materiálu (admin / vedoucí) ──
+  const [rozpadForm, setRozpadForm] = useState(null); // { sablony, nazvy } — null = zavřeno
+  const otevritRozpad = async () => {
+    setRozpadForm({ sablony: null, nazvy: [] });
+    const [{ data: nast }, { data: cenik }] = await Promise.all([
+      supabase.from("app_settings").select("value").eq("key", ROZPAD_KEY).maybeSingle(),
+      supabase.from("fve_cenik_items").select("name, category").neq("active", false),
+    ]);
+    const nazvy = [...new Set((cenik || []).filter((c) => !/^bez\b/i.test(c.name || "")).sort((a, b) => (a.category === "konstrukce" ? -1 : 0) - (b.category === "konstrukce" ? -1 : 0)).map((c) => c.name))];
+    setRozpadForm({ sablony: nast?.value?.sablony || [], nazvy });
+  };
+  const ulozitRozpad = async () => {
+    const sablony = rozpadForm.sablony
+      .map((s) => ({ ...s, komponenta: String(s.komponenta || "").trim(), polozky: (s.polozky || []).filter((p) => String(p.nazev || "").trim()) }))
+      .filter((s) => s.komponenta);
+    const { error } = await supabase.from("app_settings").upsert({ key: ROZPAD_KEY, value: { sablony }, updated_at: new Date().toISOString() });
+    if (error) { alert("Šablony se nepodařilo uložit: " + error.message); return; }
+    setRozpadForm(null);
+    ukazHlasku("✓ Rozpad materiálu uložený — použije se v checklistu materiálu");
   };
   const ulozitMaterial = async (zak, odskrtnout) => {
     const polozky = materialForm.polozky.filter((p) => String(p.nazev || "").trim()).map((p) => ({ ...p, nazev: p.nazev.trim() }));
     const s = souhrnMaterialu(polozky);
-    if (odskrtnout && (s.objednat || s.nevyplneno) && !(await zeptat({
+    const nevyresene = polozky.filter((p) => !stavMaterialu(p.stav) || stavMaterialu(p.stav).druh !== "vyreseno");
+    if (odskrtnout && nevyresene.length && !(await zeptat({
       titulek: "Označit materiál jako objednaný?",
-      text: [s.objednat && `${s.objednat} ${s.objednat === 1 ? "položka je" : "položky jsou"} ještě k objednání.`, s.nevyplneno && `${s.nevyplneno} bez vybraného stavu.`].filter(Boolean).join("\n"),
+      text: `Ještě není vyřešené:\n${nevyresene.map((p) => `• ${p.nazev} — ${stavMaterialu(p.stav)?.label || "bez stavu"}`).join("\n")}`,
       potvrdit: "Přesto odškrtnout",
     }))) return;
     const patch = { material: polozky };
@@ -849,7 +876,14 @@ export default function Prubeh({
       patch.hotove_ukoly = hotove;
       if (f && zak.faze === "material" && (!zak.dalsi_krok || zak.dalsi_krok === krokProFazi(zak, f))) patch.dalsi_krok = krokProFazi({ ...zak, hotove_ukoly: hotove }, f);
     }
-    const text = `Materiál: ${s.celkem} ${s.celkem === 1 ? "položka" : s.celkem < 5 ? "položky" : "položek"} — ${s.sklad} na skladě, ${s.objednano} objednáno${s.objednat ? `, ${s.objednat} k objednání` : ""}.`;
+    // Poznámka do historie: počty podle stavů + co se u položek změnilo
+    const puvodni = Object.fromEntries((zak.material || []).map((p) => [p.id, p.stav]));
+    const zmeny = polozky.filter((p) => puvodni[p.id] !== undefined && puvodni[p.id] !== p.stav && p.stav)
+      .map((p) => `${p.nazev}: ${stavMaterialu(p.stav)?.label}`);
+    const text = `Materiál: ${s.celkem} ${s.celkem === 1 ? "položka" : s.celkem < 5 ? "položky" : "položek"} — `
+      + STAVY_MATERIALU.filter((st) => s.pocty[st.id]).map((st) => `${st.label.toLowerCase()} ${s.pocty[st.id]}`).join(", ")
+      + (s.nevyplneno ? `, bez stavu ${s.nevyplneno}` : "") + "."
+      + (zmeny.length ? ` Změny: ${zmeny.join("; ")}.` : "");
     if (await uloz(zak, patch, text)) {
       setMaterialForm(null);
       ukazHlasku(odskrtnout ? "✓ Materiál zapsaný a úkol odškrtnutý" : "✓ Checklist materiálu uložený");
@@ -1301,7 +1335,7 @@ export default function Prubeh({
             U každé položky appka podle modulu Sklad ukáže, jestli <b>je na skladě</b>, a stav předvyplní. Co už je objednané, přepni na <b>Objednáno</b>.
           </div>
           {/* Stav podle skladu (modul Sklad) — počítá se pořád znovu z aktuálních názvů a počtů */}
-          {m.produkty == null ? <div style={{ fontSize: 13, color: "#64748b" }}>Kontroluji sklad…</div> : (() => {
+          {m.nacitam ? <div style={{ fontSize: 13, color: "#64748b" }}>Načítám komponenty a kontroluji sklad…</div> : m.produkty == null ? null : (() => {
             const st = m.polozky.filter((p) => String(p.nazev || "").trim()).map((p) => stavSkladu(p, m.produkty).druh);
             const pocet = (d) => st.filter((x) => x === d).length;
             return (
@@ -1317,9 +1351,12 @@ export default function Prubeh({
           })()}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
             <span style={{ color: "#64748b" }}>Označit vše:</span>
-            {STAVY_MATERIALU.map((st) => <button key={st.id} type="button" style={{ ...btnGhost, padding: "3px 9px", fontSize: 12 }} onClick={() => vse(st.id)}>{st.label}</button>)}
+            <select aria-label="Označit všechny položky" value="" style={{ ...inp, width: "auto", padding: "4px 8px", fontSize: 12 }} onChange={(e) => { if (e.target.value) vse(e.target.value); }}>
+              <option value="">— vyber stav —</option>
+              {STAVY_MATERIALU.map((st) => <option key={st.id} value={st.id}>{st.ikona} {st.label}</option>)}
+            </select>
           </div>
-          <div className="pr-mat-radek pr-mat-hlavicka" style={{ display: "grid", gridTemplateColumns: "1fr 90px 290px 90px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
+          <div className="pr-mat-radek pr-mat-hlavicka" style={{ display: "grid", gridTemplateColumns: "1fr 90px 240px 90px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
             <span>Komponenta</span><span>Potřeba</span><span className="pr-mat-stav">Stav</span><span>Skladem ks</span><span />
           </div>
           {m.polozky.map((p, i) => {
@@ -1333,29 +1370,30 @@ export default function Prubeh({
             const castecne = p.skladem !== "" && Number(p.skladem) < Number(p.ks) && p.stav !== "objednano";
             return (
               <div key={p.id} style={{ borderTop: "1px solid #f1f5f9", paddingTop: 8 }}>
-                <div className="pr-mat-radek" style={{ display: "grid", gridTemplateColumns: "1fr 90px 290px 90px 32px", gap: 8, alignItems: "center" }}>
+                <div className="pr-mat-radek" style={{ display: "grid", gridTemplateColumns: "1fr 90px 240px 90px 32px", gap: 8, alignItems: "center" }}>
                   <input aria-label={`Komponenta ${i + 1}`} style={inp} value={p.nazev} placeholder="název komponenty" onChange={(e) => setPolozka(i, { nazev: e.target.value })} />
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <input aria-label={`Potřeba ${i + 1}`} type="number" min="0" step="any" style={{ ...inp, padding: "8px 6px" }} value={p.ks} onChange={(e) => setPolozka(i, { ks: e.target.value })} />
                     <span style={{ fontSize: 12, color: "#64748b" }}>{p.jednotka || "ks"}</span>
                   </div>
-                  <div className="pr-mat-stav" role="group" aria-label={`Stav položky ${i + 1}`} style={{ display: "flex", gap: 4 }}>
-                    {STAVY_MATERIALU.map((st) => {
-                      const zvoleny = p.stav === st.id;
-                      return (
-                        <button key={st.id} type="button" aria-pressed={zvoleny} onClick={() => setPolozka(i, { stav: zvoleny ? "" : st.id, ...(st.id === "sklad" && !zvoleny && p.skladem === "" ? { skladem: String(p.ks) } : {}) })}
-                          style={{ flex: 1, border: `1px solid ${zvoleny ? st.barva : "#cbd5e1"}`, background: zvoleny ? st.svetla : "#fff", color: zvoleny ? st.barva : "#475569", borderRadius: 8, padding: "6px 4px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-                          {zvoleny ? "✓ " : ""}{st.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {(() => {
+                    const st = stavMaterialu(p.stav);
+                    return (
+                      <select className="pr-mat-stav" aria-label={`Stav položky ${i + 1}`} value={p.stav || ""}
+                        onChange={(e) => setPolozka(i, { stav: e.target.value, ...(e.target.value === "sklad" && p.skladem === "" ? { skladem: String(p.ks) } : {}) })}
+                        style={{ ...inp, padding: "7px 8px", fontSize: 13, fontWeight: 700, border: `1px solid ${st ? st.barva : "#cbd5e1"}`, background: st ? st.svetla : "#fff", color: st ? st.barva : "#64748b" }}>
+                        <option value="">— vyber stav —</option>
+                        {STAVY_MATERIALU.map((x) => <option key={x.id} value={x.id}>{x.ikona} {x.label}</option>)}
+                      </select>
+                    );
+                  })()}
                   <input aria-label={`Skladem kusů ${i + 1}`} type="number" min="0" step="any" style={{ ...inp, padding: "8px 6px" }} value={p.skladem} placeholder="—"
                     onChange={(e) => setPolozka(i, { skladem: e.target.value })} />
                   <button type="button" aria-label={`Odebrat položku ${i + 1}`} style={{ ...btnGhost, padding: "4px 8px" }} onClick={() => setMaterialForm({ ...m, polozky: m.polozky.filter((_, j) => j !== i) })}>✕</button>
                 </div>
-                {(skladStitek || castecne) && (
+                {(skladStitek || castecne || p.zRozpadu) && (
                   <div style={{ fontSize: 12, marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    {p.zRozpadu && <span style={{ color: "#64748b" }}>🧩 z rozpadu: {p.zRozpadu}</span>}
                     {skladStitek && <span style={{ color: skladStitek.barva, background: skladStitek.pozadi, borderRadius: 6, padding: "2px 8px", fontWeight: 700 }}>{skladStitek.text}</span>}
                     {castecne && <span style={{ color: "#b45309", fontWeight: 600 }}>Skladem {p.skladem} z {p.ks} — objednat {Math.round((Number(p.ks) - Number(p.skladem)) * 100) / 100} {p.jednotka || "ks"}.</span>}
                   </div>
@@ -1365,19 +1403,76 @@ export default function Prubeh({
           })}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" style={btnGhost} onClick={() => setMaterialForm({ ...m, polozky: [...m.polozky, prazdnaPolozka()] })}>+ Přidat položku</button>
-            {maNabidku && <button type="button" style={btnGhost} onClick={() => otevritMaterial(z, true)} title="Zahodí rozpracovaný seznam a načte komponenty znovu z nabídky">↻ Načíst znovu z nabídky</button>}
+            {maNabidku && <button type="button" style={btnGhost} onClick={() => otevritMaterial(z, true)} title="Zahodí rozpracovaný seznam a načte komponenty znovu z nabídky (i podle šablon rozpadu)">↻ Načíst znovu z nabídky</button>}
+            {smiNastavit && <button type="button" style={btnGhost} onClick={otevritRozpad} title="Šablony: z čeho se skládá konstrukce na 1 panel">🧩 Rozpad materiálu</button>}
           </div>
           <div style={{ fontSize: 13, display: "flex", gap: 12, flexWrap: "wrap", background: "#f8fafc", borderRadius: 8, padding: "8px 10px" }}>
             <b>{s.celkem} {s.celkem === 1 ? "položka" : s.celkem < 5 ? "položky" : "položek"}</b>
-            <span style={{ color: "#15803d" }}>✓ na skladě {s.sklad}</span>
-            <span style={{ color: "#0369a1" }}>🚚 objednáno {s.objednano}</span>
-            <span style={{ color: "#b45309", fontWeight: s.objednat ? 700 : 400 }}>⚠ objednat {s.objednat}</span>
+            {STAVY_MATERIALU.filter((st) => s.pocty[st.id]).map((st) => <span key={st.id} style={{ color: st.barva, fontWeight: st.druh === "vyreseno" ? 400 : 700 }}>{st.ikona} {st.label.toLowerCase()} {s.pocty[st.id]}</span>)}
             {s.nevyplneno > 0 && <span style={{ color: "#94a3b8" }}>bez stavu {s.nevyplneno}</span>}
           </div>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
             <button type="button" style={btnGhost} onClick={() => setMaterialForm(null)}>Zavřít</button>
             <button type="button" style={btnGhost} disabled={pracuji} onClick={() => ulozitMaterial(z, false)}>Uložit</button>
             <button type="button" style={btn("#15803d")} disabled={pracuji} onClick={() => ulozitMaterial(z, true)}>Uložit a odškrtnout „Materiál objednaný“</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Šablony rozpadu materiálu: komponenta → díly na 1 kus (panel) + pevně ──
+  const vykresliRozpad = () => {
+    if (!rozpadForm) return null;
+    const r = rozpadForm;
+    const setSablony = (sablony) => setRozpadForm({ ...r, sablony });
+    const setSablona = (i, patch) => setSablony(r.sablony.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+    const setDil = (i, k, patch) => setSablona(i, { polozky: r.sablony[i].polozky.map((p, j) => (j === k ? { ...p, ...patch } : p)) });
+    const novyDil = () => ({ id: Math.random().toString(36).slice(2, 10), nazev: "", naKus: "", pevne: "", jednotka: "ks" });
+    return (
+      <div role="dialog" aria-modal="true" aria-label="Rozpad materiálu" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        onClick={(e) => { if (e.target === e.currentTarget) setRozpadForm(null); }}>
+        <div style={{ ...karta, width: "min(820px, 100%)", maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>🧩 Rozpad materiálu</div>
+          <div style={{ fontSize: 13, color: "#475569" }}>
+            Nadefinuj, z čeho se komponenta skládá. U <b>konstrukce</b> se množství zadává <b>na 1 panel</b> — checklist materiálu ho vynásobí počtem panelů z nabídky.
+            „Pevně“ = navíc jednou na celou instalaci. Kusy se zaokrouhlují nahoru, metry na setiny.
+          </div>
+          <datalist id="pr-rozpad-komponenty">{r.nazvy.map((n) => <option key={n} value={n} />)}</datalist>
+          {r.sablony == null ? <div style={{ color: "#64748b" }}>Načítám…</div> : <>
+            {r.sablony.length === 0 && <div style={{ fontSize: 13, color: "#94a3b8" }}>Zatím žádná šablona.</div>}
+            {r.sablony.map((sab, i) => (
+              <div key={sab.id} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={lbl} htmlFor={`pr-roz-k-${sab.id}`}>Komponenta z nabídky (název přesně jako v ceníku)</label>
+                    <input id={`pr-roz-k-${sab.id}`} list="pr-rozpad-komponenty" style={inp} value={sab.komponenta || ""} placeholder="např. Šikmá střecha"
+                      onChange={(e) => setSablona(i, { komponenta: e.target.value })} />
+                  </div>
+                  <button type="button" style={{ ...btnGhost, color: "#b91c1c" }} onClick={() => setSablony(r.sablony.filter((_, j) => j !== i))}>Smazat šablonu</button>
+                </div>
+                <div className="pr-roz-radek pr-roz-hlavicka" style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px 90px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
+                  <span>Díl</span><span>Na 1 panel / ks</span><span>Pevně navíc</span><span>Jednotka</span><span />
+                </div>
+                {(sab.polozky || []).map((p, k) => (
+                  <div key={p.id} className="pr-roz-radek" style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px 90px 32px", gap: 8, alignItems: "center" }}>
+                    <input aria-label={`Díl ${k + 1}`} style={inp} value={p.nazev} placeholder="např. Kolejnice 2,1 m" onChange={(e) => setDil(i, k, { nazev: e.target.value })} />
+                    <input aria-label={`Na 1 panel ${k + 1}`} type="number" min="0" step="any" style={inp} value={p.naKus} placeholder="na 1 panel" title="Množství na 1 panel (1 kus komponenty)" onChange={(e) => setDil(i, k, { naKus: e.target.value })} />
+                    <input aria-label={`Pevně navíc ${k + 1}`} type="number" min="0" step="any" style={inp} value={p.pevne} placeholder="pevně navíc" title="Navíc jednou na celou instalaci" onChange={(e) => setDil(i, k, { pevne: e.target.value })} />
+                    <input aria-label={`Jednotka ${k + 1}`} list="pr-jednotky" style={inp} value={p.jednotka} onChange={(e) => setDil(i, k, { jednotka: e.target.value })} />
+                    <button type="button" aria-label={`Odebrat díl ${k + 1}`} style={{ ...btnGhost, padding: "4px 8px" }} onClick={() => setSablona(i, { polozky: sab.polozky.filter((_, j) => j !== k) })}>✕</button>
+                  </div>
+                ))}
+                <button type="button" style={{ ...btnGhost, alignSelf: "flex-start", padding: "4px 10px", fontSize: 13 }} onClick={() => setSablona(i, { polozky: [...(sab.polozky || []), novyDil()] })}>+ Přidat díl</button>
+              </div>
+            ))}
+            <datalist id="pr-jednotky">{["ks", "m", "sada", "bal"].map((j) => <option key={j} value={j} />)}</datalist>
+            <button type="button" style={{ ...btnGhost, alignSelf: "flex-start" }}
+              onClick={() => setSablony([...r.sablony, { id: Math.random().toString(36).slice(2, 10), komponenta: "", polozky: [novyDil()] }])}>+ Nová šablona</button>
+          </>}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button type="button" style={btnGhost} onClick={() => setRozpadForm(null)}>Zrušit</button>
+            <button type="button" style={btn("#0369a1")} disabled={r.sablony == null} onClick={ulozitRozpad}>Uložit šablony</button>
           </div>
         </div>
       </div>
@@ -1529,6 +1624,9 @@ export default function Prubeh({
           .pr-mat-radek { grid-template-columns: 1fr 70px !important; }
           .pr-mat-radek > .pr-mat-stav { grid-column: 1 / -1; }
           .pr-mat-hlavicka { display: none !important; }
+          .pr-roz-hlavicka > span:first-child { display: none; }
+          .pr-roz-radek { grid-template-columns: 1fr 1fr 64px 36px !important; }
+          .pr-roz-radek > input:first-child { grid-column: 1 / -1; }
           .pr-vice-radek { grid-template-columns: 28px 1fr 32px !important; }
           .pr-vice-radek > input:nth-of-type(2), .pr-vice-radek > input:nth-of-type(3) { grid-column: 2 / 3; }
         }
@@ -1538,6 +1636,7 @@ export default function Prubeh({
       {vykresliVice()}
       {vykresliUzavEmail()}
       {vykresliMaterial()}
+      {vykresliRozpad()}
       {dotaz && (
         <div role="dialog" aria-modal="true" aria-label={dotaz.titulek} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
           onClick={(e) => { if (e.target === e.currentTarget) zavritDotaz(null); }}
@@ -1587,6 +1686,7 @@ export default function Prubeh({
             {frontaBtn("re", "Realizace", "#15803d")}
           </div>
           {smiNastavit && <button type="button" style={btnGhost} onClick={() => setNastaveniForm(Object.fromEntries(FAZE.map((f) => [f.id, { dny: f.dny, typy: Object.fromEntries(TYPY.map((t) => [t.id, pravidlo(f, t.id)])), ukoly: f.ukoly.map((u) => ({ ...u })) }])))}>⚙️ Nastavení fází</button>}
+          {smiNastavit && <button type="button" style={btnGhost} onClick={otevritRozpad} title="Šablony rozpadu materiálu (konstrukce na 1 panel)">🧩 Rozpad materiálu</button>}
           <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "", zakRezim: null, zakHledat: "", novyZak: { name: "", phone: "", email: "", adresa: "" }, telefonZak: null, kontakt: { jmeno: "", telefon: "", vztah: "" } })}>+ Nová poptávka</button>
         </div>
       </div>
@@ -2188,9 +2288,7 @@ export default function Prubeh({
                         return (
                           <div style={{ padding: "0 12px 10px 40px", fontSize: 13, color: "#475569", display: "flex", gap: 10, flexWrap: "wrap" }}>
                             <span>📦 {sm.celkem} {sm.celkem === 1 ? "položka" : sm.celkem < 5 ? "položky" : "položek"}</span>
-                            {sm.sklad > 0 && <span style={{ color: "#15803d", fontWeight: 600 }}>✓ {sm.sklad} na skladě</span>}
-                            {sm.objednano > 0 && <span style={{ color: "#0369a1", fontWeight: 600 }}>🚚 {sm.objednano} objednáno</span>}
-                            {sm.objednat > 0 && <span style={{ color: "#b45309", fontWeight: 700 }}>⚠ {sm.objednat} objednat</span>}
+                            {STAVY_MATERIALU.filter((st) => sm.pocty[st.id]).map((st) => <span key={st.id} style={{ color: st.barva, fontWeight: st.druh === "vyreseno" ? 600 : 700 }}>{st.ikona} {sm.pocty[st.id]} {st.label.toLowerCase()}</span>)}
                             {sm.nevyplneno > 0 && <span style={{ color: "#94a3b8" }}>{sm.nevyplneno} bez stavu</span>}
                           </div>
                         );
