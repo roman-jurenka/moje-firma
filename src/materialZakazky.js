@@ -25,6 +25,9 @@ export const stavMaterialu = (id) => STAVY_MATERIALU.find((s) => s.id === id) ||
 // { sablony: [{ id, komponenta, polozky: [{ id, nazev, naKus, pevne, jednotka }] }] }
 export const ROZPAD_KEY = "material_rozpad";
 
+// Jednotky materiálu — kusové (ks, sada, bal) se zaokrouhlují nahoru na celé, m a kg na setiny.
+export const JEDNOTKY_MATERIALU = ["ks", "m", "kg", "sada", "bal"];
+
 const zaokrouhlit = (x, jednotka) => (/^(ks|kus|sada|bal)/i.test(jednotka || "ks") ? Math.ceil(x - 1e-9) : Math.round(x * 100) / 100);
 
 export function najdiSablonu(nazevKomponenty, sablony) {

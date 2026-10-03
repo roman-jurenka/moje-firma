@@ -8,7 +8,7 @@ import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { UZAVIRACI_EMAIL_KEY, VYCHOZI_UZAVIRACI_EMAIL, ZNACKY_UZAVIRACIHO_EMAILU, vyplnitSablonu } from "./uzaviraciEmail.js";
 import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js";
-import { STAVY_MATERIALU, stavMaterialu, VZTAHY_KONTAKTU, ROZPAD_KEY, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu, stavSkladu, predvyplnitZeSkladu } from "./materialZakazky.js";
+import { STAVY_MATERIALU, JEDNOTKY_MATERIALU, stavMaterialu, VZTAHY_KONTAKTU, ROZPAD_KEY, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu, stavSkladu, predvyplnitZeSkladu } from "./materialZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
@@ -1356,7 +1356,7 @@ export default function Prubeh({
               {STAVY_MATERIALU.map((st) => <option key={st.id} value={st.id}>{st.ikona} {st.label}</option>)}
             </select>
           </div>
-          <div className="pr-mat-radek pr-mat-hlavicka" style={{ display: "grid", gridTemplateColumns: "1fr 90px 240px 90px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
+          <div className="pr-mat-radek pr-mat-hlavicka" style={{ display: "grid", gridTemplateColumns: "1fr 150px 240px 90px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
             <span>Komponenta</span><span>Potřeba</span><span className="pr-mat-stav">Stav</span><span>Skladem ks</span><span />
           </div>
           {m.polozky.map((p, i) => {
@@ -1370,11 +1370,11 @@ export default function Prubeh({
             const castecne = p.skladem !== "" && Number(p.skladem) < Number(p.ks) && p.stav !== "objednano";
             return (
               <div key={p.id} style={{ borderTop: "1px solid #f1f5f9", paddingTop: 8 }}>
-                <div className="pr-mat-radek" style={{ display: "grid", gridTemplateColumns: "1fr 90px 240px 90px 32px", gap: 8, alignItems: "center" }}>
+                <div className="pr-mat-radek" style={{ display: "grid", gridTemplateColumns: "1fr 150px 240px 90px 32px", gap: 8, alignItems: "center" }}>
                   <input aria-label={`Komponenta ${i + 1}`} style={inp} value={p.nazev} placeholder="název komponenty" onChange={(e) => setPolozka(i, { nazev: e.target.value })} />
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <input aria-label={`Potřeba ${i + 1}`} type="number" min="0" step="any" style={{ ...inp, padding: "8px 6px" }} value={p.ks} onChange={(e) => setPolozka(i, { ks: e.target.value })} />
-                    <span style={{ fontSize: 12, color: "#64748b" }}>{p.jednotka || "ks"}</span>
+                    <select aria-label={`Jednotka položky ${i + 1}`} style={{ ...inp, width: 62, padding: "8px 4px", fontSize: 12 }} value={p.jednotka || "ks"} onChange={(e) => setPolozka(i, { jednotka: e.target.value })}>{[...new Set([...JEDNOTKY_MATERIALU, p.jednotka || "ks"])].map((j) => <option key={j} value={j}>{j}</option>)}</select>
                   </div>
                   {(() => {
                     const st = stavMaterialu(p.stav);
@@ -1436,7 +1436,7 @@ export default function Prubeh({
           <div style={{ fontSize: 18, fontWeight: 800 }}>🧩 Rozpad materiálu</div>
           <div style={{ fontSize: 13, color: "#475569" }}>
             Nadefinuj, z čeho se komponenta skládá. U <b>konstrukce</b> se množství zadává <b>na 1 panel</b> — checklist materiálu ho vynásobí počtem panelů z nabídky.
-            „Pevně“ = navíc jednou na celou instalaci. Kusy se zaokrouhlují nahoru, metry na setiny.
+            „Pevně“ = navíc jednou na celou instalaci. Kusy se zaokrouhlují nahoru, metry a kilogramy na setiny.
           </div>
           <datalist id="pr-rozpad-komponenty">{r.nazvy.map((n) => <option key={n} value={n} />)}</datalist>
           {r.sablony == null ? <div style={{ color: "#64748b" }}>Načítám…</div> : <>
@@ -1459,14 +1459,13 @@ export default function Prubeh({
                     <input aria-label={`Díl ${k + 1}`} style={inp} value={p.nazev} placeholder="např. Kolejnice 2,1 m" onChange={(e) => setDil(i, k, { nazev: e.target.value })} />
                     <input aria-label={`Na 1 panel ${k + 1}`} type="number" min="0" step="any" style={inp} value={p.naKus} placeholder="na 1 panel" title="Množství na 1 panel (1 kus komponenty)" onChange={(e) => setDil(i, k, { naKus: e.target.value })} />
                     <input aria-label={`Pevně navíc ${k + 1}`} type="number" min="0" step="any" style={inp} value={p.pevne} placeholder="pevně navíc" title="Navíc jednou na celou instalaci" onChange={(e) => setDil(i, k, { pevne: e.target.value })} />
-                    <input aria-label={`Jednotka ${k + 1}`} list="pr-jednotky" style={inp} value={p.jednotka} onChange={(e) => setDil(i, k, { jednotka: e.target.value })} />
+                    <select aria-label={`Jednotka ${k + 1}`} style={{ ...inp, padding: "8px 6px" }} value={p.jednotka || "ks"} onChange={(e) => setDil(i, k, { jednotka: e.target.value })}>{[...new Set([...JEDNOTKY_MATERIALU, p.jednotka || "ks"])].map((j) => <option key={j} value={j}>{j}</option>)}</select>
                     <button type="button" aria-label={`Odebrat díl ${k + 1}`} style={{ ...btnGhost, padding: "4px 8px" }} onClick={() => setSablona(i, { polozky: sab.polozky.filter((_, j) => j !== k) })}>✕</button>
                   </div>
                 ))}
                 <button type="button" style={{ ...btnGhost, alignSelf: "flex-start", padding: "4px 10px", fontSize: 13 }} onClick={() => setSablona(i, { polozky: [...(sab.polozky || []), novyDil()] })}>+ Přidat díl</button>
               </div>
             ))}
-            <datalist id="pr-jednotky">{["ks", "m", "sada", "bal"].map((j) => <option key={j} value={j} />)}</datalist>
             <button type="button" style={{ ...btnGhost, alignSelf: "flex-start" }}
               onClick={() => setSablony([...r.sablony, { id: Math.random().toString(36).slice(2, 10), komponenta: "", polozky: [novyDil()] }])}>+ Nová šablona</button>
           </>}
@@ -1621,7 +1620,7 @@ export default function Prubeh({
           div.pr-pruvodce { left: 8px; width: auto !important; }
           .pr-vice-hlavicka { display: none !important; }
           .pr-kontakt-radek { grid-template-columns: 1fr !important; }
-          .pr-mat-radek { grid-template-columns: 1fr 70px !important; }
+          .pr-mat-radek { grid-template-columns: 1fr 150px !important; }
           .pr-mat-radek > .pr-mat-stav { grid-column: 1 / -1; }
           .pr-mat-hlavicka { display: none !important; }
           .pr-roz-hlavicka > span:first-child { display: none; }
