@@ -222,6 +222,12 @@ export default function Prubeh({
   const [prohlizec, setProhlizec] = useState(null);   // { fotky, i } — prohlížeč fotek přes celou obrazovku
   const zmenitFotku = useCallback((i) => setProhlizec((p) => (p ? { ...p, i } : p)), []);
   const zavritProhlizec = useCallback(() => setProhlizec(null), []);
+  // Vlastní dotaz v appce místo window.confirm/prompt — ty některá prostředí
+  // (vložený prohlížeč, aplikace) potichu blokují a tlačítko pak „nic nedělá“.
+  // zeptat({ titulek, text, vstup, popisek, potvrdit }) → true / text, při zrušení null.
+  const [dotaz, setDotaz] = useState(null);
+  const zeptat = (o) => new Promise((resolve) => setDotaz({ ...o, hodnota: "", resolve }));
+  const zavritDotaz = (vysledek) => { dotaz?.resolve(vysledek); setDotaz(null); };
   const [uzavEmail, setUzavEmail] = useState(null); // uzavírací e-mail objednateli: { zakId, komu, predmet, text, sablona, nacitam, … }
   const fotoInput = useRef(null);
   const fotoCil = useRef(null);                       // { z, faze, ukol } pro vybrané soubory
@@ -668,7 +674,11 @@ export default function Prubeh({
     // Upozornění (oranžová, hlavně z dřívějších fází) posun natvrdo neblokují — u starších
     // převzatých zakázek by jinak nešlo nic posunout — ale musí se vědomě odkliknout.
     const pozor = kontroly.filter((x) => x.uroven === "pozor");
-    if (pozor.length && !window.confirm(`Zakázka má ještě ${pozor.length === 1 ? "nevyřešené upozornění" : `${pozor.length} nevyřešená upozornění`}:\n\n${pozor.map((x) => "• " + x.text).join("\n")}\n\nPosunout dál i tak?`)) return;
+    if (pozor.length && !(await zeptat({
+      titulek: "Posunout zakázku i přes upozornění?",
+      text: `Zakázka má ještě ${pozor.length === 1 ? "nevyřešené upozornění" : `${pozor.length} nevyřešená upozornění`}:\n\n${pozor.map((x) => "• " + x.text).join("\n")}`,
+      potvrdit: "Posunout dál i tak",
+    }))) return;
     setPracuji(true);
     if (pozor.length) await pridatPoznamku(zak, `Posunuto dál přes upozornění: ${pozor.map((x) => x.text).join("; ")}`, true);
     const cil = dalsiFaze(zak);
@@ -698,7 +708,7 @@ export default function Prubeh({
   const vratit = async (zak) => {
     const cil = predchozi(zak);
     if (!cil) return;
-    if (!window.confirm(`Vrátit zakázku zpět do fáze „${nazevFaze(cil, zak.typ)}“?`)) return;
+    if (!(await zeptat({ titulek: "Vrátit zakázku zpět?", text: `Zakázka se vrátí do fáze „${nazevFaze(cil, zak.typ)}“.`, potvrdit: "Vrátit zpět" }))) return;
     setPracuji(true);
     let nz = zak;
     if (jePreskocenyKrok(zak, cil)) {
@@ -724,13 +734,14 @@ export default function Prubeh({
     ];
     const nz = { ...zak, preskocene: [...new Set([...(zak.preskocene || []), f.id])] };
     const cil = dalsiFaze(nz);
-    const duvod = window.prompt(
-      `Přeskočit krok „${nazevFaze(f, zak.typ)}“ a pokračovat ${cil ? `do fáze „${nazevFaze(cil, zak.typ)}“` : "uzavřením zakázky"}?`
-      + (nedodelane.length ? `\n\nZůstane nedodělané:\n${nedodelane.map((t) => "• " + t).join("\n")}` : "")
-      + "\n\nNapiš důvod (zapíše se do historie):",
-    );
-    if (duvod === null) return;
-    if (!duvod.trim()) { alert("Napiš prosím důvod, proč se krok přeskakuje."); return; }
+    const duvod = await zeptat({
+      titulek: `Přeskočit krok „${nazevFaze(f, zak.typ)}“?`,
+      text: `Zakázka bude pokračovat ${cil ? `do fáze „${nazevFaze(cil, zak.typ)}“` : "uzavřením"}.`
+        + (nedodelane.length ? `\n\nZůstane nedodělané:\n${nedodelane.map((t) => "• " + t).join("\n")}` : ""),
+      vstup: true, popisek: "Důvod — zapíše se do historie zakázky", placeholder: "např. obhlídku dělal kolega, fotky doplní",
+      potvrdit: "⏭ Přeskočit krok",
+    });
+    if (duvod == null || !String(duvod).trim()) return;
     setPracuji(true);
     const poznamka = `Krok ${nazevFaze(f, zak.typ)} přeskočen: ${duvod.trim()}${nedodelane.length ? ` (nedodělané: ${nedodelane.join("; ")})` : ""}.`;
     const hotove = { ...(zak.hotove_ukoly || {}), [`${f.id}.__preskoceno`]: true };
@@ -764,9 +775,11 @@ export default function Prubeh({
   };
 
   const prohrano = async (zak) => {
-    const duvod = window.prompt("Proč zakázka nevyšla? (cena, konkurence, zákazník si to rozmyslel…)");
-    if (duvod === null) return;
-    if (!duvod.trim()) { alert("Napiš prosím důvod — hodí se pro vyhodnocení."); return; }
+    const duvod = await zeptat({
+      titulek: "Zakázka nevyšla?", text: "Důvod se hodí pro vyhodnocení obchodu.",
+      vstup: true, popisek: "Proč zakázka nevyšla", placeholder: "cena, konkurence, zákazník si to rozmyslel…", potvrdit: "Označit jako prohranou",
+    });
+    if (duvod == null || !String(duvod).trim()) return;
     await uloz(zak, { stav: "prohrana", prohra_duvod: duvod.trim(), dalsi_krok: null, dalsi_krok_termin: null }, `Prohráno: ${duvod.trim()}`);
     if (zak.deal_id) await supabase.from("deals").update({ stage: "Prohráno", lost_reason: duvod.trim() }).eq("id", zak.deal_id);
     ukazHlasku("Zakázka označená jako prohraná");
@@ -1365,6 +1378,28 @@ export default function Prubeh({
       {vykresliDodatek()}
       {vykresliVice()}
       {vykresliUzavEmail()}
+      {dotaz && (
+        <div role="dialog" aria-modal="true" aria-label={dotaz.titulek} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) zavritDotaz(null); }}
+          onKeyDown={(e) => { if (e.key === "Escape") zavritDotaz(null); }}>
+          <div style={{ ...karta, width: "min(480px, 100%)", display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{dotaz.titulek}</div>
+            {dotaz.text && <div style={{ fontSize: 14, color: "#334155", whiteSpace: "pre-line", lineHeight: 1.45 }}>{dotaz.text}</div>}
+            {dotaz.vstup && (
+              <div>
+                <label style={lbl} htmlFor="pr-dotaz-vstup">{dotaz.popisek || "Text"} *</label>
+                <textarea id="pr-dotaz-vstup" autoFocus style={{ ...inp, minHeight: 70, resize: "vertical" }} value={dotaz.hodnota} placeholder={dotaz.placeholder || ""}
+                  onChange={(e) => setDotaz({ ...dotaz, hodnota: e.target.value })} />
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" style={btnGhost} onClick={() => zavritDotaz(null)}>Zrušit</button>
+              <button type="button" autoFocus={!dotaz.vstup} style={btn("#0369a1")} disabled={dotaz.vstup && !dotaz.hodnota.trim()}
+                onClick={() => zavritDotaz(dotaz.vstup ? dotaz.hodnota.trim() : true)}>{dotaz.potvrdit || "OK"}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {prohlizec && <ProhlizecFotek fotky={prohlizec.fotky} i={prohlizec.i} onI={zmenitFotku} onClose={zavritProhlizec} />}
       {/* Výběr fotek pro tlačítko „Nahrát fotky“ u úkolu fáze (na mobilu nabídne i fotoaparát). */}
       <input ref={fotoInput} type="file" accept="image/*" multiple style={{ display: "none" }}
