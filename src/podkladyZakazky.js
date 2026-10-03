@@ -78,3 +78,58 @@ export function moznostiPole(pole, ciselniky = {}) {
       : [];
   return [...new Set([...z, ...(pole.moznosti || [])])];
 }
+
+// ── Předvyplnění z nabídky ──
+// Doplní jen prázdná pole (nic už zapsaného nepřepíše). Vrací
+// { podklady, doplneno } — doplneno = kolik polí se vzalo z nabídky / zakázky.
+const realne = (x) => x?.name && !/^bez\b/i.test(x.name) && (x.qty == null || Number(x.qty) > 0);
+
+export function predvyplnitZNabidky(podklady, quote, zak) {
+  const p = JSON.parse(JSON.stringify(podklady || {}));
+  let doplneno = 0;
+  const dopln = (sekce, pole, v) => {
+    const text = String(v ?? "").trim();
+    if (!text) return;
+    p[sekce] = p[sekce] || {};
+    if (String(p[sekce][pole] ?? "").trim()) return;
+    p[sekce][pole] = text;
+    doplneno++;
+  };
+  const d = quote?.data || {};
+  const fve = d.fve || null;
+
+  dopln("obecne", "oz", zak?.vlastnik_obchod);
+  if (fve) {
+    if (realne(fve.konstrukce)) dopln("technicka", "konstrukce", fve.konstrukce.name);
+    if (realne(fve.backup)) { dopln("technicka", "backup", fve.backup.name); dopln("elektrikar", "backup", fve.backup.name); }
+    // Úprava ELMR z kalkulace → i distribuce (ČEZ / EG.D / PRE)
+    if (fve.elmr && !/^bez\b/i.test(fve.elmr)) {
+      dopln("odberne", "uprava_elmr", fve.elmr);
+      const dist = ["ČEZ", "EG.D", "PRE"].find((x) => String(fve.elmr).toUpperCase().includes(x));
+      dopln("odberne", "distribuce", dist);
+    }
+    // Plán práce z kalkulace pro plánovače
+    const md = [["střecha", fve.mdStrecha], ["elektro", fve.mdElektro], ["instalatér", fve.mdInstalater]]
+      .filter(([, v]) => Number(v) > 0).map(([k, v]) => `${k} ${String(v).replace(".", ",")} MD`);
+    const celkem = [fve.mdStrecha, fve.mdElektro, fve.mdInstalater].reduce((s, v) => s + (Number(v) || 0), 0);
+    if (md.length) dopln("planovac", "poznamka", `Plán práce z nabídky: ${md.join(", ")} (celkem ${String(celkem).replace(".", ",")} MD).`);
+    // Vlastní položky materiálu / ostatního z kalkulace pro sklad
+    const extra = (fve.customRows || []).filter((r) => (r.sekce || "ostatni") !== "sluzby" && r.name && Number(r.qty) > 0)
+      .map((r) => `${r.qty} ks: ${r.name}`);
+    if (extra.length) dopln("sklad", "material", `Navíc z nabídky:\n${extra.join("\n")}`);
+  }
+  // Interní poznámka nabídky (zákazník ji nevidí) pro plánovače
+  if (d.notes && String(d.notes).trim()) {
+    const pozn = String(d.notes).trim();
+    if (String(p.planovac?.poznamka ?? "").trim()) {
+      if (!p.planovac.poznamka.includes(pozn)) { p.planovac.poznamka += `\n${pozn}`; doplneno++; }
+    } else dopln("planovac", "poznamka", pozn);
+  }
+  // Stávající jistič z technických údajů zakázky
+  const u = zak?.udaje || {};
+  if (u.jistic_a && !String(p.odberne?.jistic_novy ?? "").trim()) {
+    // nic nepřepisovat — jen připomenout stávající hodnotu v poznámce elektrikáři
+    dopln("elektrikar", "poznamka", `Stávající hlavní jistič: ${u.jistic_a} A${u.faze ? ` / ${u.faze}f` : ""}.`);
+  }
+  return { podklady: p, doplneno };
+}

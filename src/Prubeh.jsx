@@ -11,7 +11,7 @@ import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js"
 import { STAVY_MATERIALU, JEDNOTKY_MATERIALU, stavMaterialu, VZTAHY_KONTAKTU, ROZPAD_KEY, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu, stavSkladu, predvyplnitZeSkladu } from "./materialZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import { NA_STAROSTI, naStarosti, umi, dovednost, seraditPodleDovednosti } from "./dovednosti.js";
-import { pocetVyplnenych } from "./podkladyZakazky.js";
+import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import { PodkladyNahled, PodkladyFormular } from "./PodkladyZakazky.jsx";
 import PoleSNabidkou from "./PoleSNabidkou.jsx";
 import {
@@ -334,7 +334,7 @@ export default function Prubeh({
       setContracts(kontrakty);
       setNacteno(true);
       // Přišli jsme odjinud (např. z Nacenění) s konkrétní zakázkou → rovnou ji otevřít.
-      if (initialId && prubeh.some((r) => r.id === initialId)) { setVybrano(initialId); setJednaId(initialId); }
+      if (initialId && prubeh.some((r) => r.id === initialId)) { setVybrano(initialId); setJednaId(initialId); setAutoPodkladyId(initialId); }
       if (initialId && onClearInitial) onClearInitial();
     };
     nacti();
@@ -714,7 +714,7 @@ export default function Prubeh({
       return;
     }
     const zmenaSekce = cil.sekce !== f.sekce;
-    const ok = await presun(zak, cil, `Hotovo: ${nazevFaze(f, zak.typ)} → ${nazevFaze(cil, zak.typ)}${zmenaSekce ? ` (předáno do: ${sekceById[cil.sekce].nazev})` : ""}`);
+    const ok = await presunAnabidni(zak, f, cil, `Hotovo: ${nazevFaze(f, zak.typ)} → ${nazevFaze(cil, zak.typ)}${zmenaSekce ? ` (předáno do: ${sekceById[cil.sekce].nazev})` : ""}`);
     if (ok) ukazHlasku(zmenaSekce ? `✓ Předáno do: ${sekceById[cil.sekce].nazev}` : `✓ Posunuto do fáze ${nazevFaze(cil, zak.typ)}`);
     setPracuji(false);
   };
@@ -836,21 +836,37 @@ export default function Prubeh({
     const ok = await uloz(zak, { quote_id: qq ? qq.id : null, ...(cena && !zak.hodnota ? { hodnota: cena } : {}) },
       qq ? `Propojeno s nabídkou ${qq.cislo || qq.name}.` : "Nabídka odpojená.");
     if (ok) ukazHlasku(qq ? "✓ Nabídka propojená" : "Nabídka odpojená");
+    if (ok && qq) nabidnoutPodklady({ ...zak, quote_id: qq.id });
   };
 
   // ── Podklady pro realizaci (předávací list) ──
+  // Po dokončení nabídky se formulář otevře sám (jen když podklady ještě nejsou):
+  // posun z kroku Nabídka, připojení nabídky, předání z Nacenění.
+  const nabidnoutPodklady = (zak) => {
+    if (!zak?.quote_id || pocetVyplnenych(zak.podklady).hotovo > 0) return;
+    otevritPodklady(zak, true);
+  };
+  const presunAnabidni = async (zak, f, cil, text) => {
+    const ok = await presun(zak, cil, text);
+    if (ok && f.id === "nabidka") nabidnoutPodklady({ ...zak, faze: cil.id });
+    return ok;
+  };
+  const [autoPodkladyId, setAutoPodkladyId] = useState(null);
+  useEffect(() => {
+    if (!autoPodkladyId) return;
+    const zak = rows.find((r) => r.id === autoPodkladyId);
+    if (!zak || (zak.quote_id && !quotes.some((q) => q.id === zak.quote_id))) return; // čeká se na načtení nabídek
+    setAutoPodkladyId(null);
+    nabidnoutPodklady(zak);
+  }, [autoPodkladyId, rows, quotes]); // eslint-disable-line react-hooks/exhaustive-deps
   const [podkladyForm, setPodkladyForm] = useState(null); // { zakId, podklady }
-  const otevritPodklady = (zak) => {
-    const p = JSON.parse(JSON.stringify(zak.podklady || {}));
-    // předvyplnit, co appka už ví (obchodník, konstrukce a back-up z nabídky)
-    const fve = zak.quote_id ? quoteById(zak.quote_id)?.data?.fve : null;
-    p.obecne = { ...(p.obecne || {}) };
-    if (!p.obecne.oz && zak.vlastnik_obchod) p.obecne.oz = zak.vlastnik_obchod;
-    p.technicka = { ...(p.technicka || {}) };
-    if (!p.technicka.konstrukce && fve?.konstrukce?.name && !/^bez\b/i.test(fve.konstrukce.name)) p.technicka.konstrukce = fve.konstrukce.name;
-    if (!p.technicka.backup && fve?.backup?.name && !/^bez\b/i.test(fve.backup.name)) p.technicka.backup = fve.backup.name;
+  // auto = otevřeno samo po dokončení nabídky (ukáže se úvodní text)
+  const otevritPodklady = (zak, auto = false) => {
+    // předvyplnit z nabídky (jen prázdná pole — nic zapsaného nepřepíše)
+    const quote = zak.quote_id ? quoteById(zak.quote_id) : null;
+    const { podklady: p, doplneno } = predvyplnitZNabidky(zak.podklady, quote, zak);
     const zamestnanci = employees.filter((e) => !e.archived).map((e) => e.name).filter(Boolean);
-    setPodkladyForm({ zakId: zak.id, podklady: p, ciselniky: { zamestnanci, cenik: {} } });
+    setPodkladyForm({ zakId: zak.id, podklady: p, ciselniky: { zamestnanci, cenik: {} }, auto, doplneno, nabidka: quote ? (quote.cislo || quote.name) : null });
     // ceník FVE kalkulačky (konstrukce, úpravy ELMR) pro nabídky v polích
     supabase.from("fve_cenik_items").select("name, category").neq("active", false).order("sort_order").then(({ data }) => {
       const cenik = {};
@@ -1411,10 +1427,17 @@ export default function Prubeh({
         onClick={(e) => { if (e.target === e.currentTarget) setPodkladyForm(null); }}>
         <div style={{ ...karta, width: "min(820px, 100%)", maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
           <div style={{ fontSize: 18, fontWeight: 800 }}>📋 Podklady pro realizaci — {z.nazev}</div>
+          {(podkladyForm.auto || podkladyForm.doplneno > 0) && (
+            <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "8px 12px", fontSize: 13, color: "#065f46" }}>
+              {podkladyForm.auto && <><b>Nabídka je hotová — doplň podklady pro realizaci.</b> </>}
+              {podkladyForm.doplneno > 0 && <>Z nabídky {podkladyForm.nabidka || ""} je předvyplněno {podkladyForm.doplneno} {podkladyForm.doplneno === 1 ? "pole" : podkladyForm.doplneno < 5 ? "pole" : "polí"} (konstrukce, back-up, ELMR, plán práce…) — zkontroluj je.</>}
+              {podkladyForm.auto && <> Můžeš to i odložit tlačítkem „Později“ — průvodce na podklady připomene.</>}
+            </div>
+          )}
           <div style={{ fontSize: 13, color: "#475569" }}>Předávací list od obchodníka. Zaměstnanec naplánovaný v kalendáři ho uvidí v detailu akce — pokyny pro jeho část (střecha / elektro) nahoře. Panely, střídač, baterie a regulace se berou z nabídky, sem dopiš jen to, co v ní není. Kontakty a technické údaje odběrného místa (EAN, jistič) jsou u zakázky.</div>
           <PodkladyFormular podklady={podkladyForm.podklady} ciselniky={podkladyForm.ciselniky} onChange={(p) => setPodkladyForm({ ...podkladyForm, podklady: p })} inp={inp} lbl={lbl} />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: -16, background: "#fff", padding: "8px 0" }}>
-            <button type="button" style={btnGhost} onClick={() => setPodkladyForm(null)}>Zrušit</button>
+            <button type="button" style={btnGhost} onClick={() => setPodkladyForm(null)}>{podkladyForm.auto ? "Později" : "Zrušit"}</button>
             <button type="button" style={btn("#0369a1")} disabled={pracuji} onClick={() => ulozitPodklady(z)}>Uložit podklady</button>
           </div>
         </div>
