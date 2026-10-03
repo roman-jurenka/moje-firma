@@ -8,7 +8,7 @@ import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { UZAVIRACI_EMAIL_KEY, VYCHOZI_UZAVIRACI_EMAIL, ZNACKY_UZAVIRACIHO_EMAILU, vyplnitSablonu } from "./uzaviraciEmail.js";
 import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js";
-import { STAVY_MATERIALU, VZTAHY_KONTAKTU, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu } from "./materialZakazky.js";
+import { STAVY_MATERIALU, VZTAHY_KONTAKTU, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu, stavSkladu, predvyplnitZeSkladu } from "./materialZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
@@ -819,15 +819,20 @@ export default function Prubeh({
   };
 
   // ── Checklist materiálu (úkol „Materiál objednaný“) ──
-  // Komponenty z nabídky; u každé stav Na skladě / Objednáno / Objednat a počty.
-  // Sklad v appce (products) se jen napovídá podle shodného názvu.
+  // Komponenty z nabídky; u každé appka podle modulu Sklad (products) řekne,
+  // jestli je na skladě, a nový seznam podle toho předvyplní (Na skladě /
+  // Objednat). Stav jde ručně změnit (Objednáno, jiný počet…).
   const otevritMaterial = async (zak, znovuZNabidky = false) => {
     const ulozene = !znovuZNabidky && Array.isArray(zak.material) && zak.material.length ? zak.material : null;
-    const polozky = ulozene || polozkyZNabidky(zak.quote_id ? quoteById(zak.quote_id) : null);
-    setMaterialForm((f) => ({ zakId: zak.id, polozky: polozky.length ? polozky : [prazdnaPolozka()], sklad: f?.zakId === zak.id ? f.sklad : {}, zNabidky: !ulozene && polozky.length > 0 }));
-    const { data } = await supabase.from("products").select("name, stock, unit");
-    const sklad = Object.fromEntries((data || []).map((p) => [String(p.name || "").trim().toLowerCase(), { stock: Number(p.stock) || 0, unit: p.unit || "ks" }]));
-    setMaterialForm((f) => (f && f.zakId === zak.id ? { ...f, sklad } : f));
+    const zNabidky = ulozene || polozkyZNabidky(zak.quote_id ? quoteById(zak.quote_id) : null);
+    setMaterialForm((f) => ({ zakId: zak.id, polozky: zNabidky.length ? zNabidky : [prazdnaPolozka()], produkty: f?.zakId === zak.id ? f.produkty : null, zNabidky: !ulozene && zNabidky.length > 0 }));
+    const { data, error } = await supabase.from("products").select("id, name, sku, stock, unit");
+    const produkty = error ? [] : (data || []);
+    setMaterialForm((f) => (f && f.zakId === zak.id ? {
+      ...f, produkty,
+      // nový seznam (ne uložený) se předvyplní podle skladu
+      polozky: ulozene ? f.polozky : predvyplnitZeSkladu(f.polozky, produkty),
+    } : f));
   };
   const ulozitMaterial = async (zak, odskrtnout) => {
     const polozky = materialForm.polozky.filter((p) => String(p.nazev || "").trim()).map((p) => ({ ...p, nazev: p.nazev.trim() }));
@@ -1293,17 +1298,39 @@ export default function Prubeh({
           <div style={{ fontSize: 18, fontWeight: 800 }}>📦 Checklist materiálu — {z.nazev}</div>
           <div style={{ fontSize: 13, color: "#475569" }}>
             {m.zNabidky ? "Komponenty jsou načtené z nabídky. " : maNabidku ? "" : "Zakázka nemá propojenou nabídku — položky dopiš ručně. "}
-            U každé položky vyber, jestli je <b>na skladě</b>, už <b>objednaná</b>, nebo ji je potřeba <b>objednat</b>.
+            U každé položky appka podle modulu Sklad ukáže, jestli <b>je na skladě</b>, a stav předvyplní. Co už je objednané, přepni na <b>Objednáno</b>.
           </div>
+          {/* Stav podle skladu (modul Sklad) — počítá se pořád znovu z aktuálních názvů a počtů */}
+          {m.produkty == null ? <div style={{ fontSize: 13, color: "#64748b" }}>Kontroluji sklad…</div> : (() => {
+            const st = m.polozky.filter((p) => String(p.nazev || "").trim()).map((p) => stavSkladu(p, m.produkty).druh);
+            const pocet = (d) => st.filter((x) => x === d).length;
+            return (
+              <div style={{ fontSize: 13, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 10px" }}>
+                <b>Podle skladu:</b>
+                <span style={{ color: "#15803d", fontWeight: 700 }}>✓ na skladě {pocet("dost")}</span>
+                <span style={{ color: "#b45309", fontWeight: 700 }}>◐ málo {pocet("malo")}</span>
+                <span style={{ color: "#b91c1c", fontWeight: 700 }}>✕ není {pocet("neni")}</span>
+                <span style={{ color: "#64748b" }}>? sklad nevede {pocet("nevede")}</span>
+                {pocet("nevede") > 0 && <span style={{ fontSize: 12, color: "#64748b" }}>— položky, které Sklad nevede, zapiš do modulu Sklad, ať je appka příště pozná.</span>}
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
             <span style={{ color: "#64748b" }}>Označit vše:</span>
             {STAVY_MATERIALU.map((st) => <button key={st.id} type="button" style={{ ...btnGhost, padding: "3px 9px", fontSize: 12 }} onClick={() => vse(st.id)}>{st.label}</button>)}
           </div>
-          <div className="pr-mat-radek" style={{ display: "grid", gridTemplateColumns: "1fr 90px 290px 90px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
+          <div className="pr-mat-radek pr-mat-hlavicka" style={{ display: "grid", gridTemplateColumns: "1fr 90px 290px 90px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
             <span>Komponenta</span><span>Potřeba</span><span className="pr-mat-stav">Stav</span><span>Skladem ks</span><span />
           </div>
           {m.polozky.map((p, i) => {
-            const vSkladu = m.sklad[String(p.nazev || "").trim().toLowerCase()];
+            const sk = m.produkty && String(p.nazev || "").trim() ? stavSkladu(p, m.produkty) : null;
+            const skladStitek = sk && {
+              dost: { text: `✓ Na skladě — ${sk.stock} ${sk.unit}`, barva: "#15803d", pozadi: "#dcfce7" },
+              malo: { text: `◐ Na skladě jen ${sk.stock} ${sk.unit} z ${p.ks} — chybí ${Math.round((Number(p.ks) - sk.stock) * 100) / 100}`, barva: "#b45309", pozadi: "#fef3c7" },
+              neni: { text: "✕ Není na skladě (0)", barva: "#b91c1c", pozadi: "#fee2e2" },
+              nevede: { text: "? Sklad tuhle položku nevede", barva: "#64748b", pozadi: "#f1f5f9" },
+            }[sk.druh];
+            const castecne = p.skladem !== "" && Number(p.skladem) < Number(p.ks) && p.stav !== "objednano";
             return (
               <div key={p.id} style={{ borderTop: "1px solid #f1f5f9", paddingTop: 8 }}>
                 <div className="pr-mat-radek" style={{ display: "grid", gridTemplateColumns: "1fr 90px 290px 90px 32px", gap: 8, alignItems: "center" }}>
@@ -1327,10 +1354,10 @@ export default function Prubeh({
                     onChange={(e) => setPolozka(i, { skladem: e.target.value })} />
                   <button type="button" aria-label={`Odebrat položku ${i + 1}`} style={{ ...btnGhost, padding: "4px 8px" }} onClick={() => setMaterialForm({ ...m, polozky: m.polozky.filter((_, j) => j !== i) })}>✕</button>
                 </div>
-                {(vSkladu || (p.stav === "sklad" && p.skladem !== "" && Number(p.skladem) < Number(p.ks))) && (
-                  <div style={{ fontSize: 12, marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    {vSkladu && <span style={{ color: "#475569" }}>Sklad v appce eviduje {vSkladu.stock} {vSkladu.unit}.</span>}
-                    {p.stav === "sklad" && p.skladem !== "" && Number(p.skladem) < Number(p.ks) && <span style={{ color: "#b45309", fontWeight: 600 }}>Skladem jen {p.skladem} z {p.ks} — zbytek {Math.round((Number(p.ks) - Number(p.skladem)) * 100) / 100} {p.jednotka || "ks"} objednat.</span>}
+                {(skladStitek || castecne) && (
+                  <div style={{ fontSize: 12, marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    {skladStitek && <span style={{ color: skladStitek.barva, background: skladStitek.pozadi, borderRadius: 6, padding: "2px 8px", fontWeight: 700 }}>{skladStitek.text}</span>}
+                    {castecne && <span style={{ color: "#b45309", fontWeight: 600 }}>Skladem {p.skladem} z {p.ks} — objednat {Math.round((Number(p.ks) - Number(p.skladem)) * 100) / 100} {p.jednotka || "ks"}.</span>}
                   </div>
                 )}
               </div>
@@ -1501,6 +1528,7 @@ export default function Prubeh({
           .pr-kontakt-radek { grid-template-columns: 1fr !important; }
           .pr-mat-radek { grid-template-columns: 1fr 70px !important; }
           .pr-mat-radek > .pr-mat-stav { grid-column: 1 / -1; }
+          .pr-mat-hlavicka { display: none !important; }
           .pr-vice-radek { grid-template-columns: 28px 1fr 32px !important; }
           .pr-vice-radek > input:nth-of-type(2), .pr-vice-radek > input:nth-of-type(3) { grid-column: 2 / 3; }
         }

@@ -45,6 +45,46 @@ export function polozkyZNabidky(quote) {
   return radky;
 }
 
+// ── Stav skladu (modul Sklad, tabulka products) ──
+// Název z nabídky se se skladem páruje bez ohledu na velikost písmen,
+// diakritiku a interpunkci; shoda i podle kódu (SKU) nebo když jeden název
+// obsahuje druhý (např. „Kabel CYKY 5x6“ × „kabel cyky 5x6 mm2“).
+const normalizovat = (s) => String(s || "").toLowerCase().replace(/×/g, "x").normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/[^a-z0-9]+/g, " ").trim();
+// bez mezer — „455 Wp“ = „455Wp“, „5 x 6“ = „5x6“
+const kompakt = (s) => normalizovat(s).replace(/ /g, "");
+
+export function najdiVeSkladu(nazev, produkty) {
+  const n = kompakt(nazev);
+  if (!n || !produkty?.length) return null;
+  const s = produkty.map((p) => ({ p, n: kompakt(p.name), sku: kompakt(p.sku) }));
+  return (s.find((x) => x.n === n)
+    || s.find((x) => x.sku && x.sku.length >= 3 && n.includes(x.sku))
+    || s.find((x) => x.n.length >= 5 && n.length >= 5 && (x.n.includes(n) || n.includes(x.n))))?.p || null;
+}
+
+// { druh: "dost" | "malo" | "neni" | "nevede", stock, unit }
+export function stavSkladu(polozka, produkty) {
+  const p = najdiVeSkladu(polozka.nazev, produkty);
+  if (!p) return { druh: "nevede", stock: null, unit: null };
+  const stock = Number(p.stock) || 0;
+  const potreba = Number(polozka.ks) || 0;
+  return { druh: stock <= 0 ? "neni" : stock >= potreba ? "dost" : "malo", stock, unit: p.unit || "ks" };
+}
+
+// Předvyplní stav u položek, které ho ještě nemají, podle skladu:
+// dost → Na skladě, málo → Objednat (skladem kolik je), nic → Objednat.
+export function predvyplnitZeSkladu(polozky, produkty) {
+  return polozky.map((x) => {
+    if (x.stav) return x;
+    const s = stavSkladu(x, produkty);
+    if (s.druh === "dost") return { ...x, stav: "sklad", skladem: String(x.ks) };
+    if (s.druh === "malo") return { ...x, stav: "objednat", skladem: String(s.stock) };
+    if (s.druh === "neni") return { ...x, stav: "objednat", skladem: "0" };
+    return x;
+  });
+}
+
 export const prazdnaPolozka = () => ({ id: novaId(), nazev: "", ks: 1, jednotka: "ks", stav: "", skladem: "", poznamka: "" });
 
 export function souhrnMaterialu(polozky) {
