@@ -54,7 +54,7 @@ const ZAKLAD_FAZI = [
     { id: "zadost", text: "Žádost o dotaci podaná" },
   ] },
   { id: "material", sekce: "bo", nazev: "Materiál a termín", nazevTyp: { SRV: "Termín", REA: "Termín a materiál" }, ukoly: [
-    { id: "objednan", text: "Materiál objednaný (nebo skladem)", brana: true },
+    { id: "objednan", text: "Materiál objednaný (nebo skladem)", brana: true, material: true },
     { id: "termin", text: "Termín potvrzený zákazníkem / objednatelem", brana: true },
     { id: "tym", text: "Tým naplánovaný" },
   ] },
@@ -115,7 +115,7 @@ export function pouzijNastaveni(nastaveni) {
     const ukoly = Array.isArray(u.ukoly) && u.ukoly.length
       ? u.ukoly.filter((x) => String(x.text || "").trim()).map((x) => {
         const z = f.ukoly.find((b) => b.id === x.id);
-        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, ...x } : x;
+        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, ...x } : x;
       })
       : f.ukoly;
     return {
