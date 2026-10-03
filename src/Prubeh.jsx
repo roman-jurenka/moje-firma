@@ -355,6 +355,19 @@ export default function Prubeh({
 
   const z = rows.find((r) => r.id === vybrano) || null;
   // Na užší obrazovce je panel pod seznamem — po kliknutí na něj rovnou sjedeme.
+  // V okně zakázky posunout řadu kroků tak, aby byl aktuální krok vidět.
+  const fazeOkna = jednaId ? rows.find((r) => r.id === jednaId)?.faze : null;
+  useEffect(() => {
+    if (!fazeOkna) return;
+    const krok = document.querySelector('.pr-kroky [aria-current="step"]');
+    const rada = krok?.parentElement;
+    if (rada) rada.scrollLeft = krok.offsetLeft - rada.offsetLeft - rada.clientWidth / 2 + krok.clientWidth / 2;
+  }, [jednaId, fazeOkna]);
+  // Otevřít okno zakázky (místo seznamu) — kroky nahoře, pod nimi přehled.
+  const otevritOkno = (id) => {
+    setVybrano(id); setJednaId(id); setEditKrok(null); setDraft(""); setEditMisto(null); setNovyUkol(null); setZprava(""); setVsechnyZpravy(false);
+    window.scrollTo({ top: 0 });
+  };
   const vybrat = (id) => {
     setVybrano(id); setEditKrok(null); setDraft(""); setEditMisto(null); setNovyUkol(null); setZprava(""); setVsechnyZpravy(false);
     if (window.innerWidth <= 1150) setTimeout(() => document.getElementById("pr-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
@@ -1357,6 +1370,16 @@ export default function Prubeh({
       <input ref={fotoInput} type="file" accept="image/*" multiple style={{ display: "none" }}
         onChange={(e) => { const files = [...e.target.files]; e.target.value = ""; nahratFotky(files); }} />
 
+      {jednaId && z ? (
+        // Okno zakázky: kroky nahoře, pod nimi přehled a karty zakázky.
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <button type="button" style={btnGhost} onClick={() => setJednaId(null)}>← Zpět na přehled zakázek</button>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{z.nazev}</h1>
+          </div>
+          {vykresliPanel(true)}
+        </div>
+      ) : <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>🧭 Průběh zakázek</h1>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -1380,10 +1403,10 @@ export default function Prubeh({
         <div style={{ ...karta, padding: "12px 18px" }}><div style={{ fontSize: 13, color: "#475569", fontWeight: 600 }}>Otevřené zakázky (hodnota)</div><div style={{ fontSize: 24, fontWeight: 800 }}>{fmtKc(kpi.hodnota)}</div></div>
       </div>
 
-      <div className={jednaId ? "pr-grid pr-jedna" : "pr-grid"}>
+      <div className="pr-grid pr-jedna">
         <div style={{ ...karta, padding: 0, overflow: "hidden" }}>
           <div style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #e2e8f0", alignItems: "center", flexWrap: "wrap" }}>
-            <button type="button" style={btn("#0f172a")} onClick={() => { setVyberHledat(""); setVyberOkno(true); }} title="Vybrat jednu zakázku a zobrazit jen její průběh">🎯 Jedna zakázka</button>
+            <button type="button" style={btn("#0f172a")} onClick={() => { setVyberHledat(""); setVyberOkno(true); }} title="Najít zakázku a otevřít ji">🎯 Najít zakázku</button>
             {!jednaId && <input type="search" aria-label="Hledat zakázku" placeholder="Hledat zákazníka, název nebo kód…" value={hledat} onChange={(e) => setHledat(e.target.value)} style={{ ...inp, maxWidth: 320 }} />}
             {!jednaId && (
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: "#334155" }}>
@@ -1419,8 +1442,8 @@ export default function Prubeh({
             const k = contractById(r.contract_id);
             return (
               <div key={r.id} className="pr-row pr-klik" role="button" tabIndex={0} aria-pressed={sel}
-                onClick={() => vybrat(r.id)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); vybrat(r.id); } }}
+                onClick={() => otevritOkno(r.id)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); otevritOkno(r.id); } }}
                 style={{ background: sel ? "#fffbeb" : po ? "#fef2f2" : "#fff", boxShadow: sel ? "inset 4px 0 0 #b45309" : "none" }}>
                 <div style={{ padding: "11px 16px", minWidth: 0 }}>
                   <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.nazev}</div>
@@ -1448,20 +1471,17 @@ export default function Prubeh({
               </div>
             );
           })}
-          {nacteno && viditelne.length > 0 && !z && <div style={{ padding: "12px 16px", fontSize: 13, color: "#64748b" }}>Klikni na zakázku: ukáže se její další krok, úkoly fáze, poznámky a brána.</div>}
+          {nacteno && viditelne.length > 0 && <div style={{ padding: "12px 16px", fontSize: 13, color: "#64748b" }}>Klikni na zakázku: otevře se její okno s kroky, úkoly fáze, fotkami a poznámkami.</div>}
         </div>
-
-        {z ? vykresliPanel(!!jednaId) : (
-          <div style={{ ...karta, color: "#64748b", fontSize: 14 }}>Vyber zakázku v seznamu.</div>
-        )}
       </div>
+      </>}
 
       {vyberOkno && (() => {
         const hq = vyberHledat.trim().toLowerCase();
         const nalezene = rows
           .filter((r) => !hq || [r.nazev, zakaznik(r.customer_id)?.name, contractById(r.contract_id)?.code, r.typ, r.misto_adresa].some((t) => String(t || "").toLowerCase().includes(hq)))
           .sort((a, b) => ((a.stav !== "otevrena") - (b.stav !== "otevrena")) || String(a.nazev).localeCompare(String(b.nazev), "cs"));
-        const vyber = (id) => { setJednaId(id); setVyberOkno(false); vybrat(id); };
+        const vyber = (id) => { setVyberOkno(false); otevritOkno(id); };
         return (
           <div role="dialog" aria-modal="true" aria-label="Vybrat zakázku" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px" }}
             onClick={(e) => { if (e.target === e.currentTarget) setVyberOkno(false); }}
@@ -1795,6 +1815,46 @@ export default function Prubeh({
               </div>
             </div>
           ))}
+          </div>
+        </div>;
+    // Kroky zakázky po sobě (okno zakázky): očíslovaná cesta zleva doprava,
+    // nad krokem název sekce, hotové ✓, aktuální zvýrazněný, přeskočené přeškrtnuté.
+    const kroky = prubehSekci.flatMap(({ s: ss, faze: fz }) => fz.map(({ fx, i }, j) => ({ fx, i, ss, prvniVSekci: j === 0 })));
+    const kKroky = <div style={{ ...karta, padding: "14px 16px" }}>
+          <div className="pr-kroky" role="list" aria-label="Kroky zakázky" style={{ display: "flex", overflowX: "auto", paddingBottom: 4 }}>
+            {kroky.map(({ fx, i, ss, prvniVSekci }, n) => {
+              const st = stavFaze(fx, i);
+              const h = st === "hotovo" ? kdyHotovo(fx) : null;
+              const kruh = st === "hotovo" ? { background: "#16a34a", color: "#fff", border: "2px solid #16a34a" }
+                : st === "ted" ? { background: ss.barva, color: "#fff", border: `2px solid ${ss.barva}`, boxShadow: `0 0 0 4px ${ss.svetla}` }
+                  : st === "prohrano" ? { background: "#fee2e2", color: "#991b1b", border: "2px solid #fca5a5" }
+                    : st === "preskoceno" ? { background: "#f8fafc", color: "#94a3b8", border: "2px dashed #cbd5e1" }
+                      : st === "mozna" ? { background: "#fff", color: "#94a3b8", border: "2px dashed #cbd5e1" }
+                        : { background: "#fff", color: "#64748b", border: "2px solid #cbd5e1" };
+              const caraHotova = n > 0 && ["hotovo", "ted", "preskoceno"].includes(st);
+              return (
+                <div key={fx.id} role="listitem" aria-current={st === "ted" ? "step" : undefined}
+                  title={st === "mozna" ? "Volitelný krok — appka se zeptá, jestli je potřeba" : st === "preskoceno" ? "Přeskočeno" : h ? `Hotovo ${fmtCas(h.created_at)}` : ""}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 92, flex: "1 0 92px", position: "relative" }}>
+                  <div style={{ height: 16, fontSize: 10, fontWeight: 800, color: ss.tmava, letterSpacing: 0.4, whiteSpace: "nowrap", alignSelf: "flex-start", paddingLeft: 4 }}>
+                    {prvniVSekci ? ss.nazev.toUpperCase() : ""}
+                  </div>
+                  <div style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center", alignItems: "center", height: 36 }}>
+                    {n > 0 && <div aria-hidden="true" style={{ position: "absolute", left: 0, right: "50%", top: "50%", height: 3, marginTop: -1.5, background: caraHotova ? "#86efac" : "#e2e8f0" }} />}
+                    {n < kroky.length - 1 && <div aria-hidden="true" style={{ position: "absolute", left: "50%", right: 0, top: "50%", height: 3, marginTop: -1.5, background: st === "hotovo" || st === "preskoceno" ? "#86efac" : "#e2e8f0" }} />}
+                    <div style={{ position: "relative", width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, ...kruh }}>
+                      {st === "hotovo" ? "✓" : st === "preskoceno" ? "⏭" : n + 1}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 5, fontSize: 12, fontWeight: st === "ted" ? 800 : 600, textAlign: "center", lineHeight: 1.2, padding: "0 4px",
+                    color: st === "ted" ? ss.tmava : st === "hotovo" ? "#166534" : "#64748b", textDecoration: st === "preskoceno" ? "line-through" : "none" }}>
+                    {nazevFaze(fx, z.typ)}{st === "mozna" && " ?"}
+                  </div>
+                  {h && <div style={{ fontSize: 10, color: "#64748b" }}>{fmtDatum(h.created_at.slice(0, 10))}</div>}
+                  {st === "ted" && <div style={{ fontSize: 10, color: ss.tmava, fontWeight: 700 }}>teď · {dny(dniFaze)}</div>}
+                </div>
+              );
+            })}
           </div>
         </div>;
     const kDalsiKrok = otevrena && (
@@ -2145,8 +2205,8 @@ export default function Prubeh({
     // Zobrazená jedna zakázka: vše pod seznamem, na celou šířku, zleva doprava.
     return (
       <div className="pr-siroky" id="pr-panel">
+        <div className="pr-cela">{kKroky}</div>
         <div className="pr-cela">{kHlavicka}</div>
-        <div className="pr-cela">{kPrubeh}</div>
         <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}</div>
         <div className="pr-sloupec">{kFotky}{kProc}{kHistorie}</div>
         <div className="pr-sloupec">{kMisto}{kUkoly}{kZpravy}{kKdo}</div>
