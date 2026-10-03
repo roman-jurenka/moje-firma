@@ -21,6 +21,7 @@ import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNo
 import { compressImage } from "./imageUtils.js";
 import { StorageImg } from "./storageUrl.jsx";
 import * as ui from "./ui.js";
+import { DOVEDNOSTI, dovednost, NA_STAROSTI, naStarosti, umi, seraditPodleDovednosti } from "./dovednosti.js";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -490,7 +491,7 @@ const S = {
 // Plat a hodinové sazby nejsou v tabulce employees čitelné pro každého —
 // vrací je jen funkce get_employees_full (všechny řádky HR a vedení, ostatním
 // jen jejich vlastní). Zbytek údajů o zaměstnancích vidí každý přihlášený.
-const EMPLOYEE_COLUMNS = "id, name, position, department, email, phone, status, start_date, created_at, role, archived, vacation_days, vacation_used";
+const EMPLOYEE_COLUMNS = "id, name, position, department, email, phone, status, start_date, created_at, role, archived, vacation_days, vacation_used, bio, specialization, notes_warning, photo_url, dovednosti";
 const loadEmployeesWithRates = async () => {
   const [{ data, error }, { data: rates }] = await Promise.all([
     supabase.from("employees").select(EMPLOYEE_COLUMNS).order("id"),
@@ -1758,7 +1759,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {/* ── PRŮBĚH ZAKÁZEK (Obchod → Back office → Realizace) ── */}
         {tab === "prubeh" && <Prubeh
           customers={customers} employees={employees} currentUser={currentUser}
-          tasks={tasks} setTasks={setTasks}
+          tasks={tasks} setTasks={setTasks} calendarEvents={calendarEvents} setCalendarEvents={setCalendarEvents}
           dealMsgs={dealMsgs} setDealMsgs={setDealMsgs} contractMsgs={contractMsgs} setContractMsgs={setContractMsgs}
           initialId={prubehInitialId} onClearInitial={() => setPrubehInitialId(null)}
           onDealZalozen={(d) => setDeals(prev => (prev.some(x => x.id === d.id) ? prev : [d, ...prev]))}
@@ -5064,6 +5065,7 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
       start: emp.start || emp.start_date || "",
       bio: emp.bio || "", specialization: emp.specialization || "",
       notes_warning: emp.notes_warning || "",
+      dovednosti: emp.dovednosti || [],
       hourly_rate_cost: emp.hourly_rate_cost || "",
       hourly_rate_client: emp.hourly_rate_client || "",
       vacation_days: emp.vacation_days ?? 20,
@@ -5076,15 +5078,20 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
     if (!detailEmp) return;
     const upd = {
       name: editField.name, position: editField.position, department: editField.department,
-      email: editField.email, phone: (editField.phone || "").trim() || null, salary: Number(editField.salary), status: editField.status,
+      email: editField.email, phone: (editField.phone || "").trim() || null, status: editField.status,
       start_date: editField.start, bio: editField.bio,
       specialization: editField.specialization, notes_warning: editField.notes_warning,
+      dovednosti: editField.dovednosti || [],
       hourly_rate_cost: Number(editField.hourly_rate_cost) || 0,
       hourly_rate_client: Number(editField.hourly_rate_client) || 0,
       vacation_days: Number(editField.vacation_days) || 0,
       vacation_used: Number(editField.vacation_used) || 0,
     };
-    await supabase.from("employees").update(upd).eq("id", detailEmp.id);
+    // Plat se načítá zvlášť jen pro oprávněné — když ho appka nezná a nikdo ho
+    // nevyplnil, neposílat ho (jinak by se přepsal na 0).
+    if (String(editField.salary ?? "").trim() !== "") upd.salary = Number(editField.salary);
+    const { error: updErr } = await supabase.from("employees").update(upd).eq("id", detailEmp.id);
+    if (updErr) { alert("Profil se nepodařilo uložit: " + updErr.message); return; }
     // RPC záloha pro hourly_rate — obchází schema cache
     await supabase.rpc("set_employee_rates", { emp_id: detailEmp.id, rate_cost: upd.hourly_rate_cost, rate_client: upd.hourly_rate_client });
     // Dovolená se zaměstnanci zobrazuje i podle jeho vlastního přihlašovacího
@@ -5332,6 +5339,24 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
               />
             </div>
 
+            {/* Dovednosti — kdo co umí (podle nich kalendář nabízí lidi) */}
+            <div style={S.card}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#0369a1", letterSpacing: 1, marginBottom: 6 }}>🛠️ CO UMÍ</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>Podle toho kalendář při přiřazení práce (střecha, elektro, uzemnění…) nabídne nahoře ty, kdo to umí.</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {DOVEDNOSTI.map(d => {
+                  const ma = (editField.dovednosti || []).includes(d.id);
+                  return (
+                    <button key={d.id} type="button" aria-pressed={ma}
+                      onClick={() => setEditField({ ...editField, dovednosti: ma ? editField.dovednosti.filter(x => x !== d.id) : [...(editField.dovednosti || []), d.id] })}
+                      style={{ border: "1px solid " + (ma ? "#0369a1" : "#cbd5e1"), background: ma ? "#e0f2fe" : "#fff", color: ma ? "#075985" : "#475569", borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: ma ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>
+                      {ma ? "✓ " : ""}{d.ikona} {d.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Zkušenosti / specializace */}
             <div style={S.card}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#34d399", letterSpacing: 1, marginBottom: 14 }}>✅ ZKUŠENOSTI / SPECIALIZACE</div>
@@ -5422,6 +5447,12 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                   <button onClick={ev => { ev.stopPropagation(); archiveEmployee(e.id); }} style={{ ...S.btn("#ef4444"), padding: "4px 9px", fontSize: 11, flexShrink: 0 }}>🗑️</button>
                 )}
               </div>
+              {/* Dovednosti */}
+              {(e.dovednosti || []).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                  {e.dovednosti.map(id => <span key={id} title={dovednost(id).label} style={{ fontSize: 11, background: "#e0f2fe", color: "#075985", borderRadius: 999, padding: "2px 8px", fontWeight: 600 }}>{dovednost(id).ikona} {dovednost(id).label}</span>)}
+                </div>
+              )}
               {/* Specializace */}
               {e.specialization && (
                 <div style={{ fontSize: 11, color: "#475569", marginBottom: 10, background: "#f8fafc", borderRadius: 6, padding: "5px 8px" }}>
@@ -6947,7 +6978,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
     date: fmt(today), work_type: "Zakázka", title: "",
     customer_name: "", customer_company: "", address: "",
     contact_name: "", contact_phone: "", work_description: "",
-    contract_id: "", employee_id: currentUser?.id || "",
+    contract_id: "", employee_id: currentUser?.id || "", na_starosti: "",
   });
 
   // Osobní Outlook připojení — každý zaměstnanec svoje, jednosměrně (appka → Outlook).
@@ -7121,6 +7152,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
       employee_id: Number(empId),
       employee_name: emp ? emp.name : currentUser.name,
       contract_id: form.contract_id ? Number(form.contract_id) : null,
+      na_starosti: form.na_starosti || null,
     };
     if (editEventId) {
       const existing = calendarEvents.find(e => e.id === editEventId);
@@ -7157,7 +7189,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
     }
     setShowAdd(false);
     setEditEventId(null);
-    setForm({ date: fmt(today), work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", employee_id: currentUser?.id || "" });
+    setForm({ date: fmt(today), work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", employee_id: currentUser?.id || "", na_starosti: "" });
   };
 
   // Předvyplní formulář daty existující události a otevře stejný modal jako
@@ -7170,6 +7202,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
       customer_name: ev.customer_name || "", customer_company: ev.customer_company || "", address: ev.address || "",
       contact_name: ev.contact_name || "", contact_phone: ev.contact_phone || "", work_description: ev.work_description || "",
       contract_id: ev.contract_id ? String(ev.contract_id) : "", employee_id: ev.employee_id || currentUser?.id || "",
+      na_starosti: ev.na_starosti || "",
     });
     setEditEventId(ev.id);
     setDetailEvent(null);
@@ -7351,9 +7384,9 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
                 {dayEvents.slice(0, 3).map(ev => {
                   const wt = WORK_TYPES[ev.work_type] || WORK_TYPES["Zakázka"];
                   return (
-                    <div key={ev.id} onClick={() => setDetailEvent(ev)}
+                    <div key={ev.id} onClick={() => setDetailEvent(ev)} title={[ev.employee_name, naStarosti(ev.na_starosti)?.label, ev.work_type, ev.customer_name].filter(Boolean).join(" · ")}
                       style={{ background: wt.bg, color: wt.color, borderLeft: `3px solid ${wt.color}`, borderRadius: 4, padding: "2px 5px", fontSize: 11, fontWeight: 600, marginBottom: 2, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {ev.work_type}{ev.customer_name ? ` – ${ev.customer_name}` : ""}
+                      {naStarosti(ev.na_starosti) ? `${naStarosti(ev.na_starosti).ikona} ` : ""}{filterEmp === "all" && ev.employee_name ? `${String(ev.employee_name).split(" ")[0]}: ` : ""}{ev.work_type}{ev.customer_name ? ` – ${ev.customer_name}` : ""}
                     </div>
                   );
                 })}
@@ -7395,14 +7428,35 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
               </div>
             </div>
 
-            {isAdmin && (
-              <div style={{ marginBottom: 12 }}>
-                <label style={S.label}>Zaměstnanec</label>
-                <select style={S.input} value={form.employee_id} onChange={e => setForm(f => ({...f, employee_id: e.target.value}))}>
-                  {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select>
-              </div>
-            )}
+            {/* Co má zaměstnanec na starosti — podle toho se nabídnou lidé, kteří to umí */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={S.label}>Na starosti</label>
+              <select style={S.input} value={form.na_starosti} onChange={e => setForm(f => ({...f, na_starosti: e.target.value}))}>
+                <option value="">— nezadáno —</option>
+                {NA_STAROSTI.map(x => <option key={x.id} value={x.id}>{x.ikona} {x.label}</option>)}
+              </select>
+            </div>
+
+            {isAdmin && (() => {
+              const aktivni = employees.filter(e => !e.archived && (!e.status || e.status !== "Neaktivní"));
+              const serazeni = seraditPodleDovednosti(aktivni, form.na_starosti);
+              const vybrany = employees.find(e => String(e.id) === String(form.employee_id));
+              const umiVybrany = umi(vybrany, form.na_starosti);
+              const potreba = naStarosti(form.na_starosti)?.dovednost;
+              return (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={S.label}>Zaměstnanec</label>
+                  <select style={S.input} value={form.employee_id} onChange={e => setForm(f => ({...f, employee_id: e.target.value}))}>
+                    {serazeni.map(e => <option key={e.id} value={e.id}>{umi(e, form.na_starosti) === true ? "✓ " : ""}{e.name}{(e.dovednosti || []).length ? ` (${e.dovednosti.map(id => dovednost(id).ikona).join("")})` : ""}</option>)}
+                  </select>
+                  {umiVybrany === false && (
+                    <div style={{ fontSize: 12, color: "#b45309", marginTop: -6, marginBottom: 6 }}>
+                      ⚠️ {vybrany?.name} nemá v profilu dovednost „{dovednost(potreba).label}“.{serazeni.some(e => umi(e, form.na_starosti)) ? " Lidé s ✓ ji mají." : " Nikdo ji zatím v profilu nemá — doplň ji v Zaměstnancích."}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <label style={S.label}>Název / popis (stručně)</label>
             <input style={S.input} value={form.title} onChange={e => setForm(f => ({...f, title: e.target.value}))} placeholder="Montáž elektroinstalace..." />
@@ -7479,6 +7533,23 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
 
               {detailEvent.title && <div style={{ fontSize: 17, fontWeight: 700, color: "#1A1A1A", marginBottom: 16 }}>{detailEvent.title}</div>}
 
+              {(naStarosti(detailEvent.na_starosti) || detailEvent.employee_name) && (
+                <div style={{ marginBottom: 12, padding: "12px 14px", background: "#eff6ff", borderRadius: 10, border: "1px solid #bfdbfe", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  {naStarosti(detailEvent.na_starosti) && (
+                    <div>
+                      <div style={{ fontSize: 11, color: "#1e3a8a", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Na starosti</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#1e3a8a" }}>{naStarosti(detailEvent.na_starosti).ikona} {naStarosti(detailEvent.na_starosti).label}</div>
+                    </div>
+                  )}
+                  {detailEvent.employee_name && (
+                    <div>
+                      <div style={{ fontSize: 11, color: "#1e3a8a", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Kdo</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#1A1A1A" }}>👷 {detailEvent.employee_name}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {(detailEvent.customer_name || detailEvent.customer_company) && (
                 <div style={{ marginBottom: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
                   <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Zákazník</div>
@@ -7510,9 +7581,6 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
                 </div>
               )}
 
-              {isAdmin && detailEvent.employee_name && (
-                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 16 }}>Zaměstnanec: <strong style={{ color: "#475569" }}>{detailEvent.employee_name}</strong></div>
-              )}
 
               <div style={{ display: "flex", gap: 10 }}>
                 {canEdit && <button onClick={() => startEditEvent(detailEvent)} style={{ ...S.btn(), flex: 1 }}>✏️ Upravit</button>}

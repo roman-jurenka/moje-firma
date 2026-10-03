@@ -10,6 +10,7 @@ import { UZAVIRACI_EMAIL_KEY, VYCHOZI_UZAVIRACI_EMAIL, ZNACKY_UZAVIRACIHO_EMAILU
 import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js";
 import { STAVY_MATERIALU, JEDNOTKY_MATERIALU, stavMaterialu, VZTAHY_KONTAKTU, ROZPAD_KEY, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu, stavSkladu, predvyplnitZeSkladu } from "./materialZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
+import { NA_STAROSTI, naStarosti, umi, dovednost, seraditPodleDovednosti } from "./dovednosti.js";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
   nazevFaze, ukolyPro, nazevCasti, CASTI_MONTAZE, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
@@ -216,6 +217,7 @@ function Panacek({ nalada = "ok", size = 48 }) {
 export default function Prubeh({
   customers = [], employees = [], currentUser, onOtevritZakazku, onOtevritNaceneni,
   tasks = [], setTasks, dealMsgs = [], setDealMsgs, contractMsgs = [], setContractMsgs,
+  calendarEvents = [], setCalendarEvents,
   initialId, onClearInitial, onDealZalozen, onZakaznikZalozen,
 }) {
   const ja = currentUser?.name || "";
@@ -875,6 +877,44 @@ export default function Prubeh({
     if (ok) ukazHlasku(qq ? "✓ Nabídka propojená" : "Nabídka odpojená");
   };
 
+  // ── Plánování lidí do kalendáře (kdo dělá střechu / elektro / uzemnění) ──
+  // Akce v kalendáři patří k zakázce přes prubeh_id (nebo contract_id u starších).
+  const [planForm, setPlanForm] = useState(null); // { zakId, na_starosti, date, employee_id, poznamka }
+  const akceZakazky = (zak) => calendarEvents.filter((e) => e.prubeh_id === zak.id || (zak.contract_id && e.contract_id === zak.contract_id));
+  const otevritPlan = (zak, naStarostiId) => {
+    const aktivni = employees.filter((e) => !e.archived);
+    const prvni = seraditPodleDovednosti(aktivni, naStarostiId)[0];
+    const zitra = new Date(Date.now() + 86400000).toLocaleDateString("sv-SE");
+    setPlanForm({ zakId: zak.id, na_starosti: naStarostiId || "cela", date: zitra, employee_id: prvni ? String(prvni.id) : "", poznamka: "" });
+  };
+  const ulozitPlan = async (zak) => {
+    const p = planForm;
+    const emp = employees.find((e) => String(e.id) === String(p.employee_id));
+    if (!emp || !p.date) { alert("Vyber zaměstnance a datum."); return; }
+    const ns = naStarosti(p.na_starosti);
+    const zk = zakaznik(zak.customer_id) || {};
+    const payload = {
+      date: p.date, work_type: "Zakázka", title: `${ns ? ns.label + " – " : ""}${zak.nazev}`,
+      customer_name: zk.name || "", customer_company: zk.company || "", address: zak.misto_adresa || zk.address || "",
+      contact_name: zak.misto_kontakt || zk.name || "", contact_phone: zak.misto_telefon || zk.phone || "",
+      work_description: p.poznamka.trim() || null, contract_id: zak.contract_id || null, prubeh_id: zak.id,
+      employee_id: emp.id, employee_name: emp.name, na_starosti: p.na_starosti || null,
+    };
+    setPracuji(true);
+    const { data, error } = await supabase.from("calendar_events").insert(payload).select().single();
+    setPracuji(false);
+    if (error) { alert("Do kalendáře se nepodařilo uložit: " + error.message); return; }
+    if (setCalendarEvents) setCalendarEvents((prev) => [...prev, data]);
+    const kdy = new Date(p.date + "T00:00:00").toLocaleDateString("cs-CZ");
+    await pridatPoznamku(zak, `Naplánováno do kalendáře: ${ns ? `${ns.ikona} ${ns.label}` : "práce"} — ${emp.name}, ${kdy}.`, true);
+    // zaměstnanec dostane upozornění, co má na starosti
+    if (emp.name !== ja) {
+      await supabase.from("notifications").insert({ user_name: emp.name, title: "Práce v kalendáři", message: `${ja || "?"} ti naplánoval ${kdy}: ${ns ? ns.label : "práce"} – ${zak.nazev}`, link_type: "calendar", link_id: data.id });
+    }
+    setPlanForm(null);
+    ukazHlasku(`✓ ${emp.name} naplánován na ${kdy}${ns ? ` (${ns.label})` : ""}`);
+  };
+
   // ── Checklist materiálu (úkol „Materiál objednaný“) ──
   // Komponenty z nabídky; u každé appka podle modulu Sklad (products) řekne,
   // jestli je na skladě, a nový seznam podle toho předvyplní (Na skladě /
@@ -1372,6 +1412,53 @@ export default function Prubeh({
     );
   };
 
+  // ── Naplánovat do kalendáře: kdo, kdy, co má na starosti ──
+  const vykresliPlan = () => {
+    if (!planForm) return null;
+    const z = rows.find((r) => r.id === planForm.zakId);
+    if (!z) return null;
+    const p = planForm;
+    const set = (patch) => setPlanForm({ ...p, ...patch });
+    const aktivni = employees.filter((e) => !e.archived);
+    const serazeni = seraditPodleDovednosti(aktivni, p.na_starosti);
+    const vybrany = employees.find((e) => String(e.id) === String(p.employee_id));
+    const potreba = naStarosti(p.na_starosti)?.dovednost;
+    const uzMaj = akceZakazky(z).filter((e) => e.na_starosti === p.na_starosti);
+    return (
+      <div role="dialog" aria-modal="true" aria-label="Naplánovat do kalendáře" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        onClick={(e) => { if (e.target === e.currentTarget) setPlanForm(null); }}>
+        <div style={{ ...karta, width: "min(520px, 100%)", display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>📅 Naplánovat do kalendáře</div>
+          <div style={{ fontSize: 13, color: "#475569" }}>{z.nazev}{z.misto_adresa ? ` · ${z.misto_adresa}` : ""}</div>
+          <div><label style={lbl} htmlFor="pr-plan-ns">Na starosti</label>
+            <select id="pr-plan-ns" style={inp} value={p.na_starosti} onChange={(e) => set({ na_starosti: e.target.value })}>
+              {NA_STAROSTI.map((x) => <option key={x.id} value={x.id}>{x.ikona} {x.label}</option>)}
+            </select></div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div><label style={lbl} htmlFor="pr-plan-kdo">Kdo</label>
+              <select id="pr-plan-kdo" style={inp} value={p.employee_id} onChange={(e) => set({ employee_id: e.target.value })}>
+                <option value="">— vyber —</option>
+                {serazeni.map((e) => <option key={e.id} value={e.id}>{umi(e, p.na_starosti) === true ? "✓ " : ""}{e.name}</option>)}
+              </select></div>
+            <div><label style={lbl} htmlFor="pr-plan-den">Kdy</label>
+              <input id="pr-plan-den" type="date" style={inp} value={p.date} onChange={(e) => set({ date: e.target.value })} /></div>
+          </div>
+          {vybrany && umi(vybrany, p.na_starosti) === false && (
+            <div style={{ fontSize: 12, color: "#b45309" }}>⚠️ {vybrany.name} nemá v profilu dovednost „{dovednost(potreba).label}“.{serazeni.some((e) => umi(e, p.na_starosti)) ? " Lidé s ✓ ji mají." : " Nikdo ji zatím v profilu nemá — doplň ji v Zaměstnancích."}</div>
+          )}
+          {uzMaj.length > 0 && <div style={{ fontSize: 12, color: "#475569" }}>Už naplánováno: {uzMaj.map((e) => `${e.employee_name} (${new Date(e.date + "T00:00:00").toLocaleDateString("cs-CZ")})`).join(", ")}</div>}
+          <div><label style={lbl} htmlFor="pr-plan-pozn">Poznámka pro zaměstnance</label>
+            <textarea id="pr-plan-pozn" style={{ ...inp, minHeight: 60, resize: "vertical" }} value={p.poznamka} placeholder="např. vzít lešení, klíče u souseda…" onChange={(e) => set({ poznamka: e.target.value })} /></div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>Zaměstnanec akci uvidí ve svém kalendáři (i v Outlooku) s tím, co má na starosti, a dostane upozornění.</div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button type="button" style={btnGhost} onClick={() => setPlanForm(null)}>Zrušit</button>
+            <button type="button" style={btn("#0369a1")} disabled={pracuji || !p.employee_id || !p.date} onClick={() => ulozitPlan(z)}>Naplánovat</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── Checklist materiálu: komponenty, potřeba, stav (sklad / objednáno / objednat) ──
   const vykresliMaterial = () => {
     if (!materialForm) return null;
@@ -1691,6 +1778,7 @@ export default function Prubeh({
       {vykresliVice()}
       {vykresliUzavEmail()}
       {vykresliMaterial()}
+      {vykresliPlan()}
       {vykresliRozpad()}
       {dotaz && (
         <div role="dialog" aria-modal="true" aria-label={dotaz.titulek} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
@@ -2277,14 +2365,50 @@ export default function Prubeh({
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+                {/* Montáž bez částí (elektroinstalace, servis…): kdo je naplánovaný + Naplánovat */}
+                {f.id === "montaz" && !ukolyPro(f, z.typ).some((u) => u.cast) && (() => {
+                  const vychozi = z.typ === "ELK" ? "elektroinstalace" : z.typ === "SRV" ? "servis" : "cela";
+                  const lide = akceZakazky(z).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+                  return (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", background: "#f1f5f9", fontSize: 13 }}>
+                      <span style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                        <b>👷 Kdo:</b>
+                        {lide.length ? lide.map((e) => (
+                          <span key={e.id} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 999, padding: "1px 8px", fontSize: 12, fontWeight: 600 }}>
+                            {naStarosti(e.na_starosti)?.ikona || ""} {e.employee_name} · {new Date(e.date + "T00:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" })}
+                          </span>
+                        )) : <span style={{ color: "#94a3b8" }}>zatím nikdo naplánovaný</span>}
+                      </span>
+                      {otevrena && <button type="button" style={{ ...btnGhost, padding: "3px 9px", fontSize: 12 }} onClick={() => otevritPlan(z, vychozi)}>📅 Naplánovat</button>}
+                    </div>
+                  );
+                })()}
                 {ukolyPro(f, z.typ).map((u, i, vsechny) => {
                   const hot = ukolHotovy(z, f, u, auto);
                   // Nadpis části montáže (Střecha / Elektro / Uzemnění) před jejím prvním úkolem
                   const castUkoly = u.cast ? vsechny.filter((x) => x.cast === u.cast) : [];
                   const nadpisCasti = u.cast && vsechny[i - 1]?.cast !== u.cast ? (
-                    <div key={`cast-${u.cast}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f1f5f9", borderTop: i ? "1px solid #e2e8f0" : "none", fontSize: 13, fontWeight: 800, color: "#334155" }}>
-                      <span>{CASTI_MONTAZE[u.cast]?.ikona} {nazevCasti(u.cast, z.typ)}</span>
-                      <span style={{ fontWeight: 600, color: castUkoly.every((x) => ukolHotovy(z, f, x, auto)) ? "#15803d" : "#64748b" }}>{castUkoly.filter((x) => ukolHotovy(z, f, x, auto)).length}/{castUkoly.length} hotovo</span>
+                    <div key={`cast-${u.cast}`} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px 12px", background: "#f1f5f9", borderTop: i ? "1px solid #e2e8f0" : "none", fontSize: 13, color: "#334155" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 800 }}>{CASTI_MONTAZE[u.cast]?.ikona} {nazevCasti(u.cast, z.typ)}</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontWeight: 600, color: castUkoly.every((x) => ukolHotovy(z, f, x, auto)) ? "#15803d" : "#64748b" }}>{castUkoly.filter((x) => ukolHotovy(z, f, x, auto)).length}/{castUkoly.length} hotovo</span>
+                          {otevrena && <button type="button" style={{ ...btnGhost, padding: "3px 9px", fontSize: 12 }} onClick={() => otevritPlan(z, u.cast)}>📅 Naplánovat</button>}
+                        </span>
+                      </div>
+                      {/* Kdo je na tuhle část naplánovaný v kalendáři */}
+                      {(() => {
+                        const lide = akceZakazky(z).filter((e) => e.na_starosti === u.cast).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+                        return lide.length ? (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {lide.map((e) => (
+                              <span key={e.id} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: 999, padding: "1px 8px", fontSize: 12, fontWeight: 600 }}>
+                                👷 {e.employee_name} · {new Date(e.date + "T00:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" })}
+                              </span>
+                            ))}
+                          </div>
+                        ) : <div style={{ fontSize: 12, color: "#94a3b8" }}>Zatím nikdo naplánovaný</div>;
+                      })()}
                     </div>
                   ) : null;
                   const zAuto = u.auto && auto[u.auto];

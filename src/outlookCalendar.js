@@ -15,6 +15,7 @@
 // v Azure Portal → App registrations → (tahle appka) → API permissions.
 
 import { supabase } from "./supabase.js";
+import { naStarosti } from "./dovednosti.js";
 
 export const CAL_CLIENT_ID = "acc593cf-5c70-408d-bc5d-ccb99a043972";
 const TENANT = "common"; // multitenant — funguje pro firemní i osobní Microsoft účty
@@ -195,9 +196,10 @@ async function ensureTaskList() {
 // Vrátí outlook_event_id — volající si ho uloží zpět do calendar_events.outlook_event_id,
 // ať se příště stejná událost jen upraví (PATCH), ne duplikuje.
 export async function pushCalendarEvent(event) {
+  const ns = naStarosti(event.na_starosti);
   const body = {
-    subject: `${event.work_type || "Práce"}${event.customer_name ? " – " + event.customer_name : ""}${event.title ? ": " + event.title : ""}`,
-    body: { contentType: "text", content: [event.work_description, event.address, event.contact_name, event.contact_phone].filter(Boolean).join("\n") },
+    subject: `${ns ? `${ns.ikona} ${ns.label} · ` : ""}${event.work_type || "Práce"}${event.customer_name ? " – " + event.customer_name : ""}${event.title ? ": " + event.title : ""}`,
+    body: { contentType: "text", content: [ns && `Na starosti: ${ns.label}`, event.work_description, event.address, event.contact_name, event.contact_phone].filter(Boolean).join("\n") },
     start: { dateTime: `${event.date}T08:00:00`, timeZone: "Europe/Prague" },
     end: { dateTime: `${event.date}T17:00:00`, timeZone: "Europe/Prague" },
     isAllDay: false,
