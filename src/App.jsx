@@ -4621,6 +4621,12 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
   useEffect(() => {
     supabase.from("warehouse_movements").select("*").order("created_at", { ascending: false }).limit(100)
       .then(({ data }) => { setMovements(data || []); setLoadingMov(false); });
+    // Produkty načíst znovu při každém otevření Skladu — mohly přibýt jinde
+    // (fronta faktur, jiný uživatel) od doby, kdy se appka načetla.
+    supabase.from("products").select("*").order("id")
+      .then(({ data, error }) => { if (!error && data) setProducts(data.map(x => ({ ...x, minStock: x.min_stock }))); });
+    // setProducts je setter z App — stačí jednou při otevření
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Čísla z formuláře: „1 250,50 Kč“ → 1250.5 (Number() dal u čárky/mezery NaN
