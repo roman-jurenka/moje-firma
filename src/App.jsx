@@ -16,6 +16,7 @@ import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum, cisloFaktury } from "./invoicingUtils.js";
 import FrontaFaktur from "./FrontaFaktur.jsx";
+import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
@@ -1198,7 +1199,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     if (error) { alert("Zakázku se nepodařilo uložit: " + error.message); return; }
     setAttendance(prev => prev.map(a => a.id === todayRecord.id ? { ...a, contract_id: cid } : a));
   };
-  const zakazkyProRychlou = (contracts || []).filter(c => !c.status || c.status === "Nová" || c.status === "Probíhá");
+  const zakazkyProRychlou = (contracts || []).filter(c => zakazkaVeVyberu(c));
 
   return (
     <>
@@ -7865,9 +7866,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   }, []);
 
   const contractOpts = (contracts && contracts.length > 0) ? contracts : attLocalContracts;
-  // Otevřené zakázky (do nových záznamů); v historii jsou všechny, otevřené nahoře.
-  const OTEVRENE_STAVY = ["Nová", "Probíhá", "Aktivní"];
-  const jeOtevrena = (c) => !c.status || OTEVRENE_STAVY.includes(c.status);
+  // Zakázky od Nové po Dokončenou (fakturované jen když už jsou u záznamu vybrané).
+  const jeOtevrena = (c) => zakazkaVeVyberu(c);
   const activeContractOpts = contractOpts.filter(jeOtevrena);
   const zakazkaOpt = (c) => {
     const zak = customers.find(x => x.id === c.customer_id);
@@ -8721,7 +8721,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                         <td style={S.td}>
                           <SearchSelect
                             style={{ marginBottom: 0, minWidth: 160 }}
-                            options={historieContractOpts}
+                            options={historieContractOpts.filter(o => zakazkaVeVyberu(contractOpts.find(c => c.id === o.id), rec.contract_id))}
                             value={rec.contract_id || ""}
                             placeholder="—"
                             onChange={async val => {

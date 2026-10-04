@@ -314,13 +314,13 @@ export async function odkazNaSlozku(folderPath) {
   }
 }
 
-// Obsah složky (soubory i podsložky). Neexistující složka → [].
+// Obsah složky (soubory i podsložky). Neexistující složka → null.
 export async function seznamSlozky(folderPath) {
   try {
     const res = await graphGet(`/me/drive/root:/${folderPath}:/children?$select=id,name,webUrl,size,lastModifiedDateTime,file,folder&$top=200`);
     return res.value || [];
   } catch (e) {
-    if (/→ 404/.test(e.message)) return [];
+    if (/→ 404/.test(e.message)) return null;
     throw e;
   }
 }

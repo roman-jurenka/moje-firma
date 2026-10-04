@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase.js";
+import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 
 const BUCKET = "faktury-fronta";
 const TYPY_NAKLADU = [["materiál", "Materiál"], ["práce", "Práce"], ["doprava", "Doprava"]];
@@ -77,7 +78,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
   const zakazkaById = useMemo(() => Object.fromEntries(contracts.map((c) => [c.id, c])), [contracts]);
   const zakaznikById = useMemo(() => Object.fromEntries(customers.map((c) => [c.id, c])), [customers]);
   const popisZakazky = (c) => [c.code, c.name, zakaznikById[c.customer_id]?.name].filter(Boolean).join(" · ");
-  const otevrene = useMemo(() => contracts.filter((c) => !["Fakturována", "Dokončena"].includes(c.status))
+  const otevrene = useMemo(() => contracts.filter((c) => zakazkaVeVyberu(c))
     .sort((a, b) => String(a.name).localeCompare(String(b.name), "cs")), [contracts]);
   const produktProRadek = (it) => produkty.find((p) => bezDiakritiky(p.name) === bezDiakritiky(it.description));
 

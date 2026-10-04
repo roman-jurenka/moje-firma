@@ -35,10 +35,12 @@ export async function odkazNaDokumenty(nazevZakazky) {
   return odkazNaSlozku(slozkaDokumentu(nazevZakazky));
 }
 
-// Soubory ve složce Dokumenty zakázky (null, když OneDrive není připojený).
+// Soubory ve složce Dokumenty zakázky: { existuje, soubory };
+// null, když OneDrive není připojený.
 export async function seznamDokumentu(nazevZakazky) {
   if (!isConnected()) return null;
-  return seznamSlozky(slozkaDokumentu(nazevZakazky));
+  const soubory = await seznamSlozky(slozkaDokumentu(nazevZakazky));
+  return { existuje: soubory !== null, soubory: soubory || [] };
 }
 
 // Založí složku zakázky s podsložkami Fotky a Dokumenty (Dokumenty založí

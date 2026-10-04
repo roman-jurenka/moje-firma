@@ -44,8 +44,9 @@ export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavr
   // Jen zápis výsledku (bez synchronního setState) — volá se i z efektu při otevření.
   const nactiSoubory = async () => {
     try {
-      const soubory = await seznamDokumentu(slozka);
-      setOd({ stav: "ok", soubory: (soubory || []).filter((x) => x.file).sort((a, b) => String(b.lastModifiedDateTime).localeCompare(String(a.lastModifiedDateTime))) });
+      const vysledek = await seznamDokumentu(slozka);
+      if (!vysledek) { setOd({ stav: "nepripojeno", soubory: [] }); return; }
+      setOd({ stav: "ok", existuje: vysledek.existuje, soubory: vysledek.soubory.filter((x) => x.file).sort((a, b) => String(b.lastModifiedDateTime).localeCompare(String(a.lastModifiedDateTime))) });
     } catch (e) {
       setOd({ stav: "chyba", soubory: [], chyba: e.message || String(e) });
     }
@@ -226,7 +227,18 @@ export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavr
         {/* Skutečný obsah OneDrivu */}
         <div style={karta}>
           <div style={nadpis}>
-            <span>☁️ Složka Dokumenty na OneDrivu</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              ☁️ Složka Dokumenty na OneDrivu
+              {od.stav === "ok" && (
+                <span role="status" style={{ display: "inline-flex", alignItems: "center", gap: 4, borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 800, textTransform: "none", letterSpacing: 0,
+                  background: od.existuje ? "#dcfce7" : "#fee2e2", color: od.existuje ? "#15803d" : "#b91c1c", border: `1px solid ${od.existuje ? "#86efac" : "#fca5a5"}` }}>
+                  {od.existuje ? "📁 ✓ Složka založená" : "📁 ✕ Složka není založená"}
+                </span>
+              )}
+              {od.stav === "nepripojeno" && (
+                <span style={{ borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 700, textTransform: "none", letterSpacing: 0, background: "#f1f5f9", color: "#64748b" }}>stav nelze zjistit</span>
+              )}
+            </span>
             <span style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
               {od.stav !== "nepripojeno" && <button type="button" style={btnGhost} aria-label="Obnovit obsah složky" onClick={() => nactiOneDrive()} disabled={od.stav === "nacitam"}>↻</button>}
               <button type="button" style={btnGhost} disabled={zakladam} onClick={vytvoritSlozku}
@@ -241,6 +253,7 @@ export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavr
             <div style={{ fontSize: 13, color: "#64748b" }}>OneDrive není připojený. <button type="button" style={{ ...btnGhost, padding: "3px 9px", fontSize: 12 }} onClick={() => nactiOneDrive(true)}>Připojit a načíst</button></div>
           ) : od.stav === "nacitam" ? <div style={{ fontSize: 13, color: "#64748b" }}>Načítám obsah složky…</div>
             : od.stav === "chyba" ? <div style={{ fontSize: 13, color: "#b91c1c" }}>Obsah se nepodařilo načíst: {od.chyba}</div>
+              : !od.existuje ? <div style={{ fontSize: 13, color: "#b91c1c" }}>Složka na OneDrivu zatím není — založ ji tlačítkem 📁 Vytvořit složku (vznikne i sama s prvním dokumentem).</div>
               : !od.soubory.length ? <div style={{ fontSize: 13, color: "#94a3b8" }}>Složka je zatím prázdná.</div>
                 : od.soubory.map((f) => (
                   <a key={f.id} href={f.webUrl} target="_blank" rel="noreferrer" style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 0", borderTop: "1px solid #f1f5f9", fontSize: 14, color: "#0f172a", textDecoration: "none" }}>

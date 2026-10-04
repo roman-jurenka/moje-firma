@@ -2833,7 +2833,7 @@ export default function Prubeh({
           ) : (
             <div style={{ lineHeight: 1.5, color: "#334155" }}>
               {z.misto_adresa
-                ? <div>📍 {z.misto_adresa} · <a href={`https://maps.google.com/?q=${encodeURIComponent(z.misto_adresa)}`} target="_blank" rel="noreferrer" style={{ color: "#0369a1" }}>mapa</a></div>
+                ? <div>📍 {z.misto_adresa} · <a href={`https://mapy.cz/zakladni?q=${encodeURIComponent(z.misto_adresa)}`} target="_blank" rel="noreferrer" style={{ color: "#0369a1" }}>mapa</a></div>
                 : <div style={{ color: "#b45309" }}>📍 Chybí adresa realizace — doplň ji tlačítkem Upravit.</div>}
               {(z.misto_kontakt || z.misto_telefon) && <div>👷 Na místě: <b>{z.misto_kontakt || ""}</b>{z.misto_vztah && <span style={{ color: "#64748b" }}> ({z.misto_vztah})</span>}{z.misto_telefon && <> · <a href={`tel:${z.misto_telefon}`} style={{ color: "#0369a1" }}>{z.misto_telefon}</a></>}</div>}
             </div>
