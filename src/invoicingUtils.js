@@ -120,7 +120,8 @@ export async function exportInvoicesToExcel(invoiceList, customers, invType) {
     const cust = customers.find(c => c.id === inv.customerId);
     const info = getInvoicePaymentInfo(inv);
     return {
-      "Číslo": inv.number,
+      "Číslo": cisloFaktury(inv),
+      "Interní číslo": inv.cislo_ucetni ? inv.number : "",
       [partyLabel]: cust?.name || "",
       "Částka bez DPH": Number(inv.amount) || 0,
       "DPH": Number(inv.tax) || 0,
@@ -146,8 +147,8 @@ export async function exportInvoicesToExcel(invoiceList, customers, invType) {
 export async function getInvoiceQr(invoice, amountToPay) {
   const QRCodeMod = await safeImport(() => import("qrcode"));
   const QRCode = QRCodeMod.default;
-  const vs = invoice.variable_symbol || (invoice.number || "").replace(/\D/g, "");
-  const qrDataUrl = await QRCode.toDataURL(buildSpd({ amount: amountToPay, vs, msg: `FAKTURA ${invoice.number}` }), { width: 220, margin: 1 });
+  const vs = invoice.variable_symbol || String(cisloFaktury(invoice)).replace(/\D/g, "");
+  const qrDataUrl = await QRCode.toDataURL(buildSpd({ amount: amountToPay, vs, msg: `FAKTURA ${cisloFaktury(invoice)}` }), { width: 220, margin: 1 });
   return { vs, qrDataUrl };
 }
 
@@ -157,7 +158,7 @@ export async function getInvoiceBarcode(number) {
   const mod = await safeImport(() => import("jsbarcode"));
   const JsBarcode = mod.default;
   const canvas = document.createElement("canvas");
-  JsBarcode(canvas, number || "0", { format: "CODE128", displayValue: false, height: 34, width: 1, margin: 0 });
+  JsBarcode(canvas, String(number || "0").normalize("NFD").replace(/[^ -~]/g, "") || "0", { format: "CODE128", displayValue: false, height: 34, width: 1, margin: 0 });
   return canvas.toDataURL("image/png");
 }
 
@@ -259,7 +260,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   // ── 7.2 Název dokumentu a číslo faktury ──
   add(T(42.5, 79.2, title, { bold: true, size: 14 }));
   add(BOX(440.6, 539.8, 60.8, 82.0, { border: true }));
-  add(T(534.8, 79.2, invoice.number, { bold: true, size: 13.8, align: "right" }));
+  add(T(534.8, 79.2, cisloFaktury(invoice), { bold: true, size: 13.8, align: "right" }));
   add(T(303.2, 92.1, "Objednávka:", { bold: true, size: 7.9 }));
   add(BOX(440.6, 539.8, 82.1, 93.4, { fill: "#e6e6e6" }));
   if (invoice.order_ref) add(T(444, 91.5, invoice.order_ref, { size: 7.5 }));
@@ -410,7 +411,7 @@ export async function buildInvoicePreview(invoice, customer) {
   const { total } = computeInvoiceTotals(invoice.items);
   const toPay = getDiscountedTotal(total, invoice.discount_percent);
   const [{ vs, qrDataUrl }, barcodeDataUrl] = await Promise.all([
-    getInvoiceQr(invoice, toPay), getInvoiceBarcode(invoice.number),
+    getInvoiceQr(invoice, toPay), getInvoiceBarcode(cisloFaktury(invoice)),
   ]);
   return buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDataUrl);
 }
@@ -430,7 +431,7 @@ export async function downloadInvoicePDF(invoice, customer) {
   const { total } = computeInvoiceTotals(invoice.items);
   const toPay = getDiscountedTotal(total, invoice.discount_percent);
   const [{ vs, qrDataUrl }, barcodeDataUrl] = await Promise.all([
-    getInvoiceQr(invoice, toPay), getInvoiceBarcode(invoice.number),
+    getInvoiceQr(invoice, toPay), getInvoiceBarcode(cisloFaktury(invoice)),
   ]);
 
   // Šablona teď pozicuje vše absolutně na body (pt) přesně podle vzoru, včetně
@@ -452,7 +453,7 @@ export async function downloadInvoicePDF(invoice, customer) {
     const pageWidth = 210;
     const imgHeight = (canvas.height / canvas.width) * pageWidth;
     doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, pageWidth, imgHeight);
-    doc.save(`Faktura-${invoice.number}.pdf`);
+    doc.save(`Faktura-${String(cisloFaktury(invoice)).replace(/[/\\?%*:|"<>]/g, "-")}.pdf`);
   } finally {
     document.body.removeChild(el);
   }
@@ -505,12 +506,12 @@ function buildReminderHtmlBody(invoice, customer, level, qrDataUrl) {
         <div style="white-space:pre-line;">${custAddress}</div>
       </div>
 
-      <div style="font-size:20px; font-weight:700; margin-bottom:6px; color:${level >= 3 ? "#b91c1c" : "#111"};">${t.title} k faktuře č. ${invoice.number}</div>
-      <div style="margin-bottom:16px;">${t.body(invoice.number)}</div>
+      <div style="font-size:20px; font-weight:700; margin-bottom:6px; color:${level >= 3 ? "#b91c1c" : "#111"};">${t.title} k faktuře č. ${cisloFaktury(invoice)}</div>
+      <div style="margin-bottom:16px;">${t.body(cisloFaktury(invoice))}</div>
 
       <table style="border-collapse:collapse; font-size:13px; margin-bottom:20px;">
         <tbody>
-          <tr><td style="padding:4px 16px 4px 0; color:#555;">Faktura č.</td><td style="padding:4px 0; font-weight:700;">${invoice.number}</td></tr>
+          <tr><td style="padding:4px 16px 4px 0; color:#555;">Faktura č.</td><td style="padding:4px 0; font-weight:700;">${cisloFaktury(invoice)}</td></tr>
           <tr><td style="padding:4px 16px 4px 0; color:#555;">Datum vystavení</td><td style="padding:4px 0;">${fmtDateCzPlain(invoice.issued)}</td></tr>
           <tr><td style="padding:4px 16px 4px 0; color:#555;">Datum splatnosti</td><td style="padding:4px 0;">${fmtDateCzPlain(invoice.due)}</td></tr>
           <tr><td style="padding:4px 16px 4px 0; color:#555;">Dní po splatnosti</td><td style="padding:4px 0; font-weight:700; color:#b91c1c;">${info.daysOverdue}</td></tr>
@@ -526,7 +527,7 @@ function buildReminderHtmlBody(invoice, customer, level, qrDataUrl) {
         <div style="font-size:13px;">
           <div style="font-weight:700; margin-bottom:6px;">Platební údaje</div>
           <div>Účet: <strong>${COMPANY_ACCOUNT_DISPLAY}</strong></div>
-          <div>Variabilní symbol: <strong>${invoice.variable_symbol || invoice.number.replace(/\D/g, "")}</strong></div>
+          <div>Variabilní symbol: <strong>${invoice.variable_symbol || String(cisloFaktury(invoice)).replace(/\D/g, "")}</strong></div>
           <div>Částka: <strong>${fmtKc2(info.outstanding)} Kč</strong></div>
         </div>
       </div>
@@ -562,11 +563,15 @@ export async function downloadReminderPDF(invoice, customer, level) {
     const pageWidth = 210;
     const imgHeight = (canvas.height / canvas.width) * pageWidth;
     doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, pageWidth, imgHeight);
-    doc.save(`Upominka-${level}-${invoice.number}.pdf`);
+    doc.save(`Upominka-${level}-${String(cisloFaktury(invoice)).replace(/[/\\?%*:|"<>]/g, "-")}.pdf`);
   } finally {
     document.body.removeChild(el);
   }
 }
+
+// Číslo, které se ukazuje na faktuře: náhradní číslo z programu účetní,
+// když ho fakturace má, jinak naše číslo z řady.
+export const cisloFaktury = (inv) => (inv?.cislo_ucetni && String(inv.cislo_ucetni).trim()) || inv?.number || "";
 
 // Číslo nové faktury: RRRR + 5místné pořadí (např. 202600001) — nejvyšší
 // použité v daném roce + 1. Volá se s čerstvě načtenými čísly z databáze;

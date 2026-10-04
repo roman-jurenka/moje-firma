@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
-import { computeInvoiceTotals, fmtKc2, buildInvoicePreview, downloadInvoicePDF, getDiscountedTotal } from "./invoicingUtils.js";
+import { computeInvoiceTotals, fmtKc2, buildInvoicePreview, downloadInvoicePDF, getDiscountedTotal, nextInvNum, cisloFaktury } from "./invoicingUtils.js";
 import * as ui from "./ui.js";
 
 const VAT_RATES = [0, 12, 21];
@@ -202,15 +202,25 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     discountPercent: editInvoice.discount_percent || 0,
     constantSymbol: editInvoice.constant_symbol || "", specificSymbol: editInvoice.specific_symbol || "",
     variableSymbol: editInvoice.variable_symbol || (editInvoice.number || "").replace(/\D/g, ""),
+    cisloUcetni: editInvoice.cislo_ucetni || "",
     items: (editInvoice.items && editInvoice.items.length) ? editInvoice.items : [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
   } : {
     customerId: "", invoiceType: "vydaná", isDeposit: false, orderRef: "",
     issued: new Date().toISOString().slice(0, 10),
     due: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     status: "Čeká", customerIco: "", customerDic: "", discountPercent: 0,
-    constantSymbol: defaultConstantSymbol || "", specificSymbol: "", variableSymbol: "",
+    constantSymbol: defaultConstantSymbol || "", specificSymbol: "", variableSymbol: "", cisloUcetni: "",
     items: [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
   });
+  // Číslo, které nová faktura dostane — ukáže se hned (definitivně se přidělí
+  // při uložení; když mezitím uloží fakturu někdo jiný, posune se o jedno).
+  const [navrhCisla, setNavrhCisla] = useState(null);
+  useEffect(() => {
+    if (isEdit) return undefined;
+    let zruseno = false;
+    supabase.from("invoices").select("number").then(({ data }) => { if (!zruseno && data) setNavrhCisla(nextInvNum(data)); });
+    return () => { zruseno = true; };
+  }, [isEdit]);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   const startManual = () => setStep("form");
@@ -266,7 +276,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
       customerId: f.customerId, invoiceType: f.invoiceType, isDeposit: f.isDeposit,
       orderRef: f.orderRef, issued: f.issued, due: f.due, status: f.status,
       customerIco: f.customerIco, customerDic: f.customerDic, discountPercent: Number(f.discountPercent) || 0,
-      constantSymbol: f.constantSymbol, specificSymbol: f.specificSymbol, variableSymbol: f.variableSymbol,
+      constantSymbol: f.constantSymbol, specificSymbol: f.specificSymbol, variableSymbol: f.variableSymbol, cisloUcetni: f.cisloUcetni,
       items: lines.map(({ desc, qty, unit, price, vatRate }) => ({ desc, qty, unit, price, vatRate })),
       amount: total - totalTax, tax: totalTax,
       contractId: fromContractId ? Number(fromContractId) : null,
@@ -308,7 +318,18 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
   return (
     <div style={overlayStyle}>
       <div style={{ ...boxStyle, width: 720 }}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>{isEdit ? `Upravit fakturu ${editInvoice.number}` : "Nová faktura"}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>
+            {isEdit ? `Upravit fakturu ${cisloFaktury({ ...editInvoice, cislo_ucetni: f.cisloUcetni })}` : `Nová faktura ${f.cisloUcetni.trim() || navrhCisla || ""}`}
+          </div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>
+            {isEdit
+              ? (f.cisloUcetni.trim() ? <>Interní číslo v appce: <b>{editInvoice.number}</b></> : <>Číslo faktury: <b>{editInvoice.number}</b></>)
+              : f.cisloUcetni.trim()
+                ? <>Použije se číslo od účetní · interní číslo v appce {navrhCisla || "…"}</>
+                : <>Číslo faktury: <b style={{ color: "#0f172a" }}>{navrhCisla || "načítám…"}</b> (přidělí se při uložení)</>}
+          </div>
+        </div>
 
         <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e2e8f0", marginBottom: 18 }}>
           {[
@@ -349,6 +370,12 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
 
         {formTab === "zaklad" && (
           <>
+            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px" }}>
+              <label style={{ ...labelStyle, marginTop: 0 }} htmlFor="fa-cislo-ucetni">Náhradní číslo faktury — když ji vystavila účetní ve svém programu (volitelné)</label>
+              <input id="fa-cislo-ucetni" style={inputStyle} value={f.cisloUcetni} placeholder="např. FV-2026-0123"
+                onChange={e => set("cisloUcetni", e.target.value)} />
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Když je vyplněné, ukazuje se místo našeho čísla v seznamu, na PDF, v QR platbě a upomínkách. Jde doplnit i později.</div>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
               <div>
                 <label style={labelStyle}>Zákazník</label>
@@ -503,7 +530,7 @@ export function InvoicePreviewModal({ invoice, customer, onClose }) {
     <div style={overlayStyle}>
       <div style={{ ...boxStyle, width: 860, padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #e2e8f0" }}>
-          <div style={{ fontWeight: 700 }}>Náhled faktury {invoice.number}</div>
+          <div style={{ fontWeight: 700 }}>Náhled faktury {cisloFaktury(invoice)}</div>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={handleDownload} disabled={busy || !html} style={btnPrimary}>{busy ? "…" : "⬇ Stáhnout PDF"}</button>
             <button onClick={onClose} style={btnGhost}>Zavřít</button>

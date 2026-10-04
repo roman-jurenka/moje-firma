@@ -14,7 +14,7 @@ import Servis from "./Servis.jsx";
 import RychlaObrazovka, { PracePruh } from "./RychlaObrazovka.jsx";
 import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
-import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum } from "./invoicingUtils.js";
+import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum, cisloFaktury } from "./invoicingUtils.js";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
@@ -1713,7 +1713,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
                     <div key={`inv-${inv.id}`} onClick={() => setTab("invoices")}
                       style={{ ...S.card, borderLeft: "3px solid #f87171", padding: "10px 16px", cursor: "pointer", fontSize: 13 }}>
                       <i className="ti ti-alert-triangle" aria-hidden="true" style={{ color: "#f87171", marginRight: 8 }}></i>
-                      Faktura {inv.number} — {info.daysOverdue} dní po splatnosti ({fmtKc(info.outstanding)})
+                      Faktura {cisloFaktury(inv)} — {info.daysOverdue} dní po splatnosti ({fmtKc(info.outstanding)})
                     </div>
                   ))}
                   {lowStock.map(p => (
@@ -2127,7 +2127,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
             const cust = customers.find(c => c.id === inv.customerId);
             return (
               <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
-                <span>{inv.number} — {cust?.name || "—"}</span>
+                <span>{cisloFaktury(inv)} — {cust?.name || "—"}</span>
                 <span><strong style={{ color: "#ef4444" }}>{info.daysOverdue} dní</strong> · {fmtKc(info.outstanding)}</span>
               </div>
             );
@@ -2143,7 +2143,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
             const cust = customers.find(c => c.id === inv.customerId);
             return (
               <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
-                <span>{inv.number} — {cust?.name || "—"}</span>
+                <span>{cisloFaktury(inv)} — {cust?.name || "—"}</span>
                 <span><strong style={{ color: "#f59e0b" }}>{info.daysOverdue} dní</strong> · {fmtKc(info.outstanding)}</span>
               </div>
             );
@@ -2370,7 +2370,7 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
             return (
               <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, alignItems: "center" }}>
                 <div>
-                  <div style={{ fontSize: 13, color: "#1A1A1A" }}>{inv.number}</div>
+                  <div style={{ fontSize: 13, color: "#1A1A1A" }}>{cisloFaktury(inv)}</div>
                   <div style={{ fontSize: 11, color: "#475569" }}>{cust?.name}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -2732,7 +2732,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
               <SectionTitle style={{ marginTop: 16 }}>🧾 Faktury ({custInv.length})</SectionTitle>
               {custInv.length === 0 ? <Empty /> : custInv.map(inv => (
                 <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #e2e8f0" }}>
-                  <span style={{ color: "#e2e8f0", fontSize: 13 }}>{inv.number}</span>
+                  <span style={{ color: "#e2e8f0", fontSize: 13 }}>{cisloFaktury(inv)}</span>
                   <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <span style={{ color: "#1A1A1A", fontWeight: 700, fontSize: 13 }}>{fmtKc(inv.amount)}</span>
                     <span style={S.tag(INV_COLORS[inv.status])}>{inv.status}</span>
@@ -4022,7 +4022,8 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
       tax: f.tax, status: f.status,
       issued: f.issued, due: f.due, items: f.items,
       invoice_type: f.invoiceType, is_deposit: f.isDeposit, order_ref: f.orderRef,
-      variable_symbol: (f.variableSymbol && f.variableSymbol.trim()) || invNum.replace(/\D/g, ""), contract_id: f.contractId,
+      variable_symbol: (f.variableSymbol && f.variableSymbol.trim()) || (f.cisloUcetni?.trim() || invNum).replace(/\D/g, ""), contract_id: f.contractId,
+      cislo_ucetni: f.cisloUcetni?.trim() || null,
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
       discount_percent: f.discountPercent || 0,
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
@@ -4065,6 +4066,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
       invoice_type: f.invoiceType, is_deposit: f.isDeposit, order_ref: f.orderRef,
       contract_id: f.contractId,
       variable_symbol: (f.variableSymbol && f.variableSymbol.trim()) || null,
+      cislo_ucetni: f.cisloUcetni?.trim() || null,
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
       discount_percent: f.discountPercent || 0,
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
@@ -4237,7 +4239,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
     if (invSearch.trim()) {
       const q = invSearch.trim().toLowerCase();
       const cust = customers.find(c => c.id === inv.customerId);
-      if (!`${inv.number} ${cust?.name || ""}`.toLowerCase().includes(q)) return false;
+      if (!`${inv.number} ${inv.cislo_ucetni || ""} ${cust?.name || ""}`.toLowerCase().includes(q)) return false;
     }
     return true;
   });
@@ -4306,7 +4308,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
               const info = getInvoicePaymentInfo(inv);
               return (
                 <tr key={inv.id}>
-                  <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
+                  <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{cisloFaktury(inv)}{inv.cislo_ucetni && <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }} title="Interní číslo v appce">({inv.number})</div>}</td>
                   <td style={S.td}>{cust?.name || "—"}</td>
                   <td style={S.td}>{linkedContract ? (linkedContract.code || linkedContract.name) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                   <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>{fmtKc(inv.amount)}</td>
@@ -4408,7 +4410,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
                 const cust = customers.find(c => c.id === inv.customerId);
                 return (
                   <tr key={inv.id}>
-                    <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
+                    <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{cisloFaktury(inv)}{inv.cislo_ucetni && <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }} title="Interní číslo v appce">({inv.number})</div>}</td>
                     <td style={S.td}>{cust?.name || "—"}</td>
                     <td style={S.td}>{fmtDateCz(inv.due)}</td>
                     <td style={S.td}>
@@ -4472,7 +4474,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
                 const cust = customers.find(c => c.id === inv.customerId);
                 return (
                   <tr key={inv.id}>
-                    <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{inv.number}</td>
+                    <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{cisloFaktury(inv)}{inv.cislo_ucetni && <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }} title="Interní číslo v appce">({inv.number})</div>}</td>
                     <td style={S.td}>{cust?.name || "—"}</td>
                     <td style={S.td}>{fmtDateCz(inv.due)}</td>
                     <td style={{ ...S.td, color: info.isOverdue ? "#ef4444" : "#64748b", fontWeight: info.isOverdue ? 700 : 400 }}>
@@ -7493,9 +7495,9 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
                   </div>
                 ))}
                 {dayOverdueInvoices.slice(0, 3).map(inv => (
-                  <div key={"i" + inv.id} onClick={() => setTab && setTab("invoices")} title={`Faktura ${inv.number} po splatnosti`}
+                  <div key={"i" + inv.id} onClick={() => setTab && setTab("invoices")} title={`Faktura ${cisloFaktury(inv)} po splatnosti`}
                     style={{ background: "#ef444418", color: "#b91c1c", borderLeft: "3px solid #ef4444", borderRadius: 4, padding: "2px 5px", fontSize: 11, fontWeight: 600, marginBottom: 2, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    ⚠️ {inv.number}
+                    ⚠️ {cisloFaktury(inv)}
                   </div>
                 ))}
                 {extraCount > 0 && <div style={{ fontSize: 10, color: "#64748b" }}>+{extraCount} další</div>}
