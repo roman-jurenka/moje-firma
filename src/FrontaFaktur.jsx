@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase.js";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
-import { nactiPrirazku, ulozitPrirazku, prodejniCena, VYCHOZI_PRIRAZKA } from "./prirazkaMaterialu.js";
+import { nactiPrirazku, ulozitPrirazku, prodejniCena, sPrirazkou, prirazkaPolozky, VYCHOZI_PRIRAZKA } from "./prirazkaMaterialu.js";
 
 const BUCKET = "faktury-fronta";
 const TYPY_NAKLADU = [["materiál", "Materiál"], ["práce", "Práce"], ["doprava", "Doprava"]];
@@ -60,7 +60,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     const stavy = vyrizene ? ["nova", "castecne_prirazena", "schvalena", "zamitnuta"] : ["nova", "castecne_prirazena"];
     const [{ data: f, error }, { data: p }] = await Promise.all([
       supabase.from("invoice_queue").select("*").in("status", stavy).order("created_at", { ascending: false }).limit(100),
-      supabase.from("products").select("id, name, stock, unit, price, price_sell"),
+      supabase.from("products").select("id, name, stock, unit, price, price_sell, prirazka_pct"),
     ]);
     if (error) { setZprava({ chyba: true, text: "Frontu se nepodařilo načíst: " + error.message }); setFaktury([]); return; }
     setProdukty(p || []);
@@ -130,12 +130,14 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     const zadanyProdej = cisloPole(v.prodej);
     if (Number.isNaN(zadanyProdej)) { await odemknout(); return `Řádka ${it.line_no ?? ""}: prodejní cena není číslo`; }
     const prodej = zadanyProdej ?? prodejniCena(produktProRadek(it), cena, prirazka);
+    // ručně změněná cena / přirážka u řádky se uloží jako přirážka položky
+    const novaPrirazka = zadanyProdej != null && cena > 0 ? Math.round((zadanyProdej / cena - 1) * 1000) / 10 : null;
     const zajistitProdukt = async () => {
       let prod = produktProRadek(it);
       if (!prod) {
         const { data: novy, error } = await supabase.from("products").insert({
           name: String(it.description || "").trim() || `Položka z faktury ${f.invoice_number || ""}`.trim(),
-          unit: jednotka(it.unit), price: Math.round(cena * 100) / 100, price_sell: prodej, stock: 0, min_stock: 0, category: "",
+          unit: jednotka(it.unit), price: Math.round(cena * 100) / 100, price_sell: prodej, prirazka_pct: novaPrirazka, stock: 0, min_stock: 0, category: "",
         }).select().single();
         if (error) throw error;
         prod = novy;
@@ -144,6 +146,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
         const doplnit = {};
         if (!(Number(prod.price) > 0) && cena > 0) doplnit.price = Math.round(cena * 100) / 100;
         if (!(Number(prod.price_sell) > 0) && prodej > 0) doplnit.price_sell = prodej;
+        if (novaPrirazka != null && novaPrirazka !== prirazkaPolozky(prod)) { doplnit.prirazka_pct = novaPrirazka; doplnit.price_sell = prodej; }
         if (Object.keys(doplnit).length) await supabase.from("products").update(doplnit).eq("id", prod.id);
       }
       return prod;
@@ -435,18 +438,29 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                                       {TYPY_NAKLADU.map(([id, t]) => <option key={id} value={id}>Náklad: {t}</option>)}
                                     </select>
                                     {(() => {
-                                      const vychozi = prodejniCena(prod, nakupJ(it), prirazka);
+                                      const nakup = nakupJ(it);
+                                      const vychozi = prodejniCena(prod, nakup, prirazka);
                                       const zadano = cisloPole(v.prodej);
                                       const prodejJ = zadano ?? vychozi;
-                                      const pct = nakupJ(it) > 0 && Number.isFinite(prodejJ) ? Math.round((prodejJ / nakupJ(it) - 1) * 1000) / 10 : null;
+                                      const pct = nakup > 0 && Number.isFinite(prodejJ) ? Math.round((prodejJ / nakup - 1) * 1000) / 10 : null;
+                                      const zdroj = prirazkaPolozky(prod) != null ? "přirážka položky" : Number(prod?.price_sell) > 0 ? "prodejní cena položky" : "výchozí přirážka";
                                       return (
-                                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: 11, color: "#475569", flexWrap: "wrap" }}>
-                                          <span>Prodej/j.</span>
-                                          <input style={{ ...pole, width: 90, borderColor: Number.isNaN(zadano) ? "#f87171" : "#cbd5e1" }} inputMode="decimal" aria-label="Prodejní cena za jednotku"
-                                            value={v.prodej ?? String(vychozi).replace(".", ",")} onChange={(e) => setV({ prodej: e.target.value })} />
-                                          <span>Kč{pct != null && !Number.isNaN(pct) ? ` (${pct >= 0 ? "+" : ""}${String(pct).replace(".", ",")} %)` : ""}</span>
-                                          {v.prodej != null && <button type="button" onClick={() => setV({ prodej: undefined })} style={{ border: "none", background: "none", color: "#0369a1", cursor: "pointer", fontSize: 11, padding: 0, fontFamily: "inherit" }}
-                                            title={Number(prod?.price_sell) > 0 ? "Vrátit prodejní cenu produktu ze skladu" : `Vrátit nákup + ${prirazka} %`}>↺</button>}
+                                        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4, fontSize: 11, color: "#475569", flexWrap: "wrap" }}>
+                                          <span>Přirážka</span>
+                                          <input style={{ ...pole, width: 52 }} inputMode="decimal" aria-label="Přirážka v procentech"
+                                            value={v.pct ?? (pct != null ? String(pct).replace(".", ",") : "")}
+                                            onChange={(e) => { const p = cisloPole(e.target.value); setV({ pct: e.target.value, prodej: p != null && !Number.isNaN(p) ? String(sPrirazkou(nakup, p)).replace(".", ",") : v.prodej }); }} />
+                                          <span>% → prodej/j.</span>
+                                          <input style={{ ...pole, width: 82, borderColor: Number.isNaN(zadano) ? "#f87171" : "#cbd5e1" }} inputMode="decimal" aria-label="Prodejní cena za jednotku"
+                                            value={v.prodej ?? String(vychozi).replace(".", ",")} onChange={(e) => setV({ prodej: e.target.value, pct: undefined })} />
+                                          <span>Kč</span>
+                                          {v.prodej != null ? (
+                                            <>
+                                              <span style={{ color: "#0369a1" }}>· uloží se k položce</span>
+                                              <button type="button" onClick={() => setV({ prodej: undefined, pct: undefined })} style={{ border: "none", background: "none", color: "#0369a1", cursor: "pointer", fontSize: 11, padding: 0, fontFamily: "inherit" }}
+                                                title="Vrátit původní cenu">↺</button>
+                                            </>
+                                          ) : <span style={{ color: "#94a3b8" }}>· {zdroj}</span>}
                                         </div>
                                       );
                                     })()}

@@ -4592,7 +4592,7 @@ async function performWarehouseMovement(row_data) {
 
 function Warehouse({ products, setProducts, contracts, currentUser }) {
   const isAdmin = currentUser?.role === "admin";
-  const [newP, setNewP] = useState({ name: "", sku: "", category: "", price: "", price_sell: "", stock: "", minStock: "", unit: "ks", emas_code: "", image_url: "" });
+  const [newP, setNewP] = useState({ name: "", sku: "", category: "", price: "", price_sell: "", prirazka_pct: "", stock: "", minStock: "", unit: "ks", emas_code: "", image_url: "" });
   const [editP, setEditP] = useState(null);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [movements, setMovements] = useState([]);
@@ -4640,32 +4640,39 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
     return Number.isFinite(x) ? x : null;
   };
   const neplatnaCisla = (o, pole) => pole.filter(([, k]) => cisloZPole(o[k]) === null).map(([l]) => l);
+  // Přirážka položky: prázdná = výchozí přirážka firmy (null); vyplněná → prodejní cena = nákup + přirážka
+  const prirazkaZPole = (v) => (String(v ?? "").trim() === "" ? null : cisloZPole(v));
+  const cenyZPrirazky = (o) => {
+    const pct = prirazkaZPole(o.prirazka_pct);
+    const nakup = cisloZPole(o.price);
+    return { prirazka_pct: pct, price: nakup, price_sell: pct != null && nakup > 0 ? Math.round(nakup * (1 + pct / 100) * 100) / 100 : cisloZPole(o.price_sell) };
+  };
 
   const save = async () => {
     if (!newP.name) return;
-    const spatne = neplatnaCisla(newP, [["Cena nákupní", "price"], ["Cena prodejní", "price_sell"], ["Počet na skladě", "stock"], ["Minimální stav", "minStock"]]);
+    const spatne = neplatnaCisla(newP, [["Cena nákupní", "price"], ["Cena prodejní", "price_sell"], ["Přirážka", "prirazka_pct"], ["Počet na skladě", "stock"], ["Minimální stav", "minStock"]]);
     if (spatne.length) { alert("Zkontroluj čísla: " + spatne.join(", ") + " (např. 1250 nebo 1250,50)."); return; }
     const emasImg = newP.image_url || (newP.emas_code ? `https://www.emas.cz/media/cache/product_image/img/product/${newP.emas_code}.jpg` : "");
     const { data: row, error } = await supabase.from("products").insert({
       name: newP.name, sku: newP.sku, category: newP.category,
-      price: cisloZPole(newP.price), price_sell: cisloZPole(newP.price_sell),
+      ...cenyZPrirazky(newP),
       stock: cisloZPole(newP.stock), min_stock: cisloZPole(newP.minStock),
       unit: newP.unit, emas_code: newP.emas_code, image_url: emasImg || "",
     }).select().single();
     if (error) { alert("Produkt se nepodařilo uložit: " + error.message); return; }
     if (row) setProducts([...products, { ...row, minStock: row.min_stock }]);
-    setNewP({ name: "", sku: "", category: "", price: "", price_sell: "", stock: "", minStock: "", unit: "ks", emas_code: "", image_url: "" });
+    setNewP({ name: "", sku: "", category: "", price: "", price_sell: "", prirazka_pct: "", stock: "", minStock: "", unit: "ks", emas_code: "", image_url: "" });
     setShowAddProduct(false);
   };
 
   const saveEdit = async () => {
     if (!editP) return;
     const emasImg = editP.image_url || (editP.emas_code ? `https://www.emas.cz/media/cache/product_image/img/product/${editP.emas_code}.jpg` : "");
-    const spatne = neplatnaCisla(editP, [["Cena nákupní", "price"], ["Cena prodejní", "price_sell"], ["Skladem", "stock"]]);
+    const spatne = neplatnaCisla(editP, [["Cena nákupní", "price"], ["Cena prodejní", "price_sell"], ["Přirážka", "prirazka_pct"], ["Skladem", "stock"]]);
     if (spatne.length) { alert("Zkontroluj čísla: " + spatne.join(", ") + " (např. 1250 nebo 1250,50)."); return; }
     const upd = {
       name: editP.name, sku: editP.sku, category: editP.category,
-      price: cisloZPole(editP.price), price_sell: cisloZPole(editP.price_sell),
+      ...cenyZPrirazky(editP),
       stock: cisloZPole(editP.stock), min_stock: cisloZPole(editP.min_stock ?? editP.minStock) ?? 0,
       unit: editP.unit, emas_code: editP.emas_code || "", image_url: emasImg || editP.image_url || "",
     };
@@ -4829,10 +4836,10 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
           </div>
           <div style={S.card}>
             <table style={S.table}>
-              <thead><tr>{["", "Produkt", "SKU", "Kat.", "Nákupní", "Prodejní", "Skladem", "Min.", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+              <thead><tr>{["", "Produkt", "SKU", "Kat.", "Nákupní", "Přirážka", "Prodejní", "Skladem", "Min.", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
               <tbody>
                 {visibleProducts.length === 0 && (
-                  <tr><td colSpan={9} style={{ ...S.td, textAlign: "center", color: "#64748b" }}>Žádný produkt neodpovídá hledání.</td></tr>
+                  <tr><td colSpan={10} style={{ ...S.td, textAlign: "center", color: "#64748b" }}>Žádný produkt neodpovídá hledání.</td></tr>
                 )}
                 {visibleProducts.map(p => {
                   const low = p.stock <= (p.minStock || p.min_stock || 0);
@@ -4849,6 +4856,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                       <td style={{ ...S.td, fontSize: 12, color: "#475569" }}>{p.sku}</td>
                       <td style={{ ...S.td, fontSize: 12, color: "#475569" }}>{p.category}</td>
                       <td style={S.td}>{fmtKc(p.price)}</td>
+                      <td style={{ ...S.td, fontSize: 12, color: p.prirazka_pct != null ? "#0369a1" : "#94a3b8", fontWeight: p.prirazka_pct != null ? 700 : 400 }}>{p.prirazka_pct != null ? `+${String(p.prirazka_pct).replace(".", ",")} %` : "výchozí"}</td>
                       <td style={{ ...S.td, color: "#F5821F", fontWeight: 600 }}>{p.price_sell ? fmtKc(p.price_sell) : "—"}</td>
                       <td style={S.td}><span style={{ ...S.tag(low ? "#ef4444" : "#16a34a"), fontWeight: 700 }}>{p.stock} {p.unit}</span></td>
                       <td style={{ ...S.td, fontSize: 12, color: "#64748b" }}>{p.minStock || p.min_stock || 0} {p.unit}</td>
@@ -5016,7 +5024,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
         <div style={S.modal}><div style={S.modalBox}>
           <ModalHeader title="Nový produkt" onClose={() => setShowAddProduct(false)} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {[["Název", "name"], ["SKU kód", "sku"], ["Kategorie", "category"], ["Jednotka", "unit"], ["Cena nákupní (Kč)", "price"], ["Cena prodejní (Kč)", "price_sell"], ["Počet na skladě", "stock"], ["Minimální stav", "minStock"]].map(([l, k]) => (
+            {[["Název", "name"], ["SKU kód", "sku"], ["Kategorie", "category"], ["Jednotka", "unit"], ["Cena nákupní (Kč)", "price"], ["Přirážka (%) — prázdné = výchozí", "prirazka_pct"], ["Cena prodejní (Kč) — z přirážky, když je vyplněná", "price_sell"], ["Počet na skladě", "stock"], ["Minimální stav", "minStock"]].map(([l, k]) => (
               <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={newP[k]} onChange={e => setNewP({ ...newP, [k]: e.target.value })} /></div>
             ))}
           </div>
@@ -5041,8 +5049,8 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
         <div style={S.modal}><div style={S.modalBox}>
           <ModalHeader title="Upravit produkt" onClose={() => setEditP(null)} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {[["Název", "name"], ["SKU kód", "sku"], ["Kategorie", "category"], ["Jednotka", "unit"], ["Cena nákupní (Kč)", "price"], ["Cena prodejní (Kč)", "price_sell"], ["Skladem", "stock"], ["Minimální stav", "min_stock"]].map(([l, k]) => (
-              <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={editP[k] || ""} onChange={e => setEditP({ ...editP, [k]: e.target.value })} /></div>
+            {[["Název", "name"], ["SKU kód", "sku"], ["Kategorie", "category"], ["Jednotka", "unit"], ["Cena nákupní (Kč)", "price"], ["Přirážka (%) — prázdné = výchozí", "prirazka_pct"], ["Cena prodejní (Kč) — z přirážky, když je vyplněná", "price_sell"], ["Skladem", "stock"], ["Minimální stav", "min_stock"]].map(([l, k]) => (
+              <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={editP[k] ?? ""} onChange={e => setEditP({ ...editP, [k]: e.target.value })} /></div>
             ))}
           </div>
           <div style={{ marginTop: 8, padding: "10px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>

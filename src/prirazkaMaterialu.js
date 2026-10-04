@@ -23,5 +23,12 @@ export async function ulozitPrirazku(pct) {
 
 export const sPrirazkou = (nakup, pct) => Math.round((Number(nakup) || 0) * (1 + (Number(pct) || 0) / 100) * 100) / 100;
 
-// Prodejní cena: vlastní prodejní cena produktu, jinak nákup + přirážka.
-export const prodejniCena = (produkt, nakup, pct) => (Number(produkt?.price_sell) > 0 ? Number(produkt.price_sell) : sPrirazkou(nakup, pct));
+// Přirážka položky (products.prirazka_pct), když ji má nastavenou; jinak null.
+export const prirazkaPolozky = (produkt) => (produkt?.prirazka_pct != null && produkt.prirazka_pct !== "" && Number.isFinite(Number(produkt.prirazka_pct)) ? Number(produkt.prirazka_pct) : null);
+
+// Prodejní cena: přirážka položky → vlastní prodejní cena položky → nákup + výchozí přirážka.
+export const prodejniCena = (produkt, nakup, pct) => {
+  const vlastni = prirazkaPolozky(produkt);
+  if (vlastni != null) return sPrirazkou(nakup, vlastni);
+  return Number(produkt?.price_sell) > 0 ? Number(produkt.price_sell) : sPrirazkou(nakup, pct);
+};
