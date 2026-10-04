@@ -14,6 +14,7 @@ import { NA_STAROSTI, naStarosti, umi, dovednost, seraditPodleDovednosti } from 
 import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import { PodkladyNahled, PodkladyFormular } from "./PodkladyZakazky.jsx";
 import PoleSNabidkou from "./PoleSNabidkou.jsx";
+import NaceneniRealizace from "./NaceneniRealizace.jsx";
 import { ulozitDoDokumentu, odkazNaDokumenty, zalozitSlozkuDokumenty } from "./dokumentyOneDrive.js";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
@@ -237,6 +238,7 @@ export default function Prubeh({
   const zavritDotaz = (vysledek) => { dotaz?.resolve(vysledek); setDotaz(null); };
   const [materialForm, setMaterialForm] = useState(null); // checklist materiálu: { zakId, polozky, sklad, zNabidky }
   const [uzavEmail, setUzavEmail] = useState(null); // uzavírací e-mail objednateli: { zakId, komu, predmet, text, sablona, nacitam, … }
+  const [reaForm, setReaForm] = useState(null); // id zakázky s otevřeným Naceněním realizace (REA)
   const fotoInput = useRef(null);
   const fotoCil = useRef(null);                       // { z, faze, ukol } pro vybrané soubory
   const vybranyRadek = rows.find((r) => r.id === vybrano);
@@ -1886,6 +1888,20 @@ export default function Prubeh({
   };
 
   // ── Vykreslení ──
+  const reaZak = reaForm && rows.find((x) => x.id === reaForm);
+  const reaEl = reaZak && (
+    <NaceneniRealizace
+      zak={reaZak} zakaznik={zakaznik(reaZak.customer_id)} kodZakazky={contractById(reaZak.contract_id)?.code || ""}
+      slozka={nazevSlozky(reaZak)} smiNastavit={smiNastavit} ja={ja}
+      onUlozit={(patch, poznamka) => uloz(reaZak, patch, poznamka)} onZavrit={() => setReaForm(null)}
+      zajistitZakazku={async (zk) => {
+        const id = await zajistitZakazku(zk);
+        if (id && !zk.contract_id) await uloz(zk, { contract_id: id });
+        return id;
+      }}
+      ukazHlasku={ukazHlasku}
+    />
+  );
   const hlaskaEl = hlaska && (
     <div role="status" onClick={() => setHlaska(null)} style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "#15803d", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, boxShadow: "0 6px 20px rgba(0,0,0,.2)", maxWidth: "90vw" }}>{hlaska}</div>
   );
@@ -1898,6 +1914,7 @@ export default function Prubeh({
     <div className="pr-wrap" style={{ background: "#f0f4f8", minHeight: "100vh", display: "flex", flexDirection: "column", gap: 16 }}>
       <style>{CSS}</style>
       {hlaskaEl}
+      {reaEl}
       <style>{`
         .pr-pruvodce, .pr-pruvodce-mini { bottom: 16px; }
         .pr-panacek:hover { transform: scale(1.06); }
@@ -2611,7 +2628,7 @@ export default function Prubeh({
                   return [nadpisCasti, (
                     <div key={u.id} style={{ borderTop: i && !nadpisCasti ? "1px solid #f1f5f9" : "none", background: hot ? "#fff" : "#fffbeb" }}>
                       <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", fontSize: 14, cursor: zAuto ? "default" : "pointer", flexWrap: "wrap" }}>
-                        <input type="checkbox" checked={hot} disabled={!!zAuto} onChange={() => (u.material && !hot ? otevritMaterial(z) : toggleUkol(z, f, u))} style={{ width: 18, height: 18, accentColor: s.barva }} />
+                        <input type="checkbox" checked={hot} disabled={!!zAuto} onChange={() => (u.material && !hot ? otevritMaterial(z) : u.naceneniRea && z.typ === "REA" && !hot ? setReaForm(z.id) : toggleUkol(z, f, u))} style={{ width: 18, height: 18, accentColor: s.barva }} />
                         <span style={{ flex: "1 1 0%", minWidth: 0, fontWeight: hot ? 400 : 700 }}>{u.text}</span>
                         {zAuto && <span style={{ fontSize: 11, color: "#64748b" }}>{u.udaje ? "vyplněno" : "z nabídky"}</span>}
                         {u.brana && <span title="Podmínka brány" style={{ fontSize: 11, color: "#15803d", fontWeight: 700 }}>brána</span>}
@@ -2633,6 +2650,11 @@ export default function Prubeh({
                         {u.material && (
                           <button type="button" style={tlAkce} onClick={(e) => akce(e, () => otevritMaterial(z))}>
                             📦 Checklist materiálu{(z.material || []).length ? ` (${z.material.length})` : ""}
+                          </button>
+                        )}
+                        {u.naceneniRea && z.typ === "REA" && (
+                          <button type="button" style={tlAkce} onClick={(e) => akce(e, () => setReaForm(z.id))}>
+                            💰 {z.naceneni_rea?.invoice_number ? `Faktura ${z.naceneni_rea.invoice_number}` : "Nacenění a faktura"}
                           </button>
                         )}
                         {u.email && (
@@ -2667,6 +2689,12 @@ export default function Prubeh({
                         </div>
                       )}
 
+                      {u.naceneniRea && z.typ === "REA" && z.naceneni_rea && (
+                        <div style={{ padding: "0 12px 10px 40px", fontSize: 13, color: "#475569" }}>
+                          {z.naceneni_rea.varianta === "excel" ? "📊 Kalkulace v Excelu" : "📋 Ceník podle skutečnosti"}
+                          {z.naceneni_rea.invoice_number ? <> · <b style={{ color: "#15803d" }}>faktura {z.naceneni_rea.invoice_number}</b> ({fmtKc(z.naceneni_rea.vyfakturovano)} bez DPH)</> : " · rozpracováno"}
+                        </div>
+                      )}
                       {u.material && (z.material || []).length > 0 && (() => {
                         const sm = souhrnMaterialu(z.material);
                         return (

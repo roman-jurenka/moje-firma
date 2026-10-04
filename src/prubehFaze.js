@@ -104,7 +104,8 @@ const ZAKLAD_FAZI = [
     { id: "email", text: "Uzavírací e-mail odeslaný", brana: true, email: true },
   ] },
   { id: "vyuctovani", sekce: "uz", nazev: "Vyúčtování", ukoly: [
-    { id: "faktura", text: "Konečná faktura vystavená" },
+    // u REA tlačítko Nacenění realizace (Excel / ceník podle skutečnosti) → faktura
+    { id: "faktura", text: "Konečná faktura vystavená", naceneniRea: true },
     { id: "zaplaceno", text: "Doplatek zaplacený", brana: true },
   ] },
   { id: "archiv", sekce: "uz", nazev: "Archiv", ukoly: [
@@ -130,7 +131,7 @@ export function pouzijNastaveni(nastaveni) {
     const ukoly = Array.isArray(u.ukoly) && u.ukoly.length
       ? u.ukoly.filter((x) => String(x.text || "").trim()).map((x) => {
         const z = f.ukoly.find((b) => b.id === x.id);
-        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, cast: z.cast, jenTypy: z.jenTypy, krome: z.krome, ...x } : x;
+        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, naceneniRea: z.naceneniRea, cast: z.cast, jenTypy: z.jenTypy, krome: z.krome, ...x } : x;
       })
       : f.ukoly;
     return {
