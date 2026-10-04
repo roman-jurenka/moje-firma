@@ -134,9 +134,12 @@ function SearchSelect({ options, value, onChange, placeholder = "— vyberte —
     return () => document.removeEventListener("mousedown", h);
   }, []);
   const selected = options.find(o => String(o.id) === String(value));
-  const words = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  // bez ohledu na velikost písmen a diakritiku („si“ najde i „Šindelář“);
+  // o.hledat = další text k prohledání (kód zakázky, zákazník…)
+  const bezDiakritiky = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const words = bezDiakritiky(q).trim().split(/\s+/).filter(Boolean);
   const filtered = words.length === 0 ? options : options.filter(o => {
-    const label = (o.label || "").toLowerCase();
+    const label = bezDiakritiky(`${o.label || ""} ${o.hledat || ""}`);
     return words.every(w => label.includes(w));
   });
   return (
@@ -160,6 +163,7 @@ function SearchSelect({ options, value, onChange, placeholder = "— vyberte —
               style={{ padding: "8px 12px", fontSize: 13, color: "#1A1A1A", cursor: "pointer", background: String(o.id) === String(value) ? "#eff6ff" : "transparent" }}
               onMouseDown={e => e.preventDefault()}>
               {o.label}
+              {o.popis && <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>{o.popis}</div>}
             </div>
           ))}
         </div>
@@ -1668,7 +1672,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {tab === "attendance" && <Attendance
           currentUser={currentUser} attendance={attendance} setAttendance={setAttendance}
-          employees={employees} contracts={contracts} products={products} setTab={setTab}
+          employees={employees} contracts={contracts} products={products} setTab={setTab} customers={customers}
         />}
 
         {tab === "podpisy" && <PodpisyModule employees={employees} currentUser={currentUser} />}
@@ -7732,7 +7736,7 @@ const getWeekDates = () => {
 
 // ─── DOCHÁZKA ─────────────────────────────────────────────────────────────────
 
-function Attendance({ currentUser, attendance, setAttendance, employees, contracts, products, setTab }) {
+function Attendance({ currentUser, attendance, setAttendance, employees, contracts, products, setTab, customers = [] }) {
   const isHR = ["admin", "hr", "manager"].includes(currentUser.role);
   const [viewEmpId, setViewEmpId] = useState(currentUser.employeeId);
   // Tvrdý zámek — zaměstnanec vidí vždy jen sebe
@@ -7841,13 +7845,22 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     }
     supabase.from("projects").select("id, name").order("name").then(({ data }) => { if (data) setProjects(data); });
     supabase.from("vehicles").select("*").order("name").then(({ data }) => setAttVehicles(data || []));
-    supabase.from("contracts").select("id, name").order("name").then(({ data }) => setAttLocalContracts(data || []));
+    supabase.from("contracts").select("id, name, code, status, customer_id").order("name").then(({ data }) => setAttLocalContracts(data || []));
     supabase.from("attendance_block_templates").select("*").order("name").then(({ data }) => setBlockTemplates(data || []));
     supabase.from("harmonogram").select("*").order("date", { ascending: false }).then(({ data }) => setHarmonogramRecs(data || []));
   }, []);
 
   const contractOpts = (contracts && contracts.length > 0) ? contracts : attLocalContracts;
-  const activeContractOpts = contractOpts.filter(c => !c.status || c.status === "Nová" || c.status === "Probíhá");
+  // Otevřené zakázky (do nových záznamů); v historii jsou všechny, otevřené nahoře.
+  const OTEVRENE_STAVY = ["Nová", "Probíhá", "Aktivní"];
+  const jeOtevrena = (c) => !c.status || OTEVRENE_STAVY.includes(c.status);
+  const activeContractOpts = contractOpts.filter(jeOtevrena);
+  const zakazkaOpt = (c) => {
+    const zak = customers.find(x => x.id === c.customer_id);
+    const jmeno = zak?.company || zak?.name;
+    return { id: c.id, label: c.name, popis: [c.code, jmeno, c.status].filter(Boolean).join(" · "), hledat: [c.code, zak?.name, zak?.company].filter(Boolean).join(" ") };
+  };
+  const historieContractOpts = [...contractOpts].sort((a, b) => Number(jeOtevrena(b)) - Number(jeOtevrena(a))).map(zakazkaOpt);
 
   // Připomenutí odsouhlasit docházku za předchozí měsíc — jen pro vlastního
   // zaměstnance, admin zámek/podpis netýká.
@@ -8367,7 +8380,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             </div>
             <label style={S.label}>Zakázka</label>
             <SearchSelect
-              options={activeContractOpts.map(c => ({ id: c.id, label: c.name }))}
+              options={activeContractOpts.map(zakazkaOpt)}
               value={todayRecord?.contract_id || ciContractId}
               placeholder="— bez zakázky — (piš pro hledání)"
               onChange={async val => {
@@ -8413,7 +8426,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 <input type="number" style={S.input} placeholder="např. 12450" value={ciKmStart} onChange={e => setCiKmStart(e.target.value)} />
                 <label style={S.label}>Zakázka jízdy (volitelné)</label>
                 <SearchSelect
-                  options={activeContractOpts.map(c => ({ id: c.id, label: c.name }))}
+                  options={activeContractOpts.map(zakazkaOpt)}
                   value={ciTripContractId}
                   placeholder="— bez zakázky — (piš pro hledání)"
                   onChange={val => setCiTripContractId(val)} />
@@ -8436,7 +8449,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 <label style={S.label}>Zakázka</label>
                 <SearchSelect
                   style={{ marginBottom: 0 }}
-                  options={activeContractOpts.map(c => ({ id: c.id, label: c.name }))}
+                  options={activeContractOpts.map(zakazkaOpt)}
                   value={manualContractId}
                   placeholder="— bez zakázky — (piš pro hledání)"
                   onChange={val => setManualContractId(val)} />
@@ -8524,7 +8537,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                     <label style={{ ...S.label, fontSize: 11 }}>Zakázka</label>
                     <SearchSelect
                       style={{ marginBottom: 0 }}
-                      options={activeContractOpts.map(c => ({ id: c.id, label: c.name }))}
+                      options={activeContractOpts.map(zakazkaOpt)}
                       value={tlContractId}
                       placeholder="— bez zakázky —"
                       onChange={val => setTlContractId(val)} />
@@ -8694,7 +8707,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                         <td style={S.td}>
                           <SearchSelect
                             style={{ marginBottom: 0, minWidth: 160 }}
-                            options={contractOpts.map(c => ({ id: c.id, label: c.name }))}
+                            options={historieContractOpts}
                             value={rec.contract_id || ""}
                             placeholder="—"
                             onChange={async val => {
