@@ -165,6 +165,12 @@ const STATUS_COLORS = {
 };
 
 // Barevný indikátor: zelená=ušetřili, oranžová=přesně, červená=přesáhli
+// U zakázek REA (jen realizace) je cena zakázky součet všech rozpočtů
+// (práce, materiál, doprava + vícepráce, vícemateriál, vícedoprava).
+const POLE_ROZPOCTU = ["budget_prace", "budget_material", "budget_doprava", "budget_vice_prace", "budget_vice_material", "budget_vice_doprava"];
+const soucetRozpoctu = (c) => POLE_ROZPOCTU.reduce((s, k) => s + (Number(c?.[k]) || 0), 0);
+const cenaZRozpoctu = (typ) => typ === "REA";
+
 function budgetColor(actual, budget) {
   if (budget <= 0) return null;
   if (actual < budget - 1) return "#34d399"; // zelená
@@ -507,7 +513,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       type:        form.type || null,
       name:        form.name,
       status:      form.status,
-      price:       Number(form.price) || 0,
+      price:       cenaZRozpoctu(form.type)
+        ? [form.budgetPrace, form.budgetMaterial, form.budgetDoprava, form.budgetVicePrace, form.budgetViceMaterial, form.budgetViceDoprava].reduce((s, v) => s + (Number(v) || 0), 0)
+        : Number(form.price) || 0,
       notes:       form.notes,
       address:     form.address || "",
       contacts_info: JSON.stringify(siteContacts),
@@ -706,12 +714,16 @@ export default function Contracts({ customers, employees, currentUser, initialDe
 
   // ── Update budget zakázky ──
   async function updateBudget(contractId, field, newVal, oldVal) {
-    await supabase.from("contracts").update({ [field]: Number(newVal) }).eq("id", contractId);
+    const puvodni = contracts.find(c => c.id === contractId);
+    const patch = { [field]: Number(newVal) };
+    if (cenaZRozpoctu(puvodni?.type)) patch.price = soucetRozpoctu({ ...puvodni, ...patch });
+    await supabase.from("contracts").update(patch).eq("id", contractId);
     await supabase.from("contract_budget_history").insert({
       contract_id: contractId, section: field,
       old_value: oldVal, new_value: Number(newVal), note: "",
     });
-    setContracts(contracts.map(c => c.id === contractId ? { ...c, [field]: Number(newVal) } : c));
+    if (patch.price != null) await supabase.from("zakazky_prubeh").update({ hodnota: patch.price }).eq("contract_id", contractId);
+    setContracts(contracts.map(c => c.id === contractId ? { ...c, ...patch } : c));
   }
 
   // ── Update status zakázky ──
@@ -775,11 +787,12 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       code:        form.code,
       type:        form.type || null,
       customer_id: Number(form.customerId) || null,
-      price:       Number(form.price) || 0,
+      price:       cenaZRozpoctu(form.type) ? soucetRozpoctu(contracts.find(c => c.id === form.id)) : Number(form.price) || 0,
       address:     form.address || "",
       notes:       form.notes || "",
     };
     await supabase.from("contracts").update(upd).eq("id", form.id);
+    if (cenaZRozpoctu(form.type)) await supabase.from("zakazky_prubeh").update({ hodnota: upd.price }).eq("contract_id", form.id);
     setContracts(prev => prev.map(c => c.id === form.id ? { ...c, ...upd } : c));
     closeModal();
   }
@@ -2159,7 +2172,14 @@ function NewContractModal({ customers, deal, currentUser, onSave, onClose }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
             <label style={S.label}>Cena zakázky (Kč)</label>
-            <input style={S.input} type="number" value={f.price} onChange={e => set("price", e.target.value)} />
+            {cenaZRozpoctu(f.type) ? (
+              <div style={{ ...S.input, background: "#f1f5f9", fontWeight: 700 }} title="U zakázek REA je cena součet všech rozpočtů níže">
+                {[f.budgetPrace, f.budgetMaterial, f.budgetDoprava, f.budgetVicePrace, f.budgetViceMaterial, f.budgetViceDoprava].reduce((s, v) => s + (Number(v) || 0), 0).toLocaleString("cs-CZ")} Kč
+                <span style={{ fontWeight: 400, fontSize: 11, color: "#64748b" }}> = součet rozpočtů</span>
+              </div>
+            ) : (
+              <input style={S.input} type="number" value={f.price} onChange={e => set("price", e.target.value)} />
+            )}
           </div>
           <div>
             <label style={S.label}>Stav</label>
@@ -2861,7 +2881,14 @@ function EditContractModal({ contract, customers, onSave, onClose }) {
         </select>
 
         <label style={S.label}>Cena zakázky (Kč)</label>
-        <input style={S.input} type="number" value={f.price} onChange={e => set("price", e.target.value)} />
+        {cenaZRozpoctu(f.type) ? (
+          <div style={{ ...S.input, background: "#f1f5f9", fontWeight: 700 }}>
+            {soucetRozpoctu(contract).toLocaleString("cs-CZ")} Kč
+            <span style={{ fontWeight: 400, fontSize: 11, color: "#64748b" }}> = součet všech rozpočtů (mění se v záložce rozpočtu zakázky)</span>
+          </div>
+        ) : (
+          <input style={S.input} type="number" value={f.price} onChange={e => set("price", e.target.value)} />
+        )}
 
         <label style={S.label}>Adresa místa výkonu</label>
         <input style={S.input} value={f.address} onChange={e => set("address", e.target.value)} placeholder="Ulice 123, Praha" />
