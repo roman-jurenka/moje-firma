@@ -1893,6 +1893,8 @@ export default function Prubeh({
   const slozkaZak = slozkaOkno && rows.find((x) => x.id === slozkaOkno);
   const slozkaEl = slozkaZak && (
     <SlozkaZakazky zak={slozkaZak} slozka={nazevSlozky(slozkaZak)} fotky={fotkyZ[slozkaZak.id] || []}
+      nazevNabidky={slozkaZak.quote_id ? quoteById(slozkaZak.quote_id)?.name : null}
+      onDohrat={(p) => nahratZnovu(slozkaZak.id, p)}
       onZavrit={() => setSlozkaOkno(null)}
       onFotka={(i) => { setSlozkaOkno(null); setProhlizec({ fotky: fotkyZ[slozkaZak.id] || [], i }); }}
       onVsechnyFotky={() => { setSlozkaOkno(null); setTimeout(() => document.getElementById("pr-fotky-karta")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />

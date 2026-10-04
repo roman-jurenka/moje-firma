@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase.js";
 import { OneDriveThumb } from "./storageUrl.jsx";
-import { seznamDokumentu, odkazNaDokumenty } from "./dokumentyOneDrive.js";
+import { seznamDokumentu, odkazNaDokumenty, ulozitDoDokumentu } from "./dokumentyOneDrive.js";
 import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js";
 import { pocetFotekText } from "./fotkyZakazky.js";
 
@@ -17,7 +17,10 @@ const datum = (iso) => (iso ? new Date(iso).toLocaleDateString("cs-CZ", { day: "
 const velikost = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(b / 1024))} kB`);
 const ikonaSouboru = (n) => (/\.(docx?|odt)$/i.test(n) ? "📝" : /\.(xlsx?|xlsm|csv)$/i.test(n) ? "📊" : /\.pdf$/i.test(n) ? "📕" : /\.html?$/i.test(n) ? "🌐" : /\.(jpe?g|png|heic|webp)$/i.test(n) ? "🖼" : "📄");
 
-export default function SlozkaZakazky({ zak, slozka, fotky, onZavrit, onFotka, onVsechnyFotky }) {
+// onDohrat({ druh, cislo? }) → Promise<boolean>: znovu vytvoří smlouvu / protokol / dodatek a nahraje ho.
+export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavrit, onFotka, onVsechnyFotky, onDohrat }) {
+  const [nahravam, setNahravam] = useState({}); // { [klíč řádku]: true }
+  const [vysledek, setVysledek] = useState(null); // { text, chyba }
   const [nabidky, setNabidky] = useState(zak.quote_id ? null : []);
   const [od, setOd] = useState({ stav: isConnected() ? "nacitam" : "nepripojeno", soubory: [] });
 
@@ -74,18 +77,50 @@ export default function SlozkaZakazky({ zak, slozka, fotky, onZavrit, onFotka, o
   const d = zak.dokumenty || {};
   const ceka = d.onedriveCeka || [];
   const radky = [
-    ...(nabidky || []).map((n) => ({ key: `n${n.id}`, ikona: "💰", text: `Nabídka ${n.cislo || ""} — odeslaná`, kdy: n.created_at, url: n.onedrive_url, chyba: !n.onedrive_url && n.onedrive_chyba })),
-    d.smlouva && { key: "smlouva", ikona: "📝", text: "Smlouva o dílo", kdy: d.smlouva.at, url: d.smlouva.onedrive, chyba: ceka.some((c) => c.id === "smlouva") },
-    ...(d.dodatky || []).map((x) => ({ key: `d${x.cislo}`, ikona: "📎", text: `Dodatek č. ${x.cislo}${x.popis ? ` — ${x.popis}` : ""}`, kdy: x.at, url: x.onedrive, chyba: ceka.some((c) => c.id === `dodatek-${x.cislo}`) })),
-    d.protokol && { key: "protokol", ikona: "✅", text: "Předávací protokol", kdy: d.protokol.at, url: d.protokol.onedrive, chyba: ceka.some((c) => c.id === "protokol") },
-    zak.naceneni_rea?.excel?.soubor && { key: "rea", ikona: "📊", text: `Kalkulace realizace — ${zak.naceneni_rea.excel.soubor}`, kdy: zak.naceneni_rea.upraveno, url: zak.naceneni_rea.excel.onedrive, chyba: !zak.naceneni_rea.excel.onedrive },
+    ...(nabidky || []).map((n) => ({ key: `n${n.id}`, ikona: "💰", text: `Nabídka ${n.cislo || ""} — odeslaná`, kdy: n.created_at, url: n.onedrive_url, chyba: !n.onedrive_url && n.onedrive_chyba, dohrat: { nabidka: n } })),
+    d.smlouva && { key: "smlouva", ikona: "📝", text: "Smlouva o dílo", kdy: d.smlouva.at, url: d.smlouva.onedrive, chyba: ceka.some((c) => c.id === "smlouva"), dohrat: { druh: "smlouva", soubor: d.smlouva.soubor } },
+    ...(d.dodatky || []).map((x) => ({ key: `d${x.cislo}`, ikona: "📎", text: `Dodatek č. ${x.cislo}${x.popis ? ` — ${x.popis}` : ""}`, kdy: x.at, url: x.onedrive, chyba: ceka.some((c) => c.id === `dodatek-${x.cislo}`), dohrat: { druh: "dodatek", cislo: x.cislo, soubor: x.soubor } })),
+    d.protokol && { key: "protokol", ikona: "✅", text: "Předávací protokol", kdy: d.protokol.at, url: d.protokol.onedrive, chyba: ceka.some((c) => c.id === "protokol"), dohrat: { druh: "protokol", soubor: d.protokol.soubor } },
+    zak.naceneni_rea?.excel?.soubor && { key: "rea", ikona: "📊", text: `Kalkulace realizace — ${zak.naceneni_rea.excel.soubor}`, kdy: zak.naceneni_rea.upraveno, url: zak.naceneni_rea.excel.onedrive, chyba: !zak.naceneni_rea.excel.onedrive, poznamka: "nahraj znovu v Nacenění realizace" },
     zak.naceneni_rea?.invoice_number && { key: "fa", ikona: "🧾", text: `Konečná faktura ${zak.naceneni_rea.invoice_number}`, kdy: zak.naceneni_rea.upraveno, url: null, vAppce: "ve Fakturaci" },
   ].filter(Boolean);
+  const kDohrani = radky.filter((r) => !r.url && r.dohrat);
+
+  // Odeslaná nabídka: kopie HTML z appky → Dokumenty na OneDrivu
+  const dohratNabidku = async (n) => {
+    const { data, error } = await supabase.from("nabidky_odeslane").select("html").eq("id", n.id).maybeSingle();
+    if (error || !data) throw new Error(error?.message || "kopie nabídky nenalezena");
+    const res = await ulozitDoDokumentu(slozka, `Nabídka ${n.cislo || ""} ${nazevNabidky || zak.nazev || ""}.html`.replace(/\s+/g, " "), new Blob([data.html], { type: "text/html" }), "text/html");
+    const url = res?.webUrl || null;
+    await supabase.from("nabidky_odeslane").update({ onedrive_url: url, onedrive_chyba: url ? null : "OneDrive není připojený" }).eq("id", n.id);
+    if (url) setNabidky((ns) => ns.map((x) => (x.id === n.id ? { ...x, onedrive_url: url, onedrive_chyba: null } : x)));
+    return !!url;
+  };
+  const dohrat = async (seznam) => {
+    if (!isConnected()) {
+      try { await connectSharedAccount(); } catch { /* bez OneDrivu */ }
+      if (!isConnected()) { setVysledek({ chyba: true, text: "OneDrive není připojený — připoj ho (Nastavení → OneDrive) a zkus to znovu." }); return; }
+    }
+    setVysledek(null);
+    setNahravam((m) => ({ ...m, ...Object.fromEntries(seznam.map((r) => [r.key, true])) }));
+    let ok = 0, chyba = "";
+    for (const r of seznam) {
+      try {
+        if (await (r.dohrat.nabidka ? dohratNabidku(r.dohrat.nabidka) : onDohrat(r.dohrat))) ok++;
+        else chyba = chyba || "nahrání se nepovedlo";
+      } catch (e) { chyba = e.message || String(e); }
+      setNahravam((m) => { const x = { ...m }; delete x[r.key]; return x; });
+    }
+    setVysledek(ok === seznam.length
+      ? { chyba: false, text: `✓ Nahráno na OneDrive do složky Dokumenty: ${ok} ${ok === 1 ? "dokument" : ok < 5 ? "dokumenty" : "dokumentů"}.` }
+      : { chyba: true, text: `Nahráno ${ok} z ${seznam.length}. Důvod: ${chyba}` });
+    nactiSoubory();
+  };
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="slozka-titulek" onClick={(e) => { if (e.target === e.currentTarget) onZavrit(); }}
       style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 9000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
-      <div style={{ background: "#f8fafc", borderRadius: 16, width: "100%", maxWidth: 720, padding: 18, boxShadow: "0 20px 50px rgba(0,0,0,.3)", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ textAlign: "left", background: "#f8fafc", borderRadius: 16, width: "100%", maxWidth: 720, padding: 18, boxShadow: "0 20px 50px rgba(0,0,0,.3)", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
             <div id="slozka-titulek" style={{ fontSize: 18, fontWeight: 800 }}>📁 Složka zakázky</div>
@@ -140,7 +175,17 @@ export default function SlozkaZakazky({ zak, slozka, fotky, onZavrit, onFotka, o
 
         {/* Dokumenty v appce */}
         <div style={karta}>
-          <div style={nadpis}><span>📄 Dokumenty zakázky</span></div>
+          <div style={nadpis}>
+            <span>📄 Dokumenty zakázky</span>
+            {kDohrani.length > 1 && (
+              <button type="button" style={{ ...btnGhost, borderColor: "#93c5fd", color: "#0369a1" }} disabled={Object.keys(nahravam).length > 0} onClick={() => dohrat(kDohrani)}>
+                ☁️ Dohrát vše na OneDrive ({kDohrani.length})
+              </button>
+            )}
+          </div>
+          {vysledek && (
+            <div role={vysledek.chyba ? "alert" : "status"} style={{ marginBottom: 8, borderRadius: 8, padding: "7px 10px", fontSize: 13, background: vysledek.chyba ? "#fef2f2" : "#f0fdf4", color: vysledek.chyba ? "#991b1b" : "#166534" }}>{vysledek.text}</div>
+          )}
           {nabidky === null ? <div style={{ fontSize: 13, color: "#64748b" }}>Načítám…</div>
             : !radky.length ? <div style={{ fontSize: 13, color: "#94a3b8" }}>Zatím žádné dokumenty (nabídka, smlouva, dodatek, protokol).</div>
               : radky.map((r) => (
@@ -149,7 +194,14 @@ export default function SlozkaZakazky({ zak, slozka, fotky, onZavrit, onFotka, o
                   <span style={{ flex: 1, minWidth: 160 }}>{r.text}{r.kdy && <span style={{ color: "#94a3b8", fontSize: 12 }}> · {datum(r.kdy)}</span>}</span>
                   {r.url ? <a href={r.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 700, color: "#0369a1" }}>☁️ Otevřít</a>
                     : r.vAppce ? <span style={{ fontSize: 12, color: "#64748b" }}>{r.vAppce}</span>
-                      : <span style={{ fontSize: 12, fontWeight: 700, color: r.chyba ? "#b91c1c" : "#94a3b8" }}>{r.chyba ? "⚠ neuloženo na OneDrive" : "jen v appce"}</span>}
+                      : <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: r.chyba ? "#b91c1c" : "#94a3b8" }}>{r.chyba ? "⚠ neuloženo na OneDrive" : "jen v appce"}</span>
+                        {r.dohrat ? (
+                          <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 12, borderColor: "#93c5fd", color: "#0369a1" }} disabled={!!nahravam[r.key]} onClick={() => dohrat([r])}>
+                            {nahravam[r.key] ? "Nahrávám…" : "☁️ Dohrát na OneDrive"}
+                          </button>
+                        ) : r.poznamka && <span style={{ fontSize: 12, color: "#64748b" }}>({r.poznamka})</span>}
+                      </span>}
                 </div>
               ))}
         </div>

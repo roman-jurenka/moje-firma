@@ -229,7 +229,7 @@ export default function NaceneniRealizace({ zak, zakaznik, kodZakazky, slozka, s
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="rea-titulek" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 9000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
-      <div style={{ background: "#f8fafc", borderRadius: 16, width: "100%", maxWidth: 760, padding: 18, boxShadow: "0 20px 50px rgba(0,0,0,.3)", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ textAlign: "left", background: "#f8fafc", borderRadius: 16, width: "100%", maxWidth: 760, padding: 18, boxShadow: "0 20px 50px rgba(0,0,0,.3)", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
             <div id="rea-titulek" style={{ fontSize: 18, fontWeight: 800 }}>💰 Nacenění realizace → faktura</div>
