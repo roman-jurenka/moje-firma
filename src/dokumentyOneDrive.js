@@ -35,12 +35,16 @@ export async function odkazNaDokumenty(nazevZakazky) {
   return odkazNaSlozku(slozkaDokumentu(nazevZakazky));
 }
 
-// Soubory ve složce Dokumenty zakázky: { existuje, soubory };
+// Stav složek zakázky a soubory ve složce Dokumenty:
+// { zakazka, dokumenty, soubory } (zakazka/dokumenty = složka existuje);
 // null, když OneDrive není připojený.
 export async function seznamDokumentu(nazevZakazky) {
   if (!isConnected()) return null;
-  const soubory = await seznamSlozky(slozkaDokumentu(nazevZakazky));
-  return { existuje: soubory !== null, soubory: soubory || [] };
+  const podslozky = await seznamSlozky(`FirmaCRM/Zakázky/${bezpecnyNazev(nazevZakazky)}`);
+  const zakazka = podslozky !== null;
+  const dokumenty = zakazka && podslozky.some((x) => x.folder && x.name === "Dokumenty");
+  const soubory = dokumenty ? (await seznamSlozky(slozkaDokumentu(nazevZakazky))) || [] : [];
+  return { zakazka, dokumenty, soubory };
 }
 
 // Založí složku zakázky s podsložkami Fotky a Dokumenty (Dokumenty založí
