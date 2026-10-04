@@ -15,6 +15,7 @@ import RychlaObrazovka, { PracePruh } from "./RychlaObrazovka.jsx";
 import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum, cisloFaktury } from "./invoicingUtils.js";
+import FrontaFaktur from "./FrontaFaktur.jsx";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
@@ -1592,7 +1593,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {/* ── FAKTURACE ── */}
         {tab === "invoices" && <Invoices
-          invoices={invoices} setInvoices={setInvoices} customers={customers}
+          invoices={invoices} setInvoices={setInvoices} customers={customers} currentUser={currentUser}
           contracts={contracts} costEntries={costEntries} setCostEntries={setCostEntries}
           modal={modal} setModal={setModal} closeModal={closeModal}
         />}
@@ -3998,7 +3999,13 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
 
 // ─── FAKTURACE ────────────────────────────────────────────────────────────────
 
-function Invoices({ invoices, setInvoices, customers, contracts, costEntries, setCostEntries, modal, setModal, closeModal }) {
+function Invoices({ invoices, setInvoices, customers, contracts, costEntries, setCostEntries, modal, setModal, closeModal, currentUser }) {
+  // Fronta přiřazování faktur (invoice_queue) — počet čekajících na záložce
+  const [pocetFronta, setPocetFronta] = useState(0);
+  useEffect(() => {
+    supabase.from("invoice_queue").select("id", { count: "exact", head: true }).in("status", ["nova", "castecne_prirazena"])
+      .then(({ count }) => setPocetFronta(count || 0));
+  }, []);
   const [invTab, setInvTab] = useState("vydané");
   const [invSearch, setInvSearch] = useState("");
   const [invStatusFilter, setInvStatusFilter] = useState("Vše");
@@ -4254,16 +4261,21 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
         <div>
           <h1 style={S.h1}>Fakturace & účetnictví</h1>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            {["vydané", "přijaté"].map(t => (
+            {["vydané", "přijaté", "fronta"].map(t => (
               <button key={t} onClick={() => setInvTab(t)}
                 style={{ ...S.btn(invTab === t ? "#0369a1" : "#e2e8f0"), color: invTab === t ? "#fff" : "#475569", padding: "6px 18px", fontSize: 12, textTransform: "capitalize" }}>
-                {t === "vydané" ? "📤 Vydané" : "📥 Přijaté"}
+                {t === "vydané" ? "📤 Vydané" : t === "přijaté" ? "📥 Přijaté" : <>🧾 Fronta k přiřazení{pocetFronta > 0 && <span style={{ marginLeft: 6, background: "#dc2626", color: "#fff", borderRadius: 999, padding: "0 7px", fontSize: 11 }}>{pocetFronta}</span>}</>}
               </button>
             ))}
           </div>
         </div>
         <button style={S.btn()} onClick={() => setModal({ type: "newInvoiceFlow" })}>+ Nová faktura</button>
       </div>
+
+      {invTab === "fronta" && (
+        <FrontaFaktur contracts={contracts} customers={customers} currentUser={currentUser} onZmenaPoctu={setPocetFronta} />
+      )}
+      {invTab !== "fronta" && <>
 
       {/* Souhrn — Zaplaceno/Čeká se vztahují k právě zobrazené záložce (vydané
           nebo přijaté), pohledávky/závazky po splatnosti jsou vidět vždy obě,
@@ -4504,6 +4516,8 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
           </table>
         </div>
       )}
+
+      </>}
 
       {modal?.type === "newInvoiceFlow" && (
         <InvoiceCreateFlow customers={customers} contracts={contracts} costEntries={costEntries}
