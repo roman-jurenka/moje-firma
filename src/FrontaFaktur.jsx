@@ -184,6 +184,48 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     setPracuji((m) => { const x = { ...m }; delete x[it.id]; return x; });
     await nacist();
   };
+  // Změna přiřazení u potvrzené (nebo zamítnuté) řádky: vrátí, co se zapsalo
+  // (smaže náklad zakázky / vrátí příjem na sklad) a řádka jde přiřadit znovu.
+  const [zmena, setZmena] = useState(null); // { f, it } — potvrzení v appce
+  const zmenitPrirazeni = async ({ f, it }) => {
+    setPracuji((m) => ({ ...m, [it.id]: true }));
+    setZprava(null);
+    try {
+      if (it.cost_entry_id) {
+        const { data: naklad } = await supabase.from("contract_cost_entries").select("id, billed").eq("id", it.cost_entry_id).maybeSingle();
+        if (naklad?.billed) throw new Error("náklad už je na zakázce vyfakturovaný — nejdřív ho v zakázce vrať z fakturace");
+        if (naklad) {
+          // nejdřív odpojit odkaz (cizí klíč), pak smazat náklad
+          await supabase.from("invoice_queue_items").update({ cost_entry_id: null }).eq("id", it.id);
+          const { error } = await supabase.from("contract_cost_entries").delete().eq("id", naklad.id);
+          if (error) { await supabase.from("invoice_queue_items").update({ cost_entry_id: naklad.id }).eq("id", it.id); throw error; }
+        }
+      }
+      if (it.warehouse_movement_id) {
+        const { data: pohyb } = await supabase.from("warehouse_movements").select("id, product_name, quantity").eq("id", it.warehouse_movement_id).maybeSingle();
+        if (pohyb) {
+          const { data: prod } = await supabase.from("products").select("id, stock").ilike("name", pohyb.product_name).maybeSingle();
+          await supabase.from("invoice_queue_items").update({ warehouse_movement_id: null }).eq("id", it.id);
+          const { error } = await supabase.from("warehouse_movements").delete().eq("id", pohyb.id);
+          if (error) { await supabase.from("invoice_queue_items").update({ warehouse_movement_id: pohyb.id }).eq("id", it.id); throw error; }
+          if (prod) await supabase.from("products").update({ stock: Math.max(0, Math.round((Number(prod.stock) || 0) - (Number(pohyb.quantity) || 0))) }).eq("id", prod.id);
+        }
+      }
+      const { error } = await supabase.from("invoice_queue_items").update({
+        status: "navrh", assigned_contract_id: null, assigned_to_sklad: false, cost_entry_id: null, warehouse_movement_id: null,
+      }).eq("id", it.id);
+      if (error) throw error;
+      // výběr předvyplnit tím, co bylo přiřazené
+      setVolby((m) => ({ ...m, [it.id]: { ...(m[it.id] || { typ: "materiál" }), cil: it.assigned_to_sklad ? "sklad" : it.assigned_contract_id ? `z:${it.assigned_contract_id}` : (m[it.id]?.cil || "") } }));
+      await prepocitatFakturu(f);
+      setZprava({ chyba: false, text: `Řádka ${it.line_no ?? ""} je zpět k přiřazení — vyber nové přiřazení a potvrď.` });
+    } catch (e) {
+      setZprava({ chyba: true, text: `Přiřazení řádky ${it.line_no ?? ""} se nepodařilo změnit: ${e.message || e}` });
+    }
+    setPracuji((m) => { const x = { ...m }; delete x[it.id]; return x; });
+    setZmena(null);
+    await nacist();
+  };
   const [zamitani, setZamitani] = useState(null); // faktura k zamítnutí (potvrzení v appce)
   const zamitnoutFakturu = async (f) => {
     setPracuji((m) => ({ ...m, [`f${f.id}`]: true }));
@@ -314,7 +356,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                                 {v.cil === "sklad" && (
                                   <div style={{ fontSize: 11, marginTop: 3, color: prod ? "#15803d" : "#0369a1" }}>
                                     {prod ? `✓ ${prod.name} — skladem ${prod.stock ?? 0} ${prod.unit || ""}, přibude ${Number(it.quantity ?? 0).toLocaleString("cs-CZ")}`
-                                      : "➕ Ve skladu zatím není — založí se jako nový produkt s nákupní cenou z faktury"}
+                                      : "➕ Ve skladu zatím není — po kliknutí na ✓ Potvrdit se založí jako nový produkt s nákupní cenou z faktury"}
                                   </div>
                                 )}
                                 {v.cil.startsWith("z:") && (
@@ -332,13 +374,19 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                             )}
                           </td>
                           <td style={{ padding: "8px 4px", textAlign: "right" }}>
-                            {navrh && (
+                            {navrh ? (
                               <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
                                 <button type="button" style={tl("#15803d", "#fff", { opacity: v.cil ? 1 : 0.5 })} disabled={!v.cil || !!pracuji[it.id] || !!pracuji[`f${f.id}`]}
                                   onClick={() => potvrdit(f, [it])}>{pracuji[it.id] ? "…" : "✓ Potvrdit"}</button>
                                 <button type="button" style={tlObrys()} disabled={!!pracuji[it.id]} title="Řádku nepřiřazovat (nic se nezapíše)"
                                   onClick={() => zamitnoutRadek(f, it)}>✕</button>
                               </div>
+                            ) : (
+                              <button type="button" style={tlObrys("#0369a1")} disabled={!!pracuji[it.id]}
+                                title={it.status === "zamitnuto" ? "Vrátit řádku k přiřazení" : "Vrátí zápis (náklad zakázky / příjem na sklad) a řádka půjde přiřadit znovu"}
+                                onClick={() => (it.status === "zamitnuto" ? zmenitPrirazeni({ f, it }) : setZmena({ f, it }))}>
+                                {pracuji[it.id] ? "…" : "✏️ Změnit"}
+                              </button>
                             )}
                           </td>
                         </tr>
@@ -361,6 +409,25 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
           </div>
         );
       })}
+
+      {zmena && (
+        <div role="dialog" aria-modal="true" aria-labelledby="fronta-zmena" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 14, padding: 20, maxWidth: 440, width: "100%", textAlign: "left" }}>
+            <div id="fronta-zmena" style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>Změnit přiřazení řádky {zmena.it.line_no ?? ""}?</div>
+            <div style={{ fontSize: 14, color: "#334155", marginBottom: 16 }}>
+              <b>{zmena.it.description}</b><br />
+              {zmena.it.assigned_to_sklad
+                ? "Příjem na sklad se vrátí — pohyb se smaže a stav produktu se sníží o přijaté množství (produkt ve skladu zůstane)."
+                : "Náklad se ze zakázky smaže."}
+              {" "}Řádka se vrátí k přiřazení a pak vybereš nové přiřazení a potvrdíš.
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" style={tlObrys()} onClick={() => setZmena(null)}>Zpět</button>
+              <button type="button" style={tl("#0369a1")} onClick={() => zmenitPrirazeni(zmena)}>Vrátit a změnit</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {zamitani && (
         <div role="dialog" aria-modal="true" aria-labelledby="fronta-zamitnout" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
