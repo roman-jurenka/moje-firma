@@ -4112,6 +4112,30 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
     if (status === "Storno") logInvoiceEvent(id, "stornovana");
   };
 
+  // Smazání faktury — potvrzuje se v okně appky přepsáním čísla faktury.
+  // Faktura nemá v DB cizí klíče, navázané záznamy se uklidí tady: historie
+  // faktury, odkaz u servisního ticketu a u nacenění realizace (REA).
+  const [mazani, setMazani] = useState(null); // { inv, potvrzeni, pracuji, chyba }
+  const smazatFakturu = async () => {
+    const inv = mazani.inv;
+    setMazani(m => ({ ...m, pracuji: true, chyba: null }));
+    const { error } = await supabase.from("invoices").delete().eq("id", inv.id);
+    if (error) { setMazani(m => ({ ...m, pracuji: false, chyba: "Fakturu se nepodařilo smazat: " + error.message })); return; }
+    await supabase.from("invoice_events").delete().eq("invoice_id", inv.id);
+    await supabase.from("service_tickets").update({ invoice_id: null, stav: "Vyřešený" }).eq("invoice_id", inv.id).eq("stav", "Vyfakturovaný");
+    await supabase.from("service_tickets").update({ invoice_id: null }).eq("invoice_id", inv.id);
+    const { data: rea } = await supabase.from("zakazky_prubeh").select("id, naceneni_rea, hotove_ukoly").filter("naceneni_rea->>invoice_id", "eq", String(inv.id));
+    for (const z of rea || []) {
+      const n = { ...z.naceneni_rea };
+      delete n.invoice_id; delete n.invoice_number; delete n.vyfakturovano;
+      const hotove = { ...(z.hotove_ukoly || {}) };
+      delete hotove["vyuctovani.faktura"];
+      await supabase.from("zakazky_prubeh").update({ naceneni_rea: n, hotove_ukoly: hotove, updated_at: new Date().toISOString() }).eq("id", z.id);
+    }
+    setInvoices(prev => prev.filter(i => i.id !== inv.id));
+    setMazani(null);
+  };
+
   const [paidDraft, setPaidDraft] = useState({});
   const savePaidAmount = async (id, value) => {
     const paid_amount = Number(value) || 0;
@@ -4322,6 +4346,11 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
                       style={{ ...S.btn("#475569"), padding: "5px 12px", fontSize: 12 }}>
                       {pdfBusyId === inv.id ? "…" : "📄 PDF"}
                     </button>
+                    <button onClick={() => setMazani({ inv, potvrzeni: "", pracuji: false, chyba: null })} title="Smazat fakturu"
+                      aria-label={`Smazat fakturu ${inv.number}`}
+                      style={{ ...S.btn("#fff"), color: "#b91c1c", border: "1px solid #fecaca", padding: "5px 10px", fontSize: 12 }}>
+                      🗑 Smazat
+                    </button>
                   </td>
                 </tr>
               );
@@ -4329,6 +4358,43 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
           </tbody>
         </table>
       </div>
+
+      {mazani && (() => {
+        const inv = mazani.inv;
+        const cust = customers.find(c => c.id === (inv.customerId ?? inv.customer_id));
+        const rada = String(inv.number || "").slice(0, 4);
+        const posledni = !invoices.some(i => i.id !== inv.id && String(i.number || "").slice(0, 4) === rada && String(i.number) > String(inv.number));
+        const zaplaceno = Number(inv.paid_amount) > 0 || inv.status === "Zaplacena";
+        const sedi = mazani.potvrzeni.trim() === String(inv.number);
+        return (
+          <div role="dialog" aria-modal="true" aria-labelledby="fa-smazat-titulek" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 460, boxShadow: "0 20px 50px rgba(0,0,0,.3)", textAlign: "left" }}>
+              <div id="fa-smazat-titulek" style={{ fontSize: 18, fontWeight: 800, color: "#991b1b", marginBottom: 8 }}>🗑 Smazat fakturu {inv.number}?</div>
+              <div style={{ fontSize: 14, color: "#334155", marginBottom: 10 }}>
+                {cust?.name || "—"} · {fmtKc(Math.round(((Number(inv.amount) || 0) + (Number(inv.tax) || 0)) * 100) / 100)} s DPH · vystavena {fmtDateCz(inv.issued)}
+              </div>
+              <div style={{ fontSize: 13, color: "#475569", background: "#f8fafc", borderRadius: 8, padding: "8px 10px", marginBottom: 10 }}>
+                Faktura se smaže natrvalo i s historií (odeslání, platby, upomínky). Nejde to vrátit.
+                {!posledni && <div style={{ color: "#b45309", fontWeight: 700, marginTop: 6 }}>⚠ Není to poslední faktura v řadě — v číslování vznikne mezera. Pokud už faktura odešla zákazníkovi, je správnější ji stornovat (stav Storno) nebo vystavit dobropis.</div>}
+                {zaplaceno && <div style={{ color: "#b91c1c", fontWeight: 700, marginTop: 6 }}>⚠ Faktura má zapsanou platbu.</div>}
+                <div style={{ marginTop: 6 }}>Položky zakázky označené jako vyfakturované zůstanou označené — případně je vrať v zakázce v záložce „K fakturaci“.</div>
+              </div>
+              <label htmlFor="fa-smazat-cislo" style={{ ...S.label, display: "block" }}>Pro potvrzení přepiš číslo faktury <b>{inv.number}</b></label>
+              <input id="fa-smazat-cislo" style={S.input} autoFocus value={mazani.potvrzeni} autoComplete="off"
+                onChange={e => setMazani(m => ({ ...m, potvrzeni: e.target.value }))}
+                onKeyDown={e => { if (e.key === "Enter" && sedi && !mazani.pracuji) smazatFakturu(); if (e.key === "Escape") setMazani(null); }} />
+              {mazani.chyba && <div role="alert" style={{ color: "#b91c1c", fontSize: 13, marginTop: 6 }}>{mazani.chyba}</div>}
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                <button onClick={() => setMazani(null)} style={{ ...S.btn("#fff"), color: "#334155", border: "1px solid #cbd5e1" }}>Zrušit</button>
+                <button disabled={!sedi || mazani.pracuji} onClick={smazatFakturu}
+                  style={{ ...S.btn("#dc2626"), opacity: !sedi || mazani.pracuji ? 0.5 : 1, cursor: !sedi || mazani.pracuji ? "not-allowed" : "pointer" }}>
+                  {mazani.pracuji ? "Mažu…" : "Smazat fakturu"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Pohledávky — nezaplacené a částečně zaplacené faktury s možností
           stažení upomínky (1.–3.), kterou si uživatel sám pošle mailem. */}
