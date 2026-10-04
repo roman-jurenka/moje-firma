@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase.js";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
+import { nactiPrirazku, ulozitPrirazku, prodejniCena, VYCHOZI_PRIRAZKA } from "./prirazkaMaterialu.js";
 
 const BUCKET = "faktury-fronta";
 const TYPY_NAKLADU = [["materiál", "Materiál"], ["práce", "Práce"], ["doprava", "Doprava"]];
@@ -20,6 +21,10 @@ const dnes = () => new Date().toISOString().slice(0, 10);
 const bezDiakritiky = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 const jednotka = (u) => String(u || "ks").trim().toLowerCase() || "ks";
 const cenaRadku = (it) => (it.amount != null ? Number(it.amount) : (Number(it.quantity) || 0) * (Number(it.unit_price) || 0));
+// nákupní cena za jednotku z faktury
+const nakupJ = (it) => { const q = Number(it.quantity) || 1; return Number(it.unit_price) || (q ? cenaRadku(it) / q : 0); };
+// „1 250,50 Kč“ → 1250.5; prázdné → null; nesmysl → NaN
+const cisloPole = (v) => { const t = String(v ?? "").replace(/kč/gi, "").replace(/\s/g, "").replace(",", "."); return t === "" ? null : Number(t); };
 
 // Kandidáti zakázek z návrhu: [id], [{ id }], [{ contract_id }] — co přijde
 const kandidati = (it) => {
@@ -42,7 +47,9 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
   const [faktury, setFaktury] = useState(null);
   const [polozky, setPolozky] = useState({});      // { [queueId]: [...] }
   const [produkty, setProdukty] = useState([]);
-  const [volby, setVolby] = useState({});          // { [itemId]: { cil, typ } }
+  const [volby, setVolby] = useState({});          // { [itemId]: { cil, typ, prodej? } }
+  const [prirazka, setPrirazka] = useState(VYCHOZI_PRIRAZKA); // výchozí přirážka na materiál v %
+  const [prirazkaPole, setPrirazkaPole] = useState(null);      // rozpracovaná úprava (text) — null = zavřeno
   const [pracuji, setPracuji] = useState({});      // { [itemId | "f"+queueId]: true }
   const [zprava, setZprava] = useState(null);      // { text, chyba }
   const [vyrizene, setVyrizene] = useState(false);
@@ -53,10 +60,11 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     const stavy = vyrizene ? ["nova", "castecne_prirazena", "schvalena", "zamitnuta"] : ["nova", "castecne_prirazena"];
     const [{ data: f, error }, { data: p }] = await Promise.all([
       supabase.from("invoice_queue").select("*").in("status", stavy).order("created_at", { ascending: false }).limit(100),
-      supabase.from("products").select("id, name, stock, unit, price"),
+      supabase.from("products").select("id, name, stock, unit, price, price_sell"),
     ]);
     if (error) { setZprava({ chyba: true, text: "Frontu se nepodařilo načíst: " + error.message }); setFaktury([]); return; }
     setProdukty(p || []);
+    setPrirazka(await nactiPrirazku());
     const ids = (f || []).map((x) => x.id);
     const { data: it } = ids.length
       ? await supabase.from("invoice_queue_items").select("*").in("invoice_queue_id", ids).order("line_no", { ascending: true })
@@ -118,17 +126,25 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
       return p;
     };
     // produkt ve skladu (když chybí, založí se s nákupní cenou z faktury; chybějící cenu doplní)
+    // prodejní cena za jednotku: zadaná u řádky, jinak cena produktu / nákup + přirážka
+    const zadanyProdej = cisloPole(v.prodej);
+    if (Number.isNaN(zadanyProdej)) { await odemknout(); return `Řádka ${it.line_no ?? ""}: prodejní cena není číslo`; }
+    const prodej = zadanyProdej ?? prodejniCena(produktProRadek(it), cena, prirazka);
     const zajistitProdukt = async () => {
       let prod = produktProRadek(it);
       if (!prod) {
         const { data: novy, error } = await supabase.from("products").insert({
           name: String(it.description || "").trim() || `Položka z faktury ${f.invoice_number || ""}`.trim(),
-          unit: jednotka(it.unit), price: Math.round(cena * 100) / 100, price_sell: 0, stock: 0, min_stock: 0, category: "",
+          unit: jednotka(it.unit), price: Math.round(cena * 100) / 100, price_sell: prodej, stock: 0, min_stock: 0, category: "",
         }).select().single();
         if (error) throw error;
         prod = novy;
-      } else if (!(Number(prod.price) > 0) && cena > 0) {
-        await supabase.from("products").update({ price: Math.round(cena * 100) / 100 }).eq("id", prod.id);
+      } else {
+        // chybějící nákupní / prodejní cenu doplnit (existující nepřepisovat)
+        const doplnit = {};
+        if (!(Number(prod.price) > 0) && cena > 0) doplnit.price = Math.round(cena * 100) / 100;
+        if (!(Number(prod.price_sell) > 0) && prodej > 0) doplnit.price_sell = prodej;
+        if (Object.keys(doplnit).length) await supabase.from("products").update(doplnit).eq("id", prod.id);
       }
       return prod;
     };
@@ -168,7 +184,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
           contract_id: contractId, cost_type: typ, is_extra: false, date: f.issue_date || dnes(),
           description: `${String(it.description || "").trim()}${doklad ? ` (${doklad})` : ""}`,
           quantity: mnozstvi, unit: jednotka(it.unit),
-          unit_price_cost: Math.round(cena * 100) / 100, unit_price_client: Math.round(cena * 100) / 100,
+          unit_price_cost: Math.round(cena * 100) / 100, unit_price_client: prodej,
         }).select().single();
         if (error) throw error;
         await supabase.from("invoice_queue_items").update({
@@ -282,9 +298,32 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
           Faktury od dodavatelů čekají na přiřazení. U každé řádky zkontroluj návrh (zakázka nebo sklad) a potvrď —
           teprve potom se zapíše <b>náklad zakázky</b> nebo <b>příjem na sklad</b>.
         </div>
-        <label style={{ fontSize: 13, color: "#334155", display: "flex", gap: 6, alignItems: "center" }}>
-          <input type="checkbox" checked={vyrizene} onChange={(e) => setVyrizene(e.target.checked)} /> Zobrazit i vyřízené
-        </label>
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          {prirazkaPole == null ? (
+            <button type="button" onClick={() => setPrirazkaPole(String(prirazka))} title="Prodejní cena materiálu = nákup + přirážka (když produkt nemá vlastní prodejní cenu)"
+              style={{ background: "#eff6ff", border: "1px solid #bfdbfe", color: "#0369a1", borderRadius: 999, padding: "4px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+              Přirážka na materiál: {String(prirazka).replace(".", ",")} % ✏️
+            </button>
+          ) : (
+            <span style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "#334155" }}>
+              Přirážka na materiál
+              <input style={{ ...pole, width: 60 }} inputMode="decimal" autoFocus value={prirazkaPole} aria-label="Výchozí přirážka na materiál v procentech"
+                onChange={(e) => setPrirazkaPole(e.target.value)} /> %
+              <button type="button" style={tl("#0369a1")} onClick={async () => {
+                const pct = cisloPole(prirazkaPole);
+                if (pct == null || Number.isNaN(pct) || pct < 0) { setZprava({ chyba: true, text: "Přirážka musí být číslo (např. 30)." }); return; }
+                const { error } = await ulozitPrirazku(pct);
+                if (error) { setZprava({ chyba: true, text: "Přirážku se nepodařilo uložit: " + error.message }); return; }
+                setPrirazka(pct); setPrirazkaPole(null);
+                setZprava({ chyba: false, text: `✓ Výchozí přirážka na materiál je ${String(pct).replace(".", ",")} % — platí pro celou firmu (fronta faktur i výdej ze skladu).` });
+              }}>Uložit</button>
+              <button type="button" style={tlObrys()} onClick={() => setPrirazkaPole(null)}>Zrušit</button>
+            </span>
+          )}
+          <label style={{ fontSize: 13, color: "#334155", display: "flex", gap: 6, alignItems: "center" }}>
+            <input type="checkbox" checked={vyrizene} onChange={(e) => setVyrizene(e.target.checked)} /> Zobrazit i vyřízené
+          </label>
+        </div>
       </div>
 
       {zprava && (
@@ -395,6 +434,22 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                                     <select style={{ ...pole, marginTop: 4 }} value={v.typ} aria-label="Typ nákladu" onChange={(e) => setV({ typ: e.target.value })}>
                                       {TYPY_NAKLADU.map(([id, t]) => <option key={id} value={id}>Náklad: {t}</option>)}
                                     </select>
+                                    {(() => {
+                                      const vychozi = prodejniCena(prod, nakupJ(it), prirazka);
+                                      const zadano = cisloPole(v.prodej);
+                                      const prodejJ = zadano ?? vychozi;
+                                      const pct = nakupJ(it) > 0 && Number.isFinite(prodejJ) ? Math.round((prodejJ / nakupJ(it) - 1) * 1000) / 10 : null;
+                                      return (
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: 11, color: "#475569", flexWrap: "wrap" }}>
+                                          <span>Prodej/j.</span>
+                                          <input style={{ ...pole, width: 90, borderColor: Number.isNaN(zadano) ? "#f87171" : "#cbd5e1" }} inputMode="decimal" aria-label="Prodejní cena za jednotku"
+                                            value={v.prodej ?? String(vychozi).replace(".", ",")} onChange={(e) => setV({ prodej: e.target.value })} />
+                                          <span>Kč{pct != null && !Number.isNaN(pct) ? ` (${pct >= 0 ? "+" : ""}${String(pct).replace(".", ",")} %)` : ""}</span>
+                                          {v.prodej != null && <button type="button" onClick={() => setV({ prodej: undefined })} style={{ border: "none", background: "none", color: "#0369a1", cursor: "pointer", fontSize: 11, padding: 0, fontFamily: "inherit" }}
+                                            title={Number(prod?.price_sell) > 0 ? "Vrátit prodejní cenu produktu ze skladu" : `Vrátit nákup + ${prirazka} %`}>↺</button>}
+                                        </div>
+                                      );
+                                    })()}
                                     {v.typ === "materiál" && (
                                       <div style={{ fontSize: 11, marginTop: 3, color: "#0369a1" }}>
                                         📦 Projde skladem: příjem a hned výdej na zakázku{prod ? "" : " (produkt se ve skladu založí)"}

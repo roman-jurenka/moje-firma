@@ -17,6 +17,7 @@ import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum, cisloFaktury } from "./invoicingUtils.js";
 import FrontaFaktur from "./FrontaFaktur.jsx";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
+import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
@@ -4565,6 +4566,7 @@ async function performWarehouseMovement(row_data) {
       if (updErr) throw updErr;
       updatedProduct = { id: prod.id, stock: ns };
       if (row_data.movement_type === "out_contract" && row_data.contract_id) {
+        const prirazka = await nactiPrirazku();
         const { error: costErr } = await supabase.from("contract_cost_entries").insert({
           contract_id: row_data.contract_id,
           cost_type: "materiál",
@@ -4574,7 +4576,7 @@ async function performWarehouseMovement(row_data) {
           quantity: Number(row_data.quantity),
           unit: row_data.unit,
           unit_price_cost: Number(prod?.price || 0),
-          unit_price_client: Number(prod?.price_sell || prod?.price || 0),
+          unit_price_client: prodejniCena(prod, prod?.price, prirazka),
         });
         // Tenhle zápis živí náklady/marži zakázky — pokud selže, výdej
         // materiálu by se jinak tvářil jako v pořádku, ale zakázka by
