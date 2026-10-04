@@ -14,6 +14,7 @@ import { NA_STAROSTI, naStarosti, umi, dovednost, seraditPodleDovednosti } from 
 import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import { PodkladyNahled, PodkladyFormular } from "./PodkladyZakazky.jsx";
 import PoleSNabidkou from "./PoleSNabidkou.jsx";
+import { ulozitDoDokumentu, odkazNaDokumenty, zalozitSlozkuDokumenty } from "./dokumentyOneDrive.js";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
   nazevFaze, ukolyPro, nazevCasti, CASTI_MONTAZE, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
@@ -505,10 +506,6 @@ export default function Prubeh({
       zastupce: zak.vlastnik_obchod || ja || "",
     };
   };
-  const zapsatDokument = async (zak, klic, hodnota, poznamka) => {
-    const dokumenty = { ...(zak.dokumenty || {}), [klic]: hodnota };
-    await uloz(zak, { dokumenty }, poznamka);
-  };
   // Firemní Word šablona, když v appce je — nejdřív pro typ zakázky
   // (public/templates/<druh>_<typ>_sablona.docx, FVE i rozšíření FVE = „fve“),
   // pak obecná <druh>_sablona.docx. Vyplní se značkami {zakaznikJmeno}, {specifikace}…
@@ -524,20 +521,119 @@ export default function Prubeh({
     const res = await fetch(`/templates/${soubor}`);
     return res.ok && !(res.headers.get("content-type") || "").includes("text/html") ? res : null;
   };
-  const zVlastniSablony = async (druh, hodnoty, nazevSouboru, typ) => {
+  const zVlastniSablony = async (druh, hodnoty, nazevSouboru, typ, stahnout = true) => {
     const res = (SABLONA_TYPU[typ] && await nactiSablonu(`${druh}_${SABLONA_TYPU[typ]}_sablona.docx`))
       || await nactiSablonu(`${druh}_sablona.docx`);
     if (!res) return false;
     const doc = new Docxtemplater(new PizZip(await res.arrayBuffer()), { paragraphLoop: true, linebreaks: true, nullGetter: () => "" });
     doc.render(hodnoty);
     const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const soubor = `${nazevSouboru}.docx`.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim();
+    if (!stahnout) return { blob, soubor };
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${nazevSouboru}.docx`.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim();
+    a.download = soubor;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    return true;
+    return { blob, soubor };
   };
+  // Složka zakázky na OneDrivu (stejná jako u fotek) a uložení dokumentu do podsložky Dokumenty.
+  const nazevSlozky = (zak) => contractById(zak.contract_id)?.name || zak.nazev || String(zak.id);
+  const naOneDrive = async (zak, soubor) => {
+    try {
+      const r = await ulozitDoDokumentu(nazevSlozky(zak), soubor.soubor, soubor.blob, soubor.blob.type);
+      return r ? { onedrive: r.webUrl, onedrive_id: r.itemId } : { onedriveChyba: "OneDrive není připojený" };
+    } catch (e) {
+      console.warn("Uložení dokumentu na OneDrive selhalo:", e);
+      return { onedriveChyba: e.message || String(e) };
+    }
+  };
+  // Soubor dokumentu (smlouva / protokol / dodatek) — se stažením, nebo potichu pro opakované nahrání.
+  const souborDokumentu = async (zak, druh, dod, stahnout = true) => {
+    const d = podkladyDokumentu(zak);
+    const jmeno = d.zakaznik.name || zak.nazev || "";
+    const cislo = d.cisloOP || d.cisloZakazky;
+    const [nazev, html] = druh === "smlouva" ? [`Smlouva o dílo ${cislo} ${jmeno}`, () => htmlSmlouvy(d)]
+      : druh === "protokol" ? [`Předávací protokol ${cislo} ${jmeno}`, () => htmlProtokolu(d)]
+      : [`Dodatek ${dod.cislo} ${d.cisloZakazky} ${jmeno}`, () => htmlDodatku(d, dod)];
+    return (await zVlastniSablony(druh, znackySablony(d, druh === "dodatek" ? dod : undefined), nazev, zak.typ, stahnout)) || stahnoutWord(nazev, html(), stahnout);
+  };
+  // Dokumenty, které se nepovedlo uložit na OneDrive — drží se v dokumenty.onedriveCeka,
+  // dokud se nenahrají (upozornění v zakázce i v seznamu, Zkusit znovu).
+  const klicCeka = (druh, cislo) => (druh === "dodatek" ? `dodatek-${cislo}` : druh);
+  const NAZEV_DRUHU = { smlouva: "Smlouva o dílo", protokol: "Předávací protokol", dodatek: "Dodatek" };
+  const popisCeka = (c) => (c.druh === "dodatek" ? `Dodatek č. ${c.cislo}` : NAZEV_DRUHU[c.druh] || c.druh);
+  const sCekanim = (dokumenty, druh, cislo, od, soubor) => {
+    const id = klicCeka(druh, cislo);
+    const ceka = (dokumenty.onedriveCeka || []).filter((c) => c.id !== id);
+    if (od.onedriveChyba) ceka.push({ id, druh, ...(cislo != null ? { cislo } : {}), soubor, at: new Date().toISOString(), chyba: od.onedriveChyba });
+    const out = { ...dokumenty, onedriveCeka: ceka };
+    if (!ceka.length) delete out.onedriveCeka;
+    return out;
+  };
+  const oznamitOneDrive = async (od, popis) => {
+    if (od.onedrive) { ukazHlasku(`✓ ${popis} stažený a uložený na OneDrive do složky Dokumenty`); return; }
+    await zeptat({
+      titulek: "⚠ Na OneDrive se neuložilo",
+      text: `${popis} je stažený v počítači (Stažené soubory), ale do složky Dokumenty na OneDrivu se neuložil.\n\nDůvod: ${od.onedriveChyba || "neznámá chyba"}\n\nU zakázky zůstane upozornění, dokud se dokument nenahraje — tlačítkem „Zkusit znovu“ (nebo se nahraje sám, až bude OneDrive připojený).`,
+      jenOk: true,
+    });
+  };
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  // Znovu vytvoří dokument (bez stažení) a nahraje ho. Vrací true při úspěchu.
+  const nahratZnovu = async (zakId, polozka) => {
+    const zak = rowsRef.current.find((x) => x.id === zakId);
+    if (!zak) return false;
+    const dokumenty = zak.dokumenty || {};
+    const dod = polozka.druh === "dodatek" ? (dokumenty.dodatky || []).find((x) => x.cislo === polozka.cislo) : null;
+    if (polozka.druh === "dodatek" && !dod) {
+      await uloz(zak, { dokumenty: sCekanim(dokumenty, "dodatek", polozka.cislo, {}, null) });
+      return true;
+    }
+    let od;
+    try {
+      const soubor = await souborDokumentu(zak, polozka.druh, dod, false);
+      od = { ...(await naOneDrive(zak, soubor)), soubor: soubor.soubor };
+    } catch (e) { od = { onedriveChyba: e.message || String(e) }; }
+    let nove = sCekanim(dokumenty, polozka.druh, polozka.cislo, od, polozka.soubor);
+    if (od.onedrive) {
+      if (polozka.druh === "dodatek") nove = { ...nove, dodatky: (nove.dodatky || []).map((x) => (x.cislo === polozka.cislo ? { ...x, onedrive: od.onedrive, soubor: od.soubor } : x)) };
+      else nove = { ...nove, [polozka.druh]: { ...(nove[polozka.druh] || {}), onedrive: od.onedrive, soubor: od.soubor } };
+    }
+    await uloz(zak, { dokumenty: nove }, od.onedrive ? `${popisCeka(polozka)} dodatečně uložený na OneDrive (Dokumenty).` : undefined);
+    return !!od.onedrive;
+  };
+  const [nahravamZnovu, setNahravamZnovu] = useState(false);
+  const zkusitZnovu = async (polozky, tiche = false) => {
+    if (!polozky.length) return;
+    setNahravamZnovu(true);
+    let ok = 0;
+    for (const [zakId, p] of polozky) if (await nahratZnovu(zakId, p)) ok++;
+    setNahravamZnovu(false);
+    if (tiche && !ok) return;
+    if (ok === polozky.length) ukazHlasku(`✓ Uloženo na OneDrive do složky Dokumenty (${ok} ${ok === 1 ? "dokument" : ok < 5 ? "dokumenty" : "dokumentů"})`);
+    else if (!tiche) await zeptat({ titulek: "⚠ Na OneDrive se stále neuložilo", text: `Uloženo ${ok} z ${polozky.length}. Zkontroluj připojení OneDrivu (Nastavení → OneDrive) a zkus to znovu — upozornění u zakázky zůstává.`, jenOk: true });
+    else ukazHlasku(`OneDrive: dodatečně uloženo ${ok} z ${polozky.length} dokumentů, zbytek čeká`);
+  };
+  const cekajiciVse = rows.flatMap((x) => (x.dokumenty?.onedriveCeka || []).map((p) => [x.id, p]));
+  // Po načtení: co čeká a OneDrive je připojený, zkusí se nahrát samo (jednou za otevření).
+  const autoZkuseno = useRef(false);
+  useEffect(() => {
+    if (!nacteno || autoZkuseno.current || !cekajiciVse.length || !isConnected()) return;
+    autoZkuseno.current = true;
+    zkusitZnovu(cekajiciVse, true);
+  });
+  // Každá zakázka má na OneDrivu vždy složku Dokumenty — při otevření se založí, když chybí.
+  const slozkyZalozene = useRef(new Set());
+  useEffect(() => {
+    const zak = rows.find((x) => x.id === vybrano);
+    if (!zak || !isConnected()) return;
+    const nazev = nazevSlozky(zak);
+    if (slozkyZalozene.current.has(nazev)) return;
+    slozkyZalozene.current.add(nazev);
+    zalozitSlozkuDokumenty(nazev);
+  });
   // Značky dostupné ve firemních šablonách (stejné pro všechny dokumenty).
   const znackySablony = (d, dod) => {
     const kc = (n) => (n ? Math.round(Number(n)).toLocaleString("cs-CZ") : "");
@@ -567,27 +663,30 @@ export default function Prubeh({
     setGeneruji(true);
     try {
       const d = podkladyDokumentu(zak);
-      const jmeno = d.zakaznik.name || zak.nazev || "";
       const zaznam = { at: new Date().toISOString(), kdo: ja || null };
-      if (druh === "smlouva") {
-        const nazev = `Smlouva o dílo ${d.cisloOP || d.cisloZakazky} ${jmeno}`;
-        if (!(await zVlastniSablony("smlouva", znackySablony(d), nazev, zak.typ))) stahnoutWord(nazev, htmlSmlouvy(d));
-        await zapsatDokument(zak, "smlouva", zaznam, "Vygenerovaný návrh smlouvy o dílo.");
-      } else if (druh === "protokol") {
-        const nazev = `Předávací protokol ${d.cisloOP || d.cisloZakazky} ${jmeno}`;
-        if (!(await zVlastniSablony("protokol", znackySablony(d), nazev, zak.typ))) stahnoutWord(nazev, htmlProtokolu(d));
-        await zapsatDokument(zak, "protokol", zaznam, "Vygenerovaný předávací protokol.");
+      let od = {};
+      let popis = NAZEV_DRUHU[druh];
+      if (druh === "smlouva" || druh === "protokol") {
+        const soubor = await souborDokumentu(zak, druh);
+        od = await naOneDrive(zak, soubor);
+        const dokumenty = sCekanim({ ...(zak.dokumenty || {}), [druh]: { ...zaznam, soubor: soubor.soubor, onedrive: od.onedrive || null } }, druh, null, od, soubor.soubor);
+        await uloz(zak, { dokumenty }, `${druh === "smlouva" ? "Vygenerovaný návrh smlouvy o dílo" : "Vygenerovaný předávací protokol"}${od.onedrive ? " — uložený na OneDrive (Dokumenty)" : " — na OneDrive se NEuložil"}.`);
       } else if (druh === "dodatek") {
         const dodatky = zak.dokumenty?.dodatky || [];
         const { aktualizovatCenu, ...udajeDodatku } = dodatek;
         const dod = { ...udajeDodatku, cislo: dodatky.length + 1, cena_puvodni: d.cena.bezDph, ...zaznam };
-        const nazev = `Dodatek ${dod.cislo} ${d.cisloZakazky} ${jmeno}`;
-        if (!(await zVlastniSablony("dodatek", znackySablony(d, dod), nazev, zak.typ))) stahnoutWord(nazev, htmlDodatku(d, dod));
-        const patch = { dokumenty: { ...(zak.dokumenty || {}), dodatky: [...dodatky, dod] } };
+        popis = `Dodatek č. ${dod.cislo}`;
+        const soubor = await souborDokumentu(zak, "dodatek", dod);
+        od = await naOneDrive(zak, soubor);
+        dod.soubor = soubor.soubor;
+        dod.onedrive = od.onedrive || null;
+        const patch = { dokumenty: sCekanim({ ...(zak.dokumenty || {}), dodatky: [...dodatky, dod] }, "dodatek", dod.cislo, od, soubor.soubor) };
         if (aktualizovatCenu && dod.cena_nova !== "" && dod.cena_nova != null) patch.hodnota = Number(dod.cena_nova);
-        await uloz(zak, patch, `Dodatek č. ${dod.cislo}: ${dodatek.popis || "změna"}${patch.hodnota != null ? ` (nová cena ${fmtKc(patch.hodnota)})` : ""}.`);
+        await uloz(zak, patch, `Dodatek č. ${dod.cislo}: ${dodatek.popis || "změna"}${patch.hodnota != null ? ` (nová cena ${fmtKc(patch.hodnota)})` : ""}${od.onedrive ? "" : " — na OneDrive se NEuložil"}.`);
       }
-      ukazHlasku("✓ Dokument stažený — najdeš ho ve Stažených souborech");
+      setGeneruji(false);
+      await oznamitOneDrive(od, popis);
+      return;
     } catch (e) {
       alert("Dokument se nepodařilo vygenerovat: " + e.message);
     }
@@ -617,6 +716,7 @@ export default function Prubeh({
     }).select().single();
     if (error) { alert("Zakázku se nepodařilo založit: " + error.message); return null; }
     setContracts((ks) => [k, ...ks]);
+    if (isConnected()) zalozitSlozkuDokumenty(k.name || zak.nazev);
     await zalozitProjektZNabidky(zak, k);
     return k.id;
   };
@@ -1891,6 +1991,21 @@ export default function Prubeh({
         <div style={{ ...karta, padding: "12px 18px" }}><div style={{ fontSize: 13, color: "#475569", fontWeight: 600 }}>Otevřené zakázky (hodnota)</div><div style={{ fontSize: 24, fontWeight: 800 }}>{fmtKc(kpi.hodnota)}</div></div>
       </div>
 
+      {cekajiciVse.length > 0 && (
+        <div role="alert" style={{ ...karta, padding: "10px 16px", marginBottom: 12, background: "#fef2f2", borderColor: "#fecaca", color: "#991b1b", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 14 }}>
+          <span style={{ flex: 1, minWidth: 220 }}>
+            <b>⚠ Na OneDrive se neuložilo {cekajiciVse.length} {cekajiciVse.length === 1 ? "dokument" : cekajiciVse.length < 5 ? "dokumenty" : "dokumentů"}:</b>{" "}
+            {[...new Set(cekajiciVse.map(([id]) => id))].map((id) => {
+              const zak = rows.find((x) => x.id === id);
+              return <button key={id} type="button" onClick={() => vybrat(id)} style={{ background: "none", border: "none", padding: 0, marginRight: 8, color: "#991b1b", textDecoration: "underline", cursor: "pointer", fontFamily: "inherit", fontSize: 14 }}>
+                {zak.nazev} ({zak.dokumenty.onedriveCeka.map(popisCeka).join(", ")})
+              </button>;
+            })}
+          </span>
+          <button type="button" disabled={nahravamZnovu} onClick={() => zkusitZnovu(cekajiciVse)} style={{ ...btnGhost, padding: "5px 12px", fontSize: 13, borderColor: "#fca5a5", color: "#991b1b" }}>{nahravamZnovu ? "Nahrávám…" : "↻ Zkusit nahrát vše"}</button>
+        </div>
+      )}
+
       <div className="pr-grid pr-jedna">
         <div style={{ ...karta, padding: 0, overflow: "hidden" }}>
           <div style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #e2e8f0", alignItems: "center", flexWrap: "wrap" }}>
@@ -2277,11 +2392,28 @@ export default function Prubeh({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
             {k && onOtevritZakazku && <button type="button" style={{ ...btnGhost, padding: "5px 10px", fontSize: 13 }} onClick={() => onOtevritZakazku(k.id)}>Otevřít zakázku {k.code || ""}</button>}
             {onOtevritNaceneni && <button type="button" style={{ ...btnGhost, padding: "5px 10px", fontSize: 13 }} onClick={() => onOtevritNaceneni(z.quote_id)}>{qq ? `Nabídka ${qq.cislo || qq.name}` : "Nacenění"}</button>}
+            <button type="button" style={{ ...btnGhost, padding: "5px 10px", fontSize: 13 }} title="Složka Dokumenty zakázky na OneDrivu (nabídky, smlouvy, dodatky, protokoly)"
+              onClick={async () => {
+                const okno = window.open("", "_blank");
+                const odkaz = await odkazNaDokumenty(nazevSlozky(z));
+                if (odkaz && okno) okno.location.href = odkaz;
+                else { okno?.close(); ukazHlasku("OneDrive není připojený — složku Dokumenty nejde otevřít"); }
+              }}>📁 Dokumenty na OneDrivu</button>
             {otevrena && qq && (qq.status === "Schváleno" || iTed >= FAZE.findIndex((x) => x.id === "smlouva")) && (
               <button type="button" style={{ ...btnGhost, padding: "5px 10px", fontSize: 13 }} onClick={() => otevritVice(z)}
                 title="Zákazník schválil jednu nabídku, ale bude se dělat víc stejných zakázek (každá s vlastním průběhem, místem a cenou)">➕ Zapsat víc zakázek z nabídky</button>
             )}
           </div>
+          {(z.dokumenty?.onedriveCeka || []).length > 0 && (
+            <div role="alert" style={{ marginTop: 8, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#991b1b", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ flex: 1, minWidth: 200 }}>
+                <b>⚠ Neuloženo na OneDrive:</b> {z.dokumenty.onedriveCeka.map(popisCeka).join(", ")}
+                <span style={{ color: "#b91c1c", fontSize: 12 }}> — {z.dokumenty.onedriveCeka[z.dokumenty.onedriveCeka.length - 1].chyba}</span>
+              </span>
+              <button type="button" disabled={nahravamZnovu} onClick={() => zkusitZnovu(z.dokumenty.onedriveCeka.map((p) => [z.id, p]))}
+                style={{ ...btnGhost, padding: "4px 10px", fontSize: 12, borderColor: "#fca5a5", color: "#991b1b" }}>{nahravamZnovu ? "Nahrávám…" : "↻ Zkusit znovu"}</button>
+            </div>
+          )}
           {zNabidky.length > 1 && (
             <div style={{ marginTop: 6, fontSize: 13, color: "#475569", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
               <span>Z nabídky {qq?.cislo || qq?.name} je {zNabidky.length} {zNabidky.length < 5 ? "zakázky" : "zakázek"}:</span>

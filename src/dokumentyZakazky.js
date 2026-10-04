@@ -201,11 +201,15 @@ export function specifikaceZNabidky(data, predmet) {
 }
 
 // Stáhne HTML jako dokument Wordu (.doc) — Word ho otevře a dá se upravit.
-export function stahnoutWord(nazev, html) {
+// Vrací { blob, soubor } — volající ho pak uloží i na OneDrive.
+export function stahnoutWord(nazev, html, stahnout = true) {
   const blob = new Blob(["﻿", html], { type: "application/msword" });
+  const soubor = `${nazev.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim()}.doc`;
+  if (!stahnout) return { blob, soubor };
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `${nazev.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim()}.doc`;
+  a.download = soubor;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return { blob, soubor };
 }

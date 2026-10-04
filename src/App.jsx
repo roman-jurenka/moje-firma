@@ -4536,13 +4536,25 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
       .then(({ data }) => { setMovements(data || []); setLoadingMov(false); });
   }, []);
 
+  // Čísla z formuláře: „1 250,50 Kč“ → 1250.5 (Number() dal u čárky/mezery NaN
+  // a nákupní cena se pak uložila prázdná). Neplatné → null a formulář upozorní.
+  const cisloZPole = (v) => {
+    const t = String(v ?? "").replace(/kč/gi, "").replace(/[\s\u00a0]/g, "").replace(",", ".");
+    if (t === "") return 0;
+    const x = Number(t);
+    return Number.isFinite(x) ? x : null;
+  };
+  const neplatnaCisla = (o, pole) => pole.filter(([, k]) => cisloZPole(o[k]) === null).map(([l]) => l);
+
   const save = async () => {
     if (!newP.name) return;
+    const spatne = neplatnaCisla(newP, [["Cena nákupní", "price"], ["Cena prodejní", "price_sell"], ["Počet na skladě", "stock"], ["Minimální stav", "minStock"]]);
+    if (spatne.length) { alert("Zkontroluj čísla: " + spatne.join(", ") + " (např. 1250 nebo 1250,50)."); return; }
     const emasImg = newP.image_url || (newP.emas_code ? `https://www.emas.cz/media/cache/product_image/img/product/${newP.emas_code}.jpg` : "");
     const { data: row, error } = await supabase.from("products").insert({
       name: newP.name, sku: newP.sku, category: newP.category,
-      price: Number(newP.price), price_sell: Number(newP.price_sell),
-      stock: Number(newP.stock), min_stock: Number(newP.minStock),
+      price: cisloZPole(newP.price), price_sell: cisloZPole(newP.price_sell),
+      stock: cisloZPole(newP.stock), min_stock: cisloZPole(newP.minStock),
       unit: newP.unit, emas_code: newP.emas_code, image_url: emasImg || "",
     }).select().single();
     if (error) { alert("Produkt se nepodařilo uložit: " + error.message); return; }
@@ -4554,10 +4566,12 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
   const saveEdit = async () => {
     if (!editP) return;
     const emasImg = editP.image_url || (editP.emas_code ? `https://www.emas.cz/media/cache/product_image/img/product/${editP.emas_code}.jpg` : "");
+    const spatne = neplatnaCisla(editP, [["Cena nákupní", "price"], ["Cena prodejní", "price_sell"], ["Skladem", "stock"]]);
+    if (spatne.length) { alert("Zkontroluj čísla: " + spatne.join(", ") + " (např. 1250 nebo 1250,50)."); return; }
     const upd = {
       name: editP.name, sku: editP.sku, category: editP.category,
-      price: Number(editP.price), price_sell: Number(editP.price_sell || 0),
-      stock: Number(editP.stock), min_stock: Number(editP.min_stock || editP.minStock || 0),
+      price: cisloZPole(editP.price), price_sell: cisloZPole(editP.price_sell),
+      stock: cisloZPole(editP.stock), min_stock: cisloZPole(editP.min_stock ?? editP.minStock) ?? 0,
       unit: editP.unit, emas_code: editP.emas_code || "", image_url: emasImg || editP.image_url || "",
     };
     const { error } = await supabase.from("products").update(upd).eq("id", editP.id);

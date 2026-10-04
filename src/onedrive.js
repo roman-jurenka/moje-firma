@@ -261,6 +261,18 @@ async function ensureFolder(path) {
       await graphPost(parent, { name: part, folder: {}, "@microsoft.graph.conflictBehavior": "ignore" });
     } catch { /* složka už existuje */ }
   }
+  // Každá složka zakázky má vždy i podsložku Dokumenty (nabídky, smlouvy, protokoly)
+  const zak = path.match(/^FirmaCRM\/Zakázky\/[^/]+/);
+  if (zak && !path.startsWith(`${zak[0]}/Dokumenty`)) {
+    try {
+      await graphPost(`/me/drive/root:/${zak[0]}:/children`, { name: "Dokumenty", folder: {}, "@microsoft.graph.conflictBehavior": "ignore" });
+    } catch { /* složka už existuje */ }
+  }
+}
+
+// Založí složku (i s nadřazenými) — u složky zakázky vznikne i podsložka Dokumenty.
+export async function vytvoritSlozku(path) {
+  await ensureFolder(path);
 }
 
 // ─── NAHRÁT SOUBOR NA ONEDRIVE ────────────────────────────────────────────────

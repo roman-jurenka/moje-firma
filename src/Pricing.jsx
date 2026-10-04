@@ -7,6 +7,8 @@ import { textyNabidky, seznamyPodleTypu } from "./nabidkaTexty.js";
 import { fazeById, terminFaze, planovaneMd } from "./prubehFaze.js";
 import { vypocetSlevy, textSlevy } from "./slevaNabidky.js";
 import * as ui from "./ui.js";
+import { ulozitDoDokumentu } from "./dokumentyOneDrive.js";
+import { isConnected } from "./onedrive.js";
 
 const S = {
   app:      { fontFamily: ui.pismo, background: ui.barvy.pozadi, minHeight: "100vh", color: ui.barvy.text, padding: "20px 28px" },
@@ -566,12 +568,25 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     hlaskaTimer.current = setTimeout(() => setHlaska(null), 4000);
   };
   useEffect(() => () => clearTimeout(hlaskaTimer.current), []);
-  const hlaskaEl = hlaska && (
-    <div role="status" style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "#15803d", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, boxShadow: "0 6px 20px rgba(0,0,0,.2)", maxWidth: "90vw" }}
-      onClick={() => setHlaska(null)}>
-      {hlaska}
-    </div>
-  );
+  // Upozornění, že se kopie nabídky neuložila na OneDrive (okno v appce, ne window.alert).
+  const [chybaOneDrive, setChybaOneDrive] = useState(null);
+  const hlaskaEl = <>
+    {hlaska && (
+      <div role="status" style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "#15803d", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 600, boxShadow: "0 6px 20px rgba(0,0,0,.2)", maxWidth: "90vw" }}
+        onClick={() => setHlaska(null)}>
+        {hlaska}
+      </div>
+    )}
+    {chybaOneDrive && (
+      <div role="dialog" aria-modal="true" aria-labelledby="nab-od-titulek" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <div style={{ background: "#fff", borderRadius: 12, padding: 20, maxWidth: 440, width: "100%", boxShadow: "0 20px 50px rgba(0,0,0,.3)" }}>
+          <div id="nab-od-titulek" style={{ fontSize: 17, fontWeight: 800, color: "#991b1b", marginBottom: 8 }}>⚠ Na OneDrive se neuložilo</div>
+          <div style={{ fontSize: 14, color: "#334155", whiteSpace: "pre-line", marginBottom: 16 }}>{chybaOneDrive}</div>
+          <div style={{ textAlign: "right" }}><button type="button" autoFocus onClick={() => setChybaOneDrive(null)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>OK</button></div>
+        </div>
+      </div>
+    )}
+  </>;
   const nahledRef = useRef(null);
   const [statusFilter, setStatusFilter] = useState("vse");
 
@@ -595,13 +610,69 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
   const nactiOdeslane = async (quoteId) => {
     if (!quoteId) { setOdeslane([]); return; }
     const { data: rows } = await supabase.from("nabidky_odeslane")
-      .select("id, cislo, cena, odeslal, created_at").eq("quote_id", quoteId).order("created_at", { ascending: true });
+      .select("id, cislo, cena, odeslal, created_at, onedrive_url, onedrive_chyba").eq("quote_id", quoteId).order("created_at", { ascending: true });
     setOdeslane(rows || []);
+  };
+  // Odeslané kopie nabídek, které se nepovedlo uložit na OneDrive (upozornění zůstává, dokud se nenahrají).
+  const [odCeka, setOdCeka] = useState([]);
+  const nactiOdCeka = async () => {
+    const { data: rows } = await supabase.from("nabidky_odeslane").select("id, quote_id, cislo, onedrive_chyba, created_at")
+      .is("onedrive_url", null).not("onedrive_chyba", "is", null).order("created_at", { ascending: true });
+    setOdCeka(rows || []);
+    return rows || [];
+  };
+  // Složka zakázky jako u fotek a dokumentů z Průběhu: název zakázky, jinak název z Průběhu, jinak název nabídky.
+  const slozkaNabidky = async (quoteId) => {
+    const { data: pr } = await supabase.from("zakazky_prubeh").select("nazev, contract_id").eq("quote_id", quoteId).order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (pr?.contract_id) {
+      const { data: k } = await supabase.from("contracts").select("name").eq("id", pr.contract_id).maybeSingle();
+      if (k?.name) return k.name;
+    }
+    return pr?.nazev || quotes.find((q) => q.id === quoteId)?.name || `Nabídka ${quoteId}`;
+  };
+  // Nahraje kopii odeslané nabídky do FirmaCRM/Zakázky/<zakázka>/Dokumenty a zapíše výsledek.
+  const nabidkuNaOneDrive = async ({ id, quote_id, cislo, html }) => {
+    let url = null, chyba = null;
+    try {
+      if (html == null) {
+        const { data, error } = await supabase.from("nabidky_odeslane").select("html").eq("id", id).maybeSingle();
+        if (error || !data) throw new Error(error?.message || "kopie nabídky nenalezena");
+        html = data.html;
+      }
+      const q = quotes.find((x) => x.id === quote_id);
+      const res = await ulozitDoDokumentu(await slozkaNabidky(quote_id), `Nabídka ${cislo || q?.cislo || quote_id} ${q?.name || ""}.html`, new Blob([html], { type: "text/html" }), "text/html");
+      if (res) url = res.webUrl; else chyba = "OneDrive není připojený";
+    } catch (e) {
+      console.warn("Uložení nabídky na OneDrive selhalo:", e);
+      chyba = e.message || String(e);
+    }
+    await supabase.from("nabidky_odeslane").update({ onedrive_url: url, onedrive_chyba: chyba }).eq("id", id);
+    return { url, chyba };
+  };
+  const [nahravamOd, setNahravamOd] = useState(false);
+  const zkusitNabidkyZnovu = async (polozky, tiche = false) => {
+    if (!polozky.length) return;
+    setNahravamOd(true);
+    let ok = 0, posledniChyba = "";
+    for (const p of polozky) { const v = await nabidkuNaOneDrive(p); if (v.url) ok++; else posledniChyba = v.chyba; }
+    setNahravamOd(false);
+    await nactiOdCeka();
+    if (activeId) await nactiOdeslane(activeId);
+    if (tiche && !ok) return;
+    if (ok === polozky.length) ukazHlasku(`✓ Uloženo na OneDrive do složky Dokumenty (${ok === 1 ? "1 nabídka" : `${ok} nabídky`})`);
+    else if (!tiche) setChybaOneDrive(`Uloženo ${ok} z ${polozky.length}.\n\nDůvod: ${posledniChyba}\n\nUpozornění zůstává, dokud se nabídky nenahrají. Zkontroluj připojení OneDrivu a zkus to znovu.`);
   };
   useEffect(() => {
     let zruseno = false;
+    nactiOdCeka().then((ceka) => { if (!zruseno && ceka.length && isConnected()) zkusitNabidkyZnovu(ceka, true); });
+    return () => { zruseno = true; };
+    // jen jednou po otevření Nacenění
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    let zruseno = false;
     if (!activeId) return undefined;
-    supabase.from("nabidky_odeslane").select("id, cislo, cena, odeslal, created_at").eq("quote_id", activeId)
+    supabase.from("nabidky_odeslane").select("id, cislo, cena, odeslal, created_at, onedrive_url, onedrive_chyba").eq("quote_id", activeId)
       .order("created_at", { ascending: true })
       .then(({ data: rows }) => { if (!zruseno) setOdeslane(rows || []); });
     return () => { zruseno = true; };
@@ -702,10 +773,11 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     if (!activeId) { alert("Nabídku nejdřív ulož."); return; }
     if (hasUnsavedChanges()) { alert("Máš neuložené změny — nejdřív nabídku ulož (💾 Uložit), ať odeslaná kopie odpovídá uložené nabídce."); return; }
     const cislo = quotes.find((q) => q.id === activeId)?.cislo || null;
-    const { error } = await supabase.from("nabidky_odeslane").insert({
+    const { data: kopie, error } = await supabase.from("nabidky_odeslane").insert({
       quote_id: activeId, cislo, cena: Math.round(Number(cena) || 0), html, odeslal: currentUser?.name || null,
-    });
+    }).select("id").single();
     if (error) { alert("Kopii nabídky se nepodařilo uložit: " + error.message); return; }
+    const od = await nabidkuNaOneDrive({ id: kopie.id, quote_id: activeId, cislo, html });
     await zapsatHistorii(activeId, [{ typ: "odeslano", text: `Odesláno zákazníkovi — ${fmtKc(cena)} s DPH.` }]);
     if (status === "Návrh") {
       const { error: e2 } = await supabase.from("quotes").update({ status: "Odesláno", updated_at: new Date().toISOString() }).eq("id", activeId);
@@ -717,7 +789,9 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
       }
     }
     await nactiOdeslane(activeId);
-    ukazHlasku(status === "Návrh" ? "✓ Označeno jako odeslané — kopie uložena, stav změněn na Odesláno" : "✓ Odeslání zaznamenáno — kopie nabídky uložena");
+    await nactiOdCeka();
+    if (od.url) ukazHlasku(`${status === "Návrh" ? "✓ Označeno jako odeslané (stav Odesláno)" : "✓ Odeslání zaznamenáno"} — kopie uložena i na OneDrive do složky Dokumenty`);
+    else setChybaOneDrive(`Odeslání je zaznamenané a kopie nabídky je uložená v appce, ale do složky Dokumenty na OneDrivu se neuložila.\n\nDůvod: ${od.chyba}\n\nU nabídky zůstane upozornění, dokud se kopie nenahraje — tlačítkem „Zkusit znovu“ (nebo se nahraje sama, až bude OneDrive připojený).`);
   };
 
   const hasUnsavedChanges = () => {
@@ -1115,11 +1189,25 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
   // ceník/napovídání v PolozkyTabulka.
   const historickePolozky = quotes.flatMap(q => (q.data?.interni?.polozky || []).filter(p => p.nazev));
 
+  // Upozornění na kopie nabídek neuložené na OneDrive (v editoru jen té otevřené).
+  const vykresliOdCeka = (polozky) => polozky.length > 0 && (
+    <div role="alert" style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 14px", marginBottom: 14, color: "#991b1b", fontSize: 13, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <span style={{ flex: 1, minWidth: 220 }}>
+        <b>⚠ Na OneDrive se neuložila kopie {polozky.length === 1 ? "nabídky" : `${polozky.length} nabídek`}:</b>{" "}
+        {polozky.map((p) => p.cislo || quotes.find((q) => q.id === p.quote_id)?.name || "nabídka").join(", ")}
+        <span style={{ fontSize: 12 }}> — {polozky[polozky.length - 1].onedrive_chyba}</span>
+      </span>
+      <button type="button" disabled={nahravamOd} onClick={() => zkusitNabidkyZnovu(polozky)}
+        style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12, borderColor: "#fca5a5", color: "#991b1b" }}>{nahravamOd ? "Nahrávám…" : "↻ Zkusit znovu"}</button>
+    </div>
+  );
+
   // ─── SEZNAM NABÍDEK ──────────────────────────────────────────────────────
   if (!data) {
     return (
       <div style={S.app}>
         {hlaskaEl}
+        {vykresliOdCeka(odCeka)}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1A1A1A", margin: 0 }}>💰 Nacenění</h1>
           <button style={S.btn()} onClick={newQuote}>+ Nová nabídka</button>
@@ -1216,6 +1304,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
   return (
     <div style={S.app}>
       {hlaskaEl}
+      {vykresliOdCeka(odCeka.filter((p) => p.quote_id === activeId))}
       <button onClick={() => { if (confirmDiscardChanges()) closeQuote(); }} style={{ ...S.btnGhost, padding: "6px 14px", marginBottom: 14 }}>← Zpět na seznam</button>
 
       <div style={{ ...S.card, display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
