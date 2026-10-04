@@ -213,3 +213,9 @@ export function stahnoutWord(nazev, html, stahnout = true) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   return { blob, soubor };
 }
+
+// Počet věcí u zakázky pro odznak na ikoně (fotky + dokumenty evidované v appce).
+export function pocetVeSlozce(zak, fotky) {
+  const d = zak.dokumenty || {};
+  return (fotky || []).length + (d.smlouva ? 1 : 0) + (d.protokol ? 1 : 0) + (d.dodatky || []).length + (zak.naceneni_rea?.excel?.soubor ? 1 : 0);
+}

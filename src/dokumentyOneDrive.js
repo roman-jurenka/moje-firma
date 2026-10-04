@@ -4,7 +4,7 @@
 // plní nahrávání fotek (fotkyZakazky.js). Název složky zakázky je stejný jako
 // u fotek: název zakázky (contract), jinak název z Průběhu.
 
-import { isConnected, connectSharedAccount, uploadFile, odkazNaSlozku, vytvoritSlozku } from "./onedrive.js";
+import { isConnected, connectSharedAccount, uploadFile, odkazNaSlozku, vytvoritSlozku, seznamSlozky } from "./onedrive.js";
 
 export const bezpecnyNazev = (s) => String(s || "").replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim();
 export const slozkaDokumentu = (nazevZakazky) => `FirmaCRM/Zakázky/${bezpecnyNazev(nazevZakazky)}/Dokumenty`;
@@ -33,4 +33,10 @@ export async function zalozitSlozkuDokumenty(nazevZakazky) {
 export async function odkazNaDokumenty(nazevZakazky) {
   if (!(await zalozitSlozkuDokumenty(nazevZakazky))) return null;
   return odkazNaSlozku(slozkaDokumentu(nazevZakazky));
+}
+
+// Soubory ve složce Dokumenty zakázky (null, když OneDrive není připojený).
+export async function seznamDokumentu(nazevZakazky) {
+  if (!isConnected()) return null;
+  return seznamSlozky(slozkaDokumentu(nazevZakazky));
 }

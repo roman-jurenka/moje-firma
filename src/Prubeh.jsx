@@ -3,7 +3,7 @@ import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { nahratFotkuZakazky, pocetFotekText } from "./fotkyZakazky.js";
-import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky } from "./dokumentyZakazky.js";
+import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { UZAVIRACI_EMAIL_KEY, VYCHOZI_UZAVIRACI_EMAIL, ZNACKY_UZAVIRACIHO_EMAILU, vyplnitSablonu } from "./uzaviraciEmail.js";
@@ -15,6 +15,7 @@ import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import { PodkladyNahled, PodkladyFormular } from "./PodkladyZakazky.jsx";
 import PoleSNabidkou from "./PoleSNabidkou.jsx";
 import NaceneniRealizace from "./NaceneniRealizace.jsx";
+import SlozkaZakazky from "./SlozkaZakazky.jsx";
 import { ulozitDoDokumentu, odkazNaDokumenty, zalozitSlozkuDokumenty } from "./dokumentyOneDrive.js";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
@@ -238,6 +239,7 @@ export default function Prubeh({
   const zavritDotaz = (vysledek) => { dotaz?.resolve(vysledek); setDotaz(null); };
   const [materialForm, setMaterialForm] = useState(null); // checklist materiálu: { zakId, polozky, sklad, zNabidky }
   const [uzavEmail, setUzavEmail] = useState(null); // uzavírací e-mail objednateli: { zakId, komu, predmet, text, sablona, nacitam, … }
+  const [slozkaOkno, setSlozkaOkno] = useState(null); // id zakázky s otevřeným přehledem složky (fotky, dokumenty)
   const [reaForm, setReaForm] = useState(null); // id zakázky s otevřeným Naceněním realizace (REA)
   const fotoInput = useRef(null);
   const fotoCil = useRef(null);                       // { z, faze, ukol } pro vybrané soubory
@@ -1888,6 +1890,13 @@ export default function Prubeh({
   };
 
   // ── Vykreslení ──
+  const slozkaZak = slozkaOkno && rows.find((x) => x.id === slozkaOkno);
+  const slozkaEl = slozkaZak && (
+    <SlozkaZakazky zak={slozkaZak} slozka={nazevSlozky(slozkaZak)} fotky={fotkyZ[slozkaZak.id] || []}
+      onZavrit={() => setSlozkaOkno(null)}
+      onFotka={(i) => { setSlozkaOkno(null); setProhlizec({ fotky: fotkyZ[slozkaZak.id] || [], i }); }}
+      onVsechnyFotky={() => { setSlozkaOkno(null); setTimeout(() => document.getElementById("pr-fotky-karta")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }} />
+  );
   const reaZak = reaForm && rows.find((x) => x.id === reaForm);
   const reaEl = reaZak && (
     <NaceneniRealizace
@@ -1915,9 +1924,11 @@ export default function Prubeh({
       <style>{CSS}</style>
       {hlaskaEl}
       {reaEl}
+      {slozkaEl}
       <style>{`
         .pr-pruvodce, .pr-pruvodce-mini { bottom: 16px; }
         .pr-panacek:hover { transform: scale(1.06); }
+        .pr-slozka:hover { background: #eff6ff !important; border-color: #93c5fd !important; }
         .pr-krok-zpet:hover { transform: scale(1.12); box-shadow: 0 0 0 3px #bfdbfe; }
         .pr-panacek-hlasi { animation: pr-hlasi 1.6s ease-in-out infinite; }
         @keyframes pr-hlasi { 0%, 70%, 100% { transform: translateY(0); } 80% { transform: translateY(-7px); } 90% { transform: translateY(0); } }
@@ -2399,7 +2410,24 @@ export default function Prubeh({
     const kHlavicka = <div style={{ ...karta, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{z.nazev}</div>
-            {z.typ && <span style={{ background: tb[0], color: tb[1], borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>{z.typ}</span>}
+            <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              {(() => {
+                const pocet = pocetVeSlozce(z, fotkyZ[z.id]);
+                const ceka = (z.dokumenty?.onedriveCeka || []).length;
+                return (
+                  <button type="button" onClick={() => setSlozkaOkno(z.id)} className="pr-slozka"
+                    aria-label={`Složka zakázky — ${pocetFotekText((fotkyZ[z.id] || []).length)}, ${pocet - (fotkyZ[z.id] || []).length} dokumentů${ceka ? ", něco neuloženo na OneDrive" : ""}`}
+                    title="Složka zakázky — co je nahrané (fotky, nabídky, smlouvy, protokoly)"
+                    style={{ position: "relative", border: "1px solid #e2e8f0", background: "#fff", borderRadius: 8, width: 36, height: 30, fontSize: 18, cursor: "pointer", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    📁
+                    {pocet > 0 && (
+                      <span aria-hidden="true" style={{ position: "absolute", top: -7, right: -7, minWidth: 18, height: 18, borderRadius: 9, padding: "0 4px", boxSizing: "border-box", background: ceka ? "#dc2626" : "#0369a1", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{pocet}</span>
+                    )}
+                  </button>
+                );
+              })()}
+              {z.typ && <span style={{ background: tb[0], color: tb[1], borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>{z.typ}</span>}
+            </span>
           </div>
           <div style={{ fontSize: 13, color: "#475569" }}>{[k?.code, zakaznik(z.customer_id)?.name, z.hodnota ? fmtKc(z.hodnota) : null].filter(Boolean).join(" · ")}</div>
           <div style={{ fontSize: 13, color: "#334155", marginTop: 2 }}>
@@ -2894,7 +2922,7 @@ export default function Prubeh({
               tym={akceZakazky(z).map((e) => ({ id: e.id, na_starosti: e.na_starosti, employee_name: e.employee_name, date: e.date }))} />
           </div>
         </div>;
-    const kFotky = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
+    const kFotky = <div id="pr-fotky-karta" style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontWeight: 800, fontSize: 16 }}>📷 Fotky zakázky{vsechnyFotky.length ? ` (${vsechnyFotky.length})` : ""}</div>
             {otevrena && (

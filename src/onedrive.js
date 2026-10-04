@@ -314,6 +314,17 @@ export async function odkazNaSlozku(folderPath) {
   }
 }
 
+// Obsah složky (soubory i podsložky). Neexistující složka → [].
+export async function seznamSlozky(folderPath) {
+  try {
+    const res = await graphGet(`/me/drive/root:/${folderPath}:/children?$select=id,name,webUrl,size,lastModifiedDateTime,file,folder&$top=200`);
+    return res.value || [];
+  } catch (e) {
+    if (/→ 404/.test(e.message)) return [];
+    throw e;
+  }
+}
+
 // Verze pro File objekt z input[type=file]
 export async function uploadFileObject(folderPath, file) {
   const buffer = await file.arrayBuffer();
