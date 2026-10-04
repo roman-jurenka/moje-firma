@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase.js";
 import { OneDriveThumb } from "./storageUrl.jsx";
-import { seznamDokumentu, odkazNaDokumenty, ulozitDoDokumentu } from "./dokumentyOneDrive.js";
+import { seznamDokumentu, odkazNaDokumenty, ulozitDoDokumentu, zalozitSlozkuZakazky } from "./dokumentyOneDrive.js";
 import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js";
 import { pocetFotekText } from "./fotkyZakazky.js";
 
@@ -85,6 +85,23 @@ export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavr
     zak.naceneni_rea?.invoice_number && { key: "fa", ikona: "🧾", text: `Konečná faktura ${zak.naceneni_rea.invoice_number}`, kdy: zak.naceneni_rea.upraveno, url: null, vAppce: "ve Fakturaci" },
   ].filter(Boolean);
   const kDohrani = radky.filter((r) => !r.url && r.dohrat);
+
+  // Založí na OneDrivu složku zakázky s podsložkami Fotky a Dokumenty
+  const [zakladam, setZakladam] = useState(false);
+  const [slozkaZprava, setSlozkaZprava] = useState(null); // { text, chyba }
+  const vytvoritSlozku = async () => {
+    setZakladam(true);
+    setSlozkaZprava(null);
+    try {
+      if (await zalozitSlozkuZakazky(slozka)) {
+        setSlozkaZprava({ chyba: false, text: `✓ Složka „${slozka}“ s podsložkami Fotky a Dokumenty je na OneDrivu připravená.` });
+        await nactiOneDrive();
+      } else setSlozkaZprava({ chyba: true, text: "OneDrive není připojený — připoj ho (Nastavení → OneDrive) a zkus to znovu." });
+    } catch (e) {
+      setSlozkaZprava({ chyba: true, text: "Složku se nepodařilo vytvořit: " + (e.message || String(e)) });
+    }
+    setZakladam(false);
+  };
 
   // Odeslaná nabídka: kopie HTML z appky → Dokumenty na OneDrivu
   const dohratNabidku = async (n) => {
@@ -210,11 +227,16 @@ export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavr
         <div style={karta}>
           <div style={nadpis}>
             <span>☁️ Složka Dokumenty na OneDrivu</span>
-            <span style={{ display: "flex", gap: 6 }}>
-              {od.stav !== "nepripojeno" && <button type="button" style={btnGhost} onClick={() => nactiOneDrive()} disabled={od.stav === "nacitam"}>↻</button>}
+            <span style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {od.stav !== "nepripojeno" && <button type="button" style={btnGhost} aria-label="Obnovit obsah složky" onClick={() => nactiOneDrive()} disabled={od.stav === "nacitam"}>↻</button>}
+              <button type="button" style={btnGhost} disabled={zakladam} onClick={vytvoritSlozku}
+                title="Založí na OneDrivu složku zakázky s podsložkami Fotky a Dokumenty (co už existuje, zůstane beze změny)">{zakladam ? "Zakládám…" : "📁 Vytvořit složku"}</button>
               <button type="button" style={btnGhost} onClick={() => otevrit(() => odkazNaDokumenty(slozka))}>Otevřít složku</button>
             </span>
           </div>
+          {slozkaZprava && (
+            <div role={slozkaZprava.chyba ? "alert" : "status"} style={{ marginBottom: 8, borderRadius: 8, padding: "7px 10px", fontSize: 13, background: slozkaZprava.chyba ? "#fef2f2" : "#f0fdf4", color: slozkaZprava.chyba ? "#991b1b" : "#166534" }}>{slozkaZprava.text}</div>
+          )}
           {od.stav === "nepripojeno" ? (
             <div style={{ fontSize: 13, color: "#64748b" }}>OneDrive není připojený. <button type="button" style={{ ...btnGhost, padding: "3px 9px", fontSize: 12 }} onClick={() => nactiOneDrive(true)}>Připojit a načíst</button></div>
           ) : od.stav === "nacitam" ? <div style={{ fontSize: 13, color: "#64748b" }}>Načítám obsah složky…</div>

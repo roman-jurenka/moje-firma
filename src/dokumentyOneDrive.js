@@ -40,3 +40,11 @@ export async function seznamDokumentu(nazevZakazky) {
   if (!isConnected()) return null;
   return seznamSlozky(slozkaDokumentu(nazevZakazky));
 }
+
+// Založí složku zakázky s podsložkami Fotky a Dokumenty (Dokumenty založí
+// vytvoritSlozku u každé složky zakázky sama). Vrací true/false.
+export async function zalozitSlozkuZakazky(nazevZakazky) {
+  if (!(await pripojit())) return false;
+  await vytvoritSlozku(`FirmaCRM/Zakázky/${bezpecnyNazev(nazevZakazky)}/Fotky`);
+  return true;
+}
