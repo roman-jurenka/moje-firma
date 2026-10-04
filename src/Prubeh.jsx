@@ -689,10 +689,17 @@ export default function Prubeh({
   });
   const posunDal = async (zak) => {
     const f = fazeById[zak.faze];
-    if (!fazeHotova(zak, f, autoZ(zak))) { alert("Nejdřív dokonči úkoly této fáze."); return; }
+    if (!fazeHotova(zak, f, autoZ(zak))) {
+      const zbyva = ukolyPro(f, zak.typ).filter((u) => !ukolHotovy(zak, f, u, autoZ(zak))).map((u) => "• " + u.text).join("\n");
+      await zeptat({ titulek: "Nejdřív dokonči úkoly kroku", text: `Ještě zbývá:\n${zbyva}\n\nKdyž je potřeba jít dál i tak, použij „⏭ Přeskočit krok“.`, jenOk: true, potvrdit: "Rozumím" });
+      return;
+    }
     const kontroly = kontrolyZ(zak);
     const chyby = kontroly.filter((x) => x.blokuje);
-    if (chyby.length) { alert("Než zakázku posuneš dál, oprav:\n\n" + chyby.map((x) => "• " + x.text).join("\n")); return; }
+    if (chyby.length) {
+      await zeptat({ titulek: "Než zakázku posuneš dál, oprav", text: chyby.map((x) => "• " + x.text).join("\n") + "\n\nKdyž je potřeba jít dál i tak, použij „⏭ Přeskočit krok“.", jenOk: true, potvrdit: "Rozumím" });
+      return;
+    }
     // Upozornění (oranžová, hlavně z dřívějších fází) posun natvrdo neblokují — u starších
     // převzatých zakázek by jinak nešlo nic posunout — ale musí se vědomě odkliknout.
     const pozor = kontroly.filter((x) => x.uroven === "pozor");
@@ -729,18 +736,25 @@ export default function Prubeh({
   };
   const vratit = async (zak) => {
     const cil = predchozi(zak);
-    if (!cil) return;
-    if (!(await zeptat({ titulek: "Vrátit zakázku zpět?", text: `Zakázka se vrátí do fáze „${nazevFaze(cil, zak.typ)}“.`, potvrdit: "Vrátit zpět" }))) return;
+    if (cil) await vratitNa(zak, cil);
+  };
+  // Návrat do libovolného dřívějšího kroku (klik na krok v řadě kroků / šipka ‹).
+  // Cílový krok a kroky přeskočené tlačítkem „Přeskočit krok“ za ním zase platí.
+  const vratitNa = async (zak, cil) => {
+    if (!cil || zak.stav !== "otevrena") return;
+    const iCil = FAZE.findIndex((x) => x.id === cil.id);
+    if (iCil >= FAZE.findIndex((x) => x.id === zak.faze)) return;
+    if (!(await zeptat({ titulek: "Vrátit zakázku zpět?", text: `Zakázka se vrátí do kroku „${nazevFaze(cil, zak.typ)}“. Hotové úkoly zůstanou odškrtnuté.`, potvrdit: "Vrátit zpět" }))) return;
     setPracuji(true);
     let nz = zak;
-    if (jePreskocenyKrok(zak, cil)) {
-      // vrácení do přeskočeného kroku → krok zase platí
+    const znovuPlati = FAZE.filter((x, i) => i >= iCil && (x.id === cil.id || jePreskocenyKrok(zak, x)) && (zak.preskocene || []).includes(x.id)).map((x) => x.id);
+    if (znovuPlati.length) {
       const hotove = { ...(zak.hotove_ukoly || {}) };
-      delete hotove[`${cil.id}.__preskoceno`];
-      nz = { ...zak, preskocene: (zak.preskocene || []).filter((id) => id !== cil.id), hotove_ukoly: hotove };
+      znovuPlati.forEach((id) => { delete hotove[`${id}.__preskoceno`]; });
+      nz = { ...zak, preskocene: (zak.preskocene || []).filter((id) => !znovuPlati.includes(id)), hotove_ukoly: hotove };
       if (!(await uloz(zak, { preskocene: nz.preskocene, hotove_ukoly: hotove }))) { setPracuji(false); return; }
     }
-    await presun(nz, cil, `Vráceno zpět do fáze ${nazevFaze(cil, zak.typ)}.`);
+    if (await presun(nz, cil, `Vráceno zpět do kroku ${nazevFaze(cil, zak.typ)}.`)) ukazHlasku(`↩ Vráceno do kroku ${nazevFaze(cil, zak.typ)}`);
     setPracuji(false);
   };
 
@@ -1787,6 +1801,7 @@ export default function Prubeh({
       <style>{`
         .pr-pruvodce, .pr-pruvodce-mini { bottom: 16px; }
         .pr-panacek:hover { transform: scale(1.06); }
+        .pr-krok-zpet:hover { transform: scale(1.12); box-shadow: 0 0 0 3px #bfdbfe; }
         .pr-panacek-hlasi { animation: pr-hlasi 1.6s ease-in-out infinite; }
         @keyframes pr-hlasi { 0%, 70%, 100% { transform: translateY(0); } 80% { transform: translateY(-7px); } 90% { transform: translateY(0); } }
         @media (prefers-reduced-motion: reduce) { .pr-panacek-hlasi { animation: none; } }
@@ -1830,7 +1845,7 @@ export default function Prubeh({
               </div>
             )}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button type="button" style={btnGhost} onClick={() => zavritDotaz(null)}>Zrušit</button>
+              {!dotaz.jenOk && <button type="button" style={btnGhost} onClick={() => zavritDotaz(null)}>Zrušit</button>}
               <button type="button" autoFocus={!dotaz.vstup} style={btn("#0369a1")} disabled={dotaz.vstup && !dotaz.hodnota.trim()}
                 onClick={() => zavritDotaz(dotaz.vstup ? dotaz.hodnota.trim() : true)}>{dotaz.potvrdit || "OK"}</button>
             </div>
@@ -2315,8 +2330,10 @@ export default function Prubeh({
     // Kroky zakázky po sobě (okno zakázky): očíslovaná cesta zleva doprava,
     // nad krokem název sekce, hotové ✓, aktuální zvýrazněný, přeskočené přeškrtnuté.
     const kroky = prubehSekci.flatMap(({ s: ss, faze: fz }) => fz.map(({ fx, i }, j) => ({ fx, i, ss, prvniVSekci: j === 0 })));
-    const kKroky = <div style={{ ...karta, padding: "14px 16px" }}>
-          <div className="pr-kroky" role="list" aria-label="Kroky zakázky" style={{ display: "flex", overflowX: "auto", paddingBottom: 4 }}>
+    const sipka = (aktivni) => ({ flexShrink: 0, width: 34, height: 34, borderRadius: "50%", border: "1px solid #cbd5e1", background: aktivni ? "#fff" : "#f8fafc", color: aktivni ? "#0f172a" : "#cbd5e1", fontSize: 20, fontWeight: 700, cursor: aktivni ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" });
+    const kKroky = <div style={{ ...karta, padding: "14px 10px", display: "flex", alignItems: "center", gap: 6 }}>
+          <button type="button" aria-label="O krok zpět" title={pred && otevrena ? `Zpět do kroku ${nazevFaze(pred, z.typ)}` : ""} disabled={!pred || !otevrena || pracuji} onClick={() => vratit(z)} style={sipka(pred && otevrena)}>‹</button>
+          <div className="pr-kroky" role="list" aria-label="Kroky zakázky" style={{ display: "flex", overflowX: "auto", paddingBottom: 4, flex: 1, minWidth: 0 }}>
             {kroky.map(({ fx, i, ss, prvniVSekci }, n) => {
               const st = stavFaze(fx, i);
               const h = st === "hotovo" ? kdyHotovo(fx) : null;
@@ -2337,9 +2354,17 @@ export default function Prubeh({
                   <div style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center", alignItems: "center", height: 36 }}>
                     {n > 0 && <div aria-hidden="true" style={{ position: "absolute", left: 0, right: "50%", top: "50%", height: 3, marginTop: -1.5, background: caraHotova ? "#86efac" : "#e2e8f0" }} />}
                     {n < kroky.length - 1 && <div aria-hidden="true" style={{ position: "absolute", left: "50%", right: 0, top: "50%", height: 3, marginTop: -1.5, background: st === "hotovo" || st === "preskoceno" ? "#86efac" : "#e2e8f0" }} />}
-                    <div style={{ position: "relative", width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, ...kruh }}>
-                      {st === "hotovo" ? "✓" : st === "preskoceno" ? "⏭" : n + 1}
-                    </div>
+                    {otevrena && i < iTed ? (
+                      <button type="button" className="pr-krok-zpet" onClick={() => vratitNa(z, fx)} disabled={pracuji}
+                        aria-label={`Vrátit zakázku do kroku ${nazevFaze(fx, z.typ)}`} title={`Klikni pro návrat do kroku ${nazevFaze(fx, z.typ)}`}
+                        style={{ position: "relative", width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, cursor: "pointer", padding: 0, fontFamily: "inherit", ...kruh }}>
+                        {st === "hotovo" ? "✓" : st === "preskoceno" ? "⏭" : n + 1}
+                      </button>
+                    ) : (
+                      <div style={{ position: "relative", width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, ...kruh }}>
+                        {st === "hotovo" ? "✓" : st === "preskoceno" ? "⏭" : n + 1}
+                      </div>
+                    )}
                   </div>
                   <div style={{ marginTop: 5, fontSize: 12, fontWeight: st === "ted" ? 800 : 600, textAlign: "center", lineHeight: 1.2, padding: "0 4px",
                     color: st === "ted" ? ss.tmava : st === "hotovo" ? "#166534" : "#64748b", textDecoration: st === "preskoceno" ? "line-through" : "none" }}>
@@ -2351,6 +2376,7 @@ export default function Prubeh({
               );
             })}
           </div>
+          <button type="button" aria-label="O krok dál" title={dalsi && otevrena ? `Dál do kroku ${nazevFaze(dalsi, z.typ)} (jako Hotovo →)` : ""} disabled={!otevrena || pracuji || !!rozhodnuti} onClick={() => posunDal(z)} style={sipka(otevrena && !rozhodnuti)}>›</button>
         </div>;
     const kDalsiKrok = otevrena && (
           <div style={{ background: "#0f172a", color: "#fff", borderRadius: 16, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
