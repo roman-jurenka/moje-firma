@@ -2721,6 +2721,12 @@ export default function Prubeh({
                         <div style={{ padding: "0 12px 10px 40px", fontSize: 13, color: "#475569" }}>
                           {z.naceneni_rea.varianta === "excel" ? "📊 Kalkulace v Excelu" : "📋 Ceník podle skutečnosti"}
                           {z.naceneni_rea.invoice_number ? <> · <b style={{ color: "#15803d" }}>faktura {z.naceneni_rea.invoice_number}</b> ({fmtKc(z.naceneni_rea.vyfakturovano)} bez DPH)</> : " · rozpracováno"}
+                          {z.naceneni_rea.rozpis && (
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 2 }}>
+                              {[["strecha", "🏠 Střecha"], ["elektro", "⚡ Elektro"], ["doprava", "🚚 Doprava"], ["material", "📦 Materiál"]].filter(([k]) => z.naceneni_rea.rozpis[k] > 0)
+                                .map(([k, t]) => <span key={k}>{t} {fmtKc(z.naceneni_rea.rozpis[k])}</span>)}
+                            </div>
+                          )}
                         </div>
                       )}
                       {u.material && (z.material || []).length > 0 && (() => {
