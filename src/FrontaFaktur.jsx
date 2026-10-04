@@ -110,50 +110,75 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     const mnozstvi = Number(it.quantity) || 1;
     const cena = Number(it.unit_price) || (mnozstvi ? cenaRadku(it) / mnozstvi : 0);
     const doklad = [f.supplier_name, f.invoice_number ? `faktura ${f.invoice_number}` : null].filter(Boolean).join(", ");
+    const zalozene = []; // pohyby vytvořené teď — při chybě se smažou
+    const novyPohyb = async (data) => {
+      const { data: p, error } = await supabase.from("warehouse_movements").insert({ unit: jednotka(it.unit), created_by: ja || "?", ...data }).select().single();
+      if (error) throw error;
+      zalozene.push(p.id);
+      return p;
+    };
+    // produkt ve skladu (když chybí, založí se s nákupní cenou z faktury; chybějící cenu doplní)
+    const zajistitProdukt = async () => {
+      let prod = produktProRadek(it);
+      if (!prod) {
+        const { data: novy, error } = await supabase.from("products").insert({
+          name: String(it.description || "").trim() || `Položka z faktury ${f.invoice_number || ""}`.trim(),
+          unit: jednotka(it.unit), price: Math.round(cena * 100) / 100, price_sell: 0, stock: 0, min_stock: 0, category: "",
+        }).select().single();
+        if (error) throw error;
+        prod = novy;
+      } else if (!(Number(prod.price) > 0) && cena > 0) {
+        await supabase.from("products").update({ price: Math.round(cena * 100) / 100 }).eq("id", prod.id);
+      }
+      return prod;
+    };
     try {
       if (v.cil === "sklad") {
-        let prod = produktProRadek(it);
-        if (!prod) {
-          const { data: novy, error } = await supabase.from("products").insert({
-            name: String(it.description || "").trim() || `Položka z faktury ${f.invoice_number || ""}`.trim(),
-            unit: jednotka(it.unit), price: Math.round(cena * 100) / 100, price_sell: 0, stock: 0, min_stock: 0, category: "",
-          }).select().single();
-          if (error) throw error;
-          prod = novy;
-        }
-        const { data: pohyb, error: mErr } = await supabase.from("warehouse_movements").insert({
-          product_name: prod.name, quantity: mnozstvi, unit: jednotka(it.unit), movement_type: "in",
-          from_location: f.supplier_name || "Dodavatel", to_location: "Sklad", created_by: ja || "?",
+        const prod = await zajistitProdukt();
+        const pohyb = await novyPohyb({
+          product_name: prod.name, quantity: mnozstvi, movement_type: "in",
+          from_location: f.supplier_name || "Dodavatel", to_location: "Sklad",
           note: `Příjem z faktury${doklad ? ` (${doklad})` : ""}`,
-        }).select().single();
-        if (mErr) throw mErr;
+        });
         // aktuální stav až teď (mezitím mohl někdo vydávat); bez něj stav neměnit
-        const { data: aktualni, error: sErr } = await supabase.from("products").select("stock, price").eq("id", prod.id).single();
-        if (sErr || !aktualni) {
-          await supabase.from("warehouse_movements").delete().eq("id", pohyb.id);
-          throw new Error("nepodařilo se načíst stav skladu — příjem se nezapsal, zkus to znovu");
-        }
-        const patch = { stock: Math.max(0, Math.round((Number(aktualni?.stock) || 0) + mnozstvi)) };
-        if (!(Number(aktualni?.price) > 0) && cena > 0) patch.price = Math.round(cena * 100) / 100; // nákupní cena, když chyběla
-        const { error: uErr } = await supabase.from("products").update(patch).eq("id", prod.id);
-        if (uErr) {
-          await supabase.from("warehouse_movements").delete().eq("id", pohyb.id);
-          throw uErr;
-        }
-        await supabase.from("invoice_queue_items").update({ assigned_to_sklad: true, assigned_contract_id: null, warehouse_movement_id: pohyb.id }).eq("id", it.id);
+        const { data: aktualni, error: sErr } = await supabase.from("products").select("stock").eq("id", prod.id).single();
+        if (sErr || !aktualni) throw new Error("nepodařilo se načíst stav skladu — příjem se nezapsal, zkus to znovu");
+        const { error: uErr } = await supabase.from("products").update({ stock: Math.max(0, Math.round((Number(aktualni.stock) || 0) + mnozstvi)) }).eq("id", prod.id);
+        if (uErr) throw uErr;
+        await supabase.from("invoice_queue_items").update({ assigned_to_sklad: true, assigned_contract_id: null, warehouse_movement_id: pohyb.id, warehouse_movement_out_id: null }).eq("id", it.id);
       } else {
         const contractId = Number(v.cil.slice(2));
+        const typ = v.typ || "materiál";
+        // Materiál projde skladem: příjem a hned výdej na zakázku (stav skladu se nemění)
+        let prijem = null, vydej = null;
+        if (typ === "materiál") {
+          const prod = await zajistitProdukt();
+          prijem = await novyPohyb({
+            product_name: prod.name, quantity: mnozstvi, movement_type: "in",
+            from_location: f.supplier_name || "Dodavatel", to_location: "Sklad",
+            note: `Příjem z faktury${doklad ? ` (${doklad})` : ""} — rovnou vydáno na zakázku`,
+          });
+          vydej = await novyPohyb({
+            product_name: prod.name, quantity: mnozstvi, movement_type: "out_contract", contract_id: contractId,
+            from_location: "Sklad", to_location: zakazkaById[contractId]?.name || "Zakázka",
+            note: `Výdej na zakázku z faktury${doklad ? ` (${doklad})` : ""}`,
+          });
+        }
         const { data: naklad, error } = await supabase.from("contract_cost_entries").insert({
-          contract_id: contractId, cost_type: v.typ || "materiál", is_extra: false, date: f.issue_date || dnes(),
+          contract_id: contractId, cost_type: typ, is_extra: false, date: f.issue_date || dnes(),
           description: `${String(it.description || "").trim()}${doklad ? ` (${doklad})` : ""}`,
           quantity: mnozstvi, unit: jednotka(it.unit),
           unit_price_cost: Math.round(cena * 100) / 100, unit_price_client: Math.round(cena * 100) / 100,
         }).select().single();
         if (error) throw error;
-        await supabase.from("invoice_queue_items").update({ assigned_contract_id: contractId, assigned_to_sklad: false, cost_entry_id: naklad.id }).eq("id", it.id);
+        await supabase.from("invoice_queue_items").update({
+          assigned_contract_id: contractId, assigned_to_sklad: false, cost_entry_id: naklad.id,
+          warehouse_movement_id: prijem?.id || null, warehouse_movement_out_id: vydej?.id || null,
+        }).eq("id", it.id);
       }
       return null;
     } catch (e) {
+      if (zalozene.length) await supabase.from("warehouse_movements").delete().in("id", zalozene);
       await odemknout();
       return `Řádka ${it.line_no ?? ""}: ${e.message || e}`;
     }
@@ -201,7 +226,13 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
           if (error) { await supabase.from("invoice_queue_items").update({ cost_entry_id: naklad.id }).eq("id", it.id); throw error; }
         }
       }
-      if (it.warehouse_movement_id) {
+      if (it.warehouse_movement_out_id) {
+        // materiál do zakázky přes sklad: smazat příjem i výdej — stav skladu se nemění
+        const ids = [it.warehouse_movement_id, it.warehouse_movement_out_id].filter(Boolean);
+        await supabase.from("invoice_queue_items").update({ warehouse_movement_id: null, warehouse_movement_out_id: null }).eq("id", it.id);
+        const { error } = await supabase.from("warehouse_movements").delete().in("id", ids);
+        if (error) { await supabase.from("invoice_queue_items").update({ warehouse_movement_id: it.warehouse_movement_id, warehouse_movement_out_id: it.warehouse_movement_out_id }).eq("id", it.id); throw error; }
+      } else if (it.warehouse_movement_id) {
         const { data: pohyb } = await supabase.from("warehouse_movements").select("id, product_name, quantity").eq("id", it.warehouse_movement_id).maybeSingle();
         if (pohyb) {
           const { data: prod } = await supabase.from("products").select("id, stock").ilike("name", pohyb.product_name).maybeSingle();
@@ -212,7 +243,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
         }
       }
       const { error } = await supabase.from("invoice_queue_items").update({
-        status: "navrh", assigned_contract_id: null, assigned_to_sklad: false, cost_entry_id: null, warehouse_movement_id: null,
+        status: "navrh", assigned_contract_id: null, assigned_to_sklad: false, cost_entry_id: null, warehouse_movement_id: null, warehouse_movement_out_id: null,
       }).eq("id", it.id);
       if (error) throw error;
       // výběr předvyplnit tím, co bylo přiřazené
@@ -360,16 +391,23 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                                   </div>
                                 )}
                                 {v.cil.startsWith("z:") && (
-                                  <select style={{ ...pole, marginTop: 4 }} value={v.typ} aria-label="Typ nákladu" onChange={(e) => setV({ typ: e.target.value })}>
-                                    {TYPY_NAKLADU.map(([id, t]) => <option key={id} value={id}>Náklad: {t}</option>)}
-                                  </select>
+                                  <>
+                                    <select style={{ ...pole, marginTop: 4 }} value={v.typ} aria-label="Typ nákladu" onChange={(e) => setV({ typ: e.target.value })}>
+                                      {TYPY_NAKLADU.map(([id, t]) => <option key={id} value={id}>Náklad: {t}</option>)}
+                                    </select>
+                                    {v.typ === "materiál" && (
+                                      <div style={{ fontSize: 11, marginTop: 3, color: "#0369a1" }}>
+                                        📦 Projde skladem: příjem a hned výdej na zakázku{prod ? "" : " (produkt se ve skladu založí)"}
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </>
                             ) : it.status === "zamitnuto" ? (
                               <span style={{ fontSize: 12, color: "#64748b" }}>Nepřiřazeno (zamítnuto)</span>
                             ) : (
                               <span style={{ fontSize: 12, color: "#15803d", fontWeight: 700 }}>
-                                ✓ {it.assigned_to_sklad ? "Příjem na sklad" : `Náklad zakázky ${hotovoZ ? popisZakazky(hotovoZ) : ""}`}
+                                ✓ {it.assigned_to_sklad ? "Příjem na sklad" : `Náklad zakázky ${hotovoZ ? popisZakazky(hotovoZ) : ""}${it.warehouse_movement_out_id ? " · přes sklad (příjem + výdej)" : ""}`}
                               </span>
                             )}
                           </td>
@@ -418,7 +456,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
               <b>{zmena.it.description}</b><br />
               {zmena.it.assigned_to_sklad
                 ? "Příjem na sklad se vrátí — pohyb se smaže a stav produktu se sníží o přijaté množství (produkt ve skladu zůstane)."
-                : "Náklad se ze zakázky smaže."}
+                : zmena.it.warehouse_movement_out_id ? "Náklad se ze zakázky smaže a smaže se i příjem a výdej materiálu ve skladu (stav skladu se nezmění)." : "Náklad se ze zakázky smaže."}
               {" "}Řádka se vrátí k přiřazení a pak vybereš nové přiřazení a potvrdíš.
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
