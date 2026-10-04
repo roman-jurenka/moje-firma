@@ -206,9 +206,11 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
   return (
     <div style={{ textAlign: "left" }}>
       {!vlozeny ? (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+        // Tlačítko uprostřed — vpravo nahoře ho překrývala plovoucí tlačítka appky (zpět, obnovit, hledat).
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 12, marginBottom: 18 }}>
           <h1 style={ui.nadpis}>Servis</h1>
           <button type="button" style={ui.tlacitko()} onClick={() => otevritFormular(null)}><i className="ti ti-plus" aria-hidden="true"></i> Nový ticket</button>
+          <span aria-hidden="true" />
         </div>
       ) : (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
