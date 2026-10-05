@@ -66,6 +66,11 @@ const rozsahObdobi = (k, od, doo) => {
   return [null, null];
 };
 const nazevDodavatele = (f) => String(f.supplier_name || "").trim() || "Neznámý dodavatel";
+// Štítky faktur (nabídka se dá rozšířit, ukládá se v app_settings)
+const STITKY_KEY = "fronta_stitky";
+const VYCHOZI_STITKY = ["Fixní náklady", "Opravy aut", "Pohonné hmoty", "Materiál", "Režie", "Nářadí", "Telefon a internet"];
+const BARVY_STITKU = [["#e0f2fe", "#0369a1"], ["#fef3c7", "#b45309"], ["#dcfce7", "#15803d"], ["#fce7f3", "#be185d"], ["#ede9fe", "#6d28d9"], ["#fee2e2", "#b91c1c"], ["#f1f5f9", "#334155"], ["#ccfbf1", "#0f766e"]];
+const barvaStitku = (t) => BARVY_STITKU[[...String(t)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7) % BARVY_STITKU.length];
 
 export default function FrontaFaktur({ contracts = [], customers = [], currentUser, onZmenaPoctu }) {
   const [faktury, setFaktury] = useState(null);
@@ -86,6 +91,10 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
   const [filtrDo, setFiltrDo] = useState("");
   const [hledat, setHledat] = useState("");
   const [pridani, setPridani] = useState(null); // ruční řádka: { fId, popis, mnozstvi, jednotka, cena }
+  const [nabidkaStitku, setNabidkaStitku] = useState(VYCHOZI_STITKY);
+  const [filtrStitek, setFiltrStitek] = useState(""); // "" = všechny, "__bez" = bez štítku
+  const [stitkovani, setStitkovani] = useState(null);  // id faktury s otevřeným výběrem štítků
+  const [novyStitek, setNovyStitek] = useState("");
 
   const nacist = async () => {
     const stavy = vyrizene ? ["nova", "castecne_prirazena", "schvalena", "zamitnuta"] : ["nova", "castecne_prirazena"];
@@ -96,6 +105,8 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     if (error) { setZprava({ chyba: true, text: "Frontu se nepodařilo načíst: " + error.message }); setFaktury([]); return; }
     setProdukty(p || []);
     setPrirazka(await nactiPrirazku());
+    const { data: nast } = await supabase.from("app_settings").select("value").eq("key", STITKY_KEY).maybeSingle();
+    if (Array.isArray(nast?.value?.stitky) && nast.value.stitky.length) setNabidkaStitku(nast.value.stitky);
     const ids = (f || []).map((x) => x.id);
     // řádky po dávkách faktur (dotaz má limit řádků na odpověď)
     const it = [];
@@ -340,10 +351,41 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     (!filtrDodavatel || nazevDodavatele(x) === filtrDodavatel) &&
     (!obdobiOd || (x.issue_date && x.issue_date >= obdobiOd)) &&
     (!obdobiDo || (x.issue_date && x.issue_date <= obdobiDo)) &&
-    (!hledano || bezDiakritiky(`${x.invoice_number || ""} ${x.variable_symbol || ""} ${x.supplier_name || ""} ${x.supplier_ico || ""}`).includes(hledano)));
+    (!hledano || bezDiakritiky(`${x.invoice_number || ""} ${x.variable_symbol || ""} ${x.supplier_name || ""} ${x.supplier_ico || ""}`).includes(hledano)) &&
+    (!filtrStitek || (filtrStitek === "__bez" ? !(x.stitky || []).length : (x.stitky || []).includes(filtrStitek))));
+  const pocetSeStitkem = (t) => faktury.filter((x) => (x.stitky || []).includes(t)).length;
+  const vsechnyStitky = [...new Set([...nabidkaStitku, ...faktury.flatMap((x) => x.stitky || [])])];
+
+  // ── Štítky ──
+  const ulozitStitky = async (ids, upravit) => {
+    const zmeny = faktury.filter((x) => ids.includes(x.id)).map((x) => ({ id: x.id, stitky: upravit(x.stitky || []) }));
+    for (const z of zmeny) {
+      const { error } = await supabase.from("invoice_queue").update({ stitky: z.stitky, updated_at: new Date().toISOString() }).eq("id", z.id);
+      if (error) { setZprava({ chyba: true, text: "Štítek se nepodařilo uložit: " + error.message }); return false; }
+    }
+    setFaktury((fs) => fs.map((x) => { const z = zmeny.find((y) => y.id === x.id); return z ? { ...x, stitky: z.stitky } : x; }));
+    return true;
+  };
+  const prepnoutStitek = (fa, t) => ulozitStitky([fa.id], (st) => (st.includes(t) ? st.filter((x) => x !== t) : [...st, t]));
+  const stitekDodavateli = async (fa, t) => {
+    const ids = faktury.filter((x) => nazevDodavatele(x) === nazevDodavatele(fa) && !(x.stitky || []).includes(t)).map((x) => x.id);
+    if (!ids.length) return;
+    if (await ulozitStitky(ids, (st) => (st.includes(t) ? st : [...st, t]))) setZprava({ chyba: false, text: `✓ Štítek „${t}“ přidán k ${ids.length} ${ids.length === 1 ? "faktuře" : "fakturám"} od ${nazevDodavatele(fa).replace(/\.$/, "")}.` });
+  };
+  const pridatDoNabidky = async (fa) => {
+    const t = novyStitek.trim();
+    if (!t) return;
+    if (!nabidkaStitku.includes(t)) {
+      const nova = [...nabidkaStitku, t];
+      await supabase.from("app_settings").upsert({ key: STITKY_KEY, value: { stitky: nova }, updated_at: new Date().toISOString() });
+      setNabidkaStitku(nova);
+    }
+    setNovyStitek("");
+    if (!(fa.stitky || []).includes(t)) await prepnoutStitek(fa, t);
+  };
   const soucetSDph = zobrazene.reduce((a, x) => a + (Number(x.total_amount) || 0), 0);
   const bezRadku = zobrazene.filter((x) => !(polozky[x.id] || []).length).length;
-  const filtrovano = filtrDodavatel || filtrObdobi !== "vse" || hledano;
+  const filtrovano = filtrDodavatel || filtrObdobi !== "vse" || hledano || filtrStitek;
 
   // Ruční řádka (faktury, ze kterých se řádky nepodařilo vyčíst)
   const otevritPridani = (fa) => {
@@ -425,11 +467,19 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
             <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>Do<input type="date" style={pole} value={filtrDo} onChange={(e) => setFiltrDo(e.target.value)} /></label>
           </>
         )}
+        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>
+          Štítek
+          <select style={pole} value={filtrStitek} onChange={(e) => setFiltrStitek(e.target.value)}>
+            <option value="">Všechny štítky</option>
+            <option value="__bez">Bez štítku ({faktury.filter((x) => !(x.stitky || []).length).length})</option>
+            {vsechnyStitky.map((t) => <option key={t} value={t}>{t} ({pocetSeStitkem(t)})</option>)}
+          </select>
+        </label>
         <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3, flex: "1 1 160px" }}>
           Hledat
           <input type="search" style={{ ...pole, maxWidth: "none" }} value={hledat} placeholder="číslo faktury, VS, IČO…" onChange={(e) => setHledat(e.target.value)} />
         </label>
-        {filtrovano && <button type="button" style={tlObrys()} onClick={() => { setFiltrDodavatel(""); setFiltrObdobi("vse"); setFiltrOd(""); setFiltrDo(""); setHledat(""); }}>✕ Zrušit filtry</button>}
+        {filtrovano && <button type="button" style={tlObrys()} onClick={() => { setFiltrDodavatel(""); setFiltrObdobi("vse"); setFiltrOd(""); setFiltrDo(""); setHledat(""); setFiltrStitek(""); }}>✕ Zrušit filtry</button>}
         <div style={{ flexBasis: "100%", fontSize: 12, color: "#475569" }}>
           Zobrazeno <b>{zobrazene.length}</b> z {faktury.length} faktur · celkem <b>{fmtKc(Math.round(soucetSDph))}</b> s DPH
           {bezRadku > 0 && <span style={{ color: "#b45309" }}> · {bezRadku} bez vyčtených řádek (přidej řádek ručně)</span>}
@@ -456,7 +506,40 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                   <span style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{f.supplier_name || "Neznámý dodavatel"}</span>
                   <span style={{ background: stavPozadi, color: stavBarva, borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 800 }}>{stavText}</span>
                   {f.direction === "vydana" && <span style={{ fontSize: 11, color: "#64748b" }}>vydaná</span>}
+                  {(f.stitky || []).map((t) => { const [bg, fg] = barvaStitku(t); return (
+                    <button key={t} type="button" onClick={() => setFiltrStitek(t)} title={`Zobrazit jen „${t}“`}
+                      style={{ background: bg, color: fg, border: "none", borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🏷 {t}</button>
+                  ); })}
+                  <button type="button" onClick={() => { setStitkovani(stitkovani === f.id ? null : f.id); setNovyStitek(""); }}
+                    style={{ background: "#fff", color: "#475569", border: "1px dashed #cbd5e1", borderRadius: 999, padding: "1px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                    {stitkovani === f.id ? "✕ zavřít" : "+ štítek"}
+                  </button>
                 </div>
+                {stitkovani === f.id && (() => {
+                  const dalsi = faktury.filter((x) => x.id !== f.id && nazevDodavatele(x) === nazevDodavatele(f)).length;
+                  return (
+                    <div style={{ marginTop: 6, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 8, display: "flex", flexDirection: "column", gap: 6, maxWidth: 560 }}>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        {vsechnyStitky.map((t) => { const ma = (f.stitky || []).includes(t); const [bg, fg] = barvaStitku(t); return (
+                          <button key={t} type="button" aria-pressed={ma} onClick={() => prepnoutStitek(f, t)}
+                            style={{ background: ma ? bg : "#fff", color: ma ? fg : "#475569", border: `1px solid ${ma ? fg : "#cbd5e1"}`, borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                            {ma ? "✓ " : ""}{t}
+                          </button>
+                        ); })}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <input style={pole} value={novyStitek} placeholder="Nový štítek…" onChange={(e) => setNovyStitek(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") pridatDoNabidky(f); }} />
+                        <button type="button" style={tlObrys("#0369a1")} disabled={!novyStitek.trim()} onClick={() => pridatDoNabidky(f)}>+ Přidat štítek</button>
+                      </div>
+                      {dalsi > 0 && (f.stitky || []).length > 0 && (
+                        <div style={{ fontSize: 12, color: "#475569", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                          Použít i na dalších {dalsi} {dalsi === 1 ? "fakturu" : dalsi < 5 ? "faktury" : "faktur"} od {nazevDodavatele(f)}:
+                          {(f.stitky || []).map((t) => <button key={t} type="button" style={tlObrys("#0369a1")} onClick={() => stitekDodavateli(f, t)}>🏷 {t}</button>)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>
                   {[f.invoice_number && `Faktura ${f.invoice_number}`, f.supplier_ico && `IČO ${f.supplier_ico}`, f.variable_symbol && `VS ${f.variable_symbol}`,
                     `vystavena ${fmtDatum(f.issue_date)}`, `splatnost ${fmtDatum(f.due_date)}`].filter(Boolean).join(" · ")}
