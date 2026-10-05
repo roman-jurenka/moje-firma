@@ -68,7 +68,7 @@ const rozsahObdobi = (k, od, doo) => {
 const nazevDodavatele = (f) => String(f.supplier_name || "").trim() || "Neznámý dodavatel";
 // Štítky faktur (nabídka se dá rozšířit, ukládá se v app_settings)
 const STITKY_KEY = "fronta_stitky";
-const VYCHOZI_STITKY = ["Fixní náklady", "Opravy aut", "Pohonné hmoty", "Materiál", "Režie", "Nářadí", "Telefon a internet"];
+const VYCHOZI_STITKY = ["Fixní náklady", "Opravy aut", "Pohonné hmoty", "Materiál", "Spotřební materiál", "Režie", "Nářadí", "Telefon a internet"];
 const BARVY_STITKU = [["#e0f2fe", "#0369a1"], ["#fef3c7", "#b45309"], ["#dcfce7", "#15803d"], ["#fce7f3", "#be185d"], ["#ede9fe", "#6d28d9"], ["#fee2e2", "#b91c1c"], ["#f1f5f9", "#334155"], ["#ccfbf1", "#0f766e"]];
 const barvaStitku = (t) => BARVY_STITKU[[...String(t)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7) % BARVY_STITKU.length];
 
