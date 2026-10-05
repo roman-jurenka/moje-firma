@@ -379,7 +379,10 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
               <div>
                 <label style={labelStyle}>Zákazník</label>
-                <select disabled={locked} style={inputStyle} value={f.customerId} onChange={e => set("customerId", e.target.value)}>
+                <select disabled={locked} style={inputStyle} value={f.customerId} onChange={e => {
+                  const c = (customers || []).find(x => String(x.id) === e.target.value);
+                  setF(p => ({ ...p, customerId: e.target.value, customerIco: p.customerIco || c?.ico || "", customerDic: p.customerDic || c?.dic || "" }));
+                }}>
                   <option value="">— vyberte —</option>
                   {(customers || []).map(c => <option key={c.id} value={c.id}>{c.company || c.name}</option>)}
                 </select>

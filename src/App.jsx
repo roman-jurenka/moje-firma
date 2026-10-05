@@ -18,6 +18,8 @@ import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportI
 import FrontaFaktur from "./FrontaFaktur.jsx";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
+import FirmaAres from "./FirmaAres.jsx";
+import { aktualizovatZakaznikyZAres, cisteIco } from "./ares.js";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
@@ -645,6 +647,11 @@ function splitContactName(fullName) {
   if (parts.length <= 1) return { first: parts[0] || "", last: "" };
   return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
 }
+// IČO / DIČ / sídlo (z ARES) — ukládají se jen u zákazníka typu Firma
+function udajeFirmy(v) {
+  if (v.customer_type !== "Firma") return {};
+  return { ico: cisteIco(v.ico) || null, dic: String(v.dic || "").trim() || null, sidlo: String(v.sidlo || "").trim() || null, ares_at: v.ares_at || null };
+}
 function joinContactName(first, last) {
   return [first.trim(), last.trim()].filter(Boolean).join(" ");
 }
@@ -662,6 +669,7 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
     address: customer?.address || "",
     tag: customer?.tag || "Nový",
     customer_type: initialType,
+    ico: customer?.ico || "", dic: customer?.dic || "", sidlo: customer?.sidlo || "", ares_at: customer?.ares_at || null,
   });
   const [saving, setSaving] = useState(false);
   const isFirma = vals.customer_type === "Firma";
@@ -670,7 +678,7 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
     const name = isFirma ? joinContactName(vals.contactFirst, vals.contactLast) : vals.name;
     if (!name.trim()) { alert("Jméno je potřeba vyplnit."); return; }
     setSaving(true);
-    const payload = { name, company: vals.company, email: vals.email, phone: vals.phone, address: vals.address, tag: vals.tag, customer_type: vals.customer_type };
+    const payload = { name, company: vals.company, email: vals.email, phone: vals.phone, address: vals.address, tag: vals.tag, customer_type: vals.customer_type, ...udajeFirmy(vals) };
     let result;
     if (customer?.id) {
       const { data, error } = await supabase.from("customers").update(payload).eq("id", customer.id).select().single();
@@ -705,6 +713,7 @@ function CustomerCompleteModal({ customer, onClose, onSaved }) {
               {!customer.company && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
             </label>
             <input style={S.input} value={vals.company} onChange={e => setVals({ ...vals, company: e.target.value })} />
+            <FirmaAres hodnoty={vals} onZmena={p => setVals(v => ({ ...v, ...p }))} />
           </div>
         )}
 
@@ -2423,8 +2432,20 @@ function getCustomerCommunication({ communication, dealMsgs, contractMsgs, deals
 }
 
 function Customers({ customers, setCustomers, invoices, deals, communication, setCommunication, contracts, tasks, dealMsgs, contractMsgs, search, setSearch, modal, setModal, closeModal }) {
-  const [newC, setNewC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník" });
-  const [editC, setEditC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník" });
+  const [newC, setNewC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník", ico: "", dic: "", sidlo: "", ares_at: null });
+  const [editC, setEditC] = useState({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník", ico: "", dic: "", sidlo: "", ares_at: null });
+  // Údaje firem z ARES: při otevření Zákazníků se na pozadí ověří firmy s IČO,
+  // které se neověřovaly déle než 30 dní (název, DIČ, sídlo se samy aktualizují).
+  useEffect(() => {
+    let zruseno = false;
+    aktualizovatZakaznikyZAres(customers).then(zmenene => {
+      if (zruseno || !zmenene.length) return;
+      setCustomers(prev => prev.map(c => { const z = zmenene.find(x => x.id === c.id); return z ? { ...c, ...z } : c; }));
+    });
+    return () => { zruseno = true; };
+    // jen jednou při otevření Zákazníků
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showArchived, setShowArchived] = useState(false);
   const [typeFilter, setTypeFilter] = useState("Vše");
   const [tagFilter, setTagFilter] = useState("Vše");
@@ -2477,25 +2498,26 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
     if (!newC.name) return;
     const { data: row } = await supabase.from("customers").insert({
       name: newC.name, company: newC.company, email: newC.email,
-      phone: newC.phone, tag: newC.tag, customer_type: newC.customer_type,
+      phone: newC.phone, tag: newC.tag, customer_type: newC.customer_type, ...udajeFirmy(newC),
     }).select().single();
     if (row) setCustomers([...customers, row]);
-    setNewC({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník" });
+    setNewC({ name: "", company: "", email: "", phone: "", tag: "Nový", customer_type: "Koncový zákazník", ico: "", dic: "", sidlo: "", ares_at: null });
     closeModal();
   };
 
   const openEdit = (c) => {
-    setEditC({ id: c.id, name: c.name || "", company: c.company || "", email: c.email || "", phone: c.phone || "", tag: c.tag || "Nový", customer_type: c.customer_type || "Koncový zákazník" });
+    setEditC({ id: c.id, name: c.name || "", company: c.company || "", email: c.email || "", phone: c.phone || "", tag: c.tag || "Nový", customer_type: c.customer_type || "Koncový zákazník", ico: c.ico || "", dic: c.dic || "", sidlo: c.sidlo || "", ares_at: c.ares_at || null });
     setModal({ type: "editCustomer", data: c });
   };
 
   const saveEdit = async () => {
     if (!editC.name) return;
+    const firma = udajeFirmy(editC);
     await supabase.from("customers").update({
       name: editC.name, company: editC.company, email: editC.email,
-      phone: editC.phone, tag: editC.tag, customer_type: editC.customer_type,
+      phone: editC.phone, tag: editC.tag, customer_type: editC.customer_type, ...firma,
     }).eq("id", editC.id);
-    setCustomers(customers.map(c => c.id === editC.id ? { ...c, ...editC } : c));
+    setCustomers(customers.map(c => c.id === editC.id ? { ...c, ...editC, ...firma } : c));
     closeModal();
   };
 
@@ -2618,6 +2640,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
             {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"]].map(([l, k]) => (
               <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={newC[k]} onChange={e => setNewC({ ...newC, [k]: e.target.value })} /></div>
             ))}
+            {newC.customer_type === "Firma" && <FirmaAres hodnoty={newC} onZmena={p => setNewC(v => ({ ...v, ...p }))} />}
             <label style={S.label}>Štítek</label>
             <select style={S.select} value={newC.tag} onChange={e => setNewC({ ...newC, tag: e.target.value })}>
               {["Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
@@ -2639,6 +2662,7 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
             {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"]].map(([l, k]) => (
               <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={editC[k]} onChange={e => setEditC({ ...editC, [k]: e.target.value })} /></div>
             ))}
+            {editC.customer_type === "Firma" && <FirmaAres hodnoty={editC} onZmena={p => setEditC(v => ({ ...v, ...p }))} />}
             <label style={S.label}>Štítek</label>
             <select style={S.select} value={editC.tag} onChange={e => setEditC({ ...editC, tag: e.target.value })}>
               {["Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
@@ -2668,6 +2692,12 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
                 {c.email && <a href={`mailto:${c.email}`} style={{ color: "#0369a1" }}>{c.email}</a>}
                 {c.phone && <span> · <a href={`tel:${c.phone}`} style={{ color: "#16a34a" }}>📞 {c.phone}</a></span>}
                 {c.email_contact && c.email_contact !== c.email && <span> · <a href={`mailto:${c.email_contact}`} style={{ color: "#a78bfa" }}>✉️ {c.email_contact}</a></span>}
+                {(c.ico || c.dic || c.sidlo) && (
+                  <div style={{ marginTop: 4, fontSize: 12 }}>
+                    {[c.ico && `IČO ${c.ico}`, c.dic && `DIČ ${c.dic}`, c.sidlo && `sídlo ${c.sidlo}`].filter(Boolean).join(" · ")}
+                    {c.ares_at && <span style={{ color: "#15803d" }}> · ✓ ARES {new Date(c.ares_at).toLocaleDateString("cs-CZ")}</span>}
+                  </div>
+                )}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
                 <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
@@ -2776,7 +2806,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
     name: "", value: "", assigned_to: "",
     type: "", site_address: "", site_contact_name: "", site_contact_phone: "",
   });
-  const [custInfoVals, setCustInfoVals] = useState({ name: "", contactFirst: "", contactLast: "", company: "", email: "", phone: "", address: "", customer_type: "Koncový zákazník" });
+  const [custInfoVals, setCustInfoVals] = useState({ name: "", contactFirst: "", contactLast: "", company: "", email: "", phone: "", address: "", customer_type: "Koncový zákazník", ico: "", dic: "", sidlo: "", ares_at: null });
   const [savingInfo, setSavingInfo] = useState(false);
 
   const openDealDetail = (d) => {
@@ -2792,6 +2822,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
     setCustInfoVals({
       name: c?.name || "", contactFirst: split.first, contactLast: split.last, company: c?.company || "", email: c?.email || "",
       phone: c?.phone || "", address: c?.address || "", customer_type: c?.customer_type || "Koncový zákazník",
+      ico: c?.ico || "", dic: c?.dic || "", sidlo: c?.sidlo || "", ares_at: c?.ares_at || null,
     });
   };
 
@@ -2812,7 +2843,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
     const name = isFirma ? joinContactName(custInfoVals.contactFirst, custInfoVals.contactLast) : custInfoVals.name;
     if (!name.trim()) { alert("Jméno zákazníka je potřeba vyplnit."); return; }
     setSavingInfo(true);
-    const payload = { name, company: custInfoVals.company, email: custInfoVals.email, phone: custInfoVals.phone, address: custInfoVals.address, customer_type: custInfoVals.customer_type };
+    const payload = { name, company: custInfoVals.company, email: custInfoVals.email, phone: custInfoVals.phone, address: custInfoVals.address, customer_type: custInfoVals.customer_type, ...udajeFirmy(custInfoVals) };
     const { data, error } = await supabase.from("customers").update(payload).eq("id", custId).select().single();
     setSavingInfo(false);
     if (error) { alert("Nepodařilo se uložit: " + error.message); return; }
@@ -3177,6 +3208,7 @@ function Deals({ deals, setDeals, customers, setCustomers, employees, tasks, mod
                           {!custInfoVals.company && <span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 8, padding: "1px 6px", fontSize: 10, marginLeft: 6, fontWeight: 700 }}>doplnit</span>}
                         </label>
                         <input style={S.input} value={custInfoVals.company} onChange={e => setCustInfoVals({ ...custInfoVals, company: e.target.value })} />
+                        <FirmaAres hodnoty={custInfoVals} onZmena={p => setCustInfoVals(v => ({ ...v, ...p }))} />
                       </div>
                     )}
 
