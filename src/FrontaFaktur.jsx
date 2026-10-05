@@ -43,6 +43,30 @@ const vychoziVolba = (it) => {
 };
 const POPIS_NAVRHU = { zakazka: "návrh: zakázka", sklad: "návrh: sklad", ambiguous: "nejasné — vyber", none: "bez návrhu" };
 
+// Stáhne všechny řádky dotazu po stránkách po 1000 (PostgREST vrací max. 1000 najednou).
+async function vsechnyStranky(dotaz) {
+  const vse = [];
+  for (let od = 0; ; od += 1000) {
+    const { data, error } = await dotaz(od, od + 999);
+    if (error) return { data: vse, error };
+    vse.push(...(data || []));
+    if (!data || data.length < 1000) return { data: vse, error: null };
+  }
+}
+const OBDOBI = [["vse", "Celé období"], ["mesic", "Tento měsíc"], ["minuly", "Minulý měsíc"], ["kvartal", "Poslední 3 měsíce"], ["letos", "Letos"], ["loni", "Loni"], ["vlastni", "Vlastní…"]];
+const rozsahObdobi = (k, od, doo) => {
+  const d = new Date(); const y = d.getFullYear(); const m = d.getMonth();
+  const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+  if (k === "mesic") return [iso(new Date(y, m, 1)), iso(new Date(y, m + 1, 0))];
+  if (k === "minuly") return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))];
+  if (k === "kvartal") return [iso(new Date(y, m - 2, 1)), iso(new Date(y, m + 1, 0))];
+  if (k === "letos") return [`${y}-01-01`, `${y}-12-31`];
+  if (k === "loni") return [`${y - 1}-01-01`, `${y - 1}-12-31`];
+  if (k === "vlastni") return [od || null, doo || null];
+  return [null, null];
+};
+const nazevDodavatele = (f) => String(f.supplier_name || "").trim() || "Neznámý dodavatel";
+
 export default function FrontaFaktur({ contracts = [], customers = [], currentUser, onZmenaPoctu }) {
   const [faktury, setFaktury] = useState(null);
   const [polozky, setPolozky] = useState({});      // { [queueId]: [...] }
@@ -55,20 +79,31 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
   const [vyrizene, setVyrizene] = useState(false);
   const [rozbaleno, setRozbaleno] = useState({});
   const ja = currentUser?.name || null;
+  // Filtry: dodavatel, období (datum vystavení), hledání
+  const [filtrDodavatel, setFiltrDodavatel] = useState("");
+  const [filtrObdobi, setFiltrObdobi] = useState("vse");
+  const [filtrOd, setFiltrOd] = useState("");
+  const [filtrDo, setFiltrDo] = useState("");
+  const [hledat, setHledat] = useState("");
+  const [pridani, setPridani] = useState(null); // ruční řádka: { fId, popis, mnozstvi, jednotka, cena }
 
   const nacist = async () => {
     const stavy = vyrizene ? ["nova", "castecne_prirazena", "schvalena", "zamitnuta"] : ["nova", "castecne_prirazena"];
     const [{ data: f, error }, { data: p }] = await Promise.all([
-      supabase.from("invoice_queue").select("*").in("status", stavy).order("created_at", { ascending: false }).limit(100),
+      vsechnyStranky((od, doo) => supabase.from("invoice_queue").select("*").in("status", stavy).order("issue_date", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).range(od, doo)),
       supabase.from("products").select("id, name, stock, unit, price, price_sell, prirazka_pct"),
     ]);
     if (error) { setZprava({ chyba: true, text: "Frontu se nepodařilo načíst: " + error.message }); setFaktury([]); return; }
     setProdukty(p || []);
     setPrirazka(await nactiPrirazku());
     const ids = (f || []).map((x) => x.id);
-    const { data: it } = ids.length
-      ? await supabase.from("invoice_queue_items").select("*").in("invoice_queue_id", ids).order("line_no", { ascending: true })
-      : { data: [] };
+    // řádky po dávkách faktur (dotaz má limit řádků na odpověď)
+    const it = [];
+    for (let i = 0; i < ids.length; i += 80) {
+      const davka = ids.slice(i, i + 80);
+      const { data } = await vsechnyStranky((od, doo) => supabase.from("invoice_queue_items").select("*").in("invoice_queue_id", davka).order("line_no", { ascending: true }).range(od, doo));
+      it.push(...(data || []));
+    }
     const podle = {};
     (it || []).forEach((x) => { (podle[x.invoice_queue_id] = podle[x.invoice_queue_id] || []).push(x); });
     setPolozky(podle);
@@ -152,7 +187,10 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
       return prod;
     };
     try {
-      if (v.cil === "sklad") {
+      if (v.cil === "rezie") {
+        // náklad firmy bez zakázky a skladu — řádka je vyřízená, nic se nezapisuje
+        await supabase.from("invoice_queue_items").update({ assigned_to_sklad: false, assigned_contract_id: null }).eq("id", it.id);
+      } else if (v.cil === "sklad") {
         const prod = await zajistitProdukt();
         const pohyb = await novyPohyb({
           product_name: prod.name, quantity: mnozstvi, movement_type: "in",
@@ -294,6 +332,40 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
 
   if (faktury === null) return <div style={{ padding: 20, color: "#64748b", fontSize: 14 }}>Načítám frontu faktur…</div>;
 
+  const dodavatele = Object.entries(faktury.reduce((m, x) => { const k = nazevDodavatele(x); m[k] = (m[k] || 0) + 1; return m; }, {}))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "cs"));
+  const [obdobiOd, obdobiDo] = rozsahObdobi(filtrObdobi, filtrOd, filtrDo);
+  const hledano = bezDiakritiky(hledat);
+  const zobrazene = faktury.filter((x) =>
+    (!filtrDodavatel || nazevDodavatele(x) === filtrDodavatel) &&
+    (!obdobiOd || (x.issue_date && x.issue_date >= obdobiOd)) &&
+    (!obdobiDo || (x.issue_date && x.issue_date <= obdobiDo)) &&
+    (!hledano || bezDiakritiky(`${x.invoice_number || ""} ${x.variable_symbol || ""} ${x.supplier_name || ""} ${x.supplier_ico || ""}`).includes(hledano)));
+  const soucetSDph = zobrazene.reduce((a, x) => a + (Number(x.total_amount) || 0), 0);
+  const bezRadku = zobrazene.filter((x) => !(polozky[x.id] || []).length).length;
+  const filtrovano = filtrDodavatel || filtrObdobi !== "vse" || hledano;
+
+  // Ruční řádka (faktury, ze kterých se řádky nepodařilo vyčíst)
+  const otevritPridani = (fa) => {
+    const total = Number(fa.total_amount) || 0;
+    setPridani({ fId: fa.id, popis: `Faktura ${fa.invoice_number || ""} — ${nazevDodavatele(fa)}`.replace(/\s+/g, " "), mnozstvi: "1", jednotka: "ks", cena: total ? String(Math.round(total / 1.21 * 100) / 100).replace(".", ",") : "" });
+  };
+  const ulozitRadek = async () => {
+    const q = cisloPole(pridani.mnozstvi), c = cisloPole(pridani.cena);
+    if (!String(pridani.popis).trim() || !q || q <= 0 || c == null || Number.isNaN(c) || Number.isNaN(q)) { setZprava({ chyba: true, text: "Vyplň popis, množství a cenu za jednotku bez DPH (čísla, např. 1 a 1250,50)." }); return; }
+    const stavajici = polozky[pridani.fId] || [];
+    const { error } = await supabase.from("invoice_queue_items").insert({
+      invoice_queue_id: pridani.fId, line_no: stavajici.reduce((mx, x) => Math.max(mx, Number(x.line_no) || 0), 0) + 1,
+      description: String(pridani.popis).trim(), quantity: q, unit: pridani.jednotka || "ks", unit_price: c, amount: Math.round(q * c * 100) / 100,
+      suggested_match_type: "none", status: "navrh",
+    });
+    if (error) { setZprava({ chyba: true, text: "Řádku se nepodařilo přidat: " + error.message }); return; }
+    setRozbaleno((m) => ({ ...m, [pridani.fId]: true }));
+    setPridani(null);
+    setZprava({ chyba: false, text: "✓ Řádka přidaná — vyber přiřazení a potvrď." });
+    await nacist();
+  };
+
   return (
     <div style={{ textAlign: "left" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
@@ -333,13 +405,44 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
         <div role={zprava.chyba ? "alert" : "status"} style={{ borderRadius: 10, padding: "9px 12px", marginBottom: 12, fontSize: 13, background: zprava.chyba ? "#fef2f2" : "#f0fdf4", color: zprava.chyba ? "#991b1b" : "#166534", border: `1px solid ${zprava.chyba ? "#fecaca" : "#bbf7d0"}` }}>{zprava.text}</div>
       )}
 
-      {!faktury.length && (
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 14px", marginBottom: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3, minWidth: 220, flex: "1 1 220px" }}>
+          Dodavatel
+          <select style={{ ...pole, maxWidth: "none" }} value={filtrDodavatel} onChange={(e) => setFiltrDodavatel(e.target.value)}>
+            <option value="">Všichni dodavatelé ({faktury.length})</option>
+            {dodavatele.map(([d, c]) => <option key={d} value={d}>{d} ({c})</option>)}
+          </select>
+        </label>
+        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>
+          Období (vystavení)
+          <select style={pole} value={filtrObdobi} onChange={(e) => setFiltrObdobi(e.target.value)}>
+            {OBDOBI.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+          </select>
+        </label>
+        {filtrObdobi === "vlastni" && (
+          <>
+            <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>Od<input type="date" style={pole} value={filtrOd} onChange={(e) => setFiltrOd(e.target.value)} /></label>
+            <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>Do<input type="date" style={pole} value={filtrDo} onChange={(e) => setFiltrDo(e.target.value)} /></label>
+          </>
+        )}
+        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3, flex: "1 1 160px" }}>
+          Hledat
+          <input type="search" style={{ ...pole, maxWidth: "none" }} value={hledat} placeholder="číslo faktury, VS, IČO…" onChange={(e) => setHledat(e.target.value)} />
+        </label>
+        {filtrovano && <button type="button" style={tlObrys()} onClick={() => { setFiltrDodavatel(""); setFiltrObdobi("vse"); setFiltrOd(""); setFiltrDo(""); setHledat(""); }}>✕ Zrušit filtry</button>}
+        <div style={{ flexBasis: "100%", fontSize: 12, color: "#475569" }}>
+          Zobrazeno <b>{zobrazene.length}</b> z {faktury.length} faktur · celkem <b>{fmtKc(Math.round(soucetSDph))}</b> s DPH
+          {bezRadku > 0 && <span style={{ color: "#b45309" }}> · {bezRadku} bez vyčtených řádek (přidej řádek ručně)</span>}
+        </div>
+      </div>
+
+      {!zobrazene.length && (
         <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, textAlign: "center", color: "#64748b", fontSize: 14 }}>
-          {vyrizene ? "Ve frontě nejsou žádné faktury." : "✓ Žádné faktury nečekají na přiřazení."}
+          {faktury.length ? "Filtrům neodpovídá žádná faktura." : vyrizene ? "Ve frontě nejsou žádné faktury." : "✓ Žádné faktury nečekají na přiřazení."}
         </div>
       )}
 
-      {faktury.map((f) => {
+      {zobrazene.map((f) => {
         const radky = polozky[f.id] || [];
         const cekajici = radky.filter((x) => x.status === "navrh");
         const pripravene = cekajici.filter((x) => volby[x.id]?.cil);
@@ -365,7 +468,24 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{fmtKc(f.total_amount)}{f.currency && f.currency !== "CZK" ? ` ${f.currency}` : ""}</div>
+                {(() => {
+                  const bez = radky.reduce((a, x) => a + cenaRadku(x), 0);
+                  const total = Number(f.total_amount) || 0;
+                  const sazba = [21, 12, 0].find((d) => total && bez && Math.abs(bez * (1 + d / 100) - total) <= Math.max(1, total * 0.002));
+                  return (
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{f.total_amount != null ? fmtKc(f.total_amount) : "—"} <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b" }}>s DPH</span>{f.currency && f.currency !== "CZK" ? ` ${f.currency}` : ""}</div>
+                      {radky.length > 0 && (
+                        <div style={{ fontSize: 12, color: "#475569" }}>
+                          řádky bez DPH {fmtKc(Math.round(bez * 100) / 100)}
+                          {total ? (sazba != null
+                            ? <span style={{ color: "#15803d", fontWeight: 700 }}> · ✓ sedí{sazba ? ` (DPH ${sazba} %)` : ""}</span>
+                            : <span style={{ color: "#b91c1c", fontWeight: 700 }}> · ⚠ nesedí s fakturou</span>) : null}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   {f.pdf_storage_path && <button type="button" style={tlObrys()} onClick={() => otevritPdf(f)}>📄 PDF</button>}
                   <button type="button" style={tlObrys()} onClick={() => setRozbaleno((r) => ({ ...r, [f.id]: !otevrena }))}>{otevrena ? "▲ Sbalit" : "▼ Řádky"}</button>
@@ -381,8 +501,8 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                       <th style={{ padding: "6px 4px", width: 28 }}>#</th>
                       <th style={{ padding: "6px 4px" }}>Položka</th>
                       <th style={{ padding: "6px 4px", textAlign: "right" }}>Množství</th>
-                      <th style={{ padding: "6px 4px", textAlign: "right" }}>Cena/j.</th>
-                      <th style={{ padding: "6px 4px", textAlign: "right" }}>Celkem</th>
+                      <th style={{ padding: "6px 4px", textAlign: "right" }}>Cena/j. bez DPH</th>
+                      <th style={{ padding: "6px 4px", textAlign: "right" }}>Celkem bez DPH</th>
                       <th style={{ padding: "6px 4px", width: 300 }}>Přiřazení</th>
                       <th style={{ padding: "6px 4px", width: 150 }}></th>
                     </tr>
@@ -416,6 +536,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                                   onChange={(e) => setV({ cil: e.target.value })}>
                                   <option value="">— vyber zakázku nebo sklad —</option>
                                   <option value="sklad">📦 Sklad (příjem materiálu)</option>
+                                  <option value="rezie">🏢 Režie firmy (telefon, software… — nic se nezapíše)</option>
                                   {kand.length > 0 && (
                                     <optgroup label="Navržené zakázky">
                                       {kand.map((c) => <option key={`k${c.id}`} value={`z:${c.id}`}>{popisZakazky(c)}</option>)}
@@ -476,7 +597,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                               <span style={{ fontSize: 12, color: "#64748b" }}>Nepřiřazeno (zamítnuto)</span>
                             ) : (
                               <span style={{ fontSize: 12, color: "#15803d", fontWeight: 700 }}>
-                                ✓ {it.assigned_to_sklad ? "Příjem na sklad" : `Náklad zakázky ${hotovoZ ? popisZakazky(hotovoZ) : ""}${it.warehouse_movement_out_id ? " · přes sklad (příjem + výdej)" : ""}`}
+                                ✓ {it.assigned_to_sklad ? "Příjem na sklad" : !it.assigned_contract_id ? "Režie firmy (nic se nezapsalo)" : `Náklad zakázky ${hotovoZ ? popisZakazky(hotovoZ) : ""}${it.warehouse_movement_out_id ? " · přes sklad (příjem + výdej)" : ""}`}
                               </span>
                             )}
                           </td>
@@ -502,6 +623,28 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                   </tbody>
                 </table>
 
+                {!radky.length && (
+                  <div style={{ fontSize: 13, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", marginTop: 6 }}>
+                    Z této faktury se nepodařilo vyčíst řádky. Otevři 📄 PDF a přidej řádek ručně (stačí jeden za celou fakturu) — pak ho přiřadíš jako ostatní. Režijní faktury (telefon, software…) přiřaď jako 🏢 Režie firmy.
+                  </div>
+                )}
+                {pridani?.fId === f.id ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 80px 80px 120px auto", gap: 6, alignItems: "end", marginTop: 10, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 8 }}>
+                    <label style={{ fontSize: 11, color: "#475569" }}>Popis<input style={{ ...pole, width: "100%", boxSizing: "border-box" }} value={pridani.popis} onChange={(e) => setPridani({ ...pridani, popis: e.target.value })} /></label>
+                    <label style={{ fontSize: 11, color: "#475569" }}>Množství<input style={{ ...pole, width: "100%", boxSizing: "border-box" }} inputMode="decimal" value={pridani.mnozstvi} onChange={(e) => setPridani({ ...pridani, mnozstvi: e.target.value })} /></label>
+                    <label style={{ fontSize: 11, color: "#475569" }}>Jedn.<input style={{ ...pole, width: "100%", boxSizing: "border-box" }} value={pridani.jednotka} onChange={(e) => setPridani({ ...pridani, jednotka: e.target.value })} /></label>
+                    <label style={{ fontSize: 11, color: "#475569" }}>Cena/j. bez DPH<input style={{ ...pole, width: "100%", boxSizing: "border-box" }} inputMode="decimal" value={pridani.cena} onChange={(e) => setPridani({ ...pridani, cena: e.target.value })} /></label>
+                    <span style={{ display: "flex", gap: 4 }}>
+                      <button type="button" style={tl("#0369a1")} onClick={ulozitRadek}>Přidat</button>
+                      <button type="button" style={tlObrys()} onClick={() => setPridani(null)}>✕</button>
+                    </span>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-start", marginTop: 8, flexWrap: "wrap" }}>
+                    <button type="button" style={tlObrys("#0369a1")} onClick={() => otevritPridani(f)}>+ Přidat řádek ručně</button>
+                    {!radky.length && <button type="button" style={tlObrys("#b91c1c")} disabled={!!pracuji[`f${f.id}`]} onClick={() => setZamitani(f)}>✕ Zamítnout fakturu</button>}
+                  </div>
+                )}
                 {cekajici.length > 0 && (
                   <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
                     <button type="button" style={tlObrys("#b91c1c")} disabled={!!pracuji[`f${f.id}`]} onClick={() => setZamitani(f)}>✕ Zamítnout celou fakturu</button>
