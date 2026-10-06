@@ -20,7 +20,8 @@ const cislo = (v) => { const t = String(v ?? "").replace(/\s/g, "").replace(",",
 const naMin = (t) => { const [h, m] = String(t || "").split(":").map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; };
 const ted = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 
-export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnanecId, datum, dnes, onRozdelit, onPosunMilnik, onSloucit, onZmenaBloku, zamceno = false }) {
+export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnanecId, datum, dnes, onRozdelit, onPosunMilnik, onSloucit, onZmenaBloku, kolegove = [], onSdilet, zamceno = false }) {
+  const [sdileni, setSdileni] = useState(null); // { vybrani: [], prepsat, vysledek }
   const [materialy, setMaterialy] = useState({}); // { [attendanceId]: [...] }
   const [milnik, setMilnik] = useState(null);     // nový milník: { cas }
   const [upravaMilniku, setUpravaMilniku] = useState(null); // { index, cas }
@@ -166,6 +167,7 @@ export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnane
                 {i + 1}. {hhmm(b.checkin)} – {b.checkout ? hhmm(b.checkout) : <span style={{ color: "#f59e0b" }}>běží</span>}
                 {b.checkout && <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}> · {fmtH(hEf)}</span>}
               </div>
+              {b.sdileno_od && <span style={{ fontSize: 12, fontWeight: 700, color: "#6d28d9", background: "#ede9fe", borderRadius: 999, padding: "3px 10px" }}>👥 od {b.sdileno_od}</span>}
               {b.schvaleno ? <span style={{ fontSize: 12, fontWeight: 800, color: "#15803d", background: "#dcfce7", borderRadius: 999, padding: "3px 10px" }}>✓ schváleno</span>
                 : !b.contract_id && <span style={{ fontSize: 12, fontWeight: 800, color: "#b45309", background: "#fef3c7", borderRadius: 999, padding: "3px 10px" }}>bez zakázky</span>}
             </div>
@@ -262,6 +264,50 @@ export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnane
           </button>
         )
       )}
+      {/* Sdílet stejné milníky s kolegy z party (materiál zůstává jen u mě) */}
+      {!zamceno && onSdilet && kolegove.length > 0 && bloky.every((b) => typeof b.id === "number") && (
+        sdileni ? (
+          <div style={{ ...karta, border: "2px solid #6d28d9", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>👥 Komu poslat stejné milníky?</div>
+            <div style={{ fontSize: 13, color: "#64748b" }}>Kolegové dostanou stejné části dne (časy, zakázky, popis). Materiál se nesdílí — zůstane zapsaný jen u tebe.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {kolegove.map((k) => {
+                const vyb = sdileni.vybrani.includes(k.id);
+                return (
+                  <label key={k.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: `1px solid ${vyb ? "#6d28d9" : "#e2e8f0"}`, borderRadius: 12, background: vyb ? "#f5f3ff" : "#fff", fontSize: 16, cursor: "pointer", minHeight: 46 }}>
+                    <input type="checkbox" checked={vyb} style={{ width: 22, height: 22 }}
+                      onChange={() => setSdileni({ ...sdileni, vysledek: null, vybrani: vyb ? sdileni.vybrani.filter((x) => x !== k.id) : [...sdileni.vybrani, k.id] })} />
+                    {k.name}
+                  </label>
+                );
+              })}
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#334155" }}>
+              <input type="checkbox" checked={sdileni.prepsat} onChange={(e) => setSdileni({ ...sdileni, prepsat: e.target.checked })} style={{ width: 20, height: 20 }} />
+              Přepsat, když už kolega má na tento den vlastní zápis
+            </label>
+            {sdileni.vysledek && <div role="status" style={{ fontSize: 14, color: sdileni.vysledek.chyba ? "#b91c1c" : "#15803d", whiteSpace: "pre-line" }}>{sdileni.vysledek.text}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" style={btnObrys("#475569", { flex: 1 })} onClick={() => setSdileni(null)}>Zavřít</button>
+              <button type="button" style={btn("#6d28d9", "#fff", { flex: 2 })} disabled={pracuji || !sdileni.vybrani.length}
+                onClick={async () => {
+                  setPracuji(true);
+                  try {
+                    const v = await onSdilet(sdileni.vybrani, sdileni.prepsat);
+                    const ok = v?.sdileno || [], nic = v?.preskoceno || [];
+                    setSdileni({ ...sdileni, vysledek: { chyba: !ok.length, text: [ok.length ? `✓ Sdíleno: ${ok.join(", ")}` : "", ...nic.map((p) => `⚠ ${p.jmeno}: ${p.duvod}`)].filter(Boolean).join("\n") } });
+                  } catch (e) { setSdileni({ ...sdileni, vysledek: { chyba: true, text: e.message || String(e) } }); }
+                  setPracuji(false);
+                }}>{pracuji ? "Sdílím…" : `👥 Sdílet (${sdileni.vybrani.length})`}</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" style={btnObrys("#6d28d9", { width: "100%" })} onClick={() => setSdileni({ vybrani: [], prepsat: false, vysledek: null })}>
+            👥 Sdílet milníky s kolegy
+          </button>
+        )
+      )}
+
       {!zamceno && <div style={{ fontSize: 12, color: "#64748b" }}>Milníky a materiál můžeš doplnit i později (vyber den nahoře). Zápis zkontroluje a schválí kancelář — teprve potom se materiál odepíše ze skladu a náklady zapíšou k zakázce.</div>}
     </div>
   );

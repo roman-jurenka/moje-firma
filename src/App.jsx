@@ -8008,6 +8008,17 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     if (e2) throw e2;
     setAttendance(prev => prev.map(a => (a.id === pred.id ? { ...a, checkout: cas } : a.id === po.id ? { ...a, checkin: cas } : a)));
   };
+  // sdílení stejných milníků s kolegy (materiál se nesdílí)
+  const sdiletDen = async (komu, prepsat) => {
+    const { data, error } = await supabase.rpc("sdilet_den", { p_zdroj: effectiveEmpId, p_date: zapisDen, p_komu: komu, p_prepsat: !!prepsat });
+    if (error) throw error;
+    // vedení vidí docházku všech — načíst sdílené dny kolegů znovu
+    if (jeVedeni && data?.sdileno?.length) {
+      const { data: rows } = await supabase.from("attendance").select("*").in("employee_id", komu).eq("date", zapisDen);
+      setAttendance(prev => [...prev.filter(a => !(komu.includes(a.employee_id ?? a.employeeId) && a.date === zapisDen)), ...(rows || []).map(a => ({ ...a, employeeId: a.employee_id }))]);
+    }
+    return data;
+  };
   // smazání milníku = spojení dvou částí (materiál a popis přejdou do první)
   const sloucitBloky = async (pred, po) => {
     if (typeof pred.id !== "number" || typeof po.id !== "number") throw bezId();
@@ -8535,7 +8546,9 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             )}
             <DenniZapis bloky={zapisBloky} zakazky={activeContractOpts.map(c => ({ id: c.id, label: zakazkaOpt(c).label + (zakazkaOpt(c).popis ? " · " + zakazkaOpt(c).popis : "") }))}
               produkty={products || []} mista={mista} zamestnanecId={effectiveEmpId} datum={zapisDen} dnes={todayStr}
-              onRozdelit={rozdelitBlok} onPosunMilnik={posunMilnik} onSloucit={sloucitBloky} onZmenaBloku={upravitBlokDne} />
+              onRozdelit={rozdelitBlok} onPosunMilnik={posunMilnik} onSloucit={sloucitBloky} onZmenaBloku={upravitBlokDne}
+              kolegove={(employees || []).filter(e => !e.archived && String(e.id) !== String(effectiveEmpId)).map(e => ({ id: e.id, name: e.name }))}
+              onSdilet={sdiletDen} />
           </div>
 
           {/* Ruční zadání */}
