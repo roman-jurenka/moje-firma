@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase.js";
 import { blokyDne, dnyKeSchvaleni, hodinyBloku, hodinyDne, hhmm, fmtH, bezDiakritiky } from "./denniZapis.js";
+import { zastavky, kontrolaDne, navrhMilniku, navrhSeLisi, zakazkaZastavky } from "./gpsKontrola.js";
 
 const BARVY = ["#0369a1", "#15803d", "#7c3aed", "#be185d", "#0f766e", "#b45309", "#1d4ed8", "#9f1239"];
 const barvaZakazky = (id) => (id ? BARVY[Number(id) % BARVY.length] : "#f59e0b");
@@ -25,6 +26,30 @@ export default function SchvalovaniDochazky({ attendance, setAttendance, employe
   const [pracuji, setPracuji] = useState(false);
   const [schvalene, setSchvalene] = useState(false);
   const hlavni = mista.find((m) => m.hlavni);
+  // GPS: vozidla (s řidičem), jízdy po dnech, režim „čím se řídit“
+  const [gpsVozidla, setGpsVozidla] = useState([]);
+  const [gpsJizdy, setGpsJizdy] = useState({}); // { [datum]: [...] }
+  const [rezim, setRezim] = useState("zapis");   // "zapis" | "gps"
+  useEffect(() => {
+    Promise.resolve().then(async () => {
+      const [{ data: v }, { data: nast }] = await Promise.all([
+        supabase.from("gps_vozidla").select("*").eq("aktivni", true),
+        supabase.from("app_settings").select("value").eq("key", "dochazka_ridit_se").maybeSingle(),
+      ]);
+      setGpsVozidla(v || []);
+      if (nast?.value?.rezim) setRezim(nast.value.rezim);
+    });
+  }, []);
+  const zmenitRezim = async (r) => {
+    setRezim(r);
+    await supabase.from("app_settings").upsert({ key: "dochazka_ridit_se", value: { rezim: r }, updated_at: new Date().toISOString() });
+  };
+  // jízdy aut, kterými zaměstnanec ten den jel: je řidičem, nebo má části sdílené od řidiče
+  const jizdyDne = (d) => {
+    const ridicSdileni = employees.find((e) => d.bloky.some((b) => b.sdileno_od && b.sdileno_od === e.name))?.id;
+    const kody = gpsVozidla.filter((v) => String(v.ridic_employee_id) === String(d.employee_id) || (ridicSdileni && String(v.ridic_employee_id) === String(ridicSdileni))).map((v) => v.kod);
+    return (gpsJizdy[d.date] || []).filter((j) => kody.includes(j.vozidlo_kod));
+  };
 
   const nacistMaterial = async () => {
     const { data } = await supabase.from("attendance_materials").select("*").eq("schvaleno", false).order("created_at");
@@ -43,6 +68,27 @@ export default function SchvalovaniDochazky({ attendance, setAttendance, employe
     setAttendance((prev) => [...prev.filter((a) => !(String(a.employee_id ?? a.employeeId) === String(empId) && a.date === datum)),
       ...(zaz || []).map((a) => ({ ...a, checkin: hhmm(a.checkin) + ":00", checkout: a.checkout ? hhmm(a.checkout) + ":00" : null, employeeId: a.employee_id }))]);
     setMaterialy((m) => [...m.filter((x) => !(String(x.employee_id) === String(empId) && x.date === datum)), ...(mat || [])]);
+    const { data: jiz } = await supabase.from("gps_jizdy").select("*").eq("datum", datum).order("zacatek");
+    setGpsJizdy((g) => ({ ...g, [datum]: jiz || [] }));
+  };
+  // použít návrh GPS: první část = první část návrhu, ostatní části se nahradí (materiál přejde do první)
+  const pouzitNavrh = async (d, navrh) => {
+    const [prvni, ...ostatni] = d.bloky;
+    const popis = d.bloky.map((b) => b.popis_prace).filter(Boolean).join("\n") || null;
+    const { error } = await supabase.from("attendance").update({ checkin: navrh[0].od, checkout: navrh[0].do, contract_id: navrh[0].contract_id, popis_prace: popis }).eq("id", prvni.id);
+    if (error) throw error;
+    if (ostatni.length) {
+      const ids = ostatni.map((b) => b.id);
+      const { error: eM } = await supabase.from("attendance_materials").update({ attendance_id: prvni.id }).in("attendance_id", ids);
+      if (eM) throw eM;
+      const { error: eD } = await supabase.from("attendance").delete().in("id", ids);
+      if (eD) throw eD;
+    }
+    if (navrh.length > 1) {
+      const { error: eI } = await supabase.from("attendance").insert(navrh.slice(1).map((n) => ({ employee_id: d.employee_id, date: d.date, checkin: n.od, checkout: n.do, contract_id: n.contract_id })));
+      if (eI) throw eI;
+    }
+    await nacistDen(d.employee_id, d.date);
   };
 
   const dny = useMemo(() => {
@@ -123,6 +169,15 @@ export default function SchvalovaniDochazky({ attendance, setAttendance, employe
         <label style={{ fontSize: 13, color: "#334155", display: "flex", gap: 6, alignItems: "center" }}>
           <input type="checkbox" checked={schvalene} onChange={(e) => { setSchvalene(e.target.checked); setOtevreny(null); }} /> Schválené (posledních 14 dní)
         </label>
+        {gpsVozidla.length > 0 && (
+          <span style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 13, color: "#334155", marginLeft: "auto" }} role="group" aria-label="Čím se řídit při schvalování">
+            Řídit se:
+            {[["zapis", "✍️ zápisem"], ["gps", "📍 GPS"]].map(([k, t]) => (
+              <button key={k} type="button" aria-pressed={rezim === k} onClick={() => zmenitRezim(k)}
+                style={{ border: "1px solid " + (rezim === k ? "#0369a1" : "#cbd5e1"), background: rezim === k ? "#0369a1" : "#fff", color: rezim === k ? "#fff" : "#334155", borderRadius: 999, padding: "4px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{t}</button>
+            ))}
+          </span>
+        )}
       </div>
       {zprava && <div role={zprava.chyba ? "alert" : "status"} style={{ borderRadius: 10, padding: "9px 12px", marginBottom: 12, fontSize: 14, background: zprava.chyba ? "#fef2f2" : "#f0fdf4", color: zprava.chyba ? "#991b1b" : "#166534", border: `1px solid ${zprava.chyba ? "#fecaca" : "#bbf7d0"}` }}>{zprava.text}</div>}
       {!zobrazene.length && <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, textAlign: "center", color: "#64748b" }}>{schvalene ? "Za posledních 14 dní nic schváleno." : "✓ Nic nečeká na schválení."}</div>}
@@ -187,6 +242,47 @@ export default function SchvalovaniDochazky({ attendance, setAttendance, employe
                 ))}
                 {!jeSchvaleny && <button type="button" style={tlObrys("#0369a1", { alignSelf: "flex-start" })} onClick={() => pridatBlok(d)}>+ Přidat blok</button>}
 
+                {/* GPS: kde auto stálo, upozornění, návrh */}
+                {gpsVozidla.length > 0 && (() => {
+                  const jiz = jizdyDne(d);
+                  if (!gpsJizdy[d.date]) return <div style={{ fontSize: 12, color: "#64748b" }}>📍 Načítám jízdy z GPS…</div>;
+                  if (!jiz.length) return <div style={{ fontSize: 12, color: "#64748b" }}>📍 GPS: tento den žádné jízdy auta zaměstnance (nejel autem s GPS, nebo se jízdy ještě nenačetly).</div>;
+                  const zast = zastavky(jiz);
+                  const upoz = kontrolaDne(d.bloky, zast, zakazky, jiz);
+                  const navrh = bezi ? [] : navrhMilniku(d.bloky, zast, zakazky);
+                  const lisi = navrhSeLisi(d.bloky, navrh);
+                  return (
+                    <div style={{ border: "1px solid #bfdbfe", background: "#f8fbff", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800 }}>📍 GPS — kde auto stálo</div>
+                      <div style={{ position: "relative", height: 14, background: "#e2e8f0", borderRadius: 7, overflow: "hidden" }} aria-hidden="true">
+                        {zast.map((s, i) => {
+                          const a = (Number(s.od.slice(0, 2)) + Number(s.od.slice(3)) / 60 - OSA_OD) / (OSA_DO - OSA_OD);
+                          const k = (Number(s.do.slice(0, 2)) + Number(s.do.slice(3)) / 60 - OSA_OD) / (OSA_DO - OSA_OD);
+                          const zk = zakazkaZastavky(s, zakazky);
+                          return <span key={i} style={{ position: "absolute", top: 0, bottom: 0, left: `${Math.max(0, a) * 100}%`, width: `${Math.max(1, (k - a) * 100)}%`, background: zk ? barvaZakazky(zk.id) : "#94a3b8" }} />;
+                        })}
+                      </div>
+                      {zast.map((s, i) => { const zk = zakazkaZastavky(s, zakazky); return (
+                        <div key={i} style={{ fontSize: 12, color: "#334155" }}>
+                          <b>{s.od}–{s.do}</b> · {s.adresa} {zk ? <span style={{ color: barvaZakazky(zk.id), fontWeight: 700 }}>→ {zk.label}</span> : <span style={{ color: "#94a3b8" }}>(žádná zakázka)</span>}
+                        </div>
+                      ); })}
+                      {upoz.map((u, i) => <div key={i} style={{ fontSize: 12, color: u.typ === "info" ? "#64748b" : "#b45309", fontWeight: u.typ === "info" ? 400 : 700 }}>{u.typ === "info" ? "ℹ" : "⚠"} {u.text}</div>)}
+                      {!upoz.some((u) => u.typ !== "info") && <div style={{ fontSize: 12, color: "#15803d", fontWeight: 700 }}>✓ Zápis odpovídá GPS.</div>}
+                      {lisi && !jeSchvaleny && (
+                        <div style={{ borderTop: "1px dashed #bfdbfe", paddingTop: 6 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 3 }}>Návrh rozdělení dne podle GPS:</div>
+                          {navrh.map((p, i) => <div key={i} style={{ fontSize: 12 }}>{p.od}–{p.do} · <b style={{ color: barvaZakazky(p.contract_id) }}>{p.label}</b></div>)}
+                          <button type="button" style={tlObrys("#0369a1", { marginTop: 6 })} disabled={pracuji}
+                            onClick={async () => { setPracuji(true); try { await pouzitNavrh(d, navrh); setZprava({ chyba: false, text: "✓ Den rozdělený podle GPS — zkontroluj a schval." }); } catch (e) { setZprava({ chyba: true, text: e.message || String(e) }); } setPracuji(false); }}>
+                            📍 Použít návrh GPS
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* materiál */}
                 {mat.length > 0 && (
                   <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, overflowX: "auto" }}>
@@ -239,10 +335,29 @@ export default function SchvalovaniDochazky({ attendance, setAttendance, employe
                   {jeSchvaleny ? (
                     <button type="button" style={tlObrys("#b91c1c")} disabled={pracuji} onClick={() => zrusit(d)}>↩ Zrušit schválení</button>
                   ) : (
-                    <button type="button" style={tl("#15803d", "#fff", { opacity: bezi || nesparovano ? 0.6 : 1 })} disabled={pracuji} onClick={() => schvalit(d)}
-                      title={bezi ? "Nejdřív doplň čas odchodu" : nesparovano ? "Nejdřív spáruj materiál" : ""}>
-                      {pracuji ? "Zapisuji…" : `✓ Schválit den${bezZakazky ? ` (${bezZakazky} blok${bezZakazky > 1 ? "y" : ""} jako režie)` : ""}`}
-                    </button>
+                    (() => {
+                      const jiz = gpsVozidla.length ? jizdyDne(d) : [];
+                      const navrh = jiz.length && !bezi ? navrhMilniku(d.bloky, zastavky(jiz), zakazky) : [];
+                      const podleGps = rezim === "gps" && navrhSeLisi(d.bloky, navrh);
+                      return (
+                        <>
+                          {podleGps && (
+                            <button type="button" style={tlObrys("#475569")} disabled={pracuji} onClick={() => schvalit(d)}>Schválit podle zápisu</button>
+                          )}
+                          <button type="button" style={tl("#15803d", "#fff", { opacity: bezi || nesparovano ? 0.6 : 1 })} disabled={pracuji}
+                            onClick={async () => {
+                              if (!podleGps) { schvalit(d); return; }
+                              setPracuji(true);
+                              try { await pouzitNavrh(d, navrh); } catch (e) { setPracuji(false); setZprava({ chyba: true, text: e.message || String(e) }); return; }
+                              setPracuji(false);
+                              schvalit(d);
+                            }}
+                            title={bezi ? "Nejdřív doplň čas odchodu" : nesparovano ? "Nejdřív spáruj materiál" : ""}>
+                            {pracuji ? "Zapisuji…" : podleGps ? "📍 Schválit podle GPS" : `✓ Schválit den${bezZakazky ? ` (${bezZakazky} blok${bezZakazky > 1 ? "y" : ""} jako režie)` : ""}`}
+                          </button>
+                        </>
+                      );
+                    })()
                   )}
                 </div>
               </div>

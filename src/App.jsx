@@ -8595,7 +8595,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       {attTab === "schvaleni" && jeVedeni && (
         <div style={{ ...S.card, marginTop: 0 }}>
           <SchvalovaniDochazky attendance={attendance} setAttendance={setAttendance} employees={employees}
-            zakazky={contractOpts.map(c => ({ id: c.id, label: zakazkaOpt(c).label + (zakazkaOpt(c).popis ? " · " + zakazkaOpt(c).popis : "") }))}
+            zakazky={contractOpts.map(c => ({ id: c.id, label: zakazkaOpt(c).label + (zakazkaOpt(c).popis ? " · " + zakazkaOpt(c).popis : ""), adresa: c.address || "" }))}
             products={products || []} mista={mista} />
         </div>
       )}
