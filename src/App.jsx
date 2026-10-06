@@ -7982,26 +7982,43 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     supabase.from("sklad_mista").select("*").eq("aktivni", true).order("hlavni", { ascending: false }).order("nazev")
       .then(({ data }) => setMista(data || []));
   }, []);
-  // Přepnout zakázku: ukončí běžící blok a začne nový (i bez signálu — offline fronta)
-  const prepnoutZakazku = async (cil, popis) => {
-    const bezi = dnesniBloky.find(b => b.checkin && !b.checkout);
-    if (!bezi) throw new Error("Žádný běžící blok — nejdřív zapiš příchod.");
-    const now = new Date();
-    const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    const entry = { employee_id: effectiveEmpId, date: todayStr, checkin: time, checkout: null, contract_id: cil };
-    const popisTxt = popis != null ? (String(popis).trim() || null) : null;
-    const res = await tryOrQueue("attendance_switch", "Přepnutí zakázky " + time, { closeId: bezi.id, checkout: time, popis: popisTxt, entry }, async (p) => {
-      const { error } = await supabase.from("attendance").update({ checkout: p.checkout, popis_prace: p.popis }).eq("id", p.closeId);
-      if (error) throw error;
-      const { data: row, error: e2 } = await supabase.from("attendance").insert(p.entry).select().single();
-      if (e2) throw e2;
-      return row;
-    });
-    setAttendance(prev => [
-      ...prev.map(a => (a.id === bezi.id ? { ...a, checkout: time, popis_prace: popisTxt } : a)),
-      res.ok && res.result ? { ...res.result, employeeId: res.result.employee_id } : { ...entry, id: "pending-switch-" + time, employeeId: entry.employee_id, _pending: true },
-    ]);
-    if (res.queued) alert("Bez signálu — přepnutí je uložené v telefonu a odešle se samo, jakmile se připojení obnoví.");
+  // Zápis práce: vybraný den (dnes nebo dřívější neschválený) rozdělený milníky na části
+  const [zapisDen, setZapisDen] = useState(todayStr);
+  const zapisBloky = blokyDne(attendance, effectiveEmpId, zapisDen);
+  const neschvaleneDny = [...new Set(attendance
+    .filter(a => String(a.employee_id ?? a.employeeId) === String(effectiveEmpId) && !a.schvaleno && a.date && a.date !== todayStr)
+    .map(a => a.date))].sort().reverse().slice(0, 10);
+  const bezId = () => new Error("Záznam se ještě neodeslal (bez signálu) — zkus to, až bude připojení.");
+  // milník = rozdělení části dne v daném čase na dvě
+  const rozdelitBlok = async (blok, cas) => {
+    if (typeof blok.id !== "number") throw bezId();
+    const { error } = await supabase.from("attendance").update({ checkout: cas }).eq("id", blok.id);
+    if (error) throw error;
+    const { data: row, error: e2 } = await supabase.from("attendance").insert({
+      employee_id: blok.employee_id ?? blok.employeeId, date: blok.date, checkin: cas, checkout: blok.checkout || null, contract_id: null,
+    }).select().single();
+    if (e2) { await supabase.from("attendance").update({ checkout: blok.checkout || null }).eq("id", blok.id); throw e2; }
+    setAttendance(prev => [...prev.map(a => (a.id === blok.id ? { ...a, checkout: cas } : a)), { ...row, employeeId: row.employee_id }]);
+  };
+  const posunMilnik = async (pred, po, cas) => {
+    if (typeof pred.id !== "number" || typeof po.id !== "number") throw bezId();
+    const { error } = await supabase.from("attendance").update({ checkout: cas }).eq("id", pred.id);
+    if (error) throw error;
+    const { error: e2 } = await supabase.from("attendance").update({ checkin: cas }).eq("id", po.id);
+    if (e2) throw e2;
+    setAttendance(prev => prev.map(a => (a.id === pred.id ? { ...a, checkout: cas } : a.id === po.id ? { ...a, checkin: cas } : a)));
+  };
+  // smazání milníku = spojení dvou částí (materiál a popis přejdou do první)
+  const sloucitBloky = async (pred, po) => {
+    if (typeof pred.id !== "number" || typeof po.id !== "number") throw bezId();
+    const { error: eM } = await supabase.from("attendance_materials").update({ attendance_id: pred.id }).eq("attendance_id", po.id);
+    if (eM) throw eM;
+    const patch = { checkout: po.checkout || null, popis_prace: [pred.popis_prace, po.popis_prace].filter(Boolean).join("\n") || null, contract_id: pred.contract_id ?? po.contract_id ?? null };
+    const { error } = await supabase.from("attendance").update(patch).eq("id", pred.id);
+    if (error) throw error;
+    const { error: e2 } = await supabase.from("attendance").delete().eq("id", po.id);
+    if (e2) throw e2;
+    setAttendance(prev => prev.filter(a => a.id !== po.id).map(a => (a.id === pred.id ? { ...a, ...patch } : a)));
   };
   const upravitBlokDne = async (id, patch) => {
     if (typeof id !== "number") throw new Error("Blok se ještě neodeslal (bez signálu) — zkus to za chvíli.");
@@ -8505,9 +8522,20 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               {todayRecord?.checkin && !todayRecord?.checkout ? "⏱ Zapsat odchod (příchod " + (dnesniDen?.checkin || "").slice(0, 5) + ")"
                 : todayRecord?.checkout ? "▶ Nový příchod (odchod byl " + todayRecord.checkout.slice(0, 5) + ")" : "▶ Zapsat příchod"}
             </button>
-            <DenniZapis bloky={dnesniBloky} zakazky={activeContractOpts.map(c => ({ id: c.id, label: zakazkaOpt(c).label + (zakazkaOpt(c).popis ? " · " + zakazkaOpt(c).popis : "") }))}
-              produkty={products || []} mista={mista} zamestnanecId={effectiveEmpId} datum={todayStr}
-              onPrepnout={prepnoutZakazku} onZmenaBloku={upravitBlokDne} />
+            {neschvaleneDny.length > 0 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 14 }}>
+                <span style={{ fontSize: 13, color: "#475569", fontWeight: 700 }}>Doplnit den:</span>
+                {[todayStr, ...neschvaleneDny].map(d => (
+                  <button key={d} type="button" onClick={() => setZapisDen(d)} aria-pressed={zapisDen === d}
+                    style={{ border: "1px solid " + (zapisDen === d ? "#0369a1" : "#cbd5e1"), background: zapisDen === d ? "#0369a1" : "#fff", color: zapisDen === d ? "#fff" : "#334155", borderRadius: 999, padding: "8px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer", minHeight: 40 }}>
+                    {d === todayStr ? "Dnes" : new Date(d + "T00:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" })}
+                  </button>
+                ))}
+              </div>
+            )}
+            <DenniZapis bloky={zapisBloky} zakazky={activeContractOpts.map(c => ({ id: c.id, label: zakazkaOpt(c).label + (zakazkaOpt(c).popis ? " · " + zakazkaOpt(c).popis : "") }))}
+              produkty={products || []} mista={mista} zamestnanecId={effectiveEmpId} datum={zapisDen} dnes={todayStr}
+              onRozdelit={rozdelitBlok} onPosunMilnik={posunMilnik} onSloucit={sloucitBloky} onZmenaBloku={upravitBlokDne} />
           </div>
 
           {/* Ruční zadání */}

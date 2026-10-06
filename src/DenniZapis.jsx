@@ -1,9 +1,9 @@
-// ─── Dnešní zápis práce (zaměstnanec, mobil) ────────────────────────────────
-// Den rozdělený na bloky (řádky docházky). Velké tlačítko „Přepnout zakázku“
-// ukončí běžící blok a začne nový. U každého bloku: zakázka (nemusí být —
-// doplní kancelář), co se dělalo, materiál (řádky s našeptáváním ze skladu,
-// zdroj sklad / auto). Do skladu ani nákladů se nic nezapisuje — to až po
-// schválení dne vedením (záložka Ke schválení).
+// ─── Zápis práce dne (zaměstnanec, mobil) ───────────────────────────────────
+// Příchod a odchod se zapisují normálně; den se pak (kdykoli, i další den,
+// dokud není schválený) rozdělí MILNÍKY na části (řádky docházky). U každé
+// části: zakázka (nemusí být — doplní kancelář), co se dělalo, materiál
+// (řádky s našeptáváním ze skladu, zdroj sklad / auto). Do skladu ani nákladů
+// se nic nezapisuje — to až po schválení dne vedením (Ke schválení).
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase.js";
 import { hhmm, hodinyBloku, hodinyDne, fmtH, bezDiakritiky } from "./denniZapis.js";
@@ -17,9 +17,13 @@ const pole = { width: "100%", boxSizing: "border-box", border: "1px solid #cbd5e
 const karta = { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 14, textAlign: "left" };
 const cislo = (v) => { const t = String(v ?? "").replace(/\s/g, "").replace(",", "."); return t === "" ? null : Number(t); };
 
-export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnanecId, datum, onPrepnout, onZmenaBloku, zamceno = false }) {
+const naMin = (t) => { const [h, m] = String(t || "").split(":").map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; };
+const ted = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+
+export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnanecId, datum, dnes, onRozdelit, onPosunMilnik, onSloucit, onZmenaBloku, zamceno = false }) {
   const [materialy, setMaterialy] = useState({}); // { [attendanceId]: [...] }
-  const [prepinani, setPrepinani] = useState(null); // { cil, popis }
+  const [milnik, setMilnik] = useState(null);     // nový milník: { cas }
+  const [upravaMilniku, setUpravaMilniku] = useState(null); // { index, cas }
   const [pracuji, setPracuji] = useState(false);
   const [chyba, setChyba] = useState(null);
   const [novyRadek, setNovyRadek] = useState(null); // { blokId, nazev, product_id, mnozstvi, jednotka, zdroj }
@@ -28,7 +32,6 @@ export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnane
   const hlavni = mista.find((m) => m.hlavni);
   const auta = mista.filter((m) => m.typ === "auto" && m.aktivni !== false);
   const vychoziZdroj = () => { try { const z = localStorage.getItem(ZDROJ_KEY); if (z && mista.some((m) => String(m.id) === z)) return z; } catch { /* bez úložiště */ } return hlavni ? String(hlavni.id) : ""; };
-  const nazevZakazky = (id) => zakazky.find((z) => String(z.id) === String(id))?.label || null;
   const bezi = bloky.find((b) => b.checkin && !b.checkout);
   const { hrube, pauza, efektivni } = hodinyDne(bloky);
   const ids = bloky.map((b) => b.id).filter((id) => typeof id === "number").join(",");
@@ -53,14 +56,30 @@ export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnane
     return produkty.filter((p) => slova.every((s) => bezDiakritiky(`${p.name} ${p.sku || ""}`).includes(s))).slice(0, 6);
   }, [novyRadek, produkty]);
 
-  const prepnout = async () => {
-    setPracuji(true); setChyba(null);
-    try {
-      await onPrepnout(prepinani.cil ? Number(prepinani.cil) : null, prepinani.popis);
-      setPrepinani(null);
-    } catch (e) { setChyba(e.message || String(e)); }
-    setPracuji(false);
+  // ── milníky (rozdělení dne) ──
+  const konecBloku = (b) => (b.checkout ? hhmm(b.checkout) : (datum === dnes ? ted() : "23:59"));
+  const navrhMilniku = () => {
+    if (bezi && datum === dnes) return ted();
+    const posl = bloky[bloky.length - 1];
+    const a = naMin(posl.checkin), z = naMin(konecBloku(posl));
+    const stred = Math.round((a + z) / 2 / 15) * 15;
+    return `${String(Math.floor(stred / 60)).padStart(2, "0")}:${String(stred % 60).padStart(2, "0")}`;
   };
+  const provest = async (fn) => { setPracuji(true); setChyba(null); try { await fn(); return true; } catch (e) { setChyba(e.message || String(e)); return false; } finally { setPracuji(false); } };
+  const pridatMilnik = async () => {
+    const m = naMin(milnik.cas);
+    const blok = bloky.find((b) => naMin(b.checkin) < m && m < naMin(konecBloku(b)));
+    if (!blok) { setChyba(`Čas ${milnik.cas} neleží uvnitř žádné části dne (${hhmm(bloky[0].checkin)}–${konecBloku(bloky[bloky.length - 1])}).`); return; }
+    if (blok.schvaleno) { setChyba("Tahle část dne je už schválená."); return; }
+    if (await provest(() => onRozdelit(blok, milnik.cas))) setMilnik(null);
+  };
+  const posunoutMilnik = async (i) => {
+    const pred = bloky[i - 1], po = bloky[i];
+    const m = naMin(upravaMilniku.cas);
+    if (!(naMin(pred.checkin) < m && m < naMin(konecBloku(po)))) { setChyba(`Milník musí být mezi ${hhmm(pred.checkin)} a ${konecBloku(po)}.`); return; }
+    if (await provest(() => onPosunMilnik(pred, po, upravaMilniku.cas))) setUpravaMilniku(null);
+  };
+  const smazatMilnik = (i) => provest(() => onSloucit(bloky[i - 1], bloky[i]));
 
   const ulozitPopis = async (blok) => {
     const text = popisy[blok.id];
@@ -102,40 +121,13 @@ export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnane
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>📋 Dnešní zápis práce</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>📋 Zápis práce{datum !== dnes ? ` — ${new Date(datum + "T00:00:00").toLocaleDateString("cs-CZ")}` : ""}</div>
         <div style={{ fontSize: 13, color: "#475569" }}>
-          {bloky.length} {bloky.length === 1 ? "blok" : bloky.length < 5 ? "bloky" : "bloků"} · {fmtH(efektivni)}{pauza ? " (po pauze 1 h)" : ""}{bezi ? " · běží" : ""}
+          {bloky.length} {bloky.length === 1 ? "část" : bloky.length < 5 ? "části" : "částí"} · {fmtH(efektivni)}{pauza ? " (po pauze 1 h)" : ""}{bezi ? " · běží" : ""}
         </div>
       </div>
 
       {chyba && <div role="alert" style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 12, padding: "10px 12px", fontSize: 14 }}>{chyba}</div>}
-
-      {/* Přepnout zakázku */}
-      {bezi && !zamceno && (
-        prepinani ? (
-          <div style={{ ...karta, border: "2px solid #0369a1", display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ fontSize: 15, fontWeight: 800 }}>Končíš na: {nazevZakazky(bezi.contract_id) || "bez zakázky"} (od {hhmm(bezi.checkin)})</div>
-            <label style={{ fontSize: 14, color: "#334155", fontWeight: 600 }}>Co se tam dělalo? (nepovinné)
-              <textarea style={{ ...pole, minHeight: 70, marginTop: 4 }} value={prepinani.popis} onChange={(e) => setPrepinani({ ...prepinani, popis: e.target.value })} placeholder="např. tahání kabelů, montáž rozvaděče…" />
-            </label>
-            <label style={{ fontSize: 14, color: "#334155", fontWeight: 600 }}>Kam teď jdeš?
-              <select style={{ ...pole, marginTop: 4 }} value={prepinani.cil} onChange={(e) => setPrepinani({ ...prepinani, cil: e.target.value })}>
-                <option value="">— zatím bez zakázky (doplní kancelář) —</option>
-                {zakazky.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
-              </select>
-            </label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" style={btnObrys("#475569", { flex: 1 })} onClick={() => setPrepinani(null)}>Zpět</button>
-              <button type="button" style={btn("#0369a1", "#fff", { flex: 2 })} disabled={pracuji} onClick={prepnout}>{pracuji ? "Ukládám…" : "⇄ Přepnout teď"}</button>
-            </div>
-          </div>
-        ) : (
-          <button type="button" style={btn("#0369a1", "#fff", { width: "100%", fontSize: 18, minHeight: 60 })}
-            onClick={() => setPrepinani({ cil: "", popis: popisy[bezi.id] ?? bezi.popis_prace ?? "" })}>
-            ⇄ Přepnout zakázku
-          </button>
-        )
-      )}
 
       {/* Bloky dne */}
       {bloky.map((b, i) => {
@@ -144,7 +136,31 @@ export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnane
         const h = hodinyBloku(b.checkin, b.checkout);
         const hEf = hrube > 0 && h ? h * (hrube - pauza) / hrube : 0;
         return (
-          <div key={b.id} style={{ ...karta, borderLeft: `6px solid ${b.contract_id ? "#0369a1" : "#f59e0b"}` }}>
+          <div key={b.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {i > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "0 6px" }}>
+              <span style={{ flex: 1, height: 2, background: "#cbd5e1" }} />
+              {upravaMilniku?.index === i ? (
+                <>
+                  <input type="time" style={{ ...pole, width: 130, padding: 8 }} value={upravaMilniku.cas} onChange={(e) => setUpravaMilniku({ index: i, cas: e.target.value })} aria-label="Čas milníku" />
+                  <button type="button" style={btn("#0369a1", "#fff", { minHeight: 42, padding: "8px 14px", fontSize: 14 })} disabled={pracuji} onClick={() => posunoutMilnik(i)}>Uložit</button>
+                  <button type="button" style={btnObrys("#475569", { minHeight: 42, padding: "6px 12px" })} onClick={() => setUpravaMilniku(null)}>✕</button>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#334155" }}>⏱ milník {hhmm(b.checkin)}</span>
+                  {!zamceno && !b.schvaleno && !bloky[i - 1].schvaleno && (
+                    <>
+                      <button type="button" aria-label={`Upravit čas milníku ${hhmm(b.checkin)}`} style={btnObrys("#0369a1", { minHeight: 38, padding: "4px 10px", fontSize: 13 })} onClick={() => setUpravaMilniku({ index: i, cas: hhmm(b.checkin) })}>✎</button>
+                      <button type="button" aria-label={`Smazat milník ${hhmm(b.checkin)} (spojit části)`} style={btnObrys("#b91c1c", { minHeight: 38, padding: "4px 10px", fontSize: 13 })} disabled={pracuji} onClick={() => smazatMilnik(i)}>✕</button>
+                    </>
+                  )}
+                </>
+              )}
+              <span style={{ flex: 1, height: 2, background: "#cbd5e1" }} />
+            </div>
+          )}
+          <div style={{ ...karta, borderLeft: `6px solid ${b.contract_id ? "#0369a1" : "#f59e0b"}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <div style={{ fontSize: 16, fontWeight: 800 }}>
                 {i + 1}. {hhmm(b.checkin)} – {b.checkout ? hhmm(b.checkout) : <span style={{ color: "#f59e0b" }}>běží</span>}
@@ -224,9 +240,29 @@ export default function DenniZapis({ bloky, zakazky, produkty, mista, zamestnane
               ))}
             </div>
           </div>
+          </div>
         );
       })}
-      {!zamceno && <div style={{ fontSize: 12, color: "#64748b" }}>Zápis zkontroluje a schválí kancelář — teprve potom se materiál odepíše ze skladu a náklady zapíšou k zakázce.</div>}
+
+      {/* Přidat milník = rozdělit den na části */}
+      {!zamceno && bloky.some((b) => !b.schvaleno) && (
+        milnik ? (
+          <div style={{ ...karta, border: "2px solid #0369a1", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>Kdy jsi přešel na jinou zakázku / práci?</div>
+            <input type="time" style={pole} value={milnik.cas} onChange={(e) => setMilnik({ cas: e.target.value })} aria-label="Čas milníku" />
+            <div style={{ fontSize: 13, color: "#64748b" }}>Část dne se v tomto čase rozdělí na dvě — u nové části pak vybereš zakázku, popis a materiál.</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" style={btnObrys("#475569", { flex: 1 })} onClick={() => setMilnik(null)}>Zpět</button>
+              <button type="button" style={btn("#0369a1", "#fff", { flex: 2 })} disabled={pracuji || !milnik.cas} onClick={pridatMilnik}>{pracuji ? "Ukládám…" : "＋ Přidat milník"}</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" style={btn("#0369a1", "#fff", { width: "100%", fontSize: 17, minHeight: 56 })} onClick={() => { setChyba(null); setMilnik({ cas: navrhMilniku() }); }}>
+            ＋ Přidat milník (rozdělit den)
+          </button>
+        )
+      )}
+      {!zamceno && <div style={{ fontSize: 12, color: "#64748b" }}>Milníky a materiál můžeš doplnit i později (vyber den nahoře). Zápis zkontroluje a schválí kancelář — teprve potom se materiál odepíše ze skladu a náklady zapíšou k zakázce.</div>}
     </div>
   );
 }
