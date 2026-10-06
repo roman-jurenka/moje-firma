@@ -6,6 +6,8 @@ import { supabase } from "./supabase.js";
 import { tryOrQueue } from "./offlineQueue.js";
 import { compressImage } from "./imageUtils.js";
 import * as ui from "./ui.js";
+import VypisPraci from "./VypisPraci.jsx";
+import { efektivniHodinyZaznamu } from "./denniZapis.js";
 
 // Čitelné zobrazení data pro uživatele — den v týdnu, den, měsíc slovem, rok (bez pomlček).
 const DNY_ZKR = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
@@ -445,12 +447,6 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         .reduce((s, x) => s + clientOf(x), 0);
 
     // Počet hodin — z docházky (pro zobrazení v záhlaví)
-    const calcEff = (ci, co) => {
-      if (!ci || !co) return 0;
-      const [h1,m1] = ci.split(':').map(Number);
-      const [h2,m2] = co.split(':').map(Number);
-      return Math.max(0, (h2*60+m2 - h1*60-m1)/60 - 1);
-    };
     const attRecs = attendance.filter(a => (a.contract_id || a.contractId) === cid && a.checkin && a.checkout);
 
     // Dodací listy — materiálové náklady z delivery_notes
@@ -474,7 +470,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       viceDoprava:     sum("doprava", true),
       praceClient:     sumClient("práce", false),
       viceClient:      sumClient("práce", true) + sumClient("materiál", true) + sumClient("doprava", true),
-      attHours:        attRecs.reduce((s,a) => s + calcEff(a.checkin, a.checkout), 0),
+      attHours:        attRecs.reduce((s,a) => s + efektivniHodinyZaznamu(a, attendance), 0),
       dnMaterialCost,
       dnMaterialClient,
     };
@@ -1066,7 +1062,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 {view === "prehled" && (<>
                 {/* TABS */}
                 <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2e8f0", marginBottom: 20 }}>
-                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["faktury",`📄 Faktury (${contInvoices.length})`], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["servis","🔧 Servis"], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
+                  {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["faktury",`📄 Faktury (${contInvoices.length})`], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["servis","🔧 Servis"], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["vypis","📝 Výpis prací"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
                     <button key={t} onClick={() => setTab(contract.id, t)}
                       style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #0369a1" : "2px solid transparent", color: tab === t ? "#0369a1" : "#475569", padding: "8px 16px", fontSize: 13, cursor: "pointer", fontWeight: tab === t ? 600 : 400 }}>
                       {label}
@@ -1367,6 +1363,9 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 {/* TAB: DOKUMENTY */}
 {tab === "dokumenty" && (
                   <DokumentyTab contractId={contract.id} currentUser={currentUser} />
+                )}
+                {tab === "vypis" && (
+                  <VypisPraci contractId={contract.id} zaznamy={contAttendance} vsechnyZaznamy={attendance} employees={employees || []} />
                 )}
                 {tab === "soupis" && (() => {
                   const sorted = [...contAttendance].sort((a, b) => b.date?.localeCompare(a.date));

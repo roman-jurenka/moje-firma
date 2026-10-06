@@ -20,6 +20,10 @@ import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
 import FirmaAres from "./FirmaAres.jsx";
 import { aktualizovatZakaznikyZAres, cisteIco } from "./ares.js";
+import { blokyDne, aktualniBlok, souhrnDne, hodinyDne, efektivniHodinyZaznamu, PAUZA_NAD_H } from "./denniZapis.js";
+import DenniZapis from "./DenniZapis.jsx";
+import SchvalovaniDochazky from "./SchvalovaniDochazky.jsx";
+import ZasobyMist from "./ZasobyMist.jsx";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
 import { tryOrQueue, initOfflineSync, subscribeOfflineQueue, retryOfflineQueueNow } from "./offlineQueue.js";
@@ -1068,6 +1072,16 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         const { error } = await supabase.from("attendance").update({ checkout: payload.checkout }).eq("id", payload.id);
         if (error) throw error;
       },
+      // Přepnout zakázku: ukončit běžící blok dne (i kdyby ještě neměl id) a začít nový
+      attendance_switch: async (payload) => {
+        let q = supabase.from("attendance").update({ checkout: payload.checkout, ...(payload.popis != null ? { popis_prace: payload.popis } : {}) });
+        q = typeof payload.closeId === "number" ? q.eq("id", payload.closeId)
+          : q.eq("employee_id", payload.entry.employee_id).eq("date", payload.entry.date).is("checkout", null);
+        const { error } = await q;
+        if (error) throw error;
+        const { error: e2 } = await supabase.from("attendance").insert(payload.entry);
+        if (e2) throw e2;
+      },
       vehicle_log_new: async (payload) => {
         const { error } = await supabase.from("vehicle_log").insert(payload.row);
         if (error) throw error;
@@ -1120,7 +1134,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
   const todayStr = fmt(new Date());
   const myEmpId = currentUser.employeeId;
-  const todayRecord = attendance.find(a => a.employeeId === myEmpId && a.date === todayStr);
+  // Den může mít víc bloků (Přepnout zakázku) — „dnešní záznam“ = běžící blok, jinak poslední.
+  const todayRecord = aktualniBlok(blokyDne(attendance, myEmpId, todayStr));
 
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "DM Sans, sans-serif" }}>
@@ -4809,28 +4824,6 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
     !products.some(p => p.name.toLowerCase() === (m.product_name || "").toLowerCase())
   );
 
-  // Materiál aktuálně na jednotlivých autech — dopočet z pohybů (appka
-  // nemá samostatnou evidenci skladu podle auta, jen historii pohybů):
-  // na auto přibude výdejem/přesunem tam, ubere se přesunem zpět na sklad.
-  const materialByVehicle = (() => {
-    const map = {}; // vehicle -> { productName -> qty }
-    movements.forEach(m => {
-      if (!m.vehicle) return;
-      if (!map[m.vehicle]) map[m.vehicle] = {};
-      const key = m.product_name || "?";
-      const delta = (m.movement_type === "out_vehicle" || m.movement_type === "transfer_vh") ? Number(m.quantity)
-        : m.movement_type === "transfer" ? -Number(m.quantity) : 0;
-      if (delta === 0) return;
-      map[m.vehicle][key] = (map[m.vehicle][key] || 0) + delta;
-    });
-    return Object.entries(map)
-      .map(([vehicle, items]) => ({
-        vehicle,
-        items: Object.entries(items).map(([name, qty]) => ({ name, qty })).filter(i => i.qty > 0),
-      }))
-      .filter(v => v.items.length > 0);
-  })();
-
   const MOV_COLORS = { in: "#34d399", out: "#f87171", out_contract: "#f87171", out_vehicle: "#f59e0b", transfer: "#0369a1", transfer_vh: "#a78bfa" };
   const MOV_LABELS = Object.fromEntries(MOVE_TYPES.map(t => [t.value, t.label]));
 
@@ -4840,7 +4833,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
         <div style={{ display: "flex", gap: 8 }}>
           <button style={{ ...S.btn(whTab === "stock" ? "#0369a1" : "#64748b"), padding: "7px 16px" }} onClick={() => setWhTab("stock")}>📦 Skladové zásoby</button>
           <button style={{ ...S.btn(whTab === "movements" ? "#0369a1" : "#64748b"), padding: "7px 16px" }} onClick={() => setWhTab("movements")}>🔄 Pohyby</button>
-          <button style={{ ...S.btn(whTab === "vehicles" ? "#0369a1" : "#64748b"), padding: "7px 16px" }} onClick={() => setWhTab("vehicles")}>🚗 Materiál na autech</button>
+          <button style={{ ...S.btn(whTab === "vehicles" ? "#0369a1" : "#64748b"), padding: "7px 16px" }} onClick={() => setWhTab("vehicles")}>🚚 Zásoby po místech</button>
           <button style={S.btn()} onClick={() => setShowAddProduct(true)}>+ Přidat produkt</button>
         </div>
       </div>
@@ -5031,25 +5024,10 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
       )}
 
       {whTab === "vehicles" && (
-        <div>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 14 }}>
-            Přehled je dopočítaný z historie pohybů (výdej na auto mínus vrácení do skladu) — appka nevede skutečnou evidenci polohy skladu po jednotlivých autech, jde tedy o odhad, ne o přesný stav. Pro kontrolu doporučujeme čas od času udělat fyzickou inventuru na autě.
-          </div>
-          {materialByVehicle.length === 0 && <Empty />}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
-            {materialByVehicle.map(v => (
-              <div key={v.vehicle} style={S.card}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#0369a1", marginBottom: 10 }}>🚗 {v.vehicle}</div>
-                {v.items.map(it => (
-                  <div key={it.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid #f1f5f9" }}>
-                    <span style={{ color: "#1A1A1A" }}>{it.name}</span>
-                    <span style={{ fontWeight: 700, color: "#475569" }}>{it.qty}</span>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
+        <ZasobyMist products={products} onZmena={async () => {
+          const { data } = await supabase.from("products").select("*").order("id");
+          if (data) setProducts(data.map(x => ({ ...x, minStock: x.min_stock })));
+        }} />
       )}
 
       {showAddProduct && (
@@ -7782,7 +7760,9 @@ const calcHours = (checkin, checkout) => {
   const [h2, m2] = checkout.split(":").map(Number);
   return Math.max(0, (h2 * 60 + m2 - (h1 * 60 + m1)) / 60);
 };
-const calcEffectiveHours = (checkin, checkout) => Math.max(0, calcHours(checkin, checkout) - 1);
+// Jeden záznam = celý den: pauza 1 h jen když den trvá déle než 6 h (u víc bloků
+// dne se pauza rozpočítá poměrně — efektivniHodinyZaznamu v denniZapis.js).
+const calcEffectiveHours = (checkin, checkout) => { const h = calcHours(checkin, checkout); return h > PAUZA_NAD_H ? h - 1 : h; };
 
 const fmtHours = (h) => {
   const hours = Math.floor(h);
@@ -7857,7 +7837,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const isMonthLocked = (dateStr) => lockedMonths.has((dateStr || "").slice(0, 7));
   const guardWrite = (dateStr, proposed) => {
     if (currentUser.role === "admin") return true;
-    if (!isMonthLocked(dateStr)) return true;
+    // schválený den smí měnit jen vedení — zaměstnanec pošle žádost o změnu
+    const cil = proposed.target_attendance_id ? attendance.find(a => a.id === proposed.target_attendance_id) : null;
+    const schvalenyCizi = cil?.schvaleno && !jeVedeni;
+    if (!isMonthLocked(dateStr) && !schvalenyCizi) return true;
     setRequestModal({
       date: dateStr, checkin: proposed.checkin || "", checkout: proposed.checkout || "",
       contract_id: proposed.contract_id || "", activity: proposed.activity || "",
@@ -7894,6 +7877,12 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
     }
     await supabase.from("attendance_change_requests").update({ status: "schváleno", reviewed_by: currentUser.name, reviewed_at: new Date().toISOString() }).eq("id", req.id);
+    // změna schváleného dne → přepočítat náklady práce
+    const puvodni = req.target_attendance_id ? attendance.find(a => a.id === req.target_attendance_id) : null;
+    if (puvodni?.schvaleno && req.checkout) {
+      const { error } = await supabase.rpc("schvalit_den", { p_employee_id: req.employee_id, p_date: req.date });
+      if (error) alert("Náklady dne se nepodařilo přepočítat: " + error.message);
+    }
     reloadRequests();
   };
 
@@ -7939,7 +7928,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const openMonthSign = async (year, month) => {
     const ym = `${year}-${String(month).padStart(2, "0")}`;
     const recs = attendance.filter(a => a.employeeId === currentUser.employeeId && a.date && a.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date));
-    const totalH = recs.reduce((s, r) => s + calcEffectiveHours(r.checkin, r.checkout), 0);
+    const totalH = recs.reduce((s, r) => s + hodinyZaznamu(r), 0);
     const monthLabelStr = monthNamesCz[month] + " " + year;
     const empObj = employees.find(e => e.id === currentUser.employeeId);
     const { data: existingDoc } = await supabase.from("signed_documents").select("*")
@@ -7949,7 +7938,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     let doc = existingDoc;
     if (!doc) {
       const rowsData = recs.map(r => {
-        const h = calcEffectiveHours(r.checkin, r.checkout);
+        const h = hodinyZaznamu(r);
         const contract = contractOpts.find(c => c.id === r.contract_id);
         return { date: fmtDateCz(r.date), checkin: r.checkin, checkout: r.checkout, hoursLabel: fmtHours(h), contractName: contract ? contract.name : "", activity: r.activity || "" };
       });
@@ -7981,7 +7970,45 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
 
   const empRecords = attendance.filter(a => a.employeeId === effectiveEmpId && (viewMonth === "all" || (a.date && a.date.startsWith(viewMonth)))).sort((a, b) => b.date.localeCompare(a.date));
   const viewMonthHours = empRecords.reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
-  const todayRecord = attendance.find(a => a.employeeId === effectiveEmpId && a.date === todayStr);
+  // Den = bloky (řádky docházky). todayRecord = běžící blok (jinak poslední), dnesniDen = souhrn pro zobrazení.
+  const dnesniBloky = blokyDne(attendance, effectiveEmpId, todayStr);
+  const todayRecord = aktualniBlok(dnesniBloky);
+  const dnesniDen = souhrnDne(dnesniBloky);
+  const jeVedeni = ["admin", "manager", "hr"].includes(currentUser.role) || (currentUser.navOverride || ROLES[currentUser.role]?.nav || []).includes("hr");
+  const hodinyZaznamu = (rec) => efektivniHodinyZaznamu(rec, attendance);
+  // Místa skladu (hlavní sklad + auta) pro zápis materiálu
+  const [mista, setMista] = useState([]);
+  useEffect(() => {
+    supabase.from("sklad_mista").select("*").eq("aktivni", true).order("hlavni", { ascending: false }).order("nazev")
+      .then(({ data }) => setMista(data || []));
+  }, []);
+  // Přepnout zakázku: ukončí běžící blok a začne nový (i bez signálu — offline fronta)
+  const prepnoutZakazku = async (cil, popis) => {
+    const bezi = dnesniBloky.find(b => b.checkin && !b.checkout);
+    if (!bezi) throw new Error("Žádný běžící blok — nejdřív zapiš příchod.");
+    const now = new Date();
+    const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const entry = { employee_id: effectiveEmpId, date: todayStr, checkin: time, checkout: null, contract_id: cil };
+    const popisTxt = popis != null ? (String(popis).trim() || null) : null;
+    const res = await tryOrQueue("attendance_switch", "Přepnutí zakázky " + time, { closeId: bezi.id, checkout: time, popis: popisTxt, entry }, async (p) => {
+      const { error } = await supabase.from("attendance").update({ checkout: p.checkout, popis_prace: p.popis }).eq("id", p.closeId);
+      if (error) throw error;
+      const { data: row, error: e2 } = await supabase.from("attendance").insert(p.entry).select().single();
+      if (e2) throw e2;
+      return row;
+    });
+    setAttendance(prev => [
+      ...prev.map(a => (a.id === bezi.id ? { ...a, checkout: time, popis_prace: popisTxt } : a)),
+      res.ok && res.result ? { ...res.result, employeeId: res.result.employee_id } : { ...entry, id: "pending-switch-" + time, employeeId: entry.employee_id, _pending: true },
+    ]);
+    if (res.queued) alert("Bez signálu — přepnutí je uložené v telefonu a odešle se samo, jakmile se připojení obnoví.");
+  };
+  const upravitBlokDne = async (id, patch) => {
+    if (typeof id !== "number") throw new Error("Blok se ještě neodeslal (bez signálu) — zkus to za chvíli.");
+    const { error } = await supabase.from("attendance").update(patch).eq("id", id);
+    if (error) throw error;
+    setAttendance(prev => prev.map(a => (a.id === id ? { ...a, ...patch } : a)));
+  };
 
   // Výchozí "poslední zakázka" — když ještě dnes nemám žádný záznam, appka
   // předvyplní zakázku podle mého posledního minulého záznamu, ať nemusím
@@ -7998,46 +8025,22 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   }, [effectiveEmpId, todayRecord]);
 
   // Tichá synchronizace — bez alertu, spouští se automaticky
-  const syncCostEntriesQuiet = async (attList) => {
-    const list = attList || attendance;
-    const toSync = list.filter(a => a.contract_id && a.checkin && a.checkout);
-    for (const rec of toSync) {
-      const emp = employees.find(e => e.id === (rec.employee_id || rec.employeeId));
-      if (!emp || (!emp.hourly_rate_cost && !emp.hourly_rate_client)) continue;
-      const effH = calcEffectiveHours(rec.checkin, rec.checkout);
-      if (effH <= 0) continue;
-      await supabase.from("contract_cost_entries").delete().eq("attendance_id", rec.id);
-      await supabase.from("contract_cost_entries").insert({
-        contract_id: rec.contract_id,
-        cost_type: "práce", is_extra: false,
-        date: rec.date,
-        description: `${emp.name} - docházka`,
-        quantity: Math.round(effH * 100) / 100,
-        unit: "h",
-        unit_price_cost: Number(emp.hourly_rate_cost || 0),
-        unit_price_client: Number(emp.hourly_rate_client || 0),
-        employee_id: emp.id,
-        attendance_id: rec.id,
-      });
-    }
-  };
-
   // Manuální sync s alertem (tlačítko ⚡)
+  // Přepočet nákladů práce schválených dnů v zobrazeném měsíci (znovu přes schválení)
   const syncCostEntries = async () => {
-    const toSync = attendance.filter(a => a.contract_id && a.checkin && a.checkout);
-    await syncCostEntriesQuiet(toSync);
-    alert(`Synchronizováno ${toSync.filter(a => {
-      const emp = employees.find(e => e.id === (a.employee_id || a.employeeId));
-      return emp && (emp.hourly_rate_cost || emp.hourly_rate_client);
-    }).length} záznamů do nákladů zakázek.`);
+    const dny = [...new Set(attendance.filter(a => a.schvaleno && a.checkout && (viewMonth === "all" || (a.date || "").startsWith(viewMonth)))
+      .map(a => `${a.employee_id ?? a.employeeId}|${a.date}`))];
+    let ok = 0, chyba = "";
+    for (const k of dny) {
+      const [emp, datum] = k.split("|");
+      const { error } = await supabase.rpc("schvalit_den", { p_employee_id: Number(emp), p_date: datum });
+      if (error) chyba = error.message; else ok++;
+    }
+    alert(`Přepočítáno ${ok} schválených dnů${chyba ? ` (chyba u některých: ${chyba})` : ""}.`);
   };
 
-  // Automatická synchronizace při načtení docházky
-  useEffect(() => {
-    if (attendance.length > 0 && employees.length > 0) {
-      syncCostEntriesQuiet(attendance);
-    }
-  }, [attendance.length, employees.length]);
+  // Náklady práce se dřív zapisovaly automaticky při každém načtení docházky.
+  // Teď je zapisuje až schválení dne (funkce schvalit_den), viz Ke schválení.
 
   const loadRecordMaterials = async (attendanceId) => {
     if (recordMaterials[attendanceId]) return;
@@ -8087,7 +8090,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const checkinNow = async () => {
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    if (todayRecord) {
+    if (todayRecord && !todayRecord.checkout) {
       // Odchod — optimisticky rovnou v appce, zápis do DB proběhne rovnou
       // nebo (bez signálu) se uloží do fronty a odešle se sám později, ať se
       // odchod v terénu neztratí (viz offlineQueue.js).
@@ -8096,7 +8099,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       const res = await tryOrQueue("attendance_checkout", "Odchod " + todayStr, { id: todayRecord.id, checkout: time },
         async (p) => { const { error } = await supabase.from("attendance").update({ checkout: p.checkout }).eq("id", p.id); if (error) throw error; });
       if (res.queued) alert("Bez signálu — odchod je uložený v telefonu a odešle se sám, jakmile se připojení obnoví.");
-      await createCostEntryFromAttendance(updated, time);
+      // Náklad práce se zapíše až při schválení dne (Ke schválení).
     } else {
       // Příchod — volat přímo bez modalu
       doCheckin();
@@ -8259,8 +8262,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const monthHours = attendance.filter(a => a.employeeId === effectiveEmpId && a.date.startsWith(monthStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
   const yearStr = todayStr.slice(0, 4);
   const yearHours = attendance.filter(a => a.employeeId === effectiveEmpId && a.date.startsWith(yearStr)).reduce((s, a) => s + calcHours(a.checkin, a.checkout), 0);
-  const todayHours = todayRecord ? calcHours(todayRecord.checkin, todayRecord.checkout) : 0;
-  const todayEffective = todayRecord ? calcEffectiveHours(todayRecord.checkin, todayRecord.checkout) : 0;
+  const todayHours = hodinyDne(dnesniBloky).hrube;
+  const todayEffective = hodinyDne(dnesniBloky).efektivni;
   const viewEmp = employees.find(e => e.id === effectiveEmpId);
   const vacDays = viewEmp?.vacation_days ?? currentUser?.vacationDays ?? 0;
   const vacUsed = viewEmp?.vacation_used ?? currentUser?.vacationUsed ?? 0;
@@ -8285,9 +8288,9 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       return empMatch && dateMatch;
     }).sort((a,b) => a.date.localeCompare(b.date));
     const empObj = employees.find(e => e.id === empForReport);
-    const totalH = recs.reduce((s,r) => s + calcEffectiveHours(r.checkin, r.checkout), 0);
+    const totalH = recs.reduce((s,r) => s + hodinyZaznamu(r), 0);
     const rows = recs.map(r => {
-      const h = calcEffectiveHours(r.checkin, r.checkout);
+      const h = hodinyZaznamu(r);
       const contract = contractOpts.find(c => c.id === r.contract_id);
       return "<tr><td>" + fmtDateCz(r.date) + "</td><td>" + (r.checkin||"—") + "</td><td>" + (r.checkout||"—") + "</td><td><strong>" + fmtHours(h) + "</strong></td><td>" + (contract ? contract.name : "—") + "</td><td>" + (r.activity||"—") + "</td></tr>";
     }).join("");
@@ -8316,11 +8319,11 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       return empMatch && dateMatch;
     }).sort((a,b) => a.date.localeCompare(b.date));
     const empObj = employees.find(e => e.id === empForReport);
-    const totalH = recs.reduce((s,r) => s + calcEffectiveHours(r.checkin, r.checkout), 0);
+    const totalH = recs.reduce((s,r) => s + hodinyZaznamu(r), 0);
     const monthNames = ["","Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
     const sazba = Number(empObj?.hourly_rate_cost) || 0;
     const rowsData = recs.map(r => {
-      const h = calcEffectiveHours(r.checkin, r.checkout);
+      const h = hodinyZaznamu(r);
       const contract = contractOpts.find(c => c.id === r.contract_id);
       return { date: fmtDateCz(r.date), checkin: r.checkin, checkout: r.checkout, hoursLabel: fmtHours(h), contractName: contract ? contract.name : "", activity: r.activity || "" };
     });
@@ -8352,6 +8355,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               { id: "soupis", label: "📋 Soupis práce" },
               ...((currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") ? [{ id: "sablony", label: "📋 Šablony bloků" }] : []),
               ...(currentUser.role === "admin" ? [{ id: "zadosti", label: "📩 Žádosti" + (pendingRequests.length ? ` (${pendingRequests.length})` : "") }] : []),
+              ...(jeVedeni ? [{ id: "schvaleni", label: "✅ Ke schválení" + (() => { const p = new Set(attendance.filter(a => !a.schvaleno).map(a => `${a.employee_id ?? a.employeeId}|${a.date}`)).size; return p ? ` (${p})` : ""; })() }] : []),
             ].map(t => (
               <button key={t.id} onClick={() => setAttTab(t.id)} style={{
                 padding: "10px 22px",
@@ -8426,20 +8430,21 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
               <div>
                 <div style={S.statLabel}>Příchod</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: todayRecord?.checkin ? "#34d399" : "#334155" }}>{todayRecord?.checkin?.slice(0,5) || "—"}</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: dnesniDen?.checkin ? "#34d399" : "#334155" }}>{dnesniDen?.checkin?.slice(0,5) || "—"}</div>
               </div>
               <div>
                 <div style={S.statLabel}>Odchod</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: todayRecord?.checkout ? "#f59e0b" : "#334155" }}>{todayRecord?.checkout?.slice(0,5) || (todayRecord?.checkin ? "probíhá..." : "—")}</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: dnesniDen?.checkout ? "#f59e0b" : "#334155" }}>{dnesniDen?.checkout?.slice(0,5) || (dnesniDen?.checkin ? "probíhá..." : "—")}</div>
               </div>
-              {todayRecord?.checkin && todayRecord?.checkout && (
+              {dnesniDen?.checkin && dnesniDen?.checkout && (
                 <div>
                   <div style={S.statLabel}>Odpracováno</div>
                   <div style={{ fontSize: 26, fontWeight: 800, color: "#0369a1" }}>{fmtHours(todayEffective)}</div>
-                  <div style={{ fontSize: 10, color: "#475569" }}>už po odečtu 1 h pauzy</div>
+                  <div style={{ fontSize: 10, color: "#475569" }}>{hodinyDne(dnesniBloky).pauza ? "po odečtu 1 h pauzy (den nad 6 h)" : "bez pauzy (den do 6 h)"}</div>
                 </div>
               )}
             </div>
+            {!dnesniBloky.length && (<>
             <label style={S.label}>Zakázka</label>
             <SearchSelect
               options={activeContractOpts.map(zakazkaOpt)}
@@ -8464,6 +8469,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, activity: e.target.value } : a));
                 }
               }} />
+            </>)}
             <label style={S.label}>📷 Fotky ze zakázky</label>
             <input type="file" accept="image/*" multiple capture="environment"
               onChange={onAttPhotoInput} disabled={attPhotoUploading || !(todayRecord?.contract_id || ciContractId)}
@@ -8494,10 +8500,14 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   onChange={val => setCiTripContractId(val)} />
               </>)}
             </>)}
-            <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#334155" : "#0369a1"), width: "100%", padding: "12px", fontWeight: 700, marginTop: 8, fontSize: 15 }}
-              onClick={checkinNow} disabled={!!todayRecord?.checkout}>
-              {todayRecord?.checkout ? "✓ Odchod zapsán (" + todayRecord.checkout + ")" : todayRecord?.checkin ? "⏱ Zapsat odchod (příchod " + todayRecord.checkin + ")" : "▶ Zapsat příchod"}
+            <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : "#0369a1"), width: "100%", padding: "14px", fontWeight: 800, marginTop: 8, fontSize: 16, minHeight: 52 }}
+              onClick={checkinNow}>
+              {todayRecord?.checkin && !todayRecord?.checkout ? "⏱ Zapsat odchod (příchod " + (dnesniDen?.checkin || "").slice(0, 5) + ")"
+                : todayRecord?.checkout ? "▶ Nový příchod (odchod byl " + todayRecord.checkout.slice(0, 5) + ")" : "▶ Zapsat příchod"}
             </button>
+            <DenniZapis bloky={dnesniBloky} zakazky={activeContractOpts.map(c => ({ id: c.id, label: zakazkaOpt(c).label + (zakazkaOpt(c).popis ? " · " + zakazkaOpt(c).popis : "") }))}
+              produkty={products || []} mista={mista} zamestnanecId={effectiveEmpId} datum={todayStr}
+              onPrepnout={prepnoutZakazku} onZmenaBloku={upravitBlokDne} />
           </div>
 
           {/* Ruční zadání */}
@@ -8541,6 +8551,14 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       )}
 
       {/* ŽÁDOSTI O ZÁPIS/ÚPRAVU PO UZAMČENÍ MĚSÍCE — jen admin */}
+      {attTab === "schvaleni" && jeVedeni && (
+        <div style={{ ...S.card, marginTop: 0 }}>
+          <SchvalovaniDochazky attendance={attendance} setAttendance={setAttendance} employees={employees}
+            zakazky={contractOpts.map(c => ({ id: c.id, label: zakazkaOpt(c).label + (zakazkaOpt(c).popis ? " · " + zakazkaOpt(c).popis : "") }))}
+            products={products || []} mista={mista} />
+        </div>
+      )}
+
       {attTab === "zadosti" && (
         <div>
           {pendingRequests.length === 0 ? (
@@ -8674,7 +8692,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                           const checkoutT = rec.checkout || rec.checkin;
                           const y1 = toY(rec.checkin);
                           const y2 = toY(checkoutT);
-                          const h = calcEffectiveHours(rec.checkin, rec.checkout);
+                          const h = hodinyZaznamu(rec);
                           const contract = contractOpts.find(c => c.id === rec.contract_id);
                           const col = colors[ri % colors.length];
                           const blockH = Math.max(44, y2 - y1);
@@ -8756,7 +8774,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               <thead><tr>{["Datum","Příchod","Odchod","Odpracováno","Zakázka","Popis",""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
               <tbody>
                 {empRecords.map(rec => {
-                  const h = calcEffectiveHours(rec.checkin, rec.checkout);
+                  const h = hodinyZaznamu(rec);
                   const contract = contractOpts.find(c => c.id === rec.contract_id);
                   const mats = recordMaterials[rec.id];
                   return (
@@ -8778,10 +8796,17 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                               await supabase.from("attendance").update({ contract_id: cid }).eq("id", rec.id);
                               const updated = { ...rec, contract_id: cid };
                               setAttendance(attendance.map(a => a.id === rec.id ? updated : a));
-                              if (cid && rec.checkout) await createCostEntryFromAttendance(updated, rec.checkout);
+                              // schválený den: náklady práce přepočítat (jinak se zapíšou až při schválení)
+                              if (rec.schvaleno && rec.checkout) {
+                                const { error } = await supabase.rpc("schvalit_den", { p_employee_id: rec.employee_id ?? rec.employeeId, p_date: rec.date });
+                                if (error) alert("Náklady dne se nepodařilo přepočítat: " + error.message);
+                              }
                             }} />
                         </td>
-                        <td style={{ ...S.td, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rec.activity || "—"}</td>
+                        <td style={{ ...S.td, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={rec.popis_prace || rec.activity || ""}>
+                          {rec.schvaleno ? <span title={`Schváleno${rec.schvalil ? " — " + rec.schvalil : ""}`} style={{ color: "#15803d", fontWeight: 800, marginRight: 4 }}>✓</span> : <span title="Čeká na schválení" style={{ color: "#b45309", marginRight: 4 }}>⏳</span>}
+                          {rec.popis_prace || rec.activity || "—"}
+                        </td>
                         <td style={S.td}>
                           <div style={{ display: "flex", gap: 4 }}>
                             <button style={{ ...S.btnGhost, padding: "3px 8px", fontSize: 11 }}
@@ -9253,7 +9278,7 @@ function Profile({ currentUser, attendance, employees, tasks }) {
   const nowM = new Date().toISOString().slice(0, 7);
   const myAtt = attendance.filter(a => (a.employee_id === currentUser.employeeId || a.employee_name === myName));
   const thisMonth = myAtt.filter(a => a.date && a.date.startsWith(nowM));
-  const totalH = thisMonth.reduce((s, r) => s + calcEffectiveHours(r.checkin, r.checkout), 0);
+  const totalH = thisMonth.reduce((s, r) => s + efektivniHodinyZaznamu(r, myAtt), 0);
 
   // Profil byl dřív skoro prázdný — chyběla dovolená, ujeté km i otevřené
   // úkoly, i když appka tyhle údaje jinde už umí (HR, Kniha jízd, Úkoly).
