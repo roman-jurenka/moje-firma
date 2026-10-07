@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ProudOS pro administrativu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap">
+<style>
+/* Layout: návod jako příručka u stolu — vlevo rejstřík úkolů, vpravo jeden úkol = jedna karta s kroky a nakresleným výřezem obrazovky */
+:root {
+  --bg: #f4f7fa;
+  --paper: #ffffff;
+  --ink: #14222f;
+  --muted: #566778;
+  --line: #d9e2ea;
+  --accent: #0369a1;        /* modrá ProudOS */
+  --accent-soft: #e3f1fa;
+  --mark: #f5821f;          /* oranžová = sem klikni */
+  --ok: #15803d; --ok-soft: #e7f6ec;
+  --warn: #a35a00; --warn-soft: #fff4e2;
+  /* výřezy obrazovky jsou vždy světlé jako aplikace */
+  --m-bg: #f0f4f8; --m-card: #ffffff; --m-ink: #1a1a1a; --m-muted: #64748b; --m-line: #e2e8f0; --m-blue: #0369a1; --m-navy: #0d2137;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1820; --paper: #16232e; --ink: #e6eef5; --muted: #9db0c1; --line: #2a3a48;
+  --accent: #5ab4e8; --accent-soft: #15344a; --mark: #ff9a45;
+  --ok: #5fd08a; --ok-soft: #133524; --warn: #f2b25c; --warn-soft: #3a2a12; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1820; --paper: #16232e; --ink: #e6eef5; --muted: #9db0c1; --line: #2a3a48;
+  --accent: #5ab4e8; --accent-soft: #15344a; --mark: #ff9a45;
+  --ok: #5fd08a; --ok-soft: #133524; --warn: #f2b25c; --warn-soft: #3a2a12; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 var(--f-body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 32px; }
+@media (max-width: 860px) { .wrap { grid-template-columns: minmax(0, 1fr); padding-inline: 16px; } }
+
+header.hlava { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 28px; border-bottom: 2px solid var(--line); padding-bottom: 18px; }
+header.hlava h1 { font: 800 clamp(30px, 5vw, 44px)/1.05 var(--f-display); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+header.hlava h1 span { color: var(--accent); }
+header.hlava p { margin: 0; color: var(--muted); max-width: 52ch; }
+
+nav.rejstrik { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); align-self: start; display: flex; flex-direction: column; gap: 18px; }
+@media (max-width: 860px) { nav.rejstrik { position: static; } }
+nav.rejstrik h2 { font: 700 12px/1 var(--f-body); text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0 0 6px; }
+nav.rejstrik ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+nav.rejstrik a { display: flex; gap: 10px; align-items: baseline; color: var(--ink); text-decoration: none; padding: 6px 10px; border-radius: 8px; font-size: 15px; line-height: 1.3; }
+nav.rejstrik a:hover, nav.rejstrik a:focus-visible { background: var(--accent-soft); outline: none; }
+nav.rejstrik a b { font: 800 13px/1 var(--f-display); color: var(--accent); min-width: 22px; font-variant-numeric: tabular-nums; }
+
+main { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.legenda { display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 15px; color: var(--muted); background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+.legenda span { display: inline-flex; align-items: center; gap: 8px; }
+.vzor-hl { display: inline-block; width: 26px; height: 18px; border-radius: 5px; border: 3px solid var(--mark); }
+.vzor-n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--mark); color: #fff; font: 800 12px/1 var(--f-display); }
+
+section.ukol { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 24px clamp(16px, 3vw, 30px) 26px; scroll-margin-top: 16px; display: flex; flex-direction: column; gap: 16px; }
+.skupina { font: 700 12px/1 var(--f-body); text-transform: uppercase; letter-spacing: .1em; color: var(--accent); }
+section.ukol h2 { font: 800 clamp(23px, 3vw, 29px)/1.15 var(--f-display); margin: 0; text-wrap: balance; }
+.kdy { margin: 0; color: var(--muted); max-width: 65ch; }
+.cesta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 15px; }
+.cesta .k { background: var(--accent-soft); color: var(--accent); border-radius: 6px; padding: 2px 9px; font-weight: 700; }
+.cesta .s { color: var(--muted); }
+
+.telo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 22px 28px; align-items: start; }
+@media (max-width: 1000px) { .telo { grid-template-columns: minmax(0, 1fr); } }
+ol.kroky { margin: 0; padding: 0; list-style: none; counter-reset: k; display: flex; flex-direction: column; gap: 12px; }
+ol.kroky > li { counter-increment: k; position: relative; padding-left: 40px; max-width: 62ch; }
+ol.kroky > li::before { content: counter(k); position: absolute; left: 0; top: 1px; width: 27px; height: 27px; border-radius: 50%; background: var(--mark); color: #fff; display: grid; place-items: center; font: 800 14px/1 var(--f-display); }
+.btn { display: inline-block; font: 700 14px/1.25 var(--f-body); background: var(--accent); color: #fff; border-radius: 6px; padding: 1px 8px; white-space: nowrap; }
+.btn.g { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.pole { font-weight: 700; border-bottom: 2px dotted var(--accent); }
+
+.box { border-radius: 10px; padding: 11px 14px; font-size: 15px; max-width: 70ch; }
+.box.tip { background: var(--ok-soft); color: var(--ink); border-left: 4px solid var(--ok); }
+.box.pozor { background: var(--warn-soft); color: var(--ink); border-left: 4px solid var(--warn); }
+.box b:first-child { color: inherit; }
+
+/* ─ výřez obrazovky aplikace ─ */
+figure.obr { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+figure.obr figcaption { font-size: 13px; color: var(--muted); }
+.m { background: var(--m-bg); color: var(--m-ink); border: 1px solid var(--m-line); border-radius: 12px; overflow: hidden; font: 13px/1.35 "Segoe UI", system-ui, sans-serif; box-shadow: 0 6px 20px rgba(15, 30, 45, .10); }
+.m-top { display: flex; align-items: center; gap: 6px; padding: 7px 10px; background: var(--m-navy); color: #fff; font-weight: 700; font-size: 12px; }
+.m-top i { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.35); display: inline-block; }
+.m-top .app { margin-left: 6px; }
+.m-top .app em { font-style: normal; color: #F5821F; }
+.m-in { padding: 12px; display: flex; flex-direction: column; gap: 9px; }
+.m-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.m-tab { padding: 5px 10px; border-radius: 8px 8px 0 0; background: rgba(100,116,139,.2); color: #334155; font-size: 12px; font-weight: 600; }
+.m-tab.on { background: var(--m-navy); color: #fff; }
+.m-card { background: var(--m-card); border: 1px solid var(--m-line); border-radius: 9px; padding: 9px 10px; display: flex; flex-direction: column; gap: 7px; }
+.m-b { display: inline-block; background: var(--m-blue); color: #fff; border-radius: 7px; padding: 5px 10px; font-weight: 700; font-size: 12px; }
+.m-b.g { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+.m-b.ok { background: #15803d; }
+.m-b.red { background: #fff; color: #b91c1c; border: 1px solid #fecaca; }
+.m-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 120px; }
+.m-f label { font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .03em; }
+.m-f span { border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 8px; background: #fff; color: var(--m-ink); min-height: 28px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-f span.ph { color: #94a3b8; }
+.m-f span.sel::after { content: " ▾"; color: #94a3b8; float: right; }
+.m-chip { border: 1px solid #cbd5e1; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 700; background: #fff; color: #334155; }
+.m-chip.on { background: var(--m-blue); color: #fff; border-color: var(--m-blue); }
+.m-muted { color: var(--m-muted); font-size: 11px; }
+.m-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.m-bar { position: relative; height: 12px; background: #f1f5f9; border-radius: 6px; overflow: hidden; }
+.m-bar i { position: absolute; top: 0; bottom: 0; display: block; }
+.m-thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.m-thumbs i { aspect-ratio: 4 / 3; border-radius: 5px; background: linear-gradient(135deg, #cfd9e3, #9fb2c4); display: block; }
+.m-thumbs i.doc { background: #f8fafc; border: 1px solid #e2e8f0; display: grid; place-items: center; font-size: 10px; font-weight: 800; color: #475569; font-style: normal; }
+.m-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.m-table td, .m-table th { padding: 4px 5px; border-top: 1px solid #f1f5f9; text-align: left; }
+.m-table th { color: #64748b; font-size: 10px; border-top: none; }
+.m-red { color: #b91c1c; font-weight: 700; }
+.m-green { color: #15803d; font-weight: 700; }
+.m-amber { color: #b45309; font-weight: 700; }
+
+/* zvýraznění „sem klikni“ */
+.hl { position: relative; outline: 3px solid var(--mark); outline-offset: 2px; border-radius: 7px; }
+.hl[data-n]::after { content: attr(data-n); position: absolute; top: -13px; right: -13px; width: 21px; height: 21px; border-radius: 50%; background: var(--mark); color: #fff; font: 800 12px/21px var(--f-display); text-align: center; box-shadow: 0 0 0 2px #fff; z-index: 1; }
+
+.zpet { font-size: 14px; color: var(--accent); text-decoration: none; align-self: flex-start; }
+.zpet:hover, .zpet:focus-visible { text-decoration: underline; outline: none; }
+footer { color: var(--muted); font-size: 14px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hlava">
+    <h1>Proud<span>OS</span> pro administrativu</h1>
+    <p>Návody krok za krokem na úkoly, které v kanceláři děláte nejčastěji. Vyberte úkol vlevo a postupujte podle očíslovaných kroků.</p>
+  </header>
+
+  <nav class="rejstrik" aria-label="Rejstřík úkolů">
+    <div>
+      <h2>Zákazníci a zakázky</h2>
+      <ol>
+        <li><a href="#zakaznik"><b>1</b>Založit nového zákazníka</a></li>
+        <li><a href="#zakazka"><b>2</b>Zapsat novou zakázku</a></li>
+        <li><a href="#popis"><b>3</b>Doplnit popis a podklady zakázky</a></li>
+        <li><a href="#fotky"><b>4</b>Nahrát fotky a dokumenty</a></li>
+      </ol>
+    </div>
+    <div>
+      <h2>Docházka</h2>
+      <ol>
+        <li><a href="#schvaleni"><b>5</b>Zkontrolovat a schválit docházku</a></li>
+        <li><a href="#oprava"><b>6</b>Opravit už schválený den</a></li>
+        <li><a href="#zapomnel"><b>7</b>Doplnit zapomenutou docházku</a></li>
+      </ol>
+    </div>
+    <div>
+      <h2>Faktury</h2>
+      <ol>
+        <li><a href="#faktura"><b>8</b>Vystavit fakturu ze zakázky</a></li>
+        <li><a href="#dilci"><b>9</b>Vystavit dílčí fakturu</a></li>
+        <li><a href="#papir"><b>10</b>Opsat výpočet z papíru</a></li>
+        <li><a href="#fronta"><b>11</b>Přiřadit přijatou fakturu</a></li>
+      </ol>
+    </div>
+    <div>
+      <h2>Sklad</h2>
+      <ol>
+        <li><a href="#sklad"><b>12</b>Zapsat pohyb materiálu</a></li>
+      </ol>
+    </div>
+  </nav>
+
+  <main>
+    <div class="legenda" role="note">
+      <span><i class="vzor-hl" aria-hidden="true"></i> oranžový rámeček na obrázku = sem klikněte</span>
+      <span><i class="vzor-n" aria-hidden="true">1</i> číslo = pořadí kroku</span>
+      <span><span class="btn">Tlačítko</span> = text na tlačítku v aplikaci</span>
+    </div>
+
+    <!-- 1 ZÁKAZNÍK -->
+    <section class="ukol" id="zakaznik">
+      <div class="skupina">Zákazníci a zakázky · úkol 1</div>
+      <h2>Založit nového zákazníka</h2>
+      <p class="kdy">Když přijde nový zákazník, kterého v aplikaci ještě nemáte. U firmy stačí IČO, zbytek se doplní sám.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Zákazníci</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>V levém menu klikněte na <span class="pole">Zákazníci</span>.</li>
+          <li>Klikněte na <span class="btn">+ Přidat</span>.</li>
+          <li>U firmy napište <span class="pole">IČO</span> (8 číslic). Aplikace sama načte název, DIČ a sídlo z registru ARES.</li>
+          <li>Neznáte IČO? Napište název firmy a klikněte na <span class="btn g">🔎 Najít v ARES</span>, pak vyberte správnou firmu.</li>
+          <li>Doplňte telefon a e-mail na kontaktní osobu a uložte.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Nový zákazník</span></div>
+            <div class="m-in">
+              <div class="m-card">
+                <div class="m-row"><b style="font-size:11px">🏢 Údaje firmy z ARES</b></div>
+                <div class="m-row">
+                  <div class="m-f hl" data-n="3"><label>IČO</label><span>12345678</span></div>
+                  <div class="m-f"><label>DIČ</label><span>CZ12345678</span></div>
+                </div>
+                <div class="m-f"><label>Název firmy</label><span>Ukázková s.r.o.</span></div>
+                <div class="m-f"><label>Sídlo</label><span>Náměstí 1, 790 01 Jeseník</span></div>
+                <div class="m-green" style="font-size:11px">✓ Načteno z ARES: Ukázková s.r.o.</div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Po zadání IČO se údaje doplní samy (ukázková data).</figcaption>
+        </figure>
+      </div>
+      <div class="box tip"><b>Tip:</b> Když ARES napíše „firma zanikla“, ověřte si u zákazníka, pod jakou firmou má faktura jít.</div>
+      <a class="zpet" href="#zakaznik">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 2 ZAKÁZKA -->
+    <section class="ukol" id="zakazka">
+      <div class="skupina">Zákazníci a zakázky · úkol 2</div>
+      <h2>Zapsat novou zakázku</h2>
+      <p class="kdy">Když zákazník odsouhlasí nabídku a má se začít pracovat. Kód zakázky (např. FVE-2610-RJ-0001) vytvoří aplikace sama.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Zakázky</span><span class="s">→</span><span class="k">+ Nová zakázka</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>V menu klikněte na <span class="pole">Zakázky</span> a pak na <span class="btn">+ Nová zakázka</span>.</li>
+          <li>Vyberte <span class="pole">Typ zakázky</span>: FVE fotovoltaika, FVR rozšíření, FVO ohřev vody, REA realizace na objednávku, HRM hromosvody, ELK elektroinstalace, SRV servis. Kód se vygeneruje sám.</li>
+          <li>Napište <span class="pole">Název zakázky</span> tak, aby ho poznal každý, např. „Novák – FVE Dolní Lipová“.</li>
+          <li>Vyberte <span class="pole">Zákazník</span>. Když v seznamu není, nejdřív ho založte (úkol 1).</li>
+          <li>Vyplňte <span class="pole">Cena zakázky (Kč)</span>. U typu REA místo toho vyplňte rozpočet: Práce, Materiál, Doprava. Cena se sečte sama.</li>
+          <li>Napište <span class="pole">Adresa místa výkonu</span>. Podle ní pak pracuje mapa i kontrola GPS.</li>
+          <li>Klikněte na <span class="btn">Uložit zakázku</span>.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Nová zakázka</span></div>
+            <div class="m-in">
+              <div class="m-row">
+                <div class="m-f hl" data-n="2"><label>Typ zakázky</label><span class="sel">FVE — Fotovoltaika</span></div>
+                <div class="m-f"><label>Kód zakázky</label><span>FVE-2610-RJ-0003</span></div>
+              </div>
+              <div class="m-f hl" data-n="3"><label>Název zakázky</label><span>Novák – FVE Dolní Lipová</span></div>
+              <div class="m-row">
+                <div class="m-f hl" data-n="4"><label>Zákazník</label><span class="sel">Jan Novák</span></div>
+                <div class="m-f hl" data-n="5"><label>Cena zakázky (Kč)</label><span>285 000</span></div>
+              </div>
+              <div class="m-f hl" data-n="6"><label>Adresa místa výkonu</label><span>Dolní Lipová 120</span></div>
+              <div class="m-row" style="justify-content:flex-end"><span class="m-b g">Zrušit</span><span class="m-b hl" data-n="7">Uložit zakázku</span></div>
+            </div>
+          </div>
+          <figcaption>Formulář nové zakázky (ukázková data).</figcaption>
+        </figure>
+      </div>
+      <div class="box pozor"><b>Pozor:</b> Bez vybraného typu se kód nevytvoří. Typ proto vybírejte vždy jako první.</div>
+      <a class="zpet" href="#zakazka">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 3 POPIS -->
+    <section class="ukol" id="popis">
+      <div class="skupina">Zákazníci a zakázky · úkol 3</div>
+      <h2>Doplnit popis a podklady zakázky</h2>
+      <p class="kdy">Než se na zakázku pošlou lidé. Montéři v kalendáři uvidí kontakty, termíny a pokyny, které sem napíšete.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Zakázky</span><span class="s">→</span><span class="k">▼ Detail</span><span class="s">→</span><span class="k">📝 Popis zakázky</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>V seznamu zakázek klikněte u zakázky na <span class="btn g">▼ Detail</span>.</li>
+          <li>Nahoře přepněte na <span class="btn g">📝 Popis zakázky</span>.</li>
+          <li>Vlevo doplňte <span class="pole">Datum dokončení</span> a průběžné termíny (<span class="btn g">+ Přidat</span>).</li>
+          <li>Vpravo přidejte <span class="pole">Kontaktní osoby</span>: kdo je na místě, co má na starosti a jeho telefon.</li>
+          <li>Klikněte na <span class="btn">💾 Uložit popis</span>.</li>
+          <li>Níže jsou <span class="pole">Podklady pro realizaci</span>. Pole se mění podle typu zakázky. Klikněte na <span class="btn g">↧ Předvyplnit z nabídky</span>, zkontrolujte a doplňte, co chybí.</li>
+          <li>Klikněte na <span class="btn">💾 Uložit podklady</span>.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Zakázky</span></div>
+            <div class="m-in">
+              <div class="m-row"><span class="m-tab">📋 Přehled</span><span class="m-tab on hl" data-n="2">📝 Popis zakázky</span></div>
+              <div class="m-card">
+                <div class="m-row">
+                  <div class="m-f"><label>Datum dokončení</label><span>30. 10. 2026</span></div>
+                  <div class="m-f"><label>Kontaktní osoba</label><span>Jan Novák · 777 123 456</span></div>
+                </div>
+                <div class="m-row"><span class="m-b hl" data-n="5">💾 Uložit popis</span></div>
+              </div>
+              <div class="m-card">
+                <div class="m-row" style="justify-content:space-between"><b style="font-size:12px">📋 Podklady pro realizaci <span class="m-amber">· vyplněno 4/18</span></b>
+                  <span class="m-row"><span class="m-b g hl" data-n="6">↧ Předvyplnit z nabídky</span><span class="m-b hl" data-n="7">💾 Uložit podklady</span></span></div>
+                <div class="m-row">
+                  <div class="m-f"><label>Střešní krytina</label><span class="sel">Taška — standard</span></div>
+                  <div class="m-f"><label>Distribuce</label><span class="sel">ČEZ</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Popis zakázky a pod ním podklady pro realizaci.</figcaption>
+        </figure>
+      </div>
+      <div class="box tip"><b>Tip:</b> Podklady jsou stejné jako v Průběhu zakázek. Co vyplníte tady, uvidí kolegové i tam a v kalendáři.</div>
+      <a class="zpet" href="#popis">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 4 FOTKY -->
+    <section class="ukol" id="fotky">
+      <div class="skupina">Zákazníci a zakázky · úkol 4</div>
+      <h2>Nahrát fotky a dokumenty k zakázce</h2>
+      <p class="kdy">Fotky z obhlídky nebo montáže, sken předávacího protokolu, PDF od zákazníka. Nahrát jde víc souborů najednou.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Zakázky</span><span class="s">→</span><span class="k">▼ Detail</span><span class="s">→</span><span class="k">📷 Fotky</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>U zakázky otevřete <span class="btn g">▼ Detail</span> a záložku <span class="btn g">📷 Fotky</span>.</li>
+          <li>V poli <span class="pole">Kam (kategorie)</span> vyberte, kam soubory patří: Obhlídka, Průběh montáže, Střecha, Uzemnění, Po montáži, Předávací protokol, Dokumenty nebo Ostatní.</li>
+          <li>Můžete napsat <span class="pole">Popis</span>, např. „rozvaděč před úpravou“.</li>
+          <li>Klikněte na <span class="btn">📷 Vybrat fotky / soubory</span> a označte všechny soubory najednou. Na počítači je můžete sem také přetáhnout myší.</li>
+          <li>Počkejte, až zmizí „Nahrávám 3/12…“. Soubory se ukážou ve své kategorii.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Fotky zakázky</span></div>
+            <div class="m-in">
+              <div class="m-card" style="border-style:dashed">
+                <div class="m-row">
+                  <div class="m-f hl" data-n="2"><label>Kam (kategorie)</label><span class="sel">Po montáži</span></div>
+                  <div class="m-f"><label>Popis (volitelné)</label><span class="ph">např. rozvaděč…</span></div>
+                  <span class="m-b hl" data-n="4">📷 Vybrat fotky / soubory</span>
+                </div>
+              </div>
+              <div class="m-row"><span class="m-chip on">Vše (24)</span><span class="m-chip">Obhlídka (6)</span><span class="m-chip">Po montáži (16)</span><span class="m-chip">Předávací protokol (2)</span></div>
+              <div class="m-thumbs"><i></i><i></i><i></i><i class="doc">📄 PDF</i></div>
+            </div>
+          </div>
+          <figcaption>Nahoře výběr kategorie, dole galerie s filtrem.</figcaption>
+        </figure>
+      </div>
+      <div class="box tip"><b>Fotka ve špatné kategorii?</b> Klikněte na ni a v prohlížeči nahoře vyberte správnou kategorii. Víc fotek najednou přesunete tlačítkem <span class="btn g">☑ Označit a přeřadit</span>.</div>
+      <a class="zpet" href="#fotky">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 5 SCHVÁLENÍ -->
+    <section class="ukol" id="schvaleni">
+      <div class="skupina">Docházka · úkol 5</div>
+      <h2>Zkontrolovat a schválit docházku</h2>
+      <p class="kdy">Ideálně každý den nebo aspoň jednou týdně. Dokud den není schválený, hodiny se nezapočítají do nákladů zakázky a materiál se neodepíše ze skladu.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Docházka</span><span class="s">→</span><span class="k">✅ Ke schválení</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>V menu klikněte na <span class="pole">Docházka</span> a pak na záložku <span class="btn g">✅ Ke schválení</span>. Číslo v závorce říká, kolik dnů čeká.</li>
+          <li>Klikněte na řádek se jménem a datem. Den se rozbalí.</li>
+          <li>Podívejte se na <b>barevný pruh</b>. Každá barva je jedna zakázka, <b>oranžová znamená bez zakázky</b>. Když na pruh najedete myší, ukáže se čas a zakázka.</li>
+          <li>U každé části dne zkontrolujte čas od–do, <span class="pole">zakázku</span> a popis práce. Chybí-li zakázka, vyberte ji ze seznamu.</li>
+          <li>Pokud zaměstnanec zapsal <span class="pole">materiál</span>, spárujte ho se skladovou položkou. Když položka ve skladu není, vyberte <span class="btn g">➕ Založit novou položku</span>. Zkontrolujte množství a zdroj (sklad nebo auto).</li>
+          <li>Klikněte na <span class="btn" style="background:#15803d">✓ Schválit den</span>. Teprve teď se zapíšou hodiny i materiál na zakázku.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Docházka</span></div>
+            <div class="m-in">
+              <div class="m-row"><span class="m-tab">📅 Záznamy &amp; Docházka</span><span class="m-tab on hl" data-n="1">✅ Ke schválení (3)</span></div>
+              <div class="m-card hl" data-n="2">
+                <div class="m-row" style="justify-content:space-between"><b>Petr Montér · út 6. 10.</b><span class="m-muted">2 bloky · 9 h 30 min · materiál 2</span></div>
+                <div class="m-muted" style="display:flex;justify-content:space-between;font-size:9px"><span>5</span><span>9</span><span>13</span><span>17</span><span>21</span></div>
+                <div class="m-bar hl" data-n="3"><i style="left:10%;width:38%;background:#15803d"></i><i style="left:48%;width:12%;background:#f59e0b"></i><i style="left:60%;width:12%;background:#7c3aed"></i></div>
+              </div>
+              <div class="m-card">
+                <div class="m-row"><div class="m-f" style="flex:0 1 70px"><label>Od</label><span>06:30</span></div><div class="m-f" style="flex:0 1 70px"><label>Do</label><span>12:30</span></div><div class="m-f hl" data-n="4"><label>Zakázka</label><span class="sel">FVE-2610 Novák</span></div></div>
+                <table class="m-table"><tr><th>Materiál</th><th>Skladová položka</th><th>Množství</th></tr>
+                  <tr><td>kabel 6mm</td><td class="hl" data-n="5"><span class="m-amber">— spárovat —</span></td><td>25 m</td></tr></table>
+                <div class="m-row" style="justify-content:flex-end"><span class="m-b ok hl" data-n="6">✓ Schválit den</span></div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Den se dvěma zakázkami a oranžovým úsekem bez zakázky.</figcaption>
+        </figure>
+      </div>
+      <div class="box pozor"><b>Pozor:</b> Den s chybějícím odchodem (čas „Do“ je červeně) schválit nejde. Nejdřív doplňte čas odchodu.</div>
+      <div class="box tip"><b>GPS:</b> Pokud má zaměstnanec auto s GPS, u dne se zobrazí „📍 GPS — kde auto stálo“. Když nesedí se zápisem, objeví se upozornění a návrh, který převezmete tlačítkem <span class="btn g">📍 Použít návrh GPS</span>.</div>
+      <a class="zpet" href="#schvaleni">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 6 OPRAVA -->
+    <section class="ukol" id="oprava">
+      <div class="skupina">Docházka · úkol 6</div>
+      <h2>Opravit už schválený den</h2>
+      <p class="kdy">Když zjistíte chybu ve dni, který už je schválený (špatná zakázka, špatný čas).</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Docházka</span><span class="s">→</span><span class="k">✅ Ke schválení</span><span class="s">→</span><span class="k">☑ Schválené</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>Ve <span class="btn g">✅ Ke schválení</span> zaškrtněte nahoře <span class="pole">Schválené (posledních 14 dní)</span>.</li>
+          <li>Rozbalte den a klikněte na <span class="btn g" style="color:#b91c1c">↩ Zrušit schválení</span>. Hodiny a materiál se ze zakázky a skladu vrátí.</li>
+          <li>Opravte, co je potřeba: čas, zakázku, popis nebo materiál.</li>
+          <li>Klikněte znovu na <span class="btn" style="background:#15803d">✓ Schválit den</span>.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Ke schválení</span></div>
+            <div class="m-in">
+              <div class="m-card">
+                <div class="m-row" style="justify-content:space-between"><b>Petr Montér · po 5. 10.</b><span class="m-green">✓ schváleno</span></div>
+                <div class="m-row"><span class="m-b red hl" data-n="2">↩ Zrušit schválení</span></div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Schválený den se odemkne tlačítkem Zrušit schválení.</figcaption>
+        </figure>
+      </div>
+      <a class="zpet" href="#oprava">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 7 ZAPOMNĚL -->
+    <section class="ukol" id="zapomnel">
+      <div class="skupina">Docházka · úkol 7</div>
+      <h2>Doplnit zapomenutou docházku</h2>
+      <p class="kdy">Zaměstnanec zapomněl zapsat příchod nebo odchod, nebo byl s kolegou a nezapsal si nic.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Docházka</span><span class="s">→</span><span class="k">📅 Záznamy &amp; Docházka</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>V Docházce nahoře vyberte v rozbalovacím seznamu <span class="pole">jméno zaměstnance</span>.</li>
+          <li><b>Chybí jen odchod:</b> nad tlačítkem příchodu svítí červený pruh „⚠ Neuzavřený den …“. Klikněte na <span class="btn" style="background:#b91c1c">Doplnit odchod</span> a napište čas, např. 16:30.</li>
+          <li><b>Chybí celý den:</b> v části <span class="pole">✏️ Ruční záznam</span> vyplňte Datum, Příchod, Odchod a Zakázku a klikněte na <span class="btn">Uložit</span>. U minulého dne je odchod povinný.</li>
+          <li><b>Byl s kolegou:</b> v historii kolegy u stejného dne klikněte na <span class="btn g">📋 kopírovat</span>, zaškrtněte, komu se má den zapsat, a uložte.</li>
+          <li>Takto doplněný den pak schvalte jako ostatní (úkol 5).</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Docházka</span></div>
+            <div class="m-in">
+              <div class="m-row"><div class="m-f hl" data-n="1" style="flex:0 1 170px"><label>Zaměstnanec</label><span class="sel">Petr Montér</span></div></div>
+              <div class="m-card" style="background:#fef2f2;border-color:#fecaca">
+                <div class="m-row" style="justify-content:space-between"><span class="m-red" style="font-weight:600">⚠ Neuzavřený den pá 2. 10. — příchod 06:40, chybí odchod.</span><span class="m-b hl" data-n="2" style="background:#b91c1c">Doplnit odchod</span></div>
+              </div>
+              <div class="m-card">
+                <b style="font-size:12px">✏️ Ruční záznam</b>
+                <div class="m-row"><div class="m-f"><label>Datum</label><span>1. 10. 2026</span></div><div class="m-f"><label>Příchod</label><span>07:00</span></div><div class="m-f"><label>Odchod</label><span>15:30</span></div></div>
+                <div class="m-row"><div class="m-f"><label>Zakázka</label><span class="sel">FVE-2610 Novák</span></div><span class="m-b hl" data-n="3">Uložit</span></div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Neuzavřený den a ruční záznam celého dne.</figcaption>
+        </figure>
+      </div>
+      <div class="box tip"><b>Dobré vědět:</b> Ruční záznam ani kopie nezapíší náklady na zakázku hned. Zapíšou se až po schválení dne.</div>
+      <a class="zpet" href="#zapomnel">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 8 FAKTURA -->
+    <section class="ukol" id="faktura">
+      <div class="skupina">Faktury · úkol 8</div>
+      <h2>Vystavit fakturu ze zakázky</h2>
+      <p class="kdy">Když je zakázka hotová a má se vyúčtovat. Položky se předvyplní z nákladů zakázky, které jsou schválené k fakturaci.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Fakturace</span><span class="s">→</span><span class="k">+ Nová faktura</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>V menu klikněte na <span class="pole">Fakturace</span> a na <span class="btn">+ Nová faktura</span>.</li>
+          <li>Vyberte <span class="btn g">📋 Ze zakázky — předvyplní se z nákladů zakázky</span>.</li>
+          <li>Začněte psát název zakázky a vyberte ji ze seznamu.</li>
+          <li>V záložce <span class="pole">Základní údaje</span> zkontrolujte zákazníka, datum vystavení a splatnosti. Pod zakázkou vidíte souhrn: cena zakázky, kolik je už vyfakturováno a kolik zbývá.</li>
+          <li>V záložce <span class="pole">Položky a částka</span> zkontrolujte řádky a celkovou částku.</li>
+          <li>Pokud fakturu vystavila účetní ve svém programu, napište její číslo do pole <span class="pole">Náhradní číslo faktury</span>.</li>
+          <li>Klikněte na <span class="btn">Vystavit fakturu</span>.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Vystavit fakturu</span></div>
+            <div class="m-in">
+              <div class="m-card">
+                <b style="font-size:12px">Odkud se mají vzít položky faktury?</b>
+                <span class="m-b g">✍️ Ručně — přidám položky sám</span>
+                <span class="m-b g hl" data-n="2">📋 Ze zakázky — předvyplní se z nákladů zakázky</span>
+              </div>
+              <div class="m-row"><span class="m-tab on">Základní údaje</span><span class="m-tab hl" data-n="5">Položky a částka</span></div>
+              <div class="m-card">
+                <div class="m-f hl" data-n="3"><label>Zakázka</label><span>Novák – FVE Dolní Lipová (FVE-2610-RJ-0003)</span></div>
+                <div class="m-row" style="justify-content:flex-end"><span class="m-b hl" data-n="7">Vystavit fakturu</span></div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Volba „Ze zakázky“ a výběr zakázky.</figcaption>
+        </figure>
+      </div>
+      <div class="box pozor"><b>Pozor:</b> Položky, které ještě čekají na schválení, se do faktury nedostanou. Aplikace to napíše žlutě nad položkami. Nejdřív schvalte docházku (úkol 5).</div>
+      <a class="zpet" href="#faktura">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 9 DÍLČÍ -->
+    <section class="ukol" id="dilci">
+      <div class="skupina">Faktury · úkol 9</div>
+      <h2>Vystavit dílčí fakturu</h2>
+      <p class="kdy">Když se zakázka fakturuje po částech (třeba 50 % po montáži, zbytek po předání) a bez rozpisu položek. Aplikace hlídá, kolik zbývá dofakturovat.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Fakturace</span><span class="s">→</span><span class="k">+ Nová faktura</span><span class="s">→</span><span class="k">✍️ Ručně</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>Klikněte na <span class="btn">+ Nová faktura</span> a zvolte <span class="btn g">✍️ Ručně</span>.</li>
+          <li>Vyberte zákazníka a v poli <span class="pole">Zakázka</span> vyberte zakázku.</li>
+          <li>Pod zakázkou se objeví souhrn <b>📊 Fakturace zakázky</b>: cena, už vyfakturováno, zálohy a zbývá dofakturovat.</li>
+          <li><b>Poslední faktura:</b> klikněte na <span class="btn g">↧ Dílčí faktura na zbývající částku</span>. Vyplní se jeden řádek se zbytkem.</li>
+          <li><b>Část zakázky:</b> zaškrtněte <span class="pole">Dílčí faktura (bez rozpisu)</span> a v záložce Položky napište částku, např. polovinu ceny.</li>
+          <li>Klikněte na <span class="btn">Vystavit fakturu</span>.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Nová faktura</span></div>
+            <div class="m-in">
+              <div class="m-card hl" data-n="3" style="background:#f8fafc">
+                <b style="font-size:12px">📊 Fakturace zakázky FVE-2610-RJ-0003 <span class="m-muted">(bez DPH)</span></b>
+                <div class="m-line"><span>Cena zakázky</span><b>285 000,00 Kč</b></div>
+                <div class="m-line"><span>Už vyfakturováno (1 faktura)</span><b>142 500,00 Kč</b></div>
+                <div class="m-line"><span>Tato faktura</span><b>0,00 Kč</b></div>
+                <div class="m-line" style="border-top:1px solid #e2e8f0;padding-top:4px"><span>Zbývá dofakturovat</span><b class="m-amber">142 500,00 Kč</b></div>
+                <span class="m-b g hl" data-n="4" style="align-self:flex-start;color:#0369a1">↧ Dílčí faktura na zbývající částku</span>
+              </div>
+              <div class="m-row" style="font-size:11px"><span class="hl" data-n="5">☐ Dílčí faktura (bez rozpisu)</span><span>☐ ✍️ Počítáno na papíře</span></div>
+            </div>
+          </div>
+          <figcaption>Souhrn ukazuje, kolik ze zakázky zbývá vyfakturovat.</figcaption>
+        </figure>
+      </div>
+      <div class="box tip"><b>Tip:</b> Stejný souhrn najdete i u zakázky: <span class="pole">▼ Detail → Faktury</span>. Zálohové faktury se počítají zvlášť.</div>
+      <a class="zpet" href="#dilci">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 10 PAPÍR -->
+    <section class="ukol" id="papir">
+      <div class="skupina">Faktury · úkol 10</div>
+      <h2>Opsat výpočet z papíru</h2>
+      <p class="kdy">Vedoucí někdy spočítá fakturu ručně na papíře a přiloží k ní fotku výpočtu. Vaším úkolem je čísla z fotky opsat. Aplikace je pak přepočítá a ukáže, jestli ve výpočtu není chyba.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Fakturace</span><span class="s">→</span><span class="k">otevřít fakturu</span><span class="s">→</span><span class="k">✍️ Papír</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>Ve Fakturaci otevřete fakturu označenou „✍️ papír“.</li>
+          <li>Přepněte na záložku <span class="btn g">✍️ Papír</span>. Nahoře je fotka výpočtu. Kliknutím ji zvětšíte.</li>
+          <li>Řádek po řádku opište, co je na papíře: <span class="pole">Popis</span>, <span class="pole">Množství</span>, <span class="pole">Jedn.</span>, <span class="pole">Cena/j</span> a <span class="pole">Celkem na papíře</span>. Další řádek přidáte tlačítkem <span class="btn g">+ Řádek</span>.</li>
+          <li>Opište i <span class="pole">Součet napsaný na papíře</span>.</li>
+          <li>Podívejte se na <b>🔎 Kontrola výpočtu</b>. Červený řádek znamená, že množství × cena nedává částku z papíru.</li>
+          <li>Klikněte na <span class="btn">💾 Uložit rozpis z papíru</span>. Pokud je někde chyba, dejte vědět vedoucímu.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Upravit fakturu</span></div>
+            <div class="m-in">
+              <div class="m-row"><span class="m-tab">Základní údaje</span><span class="m-tab">Položky a částka</span><span class="m-tab on hl" data-n="2">✍️ Papír</span></div>
+              <div class="m-card">
+                <table class="m-table"><tr><th>Popis</th><th>Množ.</th><th>Cena/j</th><th>Na papíře</th><th>Správně</th></tr>
+                  <tr><td>práce 2 lidi</td><td>16</td><td>550</td><td>8 800</td><td>8 800 Kč</td></tr>
+                  <tr style="background:#fef2f2"><td>kabel CYKY</td><td>40</td><td>38</td><td class="hl" data-n="3" style="color:#b91c1c">1 420</td><td class="m-red">1 520 Kč</td></tr>
+                </table>
+                <div class="m-red" style="font-size:11px">⚠ Chyba v řádku 2 — množství × cena nedává částku z papíru.</div>
+                <div class="m-line"><span>Faktura (bez DPH)</span><span><b>10 220 Kč</b> · <span class="m-amber">⚠ o 100 Kč méně</span></span></div>
+                <span class="m-b hl" data-n="6" style="align-self:flex-start">💾 Uložit rozpis z papíru</span>
+              </div>
+            </div>
+          </div>
+          <figcaption>Aplikace našla chybu: 40 × 38 je 1 520, ne 1 420.</figcaption>
+        </figure>
+      </div>
+      <div class="box tip"><b>Dobré vědět:</b> Rozpis jde opsat i u faktury, která už byla odeslána. Aplikace porovná fakturu ještě s hodinami a materiálem zapsanými na zakázce.</div>
+      <a class="zpet" href="#papir">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 11 FRONTA -->
+    <section class="ukol" id="fronta">
+      <div class="skupina">Faktury · úkol 11</div>
+      <h2>Přiřadit přijatou fakturu</h2>
+      <p class="kdy">Faktury od dodavatelů chodí e-mailem do fronty. U každého řádku faktury rozhodnete, kam náklad patří: k zakázce, na sklad, nebo do režie firmy.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Fakturace</span><span class="s">→</span><span class="k">🧾 Fronta k přiřazení</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>Ve Fakturaci klikněte na záložku <span class="btn g">🧾 Fronta k přiřazení</span>. Fakturu můžete najít filtrem podle dodavatele nebo období.</li>
+          <li>Otevřete fakturu. Tlačítkem <span class="btn g">📄 PDF</span> si zobrazíte originál.</li>
+          <li>U každého řádku vyberte ve sloupci <span class="pole">Přiřazení</span>: konkrétní zakázku, <b>📦 Sklad (příjem materiálu)</b>, nebo režii firmy. Aplikace často sama navrhne zakázku.</li>
+          <li>Zkontrolujte množství a cenu bez DPH. Pokud součet řádků nesedí s fakturou, ukáže se „⚠ nesedí s fakturou“.</li>
+          <li>Klikněte na <span class="btn" style="background:#15803d">✓ Potvrdit</span> u řádku, nebo na <span class="btn" style="background:#15803d">✓ Potvrdit vybrané</span> pro všechny najednou.</li>
+          <li>Faktury, které nikam nepatří (např. omylem přišlá), označte <span class="btn g" style="color:#b91c1c">✕ Zamítnout fakturu</span>.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Fakturace</span></div>
+            <div class="m-in">
+              <div class="m-row"><span class="m-tab">📤 Vydané</span><span class="m-tab">📥 Přijaté</span><span class="m-tab on hl" data-n="1">🧾 Fronta k přiřazení</span></div>
+              <div class="m-card">
+                <div class="m-row" style="justify-content:space-between"><b>Elektro Dodavatel s.r.o. · FV 2026-0815</b><span class="m-b g">📄 PDF</span></div>
+                <table class="m-table"><tr><th>Položka</th><th>Množ.</th><th>Přiřazení</th></tr>
+                  <tr><td>Střídač 10 kW</td><td>1 ks</td><td class="hl" data-n="3"><span class="m-f" style="display:block"><span class="sel">FVE-2610 Novák</span></span></td></tr>
+                  <tr><td>Kabel CYKY 5×6</td><td>100 m</td><td><span class="m-f" style="display:block"><span class="sel">📦 Sklad (příjem materiálu)</span></span></td></tr></table>
+                <div class="m-row" style="justify-content:space-between"><span class="m-b red">✕ Zamítnout fakturu</span><span class="m-b ok hl" data-n="5">✓ Potvrdit vybrané (2 z 2)</span></div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Každý řádek faktury dostane své místo.</figcaption>
+        </figure>
+      </div>
+      <div class="box tip"><b>Štítky:</b> Faktury za opravy aut, fixní náklady nebo spotřební materiál označte štítkem (<span class="btn g">+ Přidat štítek</span>). Najdete je pak filtrem.</div>
+      <div class="box pozor"><b>Spletli jste se?</b> U potvrzeného řádku klikněte na <span class="btn g">Vrátit a změnit</span>. Náklad se ze zakázky (případně ze skladu) vrátí a řádek můžete přiřadit znovu.</div>
+      <a class="zpet" href="#fronta">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 12 SKLAD -->
+    <section class="ukol" id="sklad">
+      <div class="skupina">Sklad · úkol 12</div>
+      <h2>Zapsat pohyb materiálu</h2>
+      <p class="kdy">Když přijde materiál na sklad, nakládá se do auta, vrací se z auta nebo se vydává přímo na zakázku.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Sklad</span><span class="s">→</span><span class="k">🔄 Pohyby</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>V menu klikněte na <span class="pole">Sklad</span> a na záložku <span class="btn g">🔄 Pohyby</span>.</li>
+          <li>Vyberte <span class="pole">Typ pohybu</span>:
+            <br>📥 <b>Naskladnění</b>: materiál přišel na sklad.
+            <br>🚗 <b>Naložit do auta</b>: ze skladu do auta.
+            <br>🔄 <b>Vrátit z auta</b>: z auta zpět na sklad.
+            <br>📦 <b>Výdej na zakázku</b>: materiál se spotřeboval na zakázce.</li>
+          <li>Začněte psát <span class="pole">Produkt</span> a vyberte ho z nabídky.</li>
+          <li>Napište <span class="pole">Množství</span> a zkontrolujte jednotku.</li>
+          <li>Vyberte <span class="pole">Odkud</span> a <span class="pole">Kam</span> (Hlavní sklad nebo konkrétní auto). U výdeje na zakázku vyberte i zakázku.</li>
+          <li>Klikněte na <span class="btn">✅ Zaznamenat pohyb</span>.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Sklad</span></div>
+            <div class="m-in">
+              <div class="m-row"><span class="m-tab">📦 Skladové zásoby</span><span class="m-tab on hl" data-n="1">🔄 Pohyby</span><span class="m-tab">🚚 Zásoby po místech</span></div>
+              <div class="m-card">
+                <span class="m-muted" style="font-weight:700;letter-spacing:.06em">NOVÝ POHYB</span>
+                <div class="m-row">
+                  <div class="m-f hl" data-n="2"><label>Typ pohybu</label><span class="sel">🚗 Naložit do auta</span></div>
+                  <div class="m-f hl" data-n="3"><label>Produkt</label><span>Kabel CYKY 5×6</span></div>
+                  <div class="m-f" style="flex:0 1 80px"><label>Množství</label><span>50 m</span></div>
+                </div>
+                <div class="m-row">
+                  <div class="m-f hl" data-n="5"><label>Odkud</label><span class="sel">📦 Hlavní sklad</span></div>
+                  <div class="m-f"><label>Kam</label><span class="sel">🚚 IVECO</span></div>
+                </div>
+                <span class="m-b hl" data-n="6" style="align-self:flex-start">✅ Zaznamenat pohyb</span>
+              </div>
+            </div>
+          </div>
+          <figcaption>Naložení materiálu ze skladu do auta.</figcaption>
+        </figure>
+      </div>
+      <div class="box pozor"><b>Pozor:</b> Když se produkt nenajde (napíšete ho jinak než ve skladu), pohyb se zapíše jen do historie a stav skladu se nezmění. Vybírejte proto produkt vždy z nabídky.</div>
+      <div class="box tip"><b>Tip:</b> Materiál, který zapíšou montéři v docházce, nezapisujte znovu. Ze skladu se odepíše sám, když schválíte den (úkol 5).</div>
+      <a class="zpet" href="#sklad">↑ Nahoru na úkol</a>
+    </section>
+
+    <footer>Obrázky jsou zjednodušené nákresy obrazovek s ukázkovými údaji. Ve skutečné aplikaci mohou tlačítka vypadat trochu jinak, nápisy na nich ale sedí.</footer>
+  </main>
+</div>
+</body>
+</html>

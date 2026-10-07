@@ -194,9 +194,9 @@ const AUTH_USERS = [
 ];
 
 const ROLES = {
-  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","prubeh","contracts","tasks","invoices","warehouse","hr","projects","costs","finance","reports","ai","attendance","calendar","knjiga","onedrive","permissions","hlaseni","podpisy","profile"] },
-  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","prubeh","contracts","tasks","invoices","projects","costs","finance","reports","ai","attendance","calendar","knjiga","podpisy","profile"] },
-  hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
+  admin:    { label: "Administrátor", color: "#f87171", nav: ["dashboard","customers","pricing","deals","prubeh","contracts","tasks","invoices","warehouse","hr","projects","costs","finance","reports","ai","attendance","calendar","knjiga","onedrive","permissions","hlaseni","podpisy","profile","navod"] },
+  manager:  { label: "Manažer",       color: "#f59e0b", nav: ["dashboard","customers","pricing","deals","prubeh","contracts","tasks","invoices","projects","costs","finance","reports","ai","attendance","calendar","knjiga","podpisy","profile","navod"] },
+  hr:       { label: "HR",            color: "#a78bfa", nav: ["dashboard","hr","costs","attendance","calendar","knjiga","uctenky","podpisy","profile","navod"] },
   employee: { label: "Zaměstnanec",   color: "#0369a1", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
 };
 
@@ -455,6 +455,7 @@ const NAV = [
   { id: "hr", label: "Zaměstnanci", icon: "ti-user", group: "Správa" },
   { id: "permissions", label: "Oprávnění", icon: "ti-lock", group: "Správa" },
   { id: "hlaseni", label: "Hlášení", icon: "ti-bell-ringing", group: "Správa" },
+  { id: "navod", label: "Návod", icon: "ti-help", group: "Správa" },
 ];
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
@@ -1685,6 +1686,18 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           onFakturaVystavena={(inv) => setInvoices(prev => [...prev, { ...inv, customerId: inv.customer_id }])} />}
 
         {tab === "hlaseni" && <HlaseniModule currentUser={currentUser} />}
+
+        {/* Návod pro administrativu — statická stránka public/navod-administrativa.html */}
+        {tab === "navod" && allowedTabs.includes("navod") && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>❓ Návod pro administrativu</h1>
+              <a href="/navod-administrativa.html" target="_blank" rel="noopener noreferrer" style={{ color: "#0369a1", fontWeight: 700, fontSize: 14 }}>Otevřít v novém okně ↗</a>
+            </div>
+            <iframe src="/navod-administrativa.html" title="Návod pro administrativu"
+              style={{ width: "100%", height: "calc(100dvh - 150px)", minHeight: 500, border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff" }} />
+          </div>
+        )}
 
         {tab === "reports" && <Reports
           customers={customers} deals={deals} invoices={invoices}

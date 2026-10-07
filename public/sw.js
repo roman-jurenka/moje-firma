@@ -8,7 +8,7 @@
 //  - Supabase a ostatní API — NIKDY necachujeme, ať se v appce neukážou stará data.
 //    (Zápisy bez signálu řeší fronta v offlineQueue.js.)
 
-const VERSION = "v6";
+const VERSION = "v7";
 const SHELL_CACHE = `proudos-shell-${VERSION}`;
 const ASSET_CACHE = `proudos-assets-${VERSION}`;
 const CDN_CACHE = `proudos-cdn-${VERSION}`;
@@ -75,7 +75,10 @@ self.addEventListener("fetch", (event) => {
 
   if (url.origin === self.location.origin) {
     if (url.pathname.startsWith("/api/")) return; // serverové funkce vždy ze sítě
-    if (req.mode === "navigate") return event.respondWith(shell(req));
+    // Samostatné stránky (např. /navod-administrativa.html v záložce Návod) nejsou
+    // shell appky — nesmí se uložit místo index.html.
+    const soubor = /.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/index.html";
+    if (req.mode === "navigate" && !soubor) return event.respondWith(shell(req));
     if (url.pathname.startsWith("/assets/")) return event.respondWith(cacheFirst(req, ASSET_CACHE));
     return event.respondWith(staleWhileRevalidate(req, ASSET_CACHE));
   }
