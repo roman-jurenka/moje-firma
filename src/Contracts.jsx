@@ -8,6 +8,9 @@ import { compressImage } from "./imageUtils.js";
 import * as ui from "./ui.js";
 import VypisPraci from "./VypisPraci.jsx";
 import { efektivniHodinyZaznamu } from "./denniZapis.js";
+import { PodkladyFormular } from "./PodkladyZakazky.jsx";
+import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
+import { normalizujTyp, TYPY } from "./prubehFaze.js";
 
 // Čitelné zobrazení data pro uživatele — den v týdnu, den, měsíc slovem, rok (bez pomlček).
 const DNY_ZKR = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
@@ -1994,6 +1997,45 @@ function PopisTab({ contract, setContracts }) {
   );
   const [saved, setSaved] = useState(false);
 
+  // Podklady pro realizaci — stejný formulář jako v Průběhu (zakazky_prubeh.podklady),
+  // pole podle typu zakázky
+  const [prubeh, setPrubeh] = useState(null);      // { id, podklady, typ, quote_id, vlastnik_obchod, udaje } | false
+  const [podklady, setPodklady] = useState({});
+  const [ciselniky, setCiselniky] = useState({ zamestnanci: [], cenik: {} });
+  const [podkladyStav, setPodkladyStav] = useState("");
+  const typ = normalizujTyp(contract.type) || prubeh?.typ || null;
+  useEffect(() => {
+    let zruseno = false;
+    (async () => {
+      const [{ data: pr }, { data: em }, { data: cen }] = await Promise.all([
+        supabase.from("zakazky_prubeh").select("id, podklady, typ, quote_id, vlastnik_obchod, udaje").eq("contract_id", contract.id).limit(1).maybeSingle(),
+        supabase.from("employees").select("name, archived"),
+        supabase.from("fve_cenik_items").select("name, category").neq("active", false).order("sort_order"),
+      ]);
+      if (zruseno) return;
+      setPrubeh(pr || false);
+      setPodklady(pr?.podklady || {});
+      const cenik = {};
+      (cen || []).forEach((c) => { (cenik[c.category] = cenik[c.category] || []).push(c.name); });
+      setCiselniky({ zamestnanci: (em || []).filter((e) => !e.archived).map((e) => e.name).filter(Boolean), cenik });
+    })();
+    return () => { zruseno = true; };
+  }, [contract.id]);
+  const predvyplnit = async () => {
+    const { data: q } = prubeh?.quote_id ? await supabase.from("quotes").select("id, data").eq("id", prubeh.quote_id).maybeSingle() : { data: null };
+    const { podklady: p, doplneno } = predvyplnitZNabidky(podklady, q, prubeh || {});
+    setPodklady(p);
+    setPodkladyStav(doplneno ? `Z nabídky doplněno ${doplneno} ${doplneno === 1 ? "pole" : doplneno < 5 ? "pole" : "polí"} — zkontroluj a ulož.` : "Z nabídky nebylo co doplnit (prázdná pole nenalezena nebo chybí nabídka).");
+  };
+  const ulozitPodklady = async () => {
+    if (!prubeh) return;
+    const { error } = await supabase.from("zakazky_prubeh").update({ podklady, updated_at: new Date().toISOString() }).eq("id", prubeh.id);
+    if (error) { setPodkladyStav("Nepodařilo se uložit: " + error.message); return; }
+    setPrubeh({ ...prubeh, podklady });
+    setPodkladyStav("✓ Podklady uložené — zaměstnanci je uvidí v kalendáři i v Průběhu");
+  };
+  const pv = pocetVyplnenych(podklady, typ);
+
   const save = async () => {
     const upd = { address, due_date: dueDate || null, milestones: JSON.stringify(milestones), contacts_info: JSON.stringify(contacts) };
     await supabase.from("contracts").update(upd).eq("id", contract.id);
@@ -2078,6 +2120,26 @@ function PopisTab({ contract, setContracts }) {
             🗺 Otevřít v Mapy.cz
           </a>
         )}
+      </div>
+
+      {/* PODKLADY PRO REALIZACI */}
+      <div style={{ gridColumn: "1/-1", borderTop: "1px solid #e2e8f0", paddingTop: 16, marginTop: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 14 }}>
+            📋 Podklady pro realizaci <span style={{ fontSize: 12, fontWeight: 600, color: pv.hotovo ? "#475569" : "#b45309" }}>· vyplněno {pv.hotovo}/{pv.celkem}</span>
+          </div>
+          <span style={{ fontSize: 12, color: "#64748b" }}>{typ ? TYPY.find((t) => t.id === typ)?.label || typ : "Typ zakázky není vyplněný — zobrazují se všechna pole"}</span>
+          {prubeh && <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            {prubeh.quote_id && <button type="button" onClick={predvyplnit} style={{ ...S.btn("#fff"), color: "#0369a1", border: "1px solid #bae6fd", padding: "6px 12px", fontSize: 12 }}>↧ Předvyplnit z nabídky</button>}
+            <button type="button" onClick={ulozitPodklady} style={{ ...S.btn(), padding: "6px 14px", fontSize: 12 }}>💾 Uložit podklady</button>
+          </div>}
+        </div>
+        {podkladyStav && <div role="status" style={{ fontSize: 13, color: podkladyStav.startsWith("Nepodařilo") ? "#b91c1c" : "#15803d", marginBottom: 10 }}>{podkladyStav}</div>}
+        {prubeh === null && <div style={{ color: "#64748b", fontSize: 13 }}>Načítám…</div>}
+        {prubeh === false && <div style={{ color: "#64748b", fontSize: 13 }}>Zakázka zatím nemá záznam v Průběhu — podklady půjdou vyplnit, až se v Průběhu objeví (otevři jednou záložku Průběh).</div>}
+        {prubeh && <PodkladyFormular podklady={podklady} ciselniky={ciselniky} typ={typ}
+          onChange={(p) => { setPodklady(p); setPodkladyStav(""); }}
+          inp={{ ...S.input, marginBottom: 0 }} lbl={S.label} />}
       </div>
     </div>
   );

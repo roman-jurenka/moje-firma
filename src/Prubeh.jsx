@@ -1553,7 +1553,7 @@ export default function Prubeh({
             </div>
           )}
           <div style={{ fontSize: 13, color: "#475569" }}>Předávací list od obchodníka. Zaměstnanec naplánovaný v kalendáři ho uvidí v detailu akce — pokyny pro jeho část (střecha / elektro) nahoře. Panely, střídač, baterie a regulace se berou z nabídky, sem dopiš jen to, co v ní není. Kontakty a technické údaje odběrného místa (EAN, jistič) jsou u zakázky.</div>
-          <PodkladyFormular podklady={podkladyForm.podklady} ciselniky={podkladyForm.ciselniky} onChange={(p) => setPodkladyForm({ ...podkladyForm, podklady: p })} inp={inp} lbl={lbl} />
+          <PodkladyFormular podklady={podkladyForm.podklady} ciselniky={podkladyForm.ciselniky} typ={z?.typ || null} onChange={(p) => setPodkladyForm({ ...podkladyForm, podklady: p })} inp={inp} lbl={lbl} />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: -16, background: "#fff", padding: "8px 0" }}>
             <button type="button" style={btnGhost} onClick={() => setPodkladyForm(null)}>{podkladyForm.auto ? "Později" : "Zrušit"}</button>
             <button type="button" style={btn("#0369a1")} disabled={pracuji} onClick={() => ulozitPodklady(z)}>Uložit podklady</button>
@@ -2918,7 +2918,7 @@ export default function Prubeh({
         {text} ({pocet})
       </button>
     );
-    const pv = pocetVyplnenych(z.podklady);
+    const pv = pocetVyplnenych(z.podklady, z.typ);
     const kPodklady = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontWeight: 800, fontSize: 16 }}>📋 Podklady pro realizaci <span style={{ fontSize: 12, fontWeight: 600, color: pv.hotovo ? "#475569" : "#b45309" }}>· vyplněno {pv.hotovo}/{pv.celkem}</span></div>

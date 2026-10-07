@@ -105,7 +105,7 @@ export function kontrolyZakazky(z, ctx) {
   }
 
   // Podklady pro realizaci (předávací list) — před realizací by je měli mít lidé v kalendáři
-  const pv = pocetVyplnenych(z.podklady);
+  const pv = pocetVyplnenych(z.podklady, z.typ);
   pridat("material", pv.hotovo > 0, "Podklady pro realizaci nejsou vyplněné (pokyny pro střechaře, elektrikáře, sklad).", `Podklady pro realizaci: vyplněno ${pv.hotovo}/${pv.celkem}`, "podklady", true);
 
   const skenProt = kat("Předávací protokol");

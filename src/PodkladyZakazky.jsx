@@ -1,5 +1,5 @@
 // ─── Podklady pro realizaci — náhled (kalendář, Průběh) a formulář (Průběh) ───
-import { SEKCE_PODKLADU, hodnota, vyplneneSekce, sekceProNaStarosti, moznostiPole } from "./podkladyZakazky.js";
+import { SEKCE_PODKLADU, hodnota, vyplneneSekce, sekceProNaStarosti, moznostiPole, sekceProTyp } from "./podkladyZakazky.js";
 import PoleSNabidkou from "./PoleSNabidkou.jsx";
 import { specifikaceZNabidky } from "./dokumentyZakazky.js";
 import { naStarosti } from "./dovednosti.js";
@@ -87,8 +87,9 @@ export function PodkladyNahled({ zak, quote, zakaznik, tym = [], naStarostiId = 
 }
 
 // Formulář: podklady = { [sekce]: { [pole]: text } }, onChange(nove),
-// ciselniky = { zamestnanci, cenik } pro nabídky hodnot v polích
-export function PodkladyFormular({ podklady, onChange, inp, lbl, ciselniky = {} }) {
+// ciselniky = { zamestnanci, cenik } pro nabídky hodnot v polích,
+// typ = typ zakázky (FVE, HRM, ELK…) — ukáže jen sekce a pole pro něj
+export function PodkladyFormular({ podklady, onChange, inp, lbl, ciselniky = {}, typ = null }) {
   const p = podklady || {};
   const nastav = (sekce, pole, v) => onChange({ ...p, [sekce]: { ...(p[sekce] || {}), [pole]: v } });
   // Úprava ELMR: jen varianty vybrané distribuce (ČEZ / EG.D / PRE)
@@ -100,7 +101,7 @@ export function PodkladyFormular({ podklady, onChange, inp, lbl, ciselniky = {} 
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {SEKCE_PODKLADU.map((s) => (
+      {sekceProTyp(typ).map((s) => (
         <fieldset key={s.id} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 12px", margin: 0 }}>
           <legend style={{ fontWeight: 800, fontSize: 14, padding: "0 6px" }}>{s.ikona} {s.nazev}</legend>
           <div className="pr-podklady-pole" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
