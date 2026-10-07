@@ -16,6 +16,19 @@ const tlObrys = (barva = "#475569", extra = {}) => ({ background: "#fff", color:
 const datumCz = (d) => new Date(d + "T00:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
 const cislo = (v) => { const t = String(v ?? "").replace(/\s/g, "").replace(",", "."); return t === "" ? null : Number(t); };
 const OSA_OD = 5, OSA_DO = 21; // časová osa 5:00–21:00
+// popisky hodin nad pruhem (po 2 h) + jemná mřížka v pruhu
+const HODINY_OSY = Array.from({ length: (OSA_DO - OSA_OD) / 2 + 1 }, (_, i) => OSA_OD + i * 2);
+const poziceH = (h) => `${((h - OSA_OD) / (OSA_DO - OSA_OD)) * 100}%`;
+const OsaHodin = () => (
+  <span style={{ position: "relative", display: "block", height: 13, fontSize: 9, color: "#64748b", fontVariantNumeric: "tabular-nums" }} aria-hidden="true">
+    {HODINY_OSY.map((h, i) => (
+      <span key={h} style={{ position: "absolute", left: poziceH(h), transform: i === 0 ? "none" : i === HODINY_OSY.length - 1 ? "translateX(-100%)" : "translateX(-50%)", lineHeight: "13px" }}>{h}</span>
+    ))}
+  </span>
+);
+const MrizkaHodin = () => HODINY_OSY.slice(1, -1).map((h) => (
+  <span key={h} style={{ position: "absolute", top: 0, bottom: 0, left: poziceH(h), width: 1, background: "rgba(15,23,42,0.12)", zIndex: 1, pointerEvents: "none" }} />
+));
 const predDny = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
 
 export default function SchvalovaniDochazky({ attendance, setAttendance, employees, zakazky, products, setProducts, mista }) {
@@ -206,20 +219,25 @@ export default function SchvalovaniDochazky({ attendance, setAttendance, employe
                   {jeSchvaleny && <span style={{ color: "#15803d", fontWeight: 700 }}> · ✓ schváleno {d.bloky[0]?.schvalil ? `(${d.bloky[0].schvalil})` : ""}</span>}
                 </span>
               </span>
-              {/* mini časová osa */}
-              <span style={{ position: "relative", flex: "1 1 220px", maxWidth: 360, height: 14, background: "#f1f5f9", borderRadius: 7, overflow: "hidden" }} aria-hidden="true">
-                {d.bloky.map((b) => {
-                  const a = (Number(hhmm(b.checkin).slice(0, 2)) + Number(hhmm(b.checkin).slice(3, 5)) / 60 - OSA_OD) / (OSA_DO - OSA_OD);
-                  const kon = b.checkout ? (Number(hhmm(b.checkout).slice(0, 2)) + Number(hhmm(b.checkout).slice(3, 5)) / 60 - OSA_OD) / (OSA_DO - OSA_OD) : a + 0.02;
-                  return <span key={b.id} style={{ position: "absolute", top: 0, bottom: 0, left: `${Math.max(0, a) * 100}%`, width: `${Math.max(1, (kon - a) * 100)}%`, background: barvaZakazky(b.contract_id), opacity: b.checkout ? 1 : 0.5 }} />;
-                })}
+              {/* mini časová osa (najetím myší se ukáže čas a zakázka) */}
+              <span style={{ flex: "1 1 220px", maxWidth: 360, display: "flex", flexDirection: "column" }}>
+                <OsaHodin />
+                <span style={{ position: "relative", height: 14, background: "#f1f5f9", borderRadius: 7, overflow: "hidden" }}>
+                  <MrizkaHodin />
+                  {d.bloky.map((b) => {
+                    const a = (Number(hhmm(b.checkin).slice(0, 2)) + Number(hhmm(b.checkin).slice(3, 5)) / 60 - OSA_OD) / (OSA_DO - OSA_OD);
+                    const kon = b.checkout ? (Number(hhmm(b.checkout).slice(0, 2)) + Number(hhmm(b.checkout).slice(3, 5)) / 60 - OSA_OD) / (OSA_DO - OSA_OD) : a + 0.02;
+                    const popis = `${hhmm(b.checkin)}–${b.checkout ? hhmm(b.checkout) : "běží"} · ${b.contract_id ? nazevZakazky(b.contract_id) : "bez zakázky (režie)"}${b.popis_prace ? ` — ${b.popis_prace}` : ""}`;
+                    return <span key={b.id} title={popis} style={{ position: "absolute", top: 0, bottom: 0, left: `${Math.max(0, a) * 100}%`, width: `${Math.max(1, (kon - a) * 100)}%`, background: barvaZakazky(b.contract_id), opacity: b.checkout ? 1 : 0.5, cursor: "help" }} />;
+                  })}
+                </span>
               </span>
               <span style={{ fontSize: 13, color: "#0369a1", fontWeight: 700 }}>{otevren ? "▲" : "▼"}</span>
             </button>
 
             {otevren && (
               <div style={{ padding: "6px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ fontSize: 12, color: "#64748b" }}>Časová osa {OSA_OD}:00–{OSA_DO}:00 · barva = zakázka, <span style={{ color: "#b45309", fontWeight: 700 }}>oranžová = bez zakázky</span>. Hrubě {fmtH(hrube)}{pauza ? ` − pauza 1 h = ${fmtH(efektivni)}` : " (bez pauzy, den do 6 h)"}.</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>Časová osa {OSA_OD}:00–{OSA_DO}:00 · barva = zakázka (najeď myší na pruh), <span style={{ color: "#b45309", fontWeight: 700 }}>oranžová = bez zakázky</span>. Hrubě {fmtH(hrube)}{pauza ? ` − pauza 1 h = ${fmtH(efektivni)}` : " (bez pauzy, den do 6 h)"}.</div>
 
                 {/* bloky */}
                 {d.bloky.map((b, i) => (
@@ -254,12 +272,14 @@ export default function SchvalovaniDochazky({ attendance, setAttendance, employe
                   return (
                     <div style={{ border: "1px solid #bfdbfe", background: "#f8fbff", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
                       <div style={{ fontSize: 13, fontWeight: 800 }}>📍 GPS — kde auto stálo</div>
-                      <div style={{ position: "relative", height: 14, background: "#e2e8f0", borderRadius: 7, overflow: "hidden" }} aria-hidden="true">
+                      <OsaHodin />
+                      <div style={{ position: "relative", height: 14, background: "#e2e8f0", borderRadius: 7, overflow: "hidden" }}>
+                        <MrizkaHodin />
                         {zast.map((s, i) => {
                           const a = (Number(s.od.slice(0, 2)) + Number(s.od.slice(3)) / 60 - OSA_OD) / (OSA_DO - OSA_OD);
                           const k = (Number(s.do.slice(0, 2)) + Number(s.do.slice(3)) / 60 - OSA_OD) / (OSA_DO - OSA_OD);
                           const zk = zakazkaZastavky(s, zakazky);
-                          return <span key={i} style={{ position: "absolute", top: 0, bottom: 0, left: `${Math.max(0, a) * 100}%`, width: `${Math.max(1, (k - a) * 100)}%`, background: zk ? barvaZakazky(zk.id) : "#94a3b8" }} />;
+                          return <span key={i} title={`${s.od}–${s.do} · ${s.adresa}${zk ? ` → ${zk.label}` : " (žádná zakázka)"}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${Math.max(0, a) * 100}%`, width: `${Math.max(1, (k - a) * 100)}%`, background: zk ? barvaZakazky(zk.id) : "#94a3b8", cursor: "help" }} />;
                         })}
                       </div>
                       {zast.map((s, i) => { const zk = zakazkaZastavky(s, zakazky); return (
