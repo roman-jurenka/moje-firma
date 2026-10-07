@@ -1114,6 +1114,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         if (error) throw error;
       },
       warehouse_movement: async (payload) => { await performWarehouseMovement(payload); },
+      warehouse_movement_misto: async (payload) => { await performWarehouseMovementMisto(payload); },
     }, loadAllData);
     return unsub;
   }, [loadAllData]);
@@ -4598,7 +4599,8 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
 // u zprávy z offline fronty se může spustit až s velkým zpožděním (např.
 // druhý den), kdy by lokální stav produktů v prohlížeči už byl zastaralý.
 async function performWarehouseMovement(row_data) {
-  const { data: row, error: insErr } = await supabase.from("warehouse_movements").insert(row_data).select().single();
+  const { entry_date: _datum, ...radek } = row_data; // eslint-disable-line no-unused-vars
+  const { data: row, error: insErr } = await supabase.from("warehouse_movements").insert(radek).select().single();
   if (insErr) throw insErr;
 
   let matchedProduct = false;
@@ -4637,6 +4639,20 @@ async function performWarehouseMovement(row_data) {
   return { row, matchedProduct, updatedProduct };
 }
 
+// Pohyb s místem skladu (Hlavní sklad / auta): naskladnění, výdej (i na
+// zakázku) přes skladovy_pohyb, přesuny mezi místy přes presun_zasob.
+// p = { typ, product_id, z, do, mnozstvi, contract_id, datum, poznamka }
+async function performWarehouseMovementMisto(p) {
+  const presun = ["out_vehicle", "transfer", "transfer_vh"].includes(p.typ);
+  const { data: id, error } = presun
+    ? await supabase.rpc("presun_zasob", { p_product_id: p.product_id, p_z: p.z, p_do: p.do, p_mnozstvi: p.mnozstvi, p_poznamka: p.poznamka || null })
+    : await supabase.rpc("skladovy_pohyb", { p_product_id: p.product_id, p_typ: p.typ, p_misto: p.typ === "in" ? p.do : p.z, p_mnozstvi: p.mnozstvi,
+      p_contract_id: p.contract_id || null, p_datum: p.datum || null, p_poznamka: p.poznamka || null });
+  if (error) throw error;
+  const { data: row } = await supabase.from("warehouse_movements").select("*").eq("id", id).maybeSingle();
+  return { row };
+}
+
 function Warehouse({ products, setProducts, contracts, currentUser }) {
   const isAdmin = currentUser?.role === "admin";
   const [newP, setNewP] = useState({ name: "", sku: "", category: "", price: "", price_sell: "", prirazka_pct: "", stock: "", minStock: "", unit: "ks", emas_code: "", image_url: "" });
@@ -4645,7 +4661,17 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
   const [movements, setMovements] = useState([]);
   const [loadingMov, setLoadingMov] = useState(true);
   const [whTab, setWhTab] = useState("stock");
-  const [newMov, setNewMov] = useState({ product_name: "", quantity: "", unit: "ks", movement_type: "in", contract_id: "", vehicle: "", from_location: "Sklad", to_location: "", note: "" });
+  const [newMov, setNewMov] = useState({ product_name: "", quantity: "", unit: "ks", movement_type: "in", contract_id: "", vehicle: "", from_location: "Sklad", to_location: "", note: "", z: "", do: "" });
+  const [mistaSkladu, setMistaSkladu] = useState([]);
+  const hlavniMisto = mistaSkladu.find(m => m.hlavni);
+  // výchozí místa podle typu pohybu (odkud / kam)
+  const vychoziMista = (typ) => {
+    const hl = String(hlavniMisto?.id || ""), auto = String(mistaSkladu.find(m => m.typ === "auto")?.id || "");
+    if (typ === "in") return { z: "", do: hl };
+    if (typ === "transfer") return { z: auto, do: hl };
+    if (typ === "out_vehicle" || typ === "transfer_vh") return { z: hl, do: auto };
+    return { z: hl, do: "" };
+  };
   const [movSuggestions, setMovSuggestions] = useState([]);
 
   // Hledání + řazení ve Skladových zásobách — u širšího sortimentu (elektro
@@ -4670,6 +4696,12 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
   useEffect(() => {
     supabase.from("warehouse_movements").select("*").order("created_at", { ascending: false }).limit(100)
       .then(({ data }) => { setMovements(data || []); setLoadingMov(false); });
+    supabase.from("sklad_mista").select("*").eq("aktivni", true).order("hlavni", { ascending: false }).order("nazev")
+      .then(({ data }) => {
+        const m = data || [];
+        setMistaSkladu(m);
+        setNewMov(n => (n.z || n.do ? n : { ...n, do: String(m.find(x => x.hlavni)?.id || "") }));
+      });
     // Produkty načíst znovu při každém otevření Skladu — mohly přibýt jinde
     // (fronta faktur, jiný uživatel) od doby, kdy se appka načetla.
     supabase.from("products").select("*").order("id")
@@ -4741,15 +4773,41 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
   const MOVE_TYPES = [
     { value: "in",             label: "📥 Naskladnění", from: "Dodavatel", to: "Sklad" },
     { value: "out_contract",   label: "📦 Výdej na zakázku", from: "Sklad", to: "Zakázka" },
-    { value: "out_vehicle",    label: "🚗 Výdej na auto", from: "Sklad", to: "Auto" },
-    { value: "transfer",       label: "🔄 Přesun auto→sklad", from: "Auto", to: "Sklad" },
-    { value: "transfer_vh",    label: "🔄 Přesun sklad→auto", from: "Sklad", to: "Auto" },
+    { value: "transfer_vh",    label: "🚗 Naložit do auta (sklad → auto)", from: "Sklad", to: "Auto" },
+    { value: "transfer",       label: "🔄 Vrátit z auta (auto → sklad)", from: "Auto", to: "Sklad" },
     { value: "out",            label: "📤 Výdej obecný", from: "Sklad", to: "" },
   ];
 
   const saveMovement = async () => {
     if (!newMov.product_name || !newMov.quantity) return;
     const movType = MOVE_TYPES.find(t => t.value === newMov.movement_type);
+    // Položka ze skladu + místa → pohyb se zapíše na konkrétní místo (sklad / auto)
+    const prod = products.find(p => p.name.toLowerCase() === newMov.product_name.trim().toLowerCase());
+    if (prod && mistaSkladu.length) {
+      const typ = newMov.movement_type, q = Number(String(newMov.quantity).replace(",", "."));
+      const presun = ["out_vehicle", "transfer", "transfer_vh"].includes(typ);
+      if (!q || q <= 0) { alert("Zadej množství větší než 0."); return; }
+      if ((typ !== "in" && !newMov.z) || ((typ === "in" || presun) && !newMov.do)) { alert("Vyber místo (odkud / kam)."); return; }
+      if (presun && newMov.z === newMov.do) { alert("Odkud a kam musí být různá místa."); return; }
+      if (typ === "out_contract" && !newMov.contract_id) { alert("Vyber zakázku."); return; }
+      const payload = { typ, product_id: prod.id, z: Number(newMov.z) || null, do: Number(newMov.do) || null, mnozstvi: q,
+        contract_id: Number(newMov.contract_id) || null, datum: fmt(new Date()), poznamka: newMov.note || null };
+      let res;
+      try {
+        res = await tryOrQueue("warehouse_movement_misto", `Skladový pohyb – ${prod.name} (${q} ${prod.unit || newMov.unit})`, payload, performWarehouseMovementMisto);
+      } catch (e) {
+        alert("Skladový pohyb se nepodařilo uložit: " + (e?.message || e || "neznámá chyba"));
+        return;
+      }
+      if (res.queued) alert("Bez signálu — pohyb je uložený v telefonu a odešle se automaticky, jakmile appka bude zase online.");
+      else {
+        if (res.result?.row) setMovements(ms => [res.result.row, ...ms]);
+        const { data } = await supabase.from("products").select("*").order("id");
+        if (data) setProducts(data.map(x => ({ ...x, minStock: x.min_stock })));
+      }
+      setNewMov({ product_name: "", quantity: "", unit: "ks", movement_type: typ, contract_id: "", vehicle: "", from_location: "Sklad", to_location: "", note: "", z: newMov.z, do: newMov.do });
+      return;
+    }
     const row_data = {
       product_name: newMov.product_name,
       quantity: Number(newMov.quantity),
@@ -4825,7 +4883,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
   );
 
   const MOV_COLORS = { in: "#34d399", out: "#f87171", out_contract: "#f87171", out_vehicle: "#f59e0b", transfer: "#0369a1", transfer_vh: "#a78bfa" };
-  const MOV_LABELS = Object.fromEntries(MOVE_TYPES.map(t => [t.value, t.label]));
+  const MOV_LABELS = { out_vehicle: "🚗 Výdej na auto", ...Object.fromEntries(MOVE_TYPES.map(t => [t.value, t.label])) };
 
   return (
     <>
@@ -4912,7 +4970,7 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                 <select style={{ ...S.select, marginBottom: 0 }} value={newMov.movement_type}
                   onChange={e => {
                     const t = MOVE_TYPES.find(x => x.value === e.target.value);
-                    setNewMov({ ...newMov, movement_type: e.target.value, from_location: t?.from || "Sklad", to_location: t?.to || "" });
+                    setNewMov({ ...newMov, movement_type: e.target.value, from_location: t?.from || "Sklad", to_location: t?.to || "", ...vychoziMista(e.target.value) });
                   }}>
                   {MOVE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
@@ -4962,17 +5020,11 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                     <label style={S.label}>Zakázka</label>
                     <select style={{ ...S.select, marginBottom: 0 }} value={newMov.contract_id} onChange={e => setNewMov({ ...newMov, contract_id: e.target.value })}>
                       <option value="">— vyberte —</option>
-                      {contractList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      {(contracts || []).filter(c => !c.archived).map(c => <option key={c.id} value={c.id}>{c.code ? `${c.code} · ` : ""}{c.name}</option>)}
                     </select>
                   </>
                 )}
-                {(["out_vehicle","transfer","transfer_vh"].includes(newMov.movement_type)) && (
-                  <>
-                    <label style={S.label}>Auto (SPZ / název)</label>
-                    <input style={{ ...S.select, marginBottom: 0 }} placeholder="např. 1AB 2345" value={newMov.vehicle} onChange={e => setNewMov({ ...newMov, vehicle: e.target.value })} />
-                  </>
-                )}
-                {(!["out_contract","out_vehicle","transfer","transfer_vh"].includes(newMov.movement_type)) && (
+                {(newMov.movement_type !== "out_contract") && (
                   <>
                     <label style={S.label}>Poznámka</label>
                     <input style={{ ...S.input, marginBottom: 0 }} value={newMov.note} onChange={e => setNewMov({ ...newMov, note: e.target.value })} />
@@ -4980,6 +5032,26 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
                 )}
               </div>
             </div>
+            {mistaSkladu.length > 0 && (() => {
+              const prod = products.find(p => p.name.toLowerCase() === newMov.product_name.trim().toLowerCase());
+              const t = newMov.movement_type;
+              const vyber = (klic, label, filtr) => (
+                <div>
+                  <label style={S.label}>{label}</label>
+                  <select style={{ ...S.select, marginBottom: 0 }} value={newMov[klic]} onChange={e => setNewMov({ ...newMov, [klic]: e.target.value })}>
+                    <option value="">— vyber —</option>
+                    {mistaSkladu.filter(filtr).map(m => <option key={m.id} value={m.id}>{m.typ === "auto" ? "🚚" : "📦"} {m.nazev}</option>)}
+                  </select>
+                </div>
+              );
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 10 }}>
+                  {t !== "in" && vyber("z", "Odkud", m => t === "transfer" ? m.typ === "auto" : t === "transfer_vh" || t === "out_vehicle" ? m.typ !== "auto" : true)}
+                  {(t === "in" || ["out_vehicle", "transfer", "transfer_vh"].includes(t)) && vyber("do", "Kam", m => t === "transfer" ? m.typ !== "auto" : t === "in" ? true : m.typ === "auto")}
+                  {!prod && newMov.product_name && <div style={{ alignSelf: "end", fontSize: 12, color: "#b45309" }}>Položka není ve skladu — pohyb se zapíše jen do historie (stav ani místa se nezmění).</div>}
+                </div>
+              );
+            })()}
             <button style={{ ...S.btn(), padding: "9px 24px", fontWeight: 700 }} onClick={saveMovement}>✅ Zaznamenat pohyb</button>
           </div>
 
