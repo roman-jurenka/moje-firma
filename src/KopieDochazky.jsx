@@ -5,12 +5,12 @@ import { supabase } from "./supabase.js";
 // Když někdo zapomene zapsat docházku a byl na stejné akci jako kolega:
 // vezme se kolegův záznam, v okně jde vše upravit (datum, časy, zakázka,
 // popis) a zapíše se vybraným lidem naráz. Kdo už má ten den docházku, je
-// označený — přepíše se jen na výslovné přání. Náklady na zakázku se
-// dopočítají stejně jako u ručního zápisu (createCostEntry z Attendance).
+// označený — přepíše se jen na výslovné přání. Náklady na zakázku vzniknou
+// až při schválení dne (Ke schválení), stejně jako u ostatních zápisů.
 
 const cas = (t) => String(t || "").slice(0, 5);
 
-export default function KopieDochazky({ zdroj, employees, contracts, attendance, spocitejHodiny, fmtHodiny, createCostEntry, onHotovo, onClose }) {
+export default function KopieDochazky({ zdroj, employees, contracts, attendance, spocitejHodiny, fmtHodiny, onHotovo, onClose }) {
   const zdrojovy = employees.find((e) => e.id === (zdroj.employeeId ?? zdroj.employee_id));
   const [form, setForm] = useState({
     date: zdroj.date, checkin: cas(zdroj.checkin), checkout: cas(zdroj.checkout),
@@ -34,6 +34,8 @@ export default function KopieDochazky({ zdroj, employees, contracts, attendance,
   const ulozit = async () => {
     if (!form.date || !form.checkin) { alert("Vyplň datum a příchod."); return; }
     if (form.checkout && form.checkout <= form.checkin) { alert("Odchod musí být později než příchod."); return; }
+    const dnes = new Date(); const dnesStr = `${dnes.getFullYear()}-${String(dnes.getMonth() + 1).padStart(2, "0")}-${String(dnes.getDate()).padStart(2, "0")}`;
+    if (form.date < dnesStr && !form.checkout) { alert("U dřívějšího dne vyplň i čas odchodu."); return; }
     if (!vybrani.length) { alert("Vyber, komu se má docházka zapsat."); return; }
     if (kolikPrepise && prepsat && !window.confirm(`U ${kolikPrepise} ${kolikPrepise === 1 ? "zaměstnance" : "zaměstnanců"} se přepíše jejich docházka z ${form.date}. Pokračovat?`)) return;
     setUkladam(true);
@@ -55,13 +57,11 @@ export default function KopieDochazky({ zdroj, employees, contracts, attendance,
         if (error) { chyby.push(`${emp?.name}: ${error.message}`); continue; }
         const row = { ...existujici, ...zaklad };
         upravene.push(row);
-        if (row.checkout && row.contract_id) await createCostEntry(row, row.checkout);
       } else {
         const { data, error } = await supabase.from("attendance").insert({ ...zaklad, employee_id: empId }).select().single();
         if (error) { chyby.push(`${emp?.name}: ${error.message}`); continue; }
         const row = { ...data, employeeId: data.employee_id };
         nove.push(row);
-        if (row.checkout && row.contract_id) await createCostEntry(row, row.checkout);
       }
     }
     setUkladam(false);

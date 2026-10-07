@@ -587,7 +587,7 @@ function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, 
               {fotky.map((p) => (
                 <StorageLink key={p.id} href={p.url} target="_blank" rel="noopener noreferrer"
                   style={{ display: "block", width: 72, height: 72, borderRadius: 8, overflow: "hidden", border: `1px solid ${ui.barvy.okraj}` }}>
-                  <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt="fotka" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} cesta={p.storage_path} alt="fotka" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 </StorageLink>
               ))}
             </div>

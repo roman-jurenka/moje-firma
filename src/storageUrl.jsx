@@ -74,7 +74,32 @@ export function StorageLink({ href, children, ...rest }) {
 
 // Náhled fotky zakázky — z OneDrive natáhne čerstvý přímý odkaz přes itemId,
 // jinak (starší fotky, fotky nahrané bez OneDrive) použije uloženou adresu.
-export function OneDriveThumb({ itemId, fallbackUrl, alt, style }) {
+// cesta = contract_photos.storage_path („onedrive:název.pdf“ / „…/uuid.pdf“) —
+// podle přípony se pozná dokument (PDF, Word…), ten se ukáže jako dlaždice.
+const OBRAZKY = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "avif", "svg"];
+const priponaSouboru = (cesta, url) => {
+  const z = String(cesta || String(url || "").split("?")[0]).split("/").pop();
+  const m = z.match(/\.([a-z0-9]{2,5})$/i);
+  return m ? m[1].toLowerCase() : "";
+};
+const jeDokument = (cesta, url) => { const p = priponaSouboru(cesta, url); return !!p && !OBRAZKY.includes(p); };
+const IKONY = { pdf: "📄", doc: "📝", docx: "📝", xls: "📊", xlsx: "📊", csv: "📊", zip: "🗜️", dwg: "📐", txt: "📃" };
+
+export function OneDriveThumb({ itemId, fallbackUrl, alt, style, cesta }) {
+  if (jeDokument(cesta, fallbackUrl)) {
+    const p = priponaSouboru(cesta, fallbackUrl);
+    const nazev = String(cesta || "").replace(/^onedrive:/, "").split("/").pop();
+    return (
+      <span title={nazev || alt} style={{ ...style, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, background: "#f8fafc", color: "#334155", objectFit: undefined, overflow: "hidden" }}>
+        <span style={{ fontSize: 26, lineHeight: 1 }} aria-hidden="true">{IKONY[p] || "📎"}</span>
+        <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase" }}>{p}</span>
+      </span>
+    );
+  }
+  return <OneDriveImg itemId={itemId} fallbackUrl={fallbackUrl} alt={alt} style={style} />;
+}
+
+function OneDriveImg({ itemId, fallbackUrl, alt, style }) {
   const fallback = useSignedUrl(fallbackUrl);
   const [od, setOd] = useState({ itemId: null, url: null, selhal: false });
   useEffect(() => {

@@ -164,7 +164,7 @@ export default function FotoUpload({ currentUser, setTab }) {
                 {fc.map(f => (
                   <div key={f.id} style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", position: "relative" }}>
                     <StorageLink href={f.url} target="_blank" rel="noreferrer">
-                      <OneDriveThumb itemId={f.item_id} fallbackUrl={f.url} alt={f.description || kat} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
+                      <OneDriveThumb itemId={f.item_id} fallbackUrl={f.url} cesta={f.storage_path} alt={f.description || kat} style={{ width: "100%", height: 90, objectFit: "cover", display: "block" }} />
                     </StorageLink>
                     <button onClick={() => removeFoto(f.id)}
                       style={{ position: "absolute", top: 4, right: 4, background: "#ef444488", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", fontSize: 11, padding: "2px 6px" }}>×</button>

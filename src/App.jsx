@@ -1209,12 +1209,13 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       await supabase.from("attendance").update({ checkout: time }).eq("id", todayRecord.id);
       setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, checkout: time } : a));
     } else {
+      await uzavritOtevreneDny(attendance, myEmpId, todayStr, setAttendance);
       const novy = { employee_id: myEmpId, date: todayStr, checkin: time, checkout: null };
       if (typeof contractId === "number" && Number.isFinite(contractId)) novy.contract_id = contractId;
       const { data: row } = await supabase.from("attendance")
         .insert(novy)
         .select().single();
-      if (row) setAttendance([...attendance, { ...row, employeeId: row.employee_id }]);
+      if (row) setAttendance(prev => [...prev, { ...row, employeeId: row.employee_id }]);
     }
   };
 
@@ -4598,6 +4599,36 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
 // dohledává čerstvě přímo v Supabase, ne ze stavu komponenty, protože
 // u zprávy z offline fronty se může spustit až s velkým zpožděním (např.
 // druhý den), kdy by lokální stav produktů v prohlížeči už byl zastaralý.
+// ─── Neuzavřené dřívější dny (příchod bez odchodu) ───────────────────────────
+// Typicky zapomenutý odchod. Před novým příchodem se zaměstnanec zeptá na
+// čas odchodu; v Docházce je upozornění s tlačítkem pro doplnění.
+const otevreneDny = (attendance, empId, todayStr) => attendance
+  .filter(a => String(a.employee_id ?? a.employeeId) === String(empId) && a.date && a.date < todayStr && a.checkin && !a.checkout && typeof a.id === "number")
+  .sort((a, b) => b.date.localeCompare(a.date) || String(b.checkin).localeCompare(String(a.checkin)));
+const denCz = (d) => new Date(d + "T00:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
+// zeptá se na čas odchodu a uloží ho; null = zrušeno
+async function doplnitOdchod(rec) {
+  for (;;) {
+    const v = window.prompt(`Neuzavřený den ${denCz(rec.date)}: příchod ${String(rec.checkin).slice(0, 5)}, ale chybí odchod.\nZadej čas odchodu (např. 16:30):`, "");
+    if (v === null) return null;
+    const m = v.trim().replace(/[.,]/, ":").match(/^(\d{1,2}):?(\d{2})$/);
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) { alert("Zadej čas ve tvaru 16:30."); continue; }
+    const t = `${m[1].padStart(2, "0")}:${m[2]}`;
+    if (t <= String(rec.checkin).slice(0, 5)) { alert("Odchod musí být později než příchod (" + String(rec.checkin).slice(0, 5) + ")."); continue; }
+    const { error } = await supabase.from("attendance").update({ checkout: t }).eq("id", rec.id);
+    if (error) { alert("Odchod se nepodařilo uložit: " + error.message); return null; }
+    return t;
+  }
+}
+// před novým příchodem: projít neuzavřené dny (od nejnovějšího), zrušit = odložit
+async function uzavritOtevreneDny(attendance, empId, todayStr, setAttendance) {
+  for (const rec of otevreneDny(attendance, empId, todayStr)) {
+    const t = await doplnitOdchod(rec);
+    if (!t) break;
+    setAttendance(prev => prev.map(a => (a.id === rec.id ? { ...a, checkout: t } : a)));
+  }
+}
+
 async function performWarehouseMovement(row_data) {
   const { entry_date: _datum, ...radek } = row_data; // eslint-disable-line no-unused-vars
   const { data: row, error: insErr } = await supabase.from("warehouse_movements").insert(radek).select().single();
@@ -8165,27 +8196,6 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     setMatItem(""); setMatQty(""); setMatSuggestions([]);
   };
 
-  const createCostEntryFromAttendance = async (attRecord, checkoutTime) => {
-    if (!attRecord.contract_id) return;
-    const emp = employees.find(e => e.id === attRecord.employee_id || e.id === attRecord.employeeId);
-    if (!emp) return;
-    const effH = calcEffectiveHours(attRecord.checkin, checkoutTime);
-    if (effH <= 0) return;
-    // Smazat existujici zaznam pro tento attendance (aby neduplikoval pri update)
-    await supabase.from("contract_cost_entries").delete().eq("attendance_id", attRecord.id);
-    await supabase.from("contract_cost_entries").insert({
-      contract_id: attRecord.contract_id,
-      cost_type: "práce", is_extra: false,
-      date: attRecord.date,
-      description: `${emp.name} - docházka`,
-      quantity: Math.round(effH * 100) / 100,
-      unit: "h",
-      unit_price_cost: Number(emp.hourly_rate_cost || 0),
-      unit_price_client: Number(emp.hourly_rate_client || 0),
-      employee_id: emp.id,
-      attendance_id: attRecord.id,
-    });
-  };
 
   const checkinNow = async () => {
     const now = new Date();
@@ -8207,6 +8217,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   };
 
   const doCheckin = async () => {
+    await uzavritOtevreneDny(attendance, effectiveEmpId, todayStr, setAttendance);
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     const contractIdVal = ciContractId ? Number(ciContractId) : null;
@@ -8237,7 +8248,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       return row;
     });
     if (res.ok && res.result) {
-      setAttendance([...attendance, { ...res.result, employeeId: res.result.employee_id }]);
+      setAttendance(prev => [...prev, { ...res.result, employeeId: res.result.employee_id }]);
     } else if (res.queued) {
       // Bez signálu — appka to nezná od skutečně uloženého záznamu (žádné
       // id z DB), ale ať to zaměstnanec vidí okamžitě, přidá se lokální
@@ -8330,6 +8341,8 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   const [harmonogramRecs, setHarmonogramRecs] = useState([]);
   const addManual = async () => {
     if (!manualDate || !manualIn) return;
+    if (manualDate < todayStr && !manualOut) { alert("U dřívějšího dne vyplň i čas odchodu."); return; }
+    if (manualOut && manualOut <= manualIn) { alert("Odchod musí být později než příchod."); return; }
     const existing = attendance.find(a => a.employeeId === effectiveEmpId && a.date === manualDate);
     const contractIdVal = manualContractId ? Number(manualContractId) : null;
     if (!guardWrite(manualDate, { checkin: manualIn, checkout: manualOut, contract_id: contractIdVal, target_attendance_id: existing?.id || null })) return;
@@ -8337,7 +8350,6 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       await supabase.from("attendance").update({ checkin: manualIn, checkout: manualOut || null, contract_id: contractIdVal }).eq("id", existing.id);
       const updated = { ...existing, checkin: manualIn, checkout: manualOut || null, contract_id: contractIdVal };
       setAttendance(attendance.map(a => a.id === existing.id ? updated : a));
-      if (manualOut && contractIdVal) await createCostEntryFromAttendance(updated, manualOut);
     } else {
       const { data: row } = await supabase.from("attendance")
         .insert({ employee_id: effectiveEmpId, date: manualDate, checkin: manualIn, checkout: manualOut || null, contract_id: contractIdVal })
@@ -8345,10 +8357,10 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       if (row) {
         const newRow = { ...row, employeeId: row.employee_id };
         setAttendance([...attendance, newRow]);
-        if (manualOut && contractIdVal) await createCostEntryFromAttendance(newRow, manualOut);
       }
     }
     setManualIn(""); setManualOut(""); setManualContractId("");
+    // náklad práce na zakázku vznikne až při schválení dne (Ke schválení)
   };
 
   const deleteRecord = async (id) => {
@@ -8600,6 +8612,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                   onChange={val => setCiTripContractId(val)} />
               </>)}
             </>)}
+            {otevreneDny(attendance, effectiveEmpId, todayStr).map(rec => (
+              <div key={rec.id} role="alert" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px", marginTop: 8 }}>
+                <span style={{ flex: 1, minWidth: 180, fontSize: 14, color: "#991b1b" }}>⚠ Neuzavřený den <b>{denCz(rec.date)}</b> — příchod {String(rec.checkin).slice(0, 5)}, chybí odchod.</span>
+                <button type="button" style={{ ...S.btn("#b91c1c"), padding: "8px 14px", minHeight: 40 }}
+                  onClick={async () => { const t = await doplnitOdchod(rec); if (t) setAttendance(prev => prev.map(a => (a.id === rec.id ? { ...a, checkout: t } : a))); }}>Doplnit odchod</button>
+              </div>
+            ))}
             <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : "#0369a1"), width: "100%", padding: "14px", fontWeight: 800, marginTop: 8, fontSize: 16, minHeight: 52 }}
               onClick={checkinNow}>
               {todayRecord?.checkin && !todayRecord?.checkout ? "⏱ Zapsat odchod (příchod " + (dnesniDen?.checkin || "").slice(0, 5) + ")"
@@ -9325,7 +9344,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       {kopieRec && (
         <KopieDochazky
           zdroj={kopieRec} employees={employees} contracts={contractOpts} attendance={attendance}
-          spocitejHodiny={calcEffectiveHours} fmtHodiny={fmtHours} createCostEntry={createCostEntryFromAttendance}
+          spocitejHodiny={calcEffectiveHours} fmtHodiny={fmtHours}
           mesicZamceny={(d) => currentUser.role !== "admin" && isMonthLocked(d)}
           onHotovo={(nove, upravene) => setAttendance(prev => [...prev.map(a => upravene.find(u => u.id === a.id) || a), ...nove])}
           onClose={() => setKopieRec(null)}

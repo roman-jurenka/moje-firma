@@ -3,22 +3,26 @@
 // Fotka jde na firemní OneDrive do složky zakázky, bez připojení do Supabase
 // Storage; záznam se uloží do contract_photos s vazbou na zakázku, průběh
 // (fotky z obhlídky, kdy zakázka ještě není) nebo servisní ticket.
+// Nahrát jde libovolný soubor (PDF, Word, sken…): obrázky se zmenší a jdou
+// do Fotky, ostatní beze změny do Dokumenty.
 
 import { supabase } from "./supabase.js";
 import { isConnected, connectSharedAccount, uploadFileObject } from "./onedrive.js";
 import { compressImage } from "./imageUtils.js";
 
 const bezpecnyNazev = (s) => String(s || "").replace(/[/\\?%*:|"<>]/g, "_");
+export const jeObrazekSoubor = (file) => !!file && (String(file.type || "").startsWith("image/") || /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(file.name || ""));
 
 // Vrátí uložený řádek contract_photos, při chybě vyhodí výjimku.
 export async function nahratFotkuZakazky(puvodni, { slozka, contractId = null, prubehId = null, ticketId = null, kategorie = null, nahral = null }) {
-  const file = await compressImage(puvodni);
+  const obrazek = jeObrazekSoubor(puvodni);
+  const file = obrazek ? await compressImage(puvodni) : puvodni;
   let url, storagePath, itemId = null;
   if (isConnected() || await connectSharedAccount()) {
-    const r = await uploadFileObject(`FirmaCRM/Zakázky/${bezpecnyNazev(slozka)}/Fotky`, file);
+    const r = await uploadFileObject(`FirmaCRM/Zakázky/${bezpecnyNazev(slozka)}/${obrazek ? "Fotky" : "Dokumenty"}`, file);
     url = r.webUrl; itemId = r.itemId; storagePath = "onedrive:" + file.name;
   } else {
-    const ext = (file.name || "foto.jpg").split(".").pop();
+    const ext = (file.name || (obrazek ? "foto.jpg" : "soubor.bin")).split(".").pop();
     const path = `${contractId || (prubehId ? `prubeh-${prubehId}` : "ostatni")}/${crypto.randomUUID()}.${ext}`;
     const { error } = await supabase.storage.from("zakazky-fotky").upload(path, file);
     if (error) throw error;
@@ -34,3 +38,4 @@ export async function nahratFotkuZakazky(puvodni, { slozka, contractId = null, p
 }
 
 export const pocetFotekText = (n) => `${n} ${n === 1 ? "fotka" : n < 5 ? "fotky" : "fotek"}`;
+export const pocetSouboruText = (n) => `${n} ${n === 1 ? "soubor" : n < 5 ? "soubory" : "souborů"}`;

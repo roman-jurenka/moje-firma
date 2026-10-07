@@ -182,7 +182,7 @@ export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavr
                 {fotky.slice(0, 10).map((p, i) => (
                   <button key={p.id} type="button" onClick={() => onFotka(i)} aria-label={`Zobrazit fotku ${i + 1} z ${fotky.length}`}
                     style={{ width: 60, height: 60, padding: 0, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", cursor: "zoom-in", background: "#f1f5f9" }}>
-                    <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} cesta={p.storage_path} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                   </button>
                 ))}
                 {fotky.length > 10 && <button type="button" style={{ ...btnGhost, alignSelf: "center" }} onClick={onVsechnyFotky}>+{fotky.length - 10} dalších</button>}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
-import { nahratFotkuZakazky, pocetFotekText } from "./fotkyZakazky.js";
+import { nahratFotkuZakazky, pocetFotekText, pocetSouboruText, jeObrazekSoubor } from "./fotkyZakazky.js";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
@@ -143,7 +143,7 @@ function ProhlizecFotek({ fotky, i, onI, onClose }) {
           <button type="button" aria-label="Zavřít prohlížeč" onClick={onClose} style={{ background: "rgba(255,255,255,.15)", color: "#fff", border: "none", borderRadius: 8, width: 36, height: 34, fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
       </div>
-      <OneDriveThumb key={p.id} itemId={p.item_id} fallbackUrl={p.url} alt={`${p.category || "Fotka"} ${i + 1} z ${fotky.length}`}
+      <OneDriveThumb key={p.id} itemId={p.item_id} fallbackUrl={p.url} cesta={p.storage_path} alt={`${p.category || "Fotka"} ${i + 1} z ${fotky.length}`}
         style={{ maxWidth: "min(1200px, 92vw)", maxHeight: "80vh", objectFit: "contain", borderRadius: 8, background: "#0f172a", minWidth: 120, minHeight: 120 }} />
       {i > 0 && <button type="button" aria-label="Předchozí fotka" onClick={() => onI(i - 1)} style={{ ...sipka, left: 16 }}>‹</button>}
       {i < fotky.length - 1 && <button type="button" aria-label="Další fotka" onClick={() => onI(i + 1)} style={{ ...sipka, right: 16 }}>›</button>}
@@ -458,12 +458,12 @@ export default function Prubeh({
         setFotkyZ((m) => ({ ...m, [zak.id]: [row, ...(m[zak.id] || [])] }));
         nahrano++;
       } catch (e) {
-        alert(`Fotku „${puvodni.name}“ se nepodařilo nahrát: ${e.message}`);
+        alert(`Soubor „${puvodni.name}“ se nepodařilo nahrát: ${e.message}`);
       }
     }
     setNahravam(null);
     if (!nahrano) return;
-    ukazHlasku(`✓ Nahráno ${pocetFotekText(nahrano)}`);
+    ukazHlasku(`✓ Nahráno ${files.every(jeObrazekSoubor) ? pocetFotekText(nahrano) : pocetSouboruText(nahrano)}`);
     // Úkol „fotky uložené“ se po nahrání sám odškrtne.
     const aktualni = rows.find((r) => r.id === zak.id) || zak;
     if (ukol && !ukolHotovy(aktualni, faze, ukol, autoZ(aktualni))) await toggleUkol(aktualni, faze, ukol);
@@ -1983,8 +1983,8 @@ export default function Prubeh({
         </div>
       )}
       {prohlizec && <ProhlizecFotek fotky={prohlizec.fotky} i={prohlizec.i} onI={zmenitFotku} onClose={zavritProhlizec} />}
-      {/* Výběr fotek pro tlačítko „Nahrát fotky“ u úkolu fáze (na mobilu nabídne i fotoaparát). */}
-      <input ref={fotoInput} type="file" accept="image/*" multiple style={{ display: "none" }}
+      {/* Výběr fotek / souborů (PDF, sken, Word…) pro „Nahrát fotky“ a „Sken“ — na mobilu nabídne i fotoaparát. */}
+      <input ref={fotoInput} type="file" multiple style={{ display: "none" }}
         onChange={(e) => { const files = [...e.target.files]; e.target.value = ""; nahratFotky(files); }} />
 
       {jednaId && z ? (
@@ -2746,7 +2746,7 @@ export default function Prubeh({
                           {fotkyUkolu.slice(0, 6).map((p, j) => (
                             <button key={p.id} type="button" onClick={() => setProhlizec({ fotky: fotkyUkolu, i: j })} aria-label={`Zobrazit fotku ${j + 1} z ${fotkyUkolu.length}`}
                               style={{ display: "block", width: 56, height: 56, padding: 0, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", cursor: "zoom-in", background: "#f1f5f9" }}>
-                              <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                              <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} cesta={p.storage_path} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                             </button>
                           ))}
                           {fotkyUkolu.length > 6 && (
@@ -2955,7 +2955,7 @@ export default function Prubeh({
                 <button key={p.id} type="button" onClick={() => setProhlizec({ fotky: zobrazeneFotky, i })}
                   aria-label={`Zobrazit fotku ${i + 1} z ${zobrazeneFotky.length}${p.category ? ` (${p.category})` : ""}`} title={p.category || ""}
                   style={{ padding: 0, border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", aspectRatio: "1 / 1", cursor: "zoom-in", background: "#f1f5f9" }}>
-                  <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} cesta={p.storage_path} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 </button>
               ))}
             </div>

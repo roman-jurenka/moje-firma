@@ -1973,7 +1973,7 @@ function PhotosTab({ photos, contractId, currentUser, onUpload }) {
             {byDate[date].map(p => (
               <StorageLink key={p.id} href={p.url} target="_blank" rel="noopener noreferrer"
                 style={{ display: "block", width: 120, height: 90, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", flexShrink: 0 }}>
-                <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} alt={p.description} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} cesta={p.storage_path} alt={p.description} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </StorageLink>
             ))}
           </div>
