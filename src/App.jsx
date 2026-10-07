@@ -4089,6 +4089,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
       discount_percent: f.discountPercent || 0,
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
+      dilci: !!f.dilci, pocitano_na_papire: !!f.pocitanoNaPapire,
     }).select().single();
     if (error) {
       // 23505 = unique_violation — dvě faktury se srazily na stejném čísle;
@@ -4101,6 +4102,8 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
     if (row) {
       setInvoices([...invoices, { ...row, customerId: row.customer_id }]);
       logInvoiceEvent(row.id, "vystavena");
+      // fotka výpočtu z papíru nahraná před uložením → přiřadit k faktuře
+      if (f.papirFotkyIds?.length) await supabase.from("contract_photos").update({ invoice_id: row.id }).in("id", f.papirFotkyIds);
       // Položky náklady zakázky, které se dostaly do téhle faktury (viz
       // Invoicing.jsx applyContract), teď označíme jako vyfakturované —
       // stejný příznak, jaký nastavuje "Označit jako fakturováno" v záložce
@@ -4132,9 +4135,11 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
       discount_percent: f.discountPercent || 0,
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
+      dilci: !!f.dilci, pocitano_na_papire: !!f.pocitanoNaPapire,
       updated_at: new Date().toISOString(),
     }).eq("id", f.id).select().single();
     if (error) { alert("Fakturu se nepodařilo uložit: " + error.message); return; }
+    if (f.papirFotkyIds?.length) await supabase.from("contract_photos").update({ invoice_id: f.id }).in("id", f.papirFotkyIds);
     if (row) setInvoices(invoices.map(i => i.id === row.id ? { ...row, customerId: row.customer_id } : i));
     closeModal();
   };

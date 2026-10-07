@@ -9,6 +9,7 @@ import VypisPraci from "./VypisPraci.jsx";
 import { efektivniHodinyZaznamu } from "./denniZapis.js";
 import { PodkladyFormular } from "./PodkladyZakazky.jsx";
 import ProhlizecFotek from "./ProhlizecFotek.jsx";
+import { StavFakturace } from "./FakturaZakazka.jsx";
 import { nahratFotkuZakazky, pripravitSoubor, jeObrazekSoubor, KATEGORIE_FOTEK, pocetSouboruText } from "./fotkyZakazky.js";
 import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import { normalizujTyp, TYPY } from "./prubehFaze.js";
@@ -398,7 +399,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         supabase.from("vehicle_log").select("*").order("date"),
         supabase.from("project_day_plan").select("*").order("date"),
         supabase.from("projects").select("*").order("id"),
-        supabase.from("invoices").select("id, number, amount, status, issued, due, invoice_type, contract_id").order("issued", { ascending: false }),
+        supabase.from("invoices").select("id, number, cislo_ucetni, amount, status, issued, due, invoice_type, contract_id, is_deposit, dilci, pocitano_na_papire").order("issued", { ascending: false }),
       ]);
       setContracts(c.data || []);
       setEntries(e.data || []);
@@ -1201,6 +1202,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                     Vystavuje se v modulu Fakturace, tady se jen zobrazuje přehled. */}
                 {tab === "faktury" && (
                   <div>
+                    <div style={{ marginBottom: 12 }}><StavFakturace contract={contract} /></div>
                     {contInvoices.length === 0 && (
                       <div style={{ color: "#475569", fontSize: 13, padding: "16px 0" }}>
                         K téhle zakázce zatím žádná faktura nebyla vystavena. Vystavíš ji v modulu Fakturace (jde i rovnou ze zakázky).
@@ -1214,8 +1216,8 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                             const stColor = inv.status === "Zaplacena" ? "#34d399" : inv.status === "Po splatnosti" ? "#f87171" : inv.status === "Storno" ? "#64748b" : "#f59e0b";
                             return (
                               <tr key={inv.id}>
-                                <td style={{ ...S.td, fontWeight: 700, color: "#1A1A1A" }}>{inv.number}</td>
-                                <td style={{ ...S.td, fontSize: 12 }}>{inv.invoice_type === "přijatá" ? "Přijatá" : "Vydaná"}</td>
+                                <td style={{ ...S.td, fontWeight: 700, color: "#1A1A1A" }}>{inv.cislo_ucetni || inv.number}</td>
+                                <td style={{ ...S.td, fontSize: 12 }}>{inv.invoice_type === "přijatá" ? "Přijatá" : inv.is_deposit ? "Zálohová" : inv.dilci ? "Dílčí" : "Vydaná"}{inv.pocitano_na_papire ? " · ✍️ papír" : ""}</td>
                                 <td style={{ ...S.td, fontSize: 12 }}>{fmtDateCz(inv.issued)}</td>
                                 <td style={{ ...S.td, fontSize: 12 }}>{fmtDateCz(inv.due)}</td>
                                 <td style={{ ...S.td, fontWeight: 700 }}>{fmtKc(inv.amount)}</td>

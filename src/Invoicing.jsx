@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import { computeInvoiceTotals, fmtKc2, buildInvoicePreview, downloadInvoicePDF, getDiscountedTotal, nextInvNum, cisloFaktury } from "./invoicingUtils.js";
 import * as ui from "./ui.js";
+import { StavFakturace, PapirPanel } from "./FakturaZakazka.jsx";
 
 const VAT_RATES = [0, 12, 21];
 const ITEM_UNITS = ["ks", "kpl.", "h", "m", "m²", "m³", "kg", "km", "den"];
@@ -203,6 +204,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     constantSymbol: editInvoice.constant_symbol || "", specificSymbol: editInvoice.specific_symbol || "",
     variableSymbol: editInvoice.variable_symbol || (editInvoice.number || "").replace(/\D/g, ""),
     cisloUcetni: editInvoice.cislo_ucetni || "",
+    dilci: !!editInvoice.dilci, pocitanoNaPapire: !!editInvoice.pocitano_na_papire,
     items: (editInvoice.items && editInvoice.items.length) ? editInvoice.items : [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
   } : {
     customerId: "", invoiceType: "vydaná", isDeposit: false, orderRef: "",
@@ -210,8 +212,11 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     due: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     status: "Čeká", customerIco: "", customerDic: "", discountPercent: 0,
     constantSymbol: defaultConstantSymbol || "", specificSymbol: "", variableSymbol: "", cisloUcetni: "",
+    dilci: false, pocitanoNaPapire: false,
     items: [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
   });
+  // fotky výpočtu z papíru nahrané u nové faktury — po uložení se k ní přiřadí
+  const [papirFotkyIds, setPapirFotkyIds] = useState([]);
   // Číslo, které nová faktura dostane — ukáže se hned (definitivně se přidělí
   // při uložení; když mezitím uloží fakturu někdo jiný, posune se o jedno).
   const [navrhCisla, setNavrhCisla] = useState(null);
@@ -264,6 +269,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
   const removeItem = (i) => setF(p => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }));
 
   const { lines, total, totalTax } = computeInvoiceTotals(f.items);
+  const vybranaZakazka = (contracts || []).find(c => String(c.id) === String(fromContractId)) || null;
 
   const submit = () => {
     if (!f.customerId || lines.length === 0) { alert("Vyber zákazníka a přidej aspoň jednu položku."); return; }
@@ -281,6 +287,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
       amount: total - totalTax, tax: totalTax,
       contractId: fromContractId ? Number(fromContractId) : null,
       billedEntryIds,
+      dilci: !!f.dilci, pocitanoNaPapire: !!f.pocitanoNaPapire, papirFotkyIds,
     });
   };
 
@@ -335,6 +342,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
           {[
             { id: "zaklad", label: "Základní údaje" },
             { id: "polozky", label: "Položky a částka" },
+            ...(f.pocitanoNaPapire ? [{ id: "papir", label: "✍️ Papír" }] : []),
             ...(isEdit ? [{ id: "historie", label: "Historie" }] : []),
           ].map(t => (
             <button key={t.id} onClick={() => setFormTab(t.id)}
@@ -416,6 +424,24 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
               </div>
             </div>
 
+            {!!fromContractId && (
+              <StavFakturace contract={vybranaZakazka} invoiceId={editInvoice?.id || null} tatoBezDph={total - totalTax} disabled={locked}
+                onDoplnit={(castka) => {
+                  setF(p => ({ ...p, dilci: true, items: [{ desc: `Dílčí faktura — ${vybranaZakazka?.name || ""}`, qty: 1, unit: "kpl.", price: Math.round(castka * 100) / 100, vatRate: 21 }] }));
+                  setFormTab("polozky");
+                }} />
+            )}
+            <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 13 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input type="checkbox" disabled={locked} checked={f.dilci} onChange={e => set("dilci", e.target.checked)} />
+                Dílčí faktura (bez rozpisu) — počítá se, kolik zbývá dofakturovat
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={f.pocitanoNaPapire} onChange={e => { set("pocitanoNaPapire", e.target.checked); if (e.target.checked) setFormTab("papir"); }} />
+                ✍️ Počítáno na papíře — přiložím fotku výpočtu
+              </label>
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
               <div><label style={labelStyle}>Datum vystavení</label><input disabled={locked} type="date" style={inputStyle} value={f.issued} onChange={e => set("issued", e.target.value)} /></div>
               <div><label style={labelStyle}>Datum splatnosti</label><input disabled={locked} type="date" style={inputStyle} value={f.due} onChange={e => set("due", e.target.value)} /></div>
@@ -495,6 +521,12 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
               <span style={{ fontSize: 18, fontWeight: 800 }}>Celkem k úhradě: {fmtKc2(getDiscountedTotal(total, f.discountPercent))} Kč</span>
             </div>
           </>
+        )}
+
+        {formTab === "papir" && f.pocitanoNaPapire && (
+          <PapirPanel contract={vybranaZakazka} invoiceId={editInvoice?.id || null} fakturaBezDph={total - totalTax}
+            costEntries={costEntries} rozpis={editInvoice?.papir_rozpis || null}
+            onFotkyNove={(ids) => setPapirFotkyIds(p => [...p, ...ids])} />
         )}
 
         {formTab === "historie" && isEdit && <InvoiceHistoryPanel invoiceId={editInvoice.id} onUpdated={handleHistoryUpdate} sentAt={effectiveSentAt} />}
