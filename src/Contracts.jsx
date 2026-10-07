@@ -4,11 +4,12 @@ import Servis from "./Servis.jsx";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import { tryOrQueue } from "./offlineQueue.js";
-import { compressImage } from "./imageUtils.js";
 import * as ui from "./ui.js";
 import VypisPraci from "./VypisPraci.jsx";
 import { efektivniHodinyZaznamu } from "./denniZapis.js";
 import { PodkladyFormular } from "./PodkladyZakazky.jsx";
+import ProhlizecFotek from "./ProhlizecFotek.jsx";
+import { nahratFotkuZakazky, pripravitSoubor, jeObrazekSoubor, KATEGORIE_FOTEK, pocetSouboruText } from "./fotkyZakazky.js";
 import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import { normalizujTyp, TYPY } from "./prubehFaze.js";
 
@@ -826,50 +827,6 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     setCtasks(ctasks.map(x => x.id === id ? { ...x, done: !x.done } : x));
   }
 
-  // ── Upload fotky ──
-  const fileRef = useRef();
-  async function uploadPhoto(contractId, file, description) {
-    const contract = contracts.find(c => c.id === contractId);
-    const folderName = (contract?.name || String(contractId)).replace(/[/\\?%*:|"<>]/g, "_");
-    // Fotka se před uploadem zmenší (imageUtils.js) — v terénu se šetří
-    // mobilní data a místo v úložišti, kvalita pro dokumentaci zůstane dost.
-    const compressed = await compressImage(file);
-    const payload = {
-      file: compressed, contractId, folder: `FirmaCRM/Zakázky/${folderName}/Fotky`,
-      date: today(), description, uploadedBy: currentUser?.employeeId || null,
-    };
-    try {
-      // Bez signálu se fotka místo tichého zahození uloží do fronty v
-      // zařízení a nahraje se sama po obnovení připojení (offlineQueue.js,
-      // sdílený handler "contract_photo" s Docházkou a Zakázkovým listem).
-      const res = await tryOrQueue("contract_photo", `Fotka ${contract?.name || contractId}`, payload, async (p) => {
-        let url, storagePath, itemId = null;
-        if (isConnected()) {
-          const r = await uploadFileObject(p.folder, p.file);
-          url = r.webUrl; itemId = r.itemId; storagePath = "onedrive:" + p.file.name;
-        } else {
-          const ext = p.file.name.split(".").pop();
-          const path = `${p.contractId}/${crypto.randomUUID()}.${ext}`;
-          const { error } = await supabase.storage.from("zakazky-fotky").upload(path, p.file);
-          if (error) throw error;
-          url = supabase.storage.from("zakazky-fotky").getPublicUrl(path).data.publicUrl;
-          storagePath = path;
-        }
-        const { data: row, error: insErr } = await supabase.from("contract_photos").insert({
-          contract_id: p.contractId, date: p.date, storage_path: storagePath, url, item_id: itemId,
-          description: p.description, uploaded_by: p.uploadedBy,
-        }).select().single();
-        if (insErr) throw insErr;
-        return row;
-      });
-      if (res.ok && res.result) setPhotos([...photos, res.result]);
-      else if (res.queued) alert("Bez signálu — fotka je uložená v telefonu a nahraje se sama, jakmile se připojení obnoví.");
-    } catch (e) {
-      alert("Chyba uploadu: " + e.message);
-    }
-    closeModal();
-  }
-
   if (loading) return <div style={{ color: "#475569", padding: 32 }}>Načítám zakázky...</div>;
 
   const getTab = (cid) => activeTab[cid] || "naklady";
@@ -1298,11 +1255,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
 
                 {/* TAB: FOTKY */}
                 {tab === "fotky" && (
-                  <PhotosTab
-                    photos={contPhotos} contractId={contract.id}
-                    currentUser={currentUser}
-                    onUpload={(file, desc) => uploadPhoto(contract.id, file, desc)}
-                  />
+                  <PhotosTab photos={contPhotos} contract={contract} currentUser={currentUser} setPhotos={setPhotos} />
                 )}
 
                 {/* TAB: SERVIS — servisní tickety této zakázky */}
@@ -1931,55 +1884,155 @@ function TasksTab({ tasks, employees, onAdd, onToggle }) {
 }
 
 // ─── TAB: FOTKY ──────────────────────────────────────────────────────────────
-function PhotosTab({ photos, contractId, currentUser, onUpload }) {
+// Nahrání víc fotek / souborů naráz s volbou kategorie („Kam“), galerie podle
+// kategorií, prohlížeč přes celou obrazovku, přeřazení (i hromadně).
+// Nahrává se stejně jako v Průběhu (fotkyZakazky.js): OneDrive Fotky /
+// Dokumenty, unikátní názvy; bez signálu do fronty v zařízení.
+function PhotosTab({ photos, contract, currentUser, setPhotos }) {
+  const [kam, setKam] = useState("");
   const [desc, setDesc] = useState("");
-  const [uploading, setUploading] = useState(false);
+  const [prubeh, setPrubeh] = useState(null);       // { hotovo, celkem }
+  const [filtr, setFiltr] = useState("vse");
+  const [prohlizec, setProhlizec] = useState(null); // index v zobrazených
+  const [vyber, setVyber] = useState(null);         // null = neoznačuje se, jinak [id]
+  const [hromadneKam, setHromadneKam] = useState("");
+  const [tazeni, setTazeni] = useState(false);
   const fileRef = useRef();
 
-  const handleFiles = async (files) => {
-    if (!files?.length) return;
-    setUploading(true);
-    for (const file of files) {
-      await onUpload(file, desc);
+  const handleFiles = async (fileList) => {
+    const files = [...(fileList || [])];
+    if (!files.length) return;
+    let nahrano = 0, vefronte = 0;
+    setPrubeh({ hotovo: 0, celkem: files.length });
+    for (const [i, puvodni] of files.entries()) {
+      try {
+        // připravit (zmenšit, unikátní název) a nahrát; bez signálu do fronty v zařízení
+        const file = await pripravitSoubor(puvodni, i + 1);
+        const slozka = (contract.name || String(contract.id)).replace(/[/\\?%*:|"<>]/g, "_");
+        const payload = {
+          file, contractId: contract.id, folder: `FirmaCRM/Zakázky/${slozka}/${jeObrazekSoubor(puvodni) ? "Fotky" : "Dokumenty"}`,
+          date: new Date().toLocaleDateString("sv-SE"), description: desc || null, category: kam || null, uploadedBy: currentUser?.employeeId || null,
+        };
+        const res = await tryOrQueue("contract_photo", `Fotka ${contract.name || contract.id}`, payload, (p) => nahratFotkuZakazky(p.file, {
+          slozka: contract.name || String(contract.id), contractId: p.contractId, kategorie: p.category, popis: p.description, nahral: p.uploadedBy, pripraveno: true,
+        }));
+        if (res.queued) vefronte++;
+        else if (res.result) { setPhotos(prev => [...prev, res.result]); nahrano++; }
+      } catch (e) {
+        alert(`Soubor „${puvodni.name}“ se nepodařilo nahrát: ${e.message}`);
+      }
+      setPrubeh({ hotovo: i + 1, celkem: files.length });
     }
+    setPrubeh(null);
     setDesc("");
-    setUploading(false);
+    if (vefronte) alert(`Bez signálu — ${pocetSouboruText(vefronte)} čeká v telefonu a nahraje se samo, jakmile se připojení obnoví.`);
+    else if (nahrano) setFiltr(kam || "vse");
   };
 
-  const byDate = photos.reduce((acc, p) => {
-    const d = p.date || "Bez data";
-    if (!acc[d]) acc[d] = [];
-    acc[d].push(p);
-    return acc;
-  }, {});
+  const prerazit = async (ids, k) => {
+    if (!ids.length) return;
+    const { error } = await supabase.from("contract_photos").update({ category: k || null }).in("id", ids);
+    if (error) { alert("Kategorii se nepodařilo změnit: " + error.message); return; }
+    setPhotos(prev => prev.map(p => (ids.includes(p.id) ? { ...p, category: k || null } : p)));
+  };
+
+  const kat = (p) => p.category || "Bez kategorie";
+  const kategorie = [...new Set([...KATEGORIE_FOTEK, ...photos.map(kat)])].filter(k => photos.some(p => kat(p) === k));
+  const serazene = [...photos].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || (b.id || 0) - (a.id || 0));
+  // skupiny podle kategorie; prohlížeč listuje ve stejném pořadí jako galerie
+  const skupiny = filtr === "vse"
+    ? kategorie.map(k => [k, serazene.filter(p => kat(p) === k)])
+    : [[filtr, serazene.filter(p => kat(p) === filtr)]];
+  const zobrazene = skupiny.flatMap(([, arr]) => arr);
+  const cip = (id, text, n) => (
+    <button key={id} type="button" aria-pressed={filtr === id} onClick={() => setFiltr(id)}
+      style={{ border: "1px solid " + (filtr === id ? "#0369a1" : "#cbd5e1"), background: filtr === id ? "#0369a1" : "#fff", color: filtr === id ? "#fff" : "#334155", borderRadius: 999, padding: "5px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+      {text} ({n})
+    </button>
+  );
 
   return (
     <div>
-      {/* Upload oblast */}
-      <div style={{ background: "#f8fafc", border: "2px dashed #e2e8f0", borderRadius: 10, padding: 20, marginBottom: 20, textAlign: "center" }}>
-        <div style={{ fontSize: 13, color: "#475569", marginBottom: 10 }}>Přetáhni fotky sem nebo klikni pro výběr</div>
-        <input style={{ ...S.input, marginBottom: 8 }} placeholder="Popis fotek (volitelné)" value={desc} onChange={e => setDesc(e.target.value)} />
-        <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => handleFiles(e.target.files)} />
-        <button style={S.btn()} onClick={() => fileRef.current?.click()} disabled={uploading}>
-          {uploading ? "Nahrávám..." : "📷 Vybrat fotky"}
-        </button>
+      {/* Nahrání */}
+      <div onDragOver={e => { e.preventDefault(); setTazeni(true); }} onDragLeave={() => setTazeni(false)}
+        onDrop={e => { e.preventDefault(); setTazeni(false); if (!prubeh) handleFiles(e.dataTransfer.files); }}
+        style={{ background: tazeni ? "#e0f2fe" : "#f8fafc", border: `2px dashed ${tazeni ? "#0369a1" : "#e2e8f0"}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "end" }}>
+          <div>
+            <label style={S.label} htmlFor="fotky-kam">Kam (kategorie)</label>
+            <select id="fotky-kam" style={{ ...S.input, marginBottom: 0, borderColor: kam ? undefined : "#fbbf24" }} value={kam} onChange={e => setKam(e.target.value)}>
+              <option value="">— vyber, kam fotky patří —</option>
+              {KATEGORIE_FOTEK.map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={S.label} htmlFor="fotky-popis">Popis (volitelné)</label>
+            <input id="fotky-popis" style={{ ...S.input, marginBottom: 0 }} placeholder="např. rozvaděč před úpravou" value={desc} onChange={e => setDesc(e.target.value)} />
+          </div>
+          <button style={{ ...S.btn(), padding: "10px 16px" }} disabled={!!prubeh}
+            onClick={() => { if (!kam && !window.confirm("Není vybraná kategorie („Kam“). Nahrát fotky bez zařazení?")) return; fileRef.current?.click(); }}>
+            {prubeh ? `Nahrávám ${prubeh.hotovo}/${prubeh.celkem}…` : "📷 Vybrat fotky / soubory"}
+          </button>
+        </div>
+        <input ref={fileRef} type="file" multiple style={{ display: "none" }}
+          onChange={e => { const files = [...e.target.files]; e.target.value = ""; handleFiles(files); }} />
+        <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>Můžeš vybrat víc fotek naráz nebo je sem přetáhnout. Jde nahrát i PDF, Word a další soubory.</div>
+        {prubeh && (
+          <div style={{ height: 6, background: "#e2e8f0", borderRadius: 3, marginTop: 8, overflow: "hidden" }} role="progressbar" aria-valuenow={prubeh.hotovo} aria-valuemax={prubeh.celkem}>
+            <div style={{ height: "100%", width: `${(prubeh.hotovo / prubeh.celkem) * 100}%`, background: "#0369a1", transition: "width .2s" }} />
+          </div>
+        )}
       </div>
 
-      {/* Galerie */}
-      {Object.keys(byDate).sort((a, b) => b.localeCompare(a)).map(date => (
-        <div key={date} style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 8, fontWeight: 700 }}>{date}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {byDate[date].map(p => (
-              <StorageLink key={p.id} href={p.url} target="_blank" rel="noopener noreferrer"
-                style={{ display: "block", width: 120, height: 90, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", flexShrink: 0 }}>
-                <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} cesta={p.storage_path} alt={p.description} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              </StorageLink>
-            ))}
+      {/* Filtr + hromadné přeřazení */}
+      {photos.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+          {cip("vse", "Vše", photos.length)}
+          {kategorie.map(k => cip(k, k, photos.filter(p => kat(p) === k).length))}
+          <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            {vyber ? (<>
+              <span style={{ fontSize: 13, color: "#475569" }}>Označeno {vyber.length}</span>
+              <select style={{ ...S.input, marginBottom: 0, width: "auto" }} value={hromadneKam} onChange={e => setHromadneKam(e.target.value)} aria-label="Přesunout do kategorie">
+                <option value="">— přesunout do —</option>
+                {KATEGORIE_FOTEK.map(k => <option key={k} value={k}>{k}</option>)}
+              </select>
+              <button style={{ ...S.btn(), padding: "6px 12px", fontSize: 13 }} disabled={!vyber.length || !hromadneKam}
+                onClick={async () => { await prerazit(vyber, hromadneKam); setVyber(null); setHromadneKam(""); }}>Přesunout</button>
+              <button style={{ ...S.btn("#e2e8f0"), color: "#334155", padding: "6px 12px", fontSize: 13 }} onClick={() => setVyber(null)}>Zrušit</button>
+            </>) : (
+              <button style={{ ...S.btn("#e2e8f0"), color: "#334155", padding: "6px 12px", fontSize: 13 }} onClick={() => setVyber([])}>☑ Označit a přeřadit</button>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* Galerie podle kategorií */}
+      {skupiny.filter(([, arr]) => arr.length).map(([k, arr]) => (
+        <div key={k} style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 8, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em" }}>{k} · {arr.length}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
+            {arr.map(p => {
+              const oznacena = vyber?.includes(p.id);
+              return (
+                <button key={p.id} type="button" title={[p.description, p.date && new Date(p.date + "T00:00:00").toLocaleDateString("cs-CZ")].filter(Boolean).join(" · ")}
+                  aria-label={vyber ? `Označit ${p.description || "fotku"}` : `Zobrazit ${p.description || "fotku"}`} aria-pressed={vyber ? !!oznacena : undefined}
+                  onClick={() => vyber ? setVyber(v => (v.includes(p.id) ? v.filter(x => x !== p.id) : [...v, p.id])) : setProhlizec(zobrazene.indexOf(p))}
+                  style={{ position: "relative", padding: 0, aspectRatio: "4 / 3", borderRadius: 8, overflow: "hidden", border: oznacena ? "3px solid #0369a1" : "1px solid #e2e8f0", cursor: vyber ? "pointer" : "zoom-in", background: "#f1f5f9" }}>
+                  <OneDriveThumb itemId={p.item_id} fallbackUrl={p.url} cesta={p.storage_path} alt={p.description || ""} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  {vyber && <span style={{ position: "absolute", top: 4, left: 4, width: 20, height: 20, borderRadius: 5, background: oznacena ? "#0369a1" : "rgba(255,255,255,.9)", border: "1px solid #94a3b8", color: "#fff", fontSize: 14, lineHeight: "18px", textAlign: "center" }}>{oznacena ? "✓" : ""}</span>}
+                  {p.date && <span style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(transparent, rgba(0,0,0,.55))", color: "#fff", fontSize: 10, padding: "8px 5px 3px", textAlign: "left" }}>{new Date(p.date + "T00:00:00").toLocaleDateString("cs-CZ")}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
       ))}
       {photos.length === 0 && <div style={{ color: "#64748b", fontSize: 13 }}>Žádné fotky.</div>}
+
+      {prohlizec != null && zobrazene[prohlizec] && (
+        <ProhlizecFotek fotky={zobrazene} i={prohlizec} onI={setProhlizec} onClose={() => setProhlizec(null)}
+          kategorie={KATEGORIE_FOTEK} onKategorie={(p, k) => prerazit([p.id], k)} />
+      )}
     </div>
   );
 }

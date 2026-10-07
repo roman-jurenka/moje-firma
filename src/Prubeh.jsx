@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./supabase.js";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
-import { nahratFotkuZakazky, pocetFotekText, pocetSouboruText, jeObrazekSoubor } from "./fotkyZakazky.js";
+import { nahratFotkuZakazky, pocetFotekText, pocetSouboruText, jeObrazekSoubor, KATEGORIE_FOTEK } from "./fotkyZakazky.js";
+import ProhlizecFotek from "./ProhlizecFotek.jsx";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
@@ -105,48 +106,6 @@ function BunkaSekce({ z, sekceIds }) {
         ))}
       </div>
       <div style={{ fontSize: 12, color: "#334155", marginTop: 4 }}>{p.sekce === "uz" ? "Uzavření · " : ""}{p.poradi} {p.nazev}</div>
-    </div>
-  );
-}
-
-// Prohlížeč fotek přes celou obrazovku: šipky / klávesy ← → / tažení prstem,
-// Esc zavře. fotky = řádky contract_photos, i = index zobrazené fotky.
-function ProhlizecFotek({ fotky, i, onI, onClose }) {
-  const p = fotky[i];
-  const tah = useRef(null);
-  useEffect(() => {
-    const klavesa = (e) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowLeft" && i > 0) onI(i - 1);
-      else if (e.key === "ArrowRight" && i < fotky.length - 1) onI(i + 1);
-    };
-    window.addEventListener("keydown", klavesa);
-    return () => window.removeEventListener("keydown", klavesa);
-  }, [i, fotky.length, onI, onClose]);
-  if (!p) return null;
-  const sipka = { position: "absolute", top: "50%", transform: "translateY(-50%)", width: 48, height: 48, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.9)", color: "#0f172a", fontSize: 26, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
-  return (
-    <div role="dialog" aria-modal="true" aria-label="Prohlížeč fotek" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      onTouchStart={(e) => { tah.current = e.touches[0].clientX; }}
-      onTouchEnd={(e) => {
-        if (tah.current == null) return;
-        const dx = e.changedTouches[0].clientX - tah.current;
-        tah.current = null;
-        if (dx > 50 && i > 0) onI(i - 1);
-        else if (dx < -50 && i < fotky.length - 1) onI(i + 1);
-      }}
-      style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(15,23,42,.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16, gap: 10 }}>
-      <div style={{ position: "absolute", top: 12, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center", color: "#fff", gap: 10 }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{i + 1} / {fotky.length} · {p.category || "Bez kategorie"}{p.date ? ` · ${new Date(p.date + "T00:00:00").toLocaleDateString("cs-CZ")}` : ""}</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <StorageLink href={p.url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontSize: 13, fontWeight: 600, border: "1px solid rgba(255,255,255,.5)", borderRadius: 8, padding: "6px 10px", textDecoration: "none" }}>Otevřít originál</StorageLink>
-          <button type="button" aria-label="Zavřít prohlížeč" onClick={onClose} style={{ background: "rgba(255,255,255,.15)", color: "#fff", border: "none", borderRadius: 8, width: 36, height: 34, fontSize: 18, cursor: "pointer" }}>✕</button>
-        </div>
-      </div>
-      <OneDriveThumb key={p.id} itemId={p.item_id} fallbackUrl={p.url} cesta={p.storage_path} alt={`${p.category || "Fotka"} ${i + 1} z ${fotky.length}`}
-        style={{ maxWidth: "min(1200px, 92vw)", maxHeight: "80vh", objectFit: "contain", borderRadius: 8, background: "#0f172a", minWidth: 120, minHeight: 120 }} />
-      {i > 0 && <button type="button" aria-label="Předchozí fotka" onClick={() => onI(i - 1)} style={{ ...sipka, left: 16 }}>‹</button>}
-      {i < fotky.length - 1 && <button type="button" aria-label="Další fotka" onClick={() => onI(i + 1)} style={{ ...sipka, right: 16 }}>›</button>}
     </div>
   );
 }
@@ -449,9 +408,9 @@ export default function Prubeh({
     const { zak, faze, ukol, kategorie } = cil;
     setNahravam(kategorie);
     let nahrano = 0;
-    for (const puvodni of files) {
+    for (const [poradi, puvodni] of files.entries()) {
       try {
-        const row = await nahratFotkuZakazky(puvodni, {
+        const row = await nahratFotkuZakazky(puvodni, { poradi: poradi + 1,
           slozka: contractById(zak.contract_id)?.name || zak.nazev || String(zak.id),
           contractId: zak.contract_id || null, prubehId: zak.id, kategorie, nahral: currentUser?.employeeId || null,
         });
@@ -1982,7 +1941,14 @@ export default function Prubeh({
           </div>
         </div>
       )}
-      {prohlizec && <ProhlizecFotek fotky={prohlizec.fotky} i={prohlizec.i} onI={zmenitFotku} onClose={zavritProhlizec} />}
+      {prohlizec && <ProhlizecFotek fotky={prohlizec.fotky} i={prohlizec.i} onI={zmenitFotku} onClose={zavritProhlizec}
+        kategorie={KATEGORIE_FOTEK} onKategorie={async (p, k) => {
+          const { error } = await supabase.from("contract_photos").update({ category: k }).eq("id", p.id);
+          if (error) { alert("Kategorii se nepodařilo změnit: " + error.message); return; }
+          const zmen = (x) => (x.id === p.id ? { ...x, category: k } : x);
+          setFotkyZ((m) => Object.fromEntries(Object.entries(m).map(([key, arr]) => [key, (arr || []).map(zmen)])));
+          setProhlizec((pr) => (pr ? { ...pr, fotky: pr.fotky.map(zmen) } : pr));
+        }} />}
       {/* Výběr fotek / souborů (PDF, sken, Word…) pro „Nahrát fotky“ a „Sken“ — na mobilu nabídne i fotoaparát. */}
       <input ref={fotoInput} type="file" multiple style={{ display: "none" }}
         onChange={(e) => { const files = [...e.target.files]; e.target.value = ""; nahratFotky(files); }} />
