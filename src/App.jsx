@@ -16,6 +16,7 @@ import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum, cisloFaktury } from "./invoicingUtils.js";
 import { exportIsdoc } from "./isdoc.js";
+import ParovaniPlateb from "./ParovaniPlateb.jsx";
 import FrontaFaktur from "./FrontaFaktur.jsx";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
@@ -4228,6 +4229,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
   };
 
   const [paidDraft, setPaidDraft] = useState({});
+  const [parovani, setParovani] = useState(false); // okno Spárovat platby z výpisu
   const savePaidAmount = async (id, value) => {
     const paid_amount = Number(value) || 0;
     const prev = invoices.find(i => i.id === id);
@@ -4398,6 +4400,14 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
             style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
             {exportBusy ? "…" : "🧾 Export pro účetní (ISDOC)"}
           </button>
+        )}
+        {invTab === "vydané" && (
+          <button onClick={() => setParovani(true)} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}
+            title="Nahraj výpis z banky (GPC nebo CSV) a platby se spárují s fakturami podle VS">🏦 Spárovat platby z výpisu</button>
+        )}
+        {parovani && (
+          <ParovaniPlateb invoices={invoices} onClose={() => setParovani(false)}
+            onUlozeno={(zmeny) => setInvoices(prev => prev.map(i => { const z = zmeny.find(x => x.id === i.id); return z ? { ...i, ...z.patch } : i; }))} />
         )}
         <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>{visibleInvoices.length} z {currentTypeInvoices.length}</span>
       </div>
