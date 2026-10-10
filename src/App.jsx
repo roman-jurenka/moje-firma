@@ -200,6 +200,9 @@ const ROLES = {
   employee: { label: "Zaměstnanec",   color: "#0369a1", nav: ["dashboard","fotoupload","attendance","calendar","knjiga","uctenky","podpisy","profile"] },
 };
 
+// Šablony bloků spravuje i Šárlota (jméno se v profilu píše s i bez čárky)
+const jeSarlota = (u) => String(u?.name || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim() === "sarlota jurenkova";
+
 // Simulovaná docházka — záznamy příchod/odchod
 const today = new Date();
 const fmt = (d) => d.toISOString().slice(0, 10);
@@ -1206,7 +1209,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const checkin = async (contractId) => {
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    if (todayRecord) {
+    // Odchod už je zapsaný — dřív se dalším klepnutím přepsal na aktuální čas.
+    // Teď se nejdřív zeptá a případně zapíše nový příchod (nová část dne).
+    if (todayRecord?.checkout && !window.confirm(`Odchod je dnes už zapsaný (${String(todayRecord.checkout).slice(0, 5)}). Zapsat nový příchod?`)) return;
+    if (todayRecord && !todayRecord.checkout) {
       await supabase.from("attendance").update({ checkout: time }).eq("id", todayRecord.id);
       setAttendance(attendance.map(a => a.id === todayRecord.id ? { ...a, checkout: time } : a));
     } else {
@@ -1371,7 +1377,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           }}
         >
           <i className={`ti ${todayRecord?.checkout ? "ti-check" : todayRecord?.checkin ? "ti-player-stop" : "ti-player-play"}`} aria-hidden="true"></i>
-          {todayRecord?.checkout ? `Odchod ${todayRecord.checkout}` : todayRecord?.checkin ? `Zapsat odchod` : "Zapsat příchod"}
+          {todayRecord?.checkout ? `Odchod ${String(todayRecord.checkout).slice(0, 5)}` : todayRecord?.checkin ? `Zapsat odchod` : "Zapsat příchod"}
         </button>
       )}
     <div style={S.app}>
@@ -1505,7 +1511,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           {/* Quick checkin */}
           {myEmpId && (
             <button onClick={checkin} style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : todayRecord?.checkout ? "#34d399" : "#0369a1"), width: "100%", marginTop: 10, fontSize: 11, padding: "7px" }}>
-              {todayRecord?.checkout ? `✓ Odchod ${todayRecord.checkout}` : todayRecord?.checkin ? `⏱ Zapsat odchod (${todayRecord.checkin})` : "▶ Zapsat příchod"}
+              {todayRecord?.checkout ? `✓ Odchod ${String(todayRecord.checkout).slice(0, 5)}` : todayRecord?.checkin ? `⏱ Zapsat odchod (${String(todayRecord.checkin).slice(0, 5)})` : "▶ Zapsat příchod"}
             </button>
           )}
           {/* Osobní nastavení — dřív samostatné položky menu */}
@@ -7640,7 +7646,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
             const extraCount = Math.max(0, dayEvents.length - 3) + Math.max(0, dayTasks.length - 3) + Math.max(0, dayOverdueInvoices.length - 3);
             return (
               <div key={i} style={{ minHeight: 90, borderRight: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9", padding: 6, position: "relative", background: isToday ? "#eff6ff" : "#fff" }}>
-                <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 500, color: isToday ? "#0369a1" : "#374151",
+                <div style={{ fontSize: 13, fontWeight: isToday ? 800 : 500,
                   background: isToday ? "#0369a1" : "transparent", color: isToday ? "#fff" : "#374151",
                   borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
                   {dayNum}
@@ -8475,15 +8481,16 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     <>
       {/* TAB NAVIGATION — full width */}
       <div style={{ borderBottom: "none", marginBottom: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 4, paddingLeft: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", minWidth: 0 }}>
+          {/* Záložky se na mobilu posouvají do strany uvnitř řádku — dřív roztáhly celou stránku */}
+          <div style={{ display: "flex", gap: 4, paddingLeft: 2, overflowX: "auto", maxWidth: "100%", minWidth: 0, WebkitOverflowScrolling: "touch" }}>
             {[
               { id: "zaznam", label: "📅 Záznamy & Docházka" },
               { id: "harmonogram", label: "🗓 Harmonogram" },
               { id: "prehled", label: "📊 Přehled" + (viewMonth !== "all" ? " – " + monthLabel : "") },
               { id: "kalendar", label: "📆 Kalendář" },
               { id: "soupis", label: "📋 Soupis práce" },
-              ...((currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") ? [{ id: "sablony", label: "📋 Šablony bloků" }] : []),
+              ...((currentUser.role === "admin" || jeSarlota(currentUser)) ? [{ id: "sablony", label: "📋 Šablony bloků" }] : []),
               ...(currentUser.role === "admin" ? [{ id: "zadosti", label: "📩 Žádosti" + (pendingRequests.length ? ` (${pendingRequests.length})` : "") }] : []),
               ...(jeVedeni ? [{ id: "schvaleni", label: "✅ Ke schválení" + (() => { const p = new Set(attendance.filter(a => !a.schvaleno).map(a => `${a.employee_id ?? a.employeeId}|${a.date}`)).size; return p ? ` (${p})` : ""; })() }] : []),
             ].map(t => (
@@ -8495,7 +8502,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 borderRadius: "10px 10px 0 0",
                 color: attTab === t.id ? "#93c5fd" : "#1A1A1A",
                 fontWeight: attTab === t.id ? 700 : 500,
-                cursor: "pointer", fontSize: 14, marginBottom: -1,
+                cursor: "pointer", fontSize: 14, marginBottom: -1, whiteSpace: "nowrap", flexShrink: 0,
               }}>{t.label}</button>
             ))}
           </div>
@@ -8663,7 +8670,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
           {/* Ruční zadání */}
           <div style={{ ...S.card, marginBottom: 20 }}>
             <div style={{ fontWeight: 700, color: "#1A1A1A", marginBottom: 12, fontSize: 13 }}>✏️ Ruční záznam</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr auto", gap: 10, alignItems: "end" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, alignItems: "end" }}>
               <div><label style={S.label}>Datum</label><input type="date" style={S.input} value={manualDate} onChange={e => setManualDate(e.target.value)} /></div>
               <div><label style={S.label}>Příchod</label><input type="time" style={S.input} value={manualIn} onChange={e => setManualIn(e.target.value)} /></div>
               <div><label style={S.label}>Odchod</label><input type="time" style={S.input} value={manualOut} onChange={e => setManualOut(e.target.value)} /></div>
@@ -8812,7 +8819,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
             {hlRecs.length === 0 ? (
               <div style={{ ...S.card, color: "#334155", fontSize: 13, textAlign: "center", padding: "32px 0" }}>
                 Žádné bloky pro {timelineDate}
-                {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") ? " — přidejte první blok výše" : ""}
+                {(currentUser.role === "admin" || jeSarlota(currentUser)) ? " — přidejte první blok výše" : ""}
               </div>
             ) : (
               <div style={{ ...S.card }}>
@@ -8868,7 +8875,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                                       {contract && <div style={{ fontSize: 13, color: "#0369a1", marginTop: 4 }}>📋 Zakázka: {contract.name}</div>}
                                       <div style={{ marginTop: 8, fontSize: 13, color: "#475569", whiteSpace: "pre-wrap" }}>{rec.activity || "Žádný popis"}</div>
                                     </div>
-                                    {(currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
+                                    {(currentUser.role === "admin" || jeSarlota(currentUser)) && (
                                       <button style={{ ...S.btn("#ef4444"), padding: "4px 10px", fontSize: 12 }} onClick={async () => {
                                         await supabase.from("harmonogram").delete().eq("id", rec.id);
                                         setHarmonogramRecs(harmonogramRecs.filter(r => r.id !== rec.id));
@@ -8920,6 +8927,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               <div style={{ fontWeight: 700, color: "#1A1A1A", fontSize: 14 }}>Historie docházky</div>
               {isHR && <button onClick={syncCostEntries} style={{ ...S.btnGhost, fontSize: 12, padding: "5px 12px" }}>⚡ Sync do nákladů</button>}
             </div>
+            <div style={{ overflowX: "auto" }}>
             <table style={S.table}>
               <thead><tr>{["Datum","Příchod","Odchod","Odpracováno","Zakázka","Popis",""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
               <tbody>
@@ -9036,12 +9044,13 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
 
       {/* LIST 4: ŠABLONY BLOKŮ */}
-      {attTab === "sablony" && (currentUser.role === "admin" || currentUser.name === "Šarlota Jurenková") && (
+      {attTab === "sablony" && (currentUser.role === "admin" || jeSarlota(currentUser)) && (
         <div style={{ marginTop: 16 }}>
           {/* Přidat šablonu */}
           <div style={{ ...S.card, marginBottom: 20 }}>
@@ -9104,7 +9113,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
         const daysInMonth = new Date(calYear, calMonthNum, 0).getDate();
         // 0=Ne,1=Po… shift to Mon-first
         const startDow = (firstDay.getDay() + 6) % 7;
-        const kalIsHR = isHR || currentUser.name === "Šarlota Jurenková";
+        const kalIsHR = isHR || jeSarlota(currentUser);
         const monthAttendance = attendance.filter(a =>
           a.date && a.date.startsWith(calMonth) &&
           (kalIsHR || (a.employeeId === effectiveEmpId || a.employee_id === effectiveEmpId))
