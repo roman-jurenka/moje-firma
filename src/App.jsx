@@ -23,6 +23,7 @@ import { aktualizovatZakaznikyZAres, cisteIco } from "./ares.js";
 import { blokyDne, aktualniBlok, souhrnDne, hodinyDne, efektivniHodinyZaznamu, PAUZA_NAD_H } from "./denniZapis.js";
 import DenniZapis from "./DenniZapis.jsx";
 import SchvalovaniDochazky from "./SchvalovaniDochazky.jsx";
+import MzdovePodklady from "./MzdovePodklady.jsx";
 import ZasobyMist from "./ZasobyMist.jsx";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
@@ -8492,6 +8493,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               { id: "soupis", label: "📋 Soupis práce" },
               ...((currentUser.role === "admin" || jeSarlota(currentUser)) ? [{ id: "sablony", label: "📋 Šablony bloků" }] : []),
               ...(currentUser.role === "admin" ? [{ id: "zadosti", label: "📩 Žádosti" + (pendingRequests.length ? ` (${pendingRequests.length})` : "") }] : []),
+              ...(jeVedeni ? [{ id: "mzdy", label: "💶 Podklady pro mzdy" }] : []),
               ...(jeVedeni ? [{ id: "schvaleni", label: "✅ Ke schválení" + (() => { const p = new Set(attendance.filter(a => !a.schvaleno).map(a => `${a.employee_id ?? a.employeeId}|${a.date}`)).size; return p ? ` (${p})` : ""; })() }] : []),
             ].map(t => (
               <button key={t.id} onClick={() => setAttTab(t.id)} style={{
@@ -8708,6 +8710,12 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       )}
 
       {/* ŽÁDOSTI O ZÁPIS/ÚPRAVU PO UZAMČENÍ MĚSÍCE — jen admin */}
+      {attTab === "mzdy" && jeVedeni && (
+        <div style={{ ...S.card, marginTop: 0 }}>
+          <MzdovePodklady employees={employees} />
+        </div>
+      )}
+
       {attTab === "schvaleni" && jeVedeni && (
         <div style={{ ...S.card, marginTop: 0 }}>
           <SchvalovaniDochazky attendance={attendance} setAttendance={setAttendance} employees={employees}
