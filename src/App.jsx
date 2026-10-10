@@ -15,6 +15,7 @@ import RychlaObrazovka, { PracePruh } from "./RychlaObrazovka.jsx";
 import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
 import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum, cisloFaktury } from "./invoicingUtils.js";
+import { exportIsdoc } from "./isdoc.js";
 import FrontaFaktur from "./FrontaFaktur.jsx";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
@@ -4385,6 +4386,19 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
           style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
           {exportBusy ? "…" : "📊 Export do Excelu"}
         </button>
+        {invTab === "vydané" && (
+          <button disabled={exportBusy || visibleInvoices.length === 0}
+            title="Elektronické faktury ISDOC pro účetní program (Pohoda, Money S3, ABRA…) — exportují se zobrazené faktury"
+            onClick={async () => {
+              const list = visibleInvoices.filter(i => i.status !== "Storno");
+              if (!list.length) return;
+              setExportBusy(true);
+              try { await exportIsdoc(list, customers); } catch (e) { alert("Export ISDOC se nepodařil: " + (e?.message || e)); } finally { setExportBusy(false); }
+            }}
+            style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
+            {exportBusy ? "…" : "🧾 Export pro účetní (ISDOC)"}
+          </button>
+        )}
         <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>{visibleInvoices.length} z {currentTypeInvoices.length}</span>
       </div>
 
