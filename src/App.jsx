@@ -24,6 +24,7 @@ import { blokyDne, aktualniBlok, souhrnDne, hodinyDne, efektivniHodinyZaznamu, P
 import DenniZapis from "./DenniZapis.jsx";
 import SchvalovaniDochazky from "./SchvalovaniDochazky.jsx";
 import MzdovePodklady from "./MzdovePodklady.jsx";
+import ZiskovostZakazek from "./ZiskovostZakazek.jsx";
 import ZasobyMist from "./ZasobyMist.jsx";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
@@ -6990,6 +6991,9 @@ function Reports({ customers, deals, invoices, costs, employees, projects, contr
           })()}
         </div>
       </div>
+
+      {/* Ziskovost jednotlivých zakázek — rozpočet proti skutečnosti */}
+      <div style={{ marginTop: 20 }}><ZiskovostZakazek /></div>
     </>
   );
 }
