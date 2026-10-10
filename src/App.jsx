@@ -4963,8 +4963,8 @@ function Warehouse({ products, setProducts, contracts, currentUser }) {
     !products.some(p => p.name.toLowerCase() === (m.product_name || "").toLowerCase())
   );
 
-  const MOV_COLORS = { in: "#34d399", out: "#f87171", out_contract: "#f87171", out_vehicle: "#f59e0b", transfer: "#0369a1", transfer_vh: "#a78bfa" };
-  const MOV_LABELS = { out_vehicle: "🚗 Výdej na auto", ...Object.fromEntries(MOVE_TYPES.map(t => [t.value, t.label])) };
+  const MOV_COLORS = { korekce: "#a35a00", in: "#34d399", out: "#f87171", out_contract: "#f87171", out_vehicle: "#f59e0b", transfer: "#0369a1", transfer_vh: "#a78bfa" };
+  const MOV_LABELS = { out_vehicle: "🚗 Výdej na auto", korekce: "🧮 Staré zásoby (korekce)", ...Object.fromEntries(MOVE_TYPES.map(t => [t.value, t.label])) };
 
   return (
     <>

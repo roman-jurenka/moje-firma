@@ -98,6 +98,34 @@ export default function ZasobyMist({ products, onZmena }) {
     onZmena?.();
   };
 
+  // ── záporné zásoby: doplnit převodem, nebo označit jako staré neevidované ──
+  const [doplnitZ, setDoplnitZ] = useState({}); // "pid-mid" -> id místa, odkud doplnit
+  const zaporne = zasoby.filter((z) => Number(z.mnozstvi) < 0 && mista.some((m) => String(m.id) === String(z.misto_id)));
+  const klic = (z) => `${z.product_id}-${z.misto_id}`;
+  const doplnit = async (z) => {
+    const odkud = doplnitZ[klic(z)] || String(mista.find((m) => m.hlavni && String(m.id) !== String(z.misto_id))?.id || "");
+    if (!odkud) { setZprava({ chyba: true, text: "Vyber, odkud materiál doplnit." }); return; }
+    setPracuji(true); setZprava(null);
+    const { error } = await supabase.rpc("presun_zasob", { p_product_id: z.product_id, p_z: Number(odkud), p_do: z.misto_id, p_mnozstvi: -Number(z.mnozstvi), p_poznamka: "Doplnění záporné zásoby" });
+    setPracuji(false);
+    if (error) { setZprava({ chyba: true, text: error.message }); return; }
+    setZprava({ chyba: false, text: `✓ Doplněno ${fmtQ(-z.mnozstvi)} ${produkt(z.product_id)?.unit || ""} ${produkt(z.product_id)?.name || ""} z ${mista.find((m) => String(m.id) === String(odkud))?.nazev}` });
+    await nacist(); onZmena?.();
+  };
+  const stare = async (seznam) => {
+    if (!seznam.length) return;
+    setPracuji(true); setZprava(null);
+    let ok = 0;
+    for (const z of seznam) {
+      const { error } = await supabase.rpc("vyrovnat_zasoby", { p_product_id: z.product_id, p_misto: z.misto_id, p_poznamka: null });
+      if (error) { setZprava({ chyba: true, text: `${produkt(z.product_id)?.name || "Položka"}: ${error.message}` }); break; }
+      ok++;
+    }
+    setPracuji(false);
+    if (ok) setZprava({ chyba: false, text: `✓ ${ok} ${ok === 1 ? "položka označena" : "položek označeno"} jako staré neevidované zásoby (stav místa srovnán na 0).` });
+    await nacist(); onZmena?.();
+  };
+
   const q = bezDiakritiky(hledat);
   const viditelne = products.filter((p) => !q || bezDiakritiky(`${p.name} ${p.sku || ""} ${radek(p.id, umMisto)?.umisteni || ""}`).includes(q));
   const ikona = (m) => (m.typ === "auto" ? "🚚" : "📦");
@@ -179,6 +207,46 @@ export default function ZasobyMist({ products, onZmena }) {
         {zprava && <div role={zprava.chyba ? "alert" : "status"} style={{ marginTop: 8, fontSize: 13, color: zprava.chyba ? "#b91c1c" : "#15803d" }}>{zprava.text}</div>}
       </div>
 
+      {zaporne.length > 0 && (
+        <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 800, color: "#9a3412" }}>⚠ Záporné zásoby ({zaporne.length})</div>
+            <div style={{ fontSize: 12, color: "#9a3412", flex: "1 1 260px" }}>Materiál se vydal na zakázku z místa, kam předtím nebyl převeden. Doplň ho převodem, nebo ho označ jako staré zásoby, které nebyly evidované.</div>
+            <button type="button" disabled={pracuji} onClick={() => { if (window.confirm(`Označit všech ${zaporne.length} záporných položek jako staré neevidované zásoby? Stav míst se srovná na 0.`)) stare(zaporne); }}
+              style={{ background: "#fff", color: "#9a3412", border: "1px solid #fdba74", borderRadius: 8, padding: "6px 12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Vše jako staré zásoby</button>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <tbody>
+                {zaporne.map((z) => {
+                  const p = produkt(z.product_id), m = mista.find((x) => String(x.id) === String(z.misto_id));
+                  const zdroj = doplnitZ[klic(z)] || String(mista.find((x) => x.hlavni && String(x.id) !== String(z.misto_id))?.id || "");
+                  return (
+                    <tr key={klic(z)} style={{ borderTop: "1px solid #fed7aa" }}>
+                      <td style={{ padding: "6px 8px", fontWeight: 700 }}>{p?.name || `#${z.product_id}`}</td>
+                      <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>{m?.typ === "auto" ? "🚚" : "📦"} {m?.nazev}</td>
+                      <td style={{ padding: "6px 8px", textAlign: "right", color: "#b91c1c", fontWeight: 800, whiteSpace: "nowrap" }}>{fmtQ(z.mnozstvi)} {p?.unit || ""}</td>
+                      <td style={{ padding: "6px 8px" }}>
+                        <span style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          <select value={zdroj} aria-label={`Odkud doplnit ${p?.name || ""}`} onChange={(e) => setDoplnitZ({ ...doplnitZ, [klic(z)]: e.target.value })}
+                            style={{ ...pole, width: "auto", padding: "5px 8px", fontSize: 13 }}>
+                            {mista.filter((x) => String(x.id) !== String(z.misto_id)).map((x) => <option key={x.id} value={x.id}>z {x.nazev} ({fmtQ(naMiste(z.product_id, x.id))})</option>)}
+                          </select>
+                          <button type="button" disabled={pracuji} onClick={() => doplnit(z)}
+                            style={{ background: "#0369a1", color: "#fff", border: "none", borderRadius: 8, padding: "6px 10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Doplnit</button>
+                          <button type="button" disabled={pracuji} onClick={() => stare([z])}
+                            style={{ background: "#fff", color: "#9a3412", border: "1px solid #fdba74", borderRadius: 8, padding: "6px 10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Staré zásoby</button>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <input style={{ ...pole, maxWidth: 320 }} type="search" placeholder="Hledat položku nebo umístění…" value={hledat} onChange={(e) => setHledat(e.target.value)} />
         <label style={{ fontSize: 12, color: "#475569", display: "flex", alignItems: "center", gap: 6 }}>Umístění pro
@@ -213,7 +281,7 @@ export default function ZasobyMist({ products, onZmena }) {
           </tbody>
         </table>
       </div>
-      <div style={{ fontSize: 12, color: "#64748b" }}>Záporné číslo = na místě se vydalo víc, než se tam evidovalo (např. materiál nebyl na auto zapsán přesunem). Výdeje z docházky se odepisují z místa, které zaměstnanec u materiálu zvolil, až po schválení dne.</div>
+      <div style={{ fontSize: 12, color: "#64748b" }}>Záporné číslo = na místě se vydalo víc, než se tam evidovalo (např. materiál nebyl na auto zapsán přesunem) — srovnáš ho v rámečku „Záporné zásoby“ nahoře. Výdeje z docházky se odepisují z místa, které zaměstnanec u materiálu zvolil, až po schválení dne.</div>
     </div>
   );
 }
