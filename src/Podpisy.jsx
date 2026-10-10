@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase.js";
 import { tryOrQueue } from "./offlineQueue.js";
 import * as ui from "./ui.js";
+import { GPS_DOC_TYPE, GPS_NAZEV, gpsData, gpsInformaceHtml, GPS_STYL } from "./gpsInformace.js";
 
 const S = {
   app:      { fontFamily: ui.pismo, background: ui.barvy.pozadi, minHeight: "100vh", color: ui.barvy.text, padding: "20px 28px" },
@@ -169,6 +170,8 @@ function renderDocumentHtml(doc) {
       <table><thead><tr><th>Datum</th><th>Příchod</th><th>Odchod</th><th>Odpracováno</th><th>Zakázka</th><th>Popis</th></tr></thead>
       <tbody>${rows}<tr class="total"><td colspan="3">Celkem</td><td><strong>${d.totalHLabel || ""}</strong></td><td colspan="2">${(d.rows || []).length} záznamů</td></tr></tbody></table>
       ${d.sazba ? `<div class="vyplata">Celková částka k výplatě: <strong>${fmtKc(d.castka)}</strong><span class="vyplata-detail"> (${d.totalHLabel} × ${fmtKc(d.sazba)}/h)</span></div>` : ""}`;
+  } else if (doc.doc_type === GPS_DOC_TYPE) {
+    body = gpsInformaceHtml(d);
   } else {
     body = `<pre style="white-space:pre-wrap;font-size:13px">${JSON.stringify(d, null, 2)}</pre>`;
   }
@@ -192,7 +195,7 @@ function renderDocumentHtml(doc) {
     .vyplata-detail{color:#475569;font-size:12px;margin-left:6px}
     .podpisy{display:flex;justify-content:space-between;margin-top:64px}.podpis{width:42%}
     .cara{border-top:1px solid #111;margin-bottom:6px;margin-top:50px}.sigimg{max-width:100%;max-height:70px;display:block;margin-bottom:2px}
-    .popisek{font-size:12px;color:#555;text-align:center}@media print{body{padding:16px}}</style>
+    .popisek{font-size:12px;color:#555;text-align:center}@media print{body{padding:16px}}${GPS_STYL}</style>
     </head><body><h1>${doc.title}</h1>${body}${podpisy}
     <script>window.onload=function(){window.print();}</script></body></html>`;
 }
@@ -218,6 +221,66 @@ function emailDoc(doc, employees) {
     "", "Podepsanou verzi k tisku najdete v appce ProudOS v modulu Podpisy.",
   ].filter(Boolean).join("\n");
   window.location.href = `mailto:${emp.email}?subject=${subject}&body=${encodeURIComponent(lines)}`;
+}
+
+// ─── Rozeslání informace o GPS ve vozidlech k podpisu (zaměstnavatel) ────────
+// Každému vybranému zaměstnanci vznikne dokument „čeká na podpis zaměstnance“;
+// podpisem potvrdí, že byl informován. Kdo už dokument má, je označený.
+function GpsRozeslani({ employees, docs, currentUser, onNove }) {
+  const [otevreno, setOtevreno] = useState(false);
+  const [vozidla, setVozidla] = useState([]);
+  const [vybrani, setVybrani] = useState(null);
+  const [pracuji, setPracuji] = useState(false);
+  const [zprava, setZprava] = useState("");
+  const maDokument = (id) => docs.some((d) => d.doc_type === GPS_DOC_TYPE && d.employee_id === id);
+  const lide = employees.filter((e) => !e.archived);
+  useEffect(() => {
+    if (!otevreno) return;
+    supabase.from("gps_vozidla").select("kod, nazev, spz").eq("aktivni", true).order("nazev").then(({ data }) => setVozidla(data || []));
+  }, [otevreno]);
+  const vyber = vybrani ?? lide.filter((e) => !maDokument(e.id)).map((e) => e.id);
+  const odeslat = async () => {
+    if (!vyber.length) return;
+    setPracuji(true); setZprava("");
+    const radky = vyber.map((id) => {
+      const emp = employees.find((e) => e.id === id);
+      return { doc_type: GPS_DOC_TYPE, title: `${GPS_NAZEV} – ${emp?.name || ""}`, employee_id: id, data: gpsData(emp?.name || "", vozidla), status: "čeká na podpis zaměstnance", created_by: currentUser.name };
+    });
+    const { data, error } = await supabase.from("signed_documents").insert(radky).select();
+    setPracuji(false);
+    if (error) { setZprava("Nepodařilo se vytvořit: " + error.message); return; }
+    onNove(data || []);
+    setVybrani([]);
+    setZprava(`✓ Odesláno k podpisu: ${(data || []).length} zaměstnancům. Uvidí to v Podpisech a podepíší.`);
+  };
+  return (
+    <div style={{ ...S.card, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>📍 Informace o GPS ve služebních vozidlech</div>
+        <span style={{ fontSize: 12, color: "#64748b" }}>{lide.filter((e) => maDokument(e.id)).length} z {lide.length} zaměstnanců má dokument</span>
+        <button type="button" style={{ ...S.btnGhost, marginLeft: "auto", padding: "6px 12px", fontSize: 12 }} onClick={() => setOtevreno(!otevreno)}>{otevreno ? "Zavřít" : "Rozeslat k podpisu"}</button>
+      </div>
+      {otevreno && (<>
+        <div style={{ fontSize: 13, color: "#475569" }}>Zaměstnanec podpisem potvrdí, že byl informován o sledování polohy vozidel (§ 316 zákoníku práce, GDPR). Text si před prvním rozesláním nech zkontrolovat (doba uchování údajů je návrh).</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {lide.map((e) => {
+            const vyb = vyber.includes(e.id);
+            return (
+              <label key={e.id} style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid " + (vyb ? "#0369a1" : "#e2e8f0"), background: vyb ? "#f0f9ff" : "#fff", borderRadius: 8, padding: "6px 10px", fontSize: 13, cursor: "pointer" }}>
+                <input type="checkbox" checked={vyb} onChange={() => setVybrani(vyb ? vyber.filter((x) => x !== e.id) : [...vyber, e.id])} />
+                {e.name}{maDokument(e.id) && <span style={{ fontSize: 11, color: "#15803d" }}>✓ má</span>}
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button type="button" style={S.btnGhost} onClick={() => printDoc({ title: GPS_NAZEV, doc_type: GPS_DOC_TYPE, data: gpsData("(jméno zaměstnance)", vozidla) })}>👁 Náhled textu</button>
+          <button type="button" style={S.btn()} disabled={pracuji || !vyber.length} onClick={odeslat}>{pracuji ? "Odesílám…" : `✍️ Odeslat k podpisu (${vyber.length})`}</button>
+          {zprava && <span role="status" style={{ fontSize: 13, color: zprava.startsWith("✓") ? "#15803d" : "#b91c1c" }}>{zprava}</span>}
+        </div>
+      </>)}
+    </div>
+  );
 }
 
 // ─── Karta pro správu vlastního uloženého podpisu (nezávislé na konkrétním dokumentu) ──
@@ -337,6 +400,8 @@ export default function PodpisyModule({ employees, currentUser }) {
       </p>
 
       <MujPodpisKarta currentUser={currentUser} />
+
+      {isEmployer && <GpsRozeslani employees={employees} docs={docs} currentUser={currentUser} onNove={(nove) => setDocs((d) => [...nove, ...d])} />}
 
       {visible.length > 0 && (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
