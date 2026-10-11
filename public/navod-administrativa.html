@@ -122,6 +122,15 @@ figure.obr figcaption { font-size: 13px; color: var(--muted); }
 .hl { position: relative; outline: 3px solid var(--mark); outline-offset: 2px; border-radius: 7px; }
 .hl[data-n]::after { content: attr(data-n); position: absolute; top: -13px; right: -13px; width: 21px; height: 21px; border-radius: 50%; background: var(--mark); color: #fff; font: 800 12px/21px var(--f-display); text-align: center; box-shadow: 0 0 0 2px #fff; z-index: 1; }
 
+.srovnani { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.srovnani > div { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.srovnani h3 { margin: 0; font: 800 19px/1.2 var(--f-display); }
+.srovnani .podtitul { font-size: 14px; color: var(--muted); margin: 0; }
+.srovnani ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 15px; }
+.srovnani .prubeh { background: var(--accent-soft); border-color: var(--accent); }
+.srovnani .archiv { background: var(--paper); }
+.faze { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.faze span { border-radius: 999px; padding: 3px 10px; font-weight: 700; color: #fff; }
 .zpet { font-size: 14px; color: var(--accent); text-decoration: none; align-self: flex-start; }
 .zpet:hover, .zpet:focus-visible { text-decoration: underline; outline: none; }
 footer { color: var(--muted); font-size: 14px; }
@@ -132,40 +141,48 @@ footer { color: var(--muted); font-size: 14px; }
 <div class="wrap">
   <header class="hlava">
     <h1>Proud<span>OS</span> pro administrativu</h1>
-    <p>Návody krok za krokem na úkoly, které v kanceláři děláte nejčastěji. Vyberte úkol vlevo a postupujte podle očíslovaných kroků.</p>
+    <p>Návody krok za krokem na úkoly, které v kanceláři děláte nejčastěji. Začněte úkolem 1 — vysvětluje, kde se co zapisuje. Vyberte úkol vlevo a postupujte podle očíslovaných kroků.</p>
   </header>
 
   <nav class="rejstrik" aria-label="Rejstřík úkolů">
     <div>
+      <h2>Průběh zakázek</h2>
+      <ol>
+        <li><a href="#rozdil"><b>1</b>Průběh zakázek a Zakázky — rozdíl</a></li>
+        <li><a href="#poptavka"><b>2</b>Zapsat novou poptávku</a></li>
+        <li><a href="#vest"><b>3</b>Vést zakázku v Průběhu krok za krokem</a></li>
+      </ol>
+    </div>
+    <div>
       <h2>Zákazníci a zakázky</h2>
       <ol>
-        <li><a href="#zakaznik"><b>1</b>Založit nového zákazníka</a></li>
-        <li><a href="#zakazka"><b>2</b>Zapsat novou zakázku</a></li>
-        <li><a href="#popis"><b>3</b>Doplnit popis a podklady zakázky</a></li>
-        <li><a href="#fotky"><b>4</b>Nahrát fotky a dokumenty</a></li>
+        <li><a href="#zakaznik"><b>4</b>Založit nového zákazníka</a></li>
+        <li><a href="#zakazka"><b>5</b>Zapsat novou zakázku</a></li>
+        <li><a href="#popis"><b>6</b>Doplnit popis a podklady zakázky</a></li>
+        <li><a href="#fotky"><b>7</b>Nahrát fotky a dokumenty</a></li>
       </ol>
     </div>
     <div>
       <h2>Docházka</h2>
       <ol>
-        <li><a href="#schvaleni"><b>5</b>Zkontrolovat a schválit docházku</a></li>
-        <li><a href="#oprava"><b>6</b>Opravit už schválený den</a></li>
-        <li><a href="#zapomnel"><b>7</b>Doplnit zapomenutou docházku</a></li>
+        <li><a href="#schvaleni"><b>8</b>Zkontrolovat a schválit docházku</a></li>
+        <li><a href="#oprava"><b>9</b>Opravit už schválený den</a></li>
+        <li><a href="#zapomnel"><b>10</b>Doplnit zapomenutou docházku</a></li>
       </ol>
     </div>
     <div>
       <h2>Faktury</h2>
       <ol>
-        <li><a href="#faktura"><b>8</b>Vystavit fakturu ze zakázky</a></li>
-        <li><a href="#dilci"><b>9</b>Vystavit dílčí fakturu</a></li>
-        <li><a href="#papir"><b>10</b>Opsat výpočet z papíru</a></li>
-        <li><a href="#fronta"><b>11</b>Přiřadit přijatou fakturu</a></li>
+        <li><a href="#faktura"><b>11</b>Vystavit fakturu ze zakázky</a></li>
+        <li><a href="#dilci"><b>12</b>Vystavit dílčí fakturu</a></li>
+        <li><a href="#papir"><b>13</b>Opsat výpočet z papíru</a></li>
+        <li><a href="#fronta"><b>14</b>Přiřadit přijatou fakturu</a></li>
       </ol>
     </div>
     <div>
       <h2>Sklad</h2>
       <ol>
-        <li><a href="#sklad"><b>12</b>Zapsat pohyb materiálu</a></li>
+        <li><a href="#sklad"><b>15</b>Zapsat pohyb materiálu</a></li>
       </ol>
     </div>
   </nav>
@@ -177,9 +194,129 @@ footer { color: var(--muted); font-size: 14px; }
       <span><span class="btn">Tlačítko</span> = text na tlačítku v aplikaci</span>
     </div>
 
+    <!-- 1 ROZDÍL -->
+    <section class="ukol" id="rozdil">
+      <div class="skupina">Průběh zakázek · úkol 1</div>
+      <h2>Průběh zakázek a Zakázky — v čem je rozdíl</h2>
+      <p class="kdy">V aplikaci jsou dvě místa se zakázkami. Jsou propojená a ukazují stejnou zakázku, ale každé slouží k něčemu jinému.</p>
+      <div class="srovnani">
+        <div class="prubeh">
+          <h3>🧭 Průběh zakázek</h3>
+          <p class="podtitul">Pracovní stůl — tady se zakázka vede a všechno se zapisuje průběžně.</p>
+          <ul>
+            <li>od první poptávky až po uzavření,</li>
+            <li>v jaké fázi zakázka je a co je potřeba udělat (úkoly, <b>další krok</b>, termín, kdo),</li>
+            <li>podklady pro realizaci, smlouva, předávací protokol,</li>
+            <li>fotky a dokumenty (Složka zakázky),</li>
+            <li>poznámky z telefonátů a dohod se zákazníkem.</li>
+          </ul>
+          <div class="faze" aria-label="Fáze zakázky">
+            <span style="background:#0369a1">Obchod</span>→<span style="background:#b45309">Back office · příprava</span>→<span style="background:#15803d">Realizace</span>→<span style="background:#b45309">Back office · uzavření</span>
+          </div>
+        </div>
+        <div class="archiv">
+          <h3>📁 Zakázky</h3>
+          <p class="podtitul">Přehled a archiv — sem se podíváte, když potřebujete zakázku dohledat třeba po roce.</p>
+          <ul>
+            <li>náklady: hodiny, materiál, doprava a zisk,</li>
+            <li>faktury a kolik zbývá dofakturovat,</li>
+            <li>fotky podle kategorií a výpis prací po dnech,</li>
+            <li>popis zakázky, kontakty a podklady,</li>
+            <li>hodí se při reklamaci, revizi nebo nové nabídce stejnému zákazníkovi.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="box tip"><b>Jednoduché pravidlo:</b> Pracujete v <b>Průběhu zakázek</b>, dohledáváte v <b>Zakázkách</b>. Co zapíšete v Průběhu (fotky, podklady, dokumenty), uvidíte i v Zakázce — nic se nepíše dvakrát.</div>
+      <a class="zpet" href="#rozdil">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 2 POPTÁVKA -->
+    <section class="ukol" id="poptavka">
+      <div class="skupina">Průběh zakázek · úkol 2</div>
+      <h2>Zapsat novou poptávku</h2>
+      <p class="kdy">Když zavolá nebo napíše zákazník, že něco chce (fotovoltaiku, hromosvod, opravu…). Zapište ho hned, i když ještě nevíte všechno.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Průběh zakázek</span><span class="s">→</span><span class="k">+ Nová poptávka</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>V menu klikněte na <span class="pole">Průběh zakázek</span> a na <span class="btn">+ Nová poptávka</span>.</li>
+          <li>Vyberte <span class="pole">Stávající zákazník</span> a najděte ho podle jména, telefonu nebo firmy. Když v aplikaci není, zvolte <span class="pole">Nový zákazník</span> a vyplňte <span class="pole">Jméno zákazníka</span> a <span class="pole">Telefon</span>.</li>
+          <li>Vyberte <span class="pole">Typ zakázky</span> (FVE, HRM, ELK, SRV…). Název zakázky se doplní sám.</li>
+          <li>Napište <span class="pole">Místo realizace (adresa)</span> a případně <span class="pole">Kontaktní osobu na místě</span> (třeba manželka nebo soused).</li>
+          <li>Vyplňte <span class="pole">Ozvat se zákazníkovi do</span> — aplikace vám pak připomene, že je potřeba se ozvat.</li>
+          <li>Klikněte na <span class="btn">Založit poptávku</span>. Zakázka se objeví v Průběhu ve fázi <b>Poptávka</b>.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Nová poptávka</span></div>
+            <div class="m-in">
+              <div class="m-row"><span class="m-chip">Stávající zákazník</span><span class="m-chip on hl" data-n="2">Nový zákazník</span></div>
+              <div class="m-row">
+                <div class="m-f"><label>Jméno zákazníka *</label><span>Jan Novák</span></div>
+                <div class="m-f"><label>Telefon *</label><span>777 123 456</span></div>
+              </div>
+              <div class="m-row">
+                <div class="m-f hl" data-n="3"><label>Typ zakázky *</label><span class="sel">FVE — Fotovoltaika</span></div>
+                <div class="m-f"><label>Název zakázky</label><span class="ph">doplní se sám</span></div>
+              </div>
+              <div class="m-f hl" data-n="4"><label>Místo realizace (adresa)</label><span>Dolní Lipová 120</span></div>
+              <div class="m-row">
+                <div class="m-f hl" data-n="5"><label>Ozvat se zákazníkovi do</label><span>15. 10. 2026</span></div>
+                <span class="m-b hl" data-n="6">Založit poptávku</span>
+              </div>
+            </div>
+          </div>
+          <figcaption>Nová poptávka (ukázková data).</figcaption>
+        </figure>
+      </div>
+      <a class="zpet" href="#poptavka">↑ Nahoru na úkol</a>
+    </section>
+
+    <!-- 3 VÉST -->
+    <section class="ukol" id="vest">
+      <div class="skupina">Průběh zakázek · úkol 3</div>
+      <h2>Vést zakázku v Průběhu krok za krokem</h2>
+      <p class="kdy">Každý den. Průběh vám vždy ukáže, co je u zakázky na řadě. Všechno, co se se zakázkou děje, zapisujte sem hned — po roce už si nikdo nevzpomene.</p>
+      <div class="cesta"><span class="s">Kde:</span><span class="k">Průběh zakázek</span><span class="s">→</span><span class="k">kliknout na zakázku</span></div>
+      <div class="telo">
+        <ol class="kroky">
+          <li>Nahoře přepněte <span class="pole">Moje</span> / <span class="pole">Všechny</span>. Zakázky <b>po termínu</b> jsou nahoře. Konkrétní zakázku najdete tlačítkem <span class="btn g">🎯 Najít zakázku</span>.</li>
+          <li>Klikněte na zakázku. V kartě <span class="pole">DALŠÍ KROK</span> je napsané, co se má udělat, kdo a do kdy. Když se to změní, přepište to a dejte <span class="btn">Uložit</span>.</li>
+          <li>V kartě <span class="pole">Úkoly fáze</span> odškrtávejte, co je hotové. U některých úkolů je tlačítko přímo na práci: <span class="btn g">Vyplnit</span> (podklady), <span class="btn g">Vygenerovat</span> (smlouva, protokol), <span class="btn g">Sken</span> (nahrát podepsaný papír).</li>
+          <li>Telefonát, dohodu nebo změnu zapište do <span class="pole">Historie a poznámky</span> → <span class="btn g">Přidat poznámku</span>.</li>
+          <li>Fotky a dokumenty nahrajte přes ikonu složky (<b>Složka zakázky</b>) → <span class="pole">⬆ Nahrát do</span>. Jde nahrát i celá složka.</li>
+          <li>Když je vše ve fázi hotové, klikněte dole na <span class="btn">Hotovo → další fáze</span>. Zakázka se posune a ukáže další úkoly.</li>
+        </ol>
+        <figure class="obr">
+          <div class="m" aria-hidden="true">
+            <div class="m-top"><i></i><i></i><i></i><span class="app">Proud<em>OS</em> · Průběh zakázek</span></div>
+            <div class="m-in">
+              <div class="m-row"><span class="m-chip on hl" data-n="1">Moje</span><span class="m-chip">Všechny</span><span class="m-b g">🎯 Najít zakázku</span></div>
+              <div class="m-card" style="background:#0f172a;color:#fff;border-color:#0f172a">
+                <span style="font-size:10px;font-weight:800;letter-spacing:.06em;color:#fcd34d">DALŠÍ KROK</span>
+                <div class="m-row" style="justify-content:space-between"><b>Poslat nabídku zákazníkovi</b><span class="hl" data-n="2" style="font-size:11px;padding:1px 4px">Petr · do 15. 10.</span></div>
+              </div>
+              <div class="m-card">
+                <b style="font-size:12px">Úkoly fáze — Nabídka</b>
+                <div class="hl" data-n="3" style="font-size:12px">☑ Nacenění hotové<br>☐ Nabídka odeslaná <span class="m-b g" style="padding:2px 7px;font-size:10px">Vyplnit</span></div>
+                <span class="m-b hl" data-n="6" style="align-self:stretch;text-align:center;background:#0369a1">Hotovo → Jednání →</span>
+              </div>
+              <div class="m-card">
+                <b style="font-size:12px">Historie a poznámky</b>
+                <div class="m-row"><div class="m-f"><span class="ph">Volal zákazník, chce i baterii…</span></div><span class="m-b g hl" data-n="4">Přidat poznámku</span></div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Detail zakázky v Průběhu: další krok, úkoly fáze, poznámky.</figcaption>
+        </figure>
+      </div>
+      <div class="box pozor"><b>Pozor:</b> Tlačítko <span class="btn g">⏭ Přeskočit krok</span> používejte jen výjimečně (krok se u zakázky opravdu nedělá). Aplikace jinak hlídá, aby se nezapomnělo na smlouvu, zálohu, revizi nebo předávací protokol.</div>
+      <div class="box tip"><b>Po roce:</b> Až budete zakázku hledat, otevřete ji v <b>Zakázkách</b> (úkol 1). Najdete tam všechno, co se v Průběhu zapsalo.</div>
+      <a class="zpet" href="#vest">↑ Nahoru na úkol</a>
+    </section>
+
     <!-- 1 ZÁKAZNÍK -->
     <section class="ukol" id="zakaznik">
-      <div class="skupina">Zákazníci a zakázky · úkol 1</div>
+      <div class="skupina">Zákazníci a zakázky · úkol 4</div>
       <h2>Založit nového zákazníka</h2>
       <p class="kdy">Když přijde nový zákazník, kterého v aplikaci ještě nemáte. U firmy stačí IČO, zbytek se doplní sám.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Zákazníci</span></div>
@@ -216,7 +353,7 @@ footer { color: var(--muted); font-size: 14px; }
 
     <!-- 2 ZAKÁZKA -->
     <section class="ukol" id="zakazka">
-      <div class="skupina">Zákazníci a zakázky · úkol 2</div>
+      <div class="skupina">Zákazníci a zakázky · úkol 5</div>
       <h2>Zapsat novou zakázku</h2>
       <p class="kdy">Když zákazník odsouhlasí nabídku a má se začít pracovat. Kód zakázky (např. FVE-2610-RJ-0001) vytvoří aplikace sama.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Zakázky</span><span class="s">→</span><span class="k">+ Nová zakázka</span></div>
@@ -225,7 +362,7 @@ footer { color: var(--muted); font-size: 14px; }
           <li>V menu klikněte na <span class="pole">Zakázky</span> a pak na <span class="btn">+ Nová zakázka</span>.</li>
           <li>Vyberte <span class="pole">Typ zakázky</span>: FVE fotovoltaika, FVR rozšíření, FVO ohřev vody, REA realizace na objednávku, HRM hromosvody, ELK elektroinstalace, SRV servis. Kód se vygeneruje sám.</li>
           <li>Napište <span class="pole">Název zakázky</span> tak, aby ho poznal každý, např. „Novák – FVE Dolní Lipová“.</li>
-          <li>Vyberte <span class="pole">Zákazník</span>. Když v seznamu není, nejdřív ho založte (úkol 1).</li>
+          <li>Vyberte <span class="pole">Zákazník</span>. Když v seznamu není, nejdřív ho založte (úkol 4).</li>
           <li>Vyplňte <span class="pole">Cena zakázky (Kč)</span>. U typu REA místo toho vyplňte rozpočet: Práce, Materiál, Doprava. Cena se sečte sama.</li>
           <li>Napište <span class="pole">Adresa místa výkonu</span>. Podle ní pak pracuje mapa i kontrola GPS.</li>
           <li>Klikněte na <span class="btn">Uložit zakázku</span>.</li>
@@ -251,12 +388,13 @@ footer { color: var(--muted); font-size: 14px; }
         </figure>
       </div>
       <div class="box pozor"><b>Pozor:</b> Bez vybraného typu se kód nevytvoří. Typ proto vybírejte vždy jako první.</div>
+      <div class="box tip"><b>Dobré vědět:</b> Nové zakázky běžně začínají jako poptávka v Průběhu zakázek (úkol 2). Zakázku, která už v Průběhu je, tady znovu nezakládejte.</div>
       <a class="zpet" href="#zakazka">↑ Nahoru na úkol</a>
     </section>
 
     <!-- 3 POPIS -->
     <section class="ukol" id="popis">
-      <div class="skupina">Zákazníci a zakázky · úkol 3</div>
+      <div class="skupina">Zákazníci a zakázky · úkol 6</div>
       <h2>Doplnit popis a podklady zakázky</h2>
       <p class="kdy">Než se na zakázku pošlou lidé. Montéři v kalendáři uvidí kontakty, termíny a pokyny, které sem napíšete.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Zakázky</span><span class="s">→</span><span class="k">▼ Detail</span><span class="s">→</span><span class="k">📝 Popis zakázky</span></div>
@@ -301,7 +439,7 @@ footer { color: var(--muted); font-size: 14px; }
 
     <!-- 4 FOTKY -->
     <section class="ukol" id="fotky">
-      <div class="skupina">Zákazníci a zakázky · úkol 4</div>
+      <div class="skupina">Zákazníci a zakázky · úkol 7</div>
       <h2>Nahrát fotky a dokumenty k zakázce</h2>
       <p class="kdy">Fotky z obhlídky nebo montáže, sken předávacího protokolu, PDF od zákazníka. Nahrát jde víc souborů najednou.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Zakázky</span><span class="s">→</span><span class="k">▼ Detail</span><span class="s">→</span><span class="k">📷 Fotky</span></div>
@@ -337,7 +475,7 @@ footer { color: var(--muted); font-size: 14px; }
 
     <!-- 5 SCHVÁLENÍ -->
     <section class="ukol" id="schvaleni">
-      <div class="skupina">Docházka · úkol 5</div>
+      <div class="skupina">Docházka · úkol 8</div>
       <h2>Zkontrolovat a schválit docházku</h2>
       <p class="kdy">Ideálně každý den nebo aspoň jednou týdně. Dokud den není schválený, hodiny se nezapočítají do nákladů zakázky a materiál se neodepíše ze skladu.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Docházka</span><span class="s">→</span><span class="k">✅ Ke schválení</span></div>
@@ -378,7 +516,7 @@ footer { color: var(--muted); font-size: 14px; }
 
     <!-- 6 OPRAVA -->
     <section class="ukol" id="oprava">
-      <div class="skupina">Docházka · úkol 6</div>
+      <div class="skupina">Docházka · úkol 9</div>
       <h2>Opravit už schválený den</h2>
       <p class="kdy">Když zjistíte chybu ve dni, který už je schválený (špatná zakázka, špatný čas).</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Docházka</span><span class="s">→</span><span class="k">✅ Ke schválení</span><span class="s">→</span><span class="k">☑ Schválené</span></div>
@@ -407,7 +545,7 @@ footer { color: var(--muted); font-size: 14px; }
 
     <!-- 7 ZAPOMNĚL -->
     <section class="ukol" id="zapomnel">
-      <div class="skupina">Docházka · úkol 7</div>
+      <div class="skupina">Docházka · úkol 10</div>
       <h2>Doplnit zapomenutou docházku</h2>
       <p class="kdy">Zaměstnanec zapomněl zapsat příchod nebo odchod, nebo byl s kolegou a nezapsal si nic.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Docházka</span><span class="s">→</span><span class="k">📅 Záznamy &amp; Docházka</span></div>
@@ -417,7 +555,7 @@ footer { color: var(--muted); font-size: 14px; }
           <li><b>Chybí jen odchod:</b> nad tlačítkem příchodu svítí červený pruh „⚠ Neuzavřený den …“. Klikněte na <span class="btn" style="background:#b91c1c">Doplnit odchod</span> a napište čas, např. 16:30.</li>
           <li><b>Chybí celý den:</b> v části <span class="pole">✏️ Ruční záznam</span> vyplňte Datum, Příchod, Odchod a Zakázku a klikněte na <span class="btn">Uložit</span>. U minulého dne je odchod povinný.</li>
           <li><b>Byl s kolegou:</b> v historii kolegy u stejného dne klikněte na <span class="btn g">📋 kopírovat</span>, zaškrtněte, komu se má den zapsat, a uložte.</li>
-          <li>Takto doplněný den pak schvalte jako ostatní (úkol 5).</li>
+          <li>Takto doplněný den pak schvalte jako ostatní (úkol 8).</li>
         </ol>
         <figure class="obr">
           <div class="m" aria-hidden="true">
@@ -443,7 +581,7 @@ footer { color: var(--muted); font-size: 14px; }
 
     <!-- 8 FAKTURA -->
     <section class="ukol" id="faktura">
-      <div class="skupina">Faktury · úkol 8</div>
+      <div class="skupina">Faktury · úkol 11</div>
       <h2>Vystavit fakturu ze zakázky</h2>
       <p class="kdy">Když je zakázka hotová a má se vyúčtovat. Položky se předvyplní z nákladů zakázky, které jsou schválené k fakturaci.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Fakturace</span><span class="s">→</span><span class="k">+ Nová faktura</span></div>
@@ -476,13 +614,13 @@ footer { color: var(--muted); font-size: 14px; }
           <figcaption>Volba „Ze zakázky“ a výběr zakázky.</figcaption>
         </figure>
       </div>
-      <div class="box pozor"><b>Pozor:</b> Položky, které ještě čekají na schválení, se do faktury nedostanou. Aplikace to napíše žlutě nad položkami. Nejdřív schvalte docházku (úkol 5).</div>
+      <div class="box pozor"><b>Pozor:</b> Položky, které ještě čekají na schválení, se do faktury nedostanou. Aplikace to napíše žlutě nad položkami. Nejdřív schvalte docházku (úkol 8).</div>
       <a class="zpet" href="#faktura">↑ Nahoru na úkol</a>
     </section>
 
     <!-- 9 DÍLČÍ -->
     <section class="ukol" id="dilci">
-      <div class="skupina">Faktury · úkol 9</div>
+      <div class="skupina">Faktury · úkol 12</div>
       <h2>Vystavit dílčí fakturu</h2>
       <p class="kdy">Když se zakázka fakturuje po částech (třeba 50 % po montáži, zbytek po předání) a bez rozpisu položek. Aplikace hlídá, kolik zbývá dofakturovat.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Fakturace</span><span class="s">→</span><span class="k">+ Nová faktura</span><span class="s">→</span><span class="k">✍️ Ručně</span></div>
@@ -519,7 +657,7 @@ footer { color: var(--muted); font-size: 14px; }
 
     <!-- 10 PAPÍR -->
     <section class="ukol" id="papir">
-      <div class="skupina">Faktury · úkol 10</div>
+      <div class="skupina">Faktury · úkol 13</div>
       <h2>Opsat výpočet z papíru</h2>
       <p class="kdy">Vedoucí někdy spočítá fakturu ručně na papíře a přiloží k ní fotku výpočtu. Vaším úkolem je čísla z fotky opsat. Aplikace je pak přepočítá a ukáže, jestli ve výpočtu není chyba.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Fakturace</span><span class="s">→</span><span class="k">otevřít fakturu</span><span class="s">→</span><span class="k">✍️ Papír</span></div>
@@ -557,7 +695,7 @@ footer { color: var(--muted); font-size: 14px; }
 
     <!-- 11 FRONTA -->
     <section class="ukol" id="fronta">
-      <div class="skupina">Faktury · úkol 11</div>
+      <div class="skupina">Faktury · úkol 14</div>
       <h2>Přiřadit přijatou fakturu</h2>
       <p class="kdy">Faktury od dodavatelů chodí e-mailem do fronty. U každého řádku faktury rozhodnete, kam náklad patří: k zakázce, na sklad, nebo do režie firmy.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Fakturace</span><span class="s">→</span><span class="k">🧾 Fronta k přiřazení</span></div>
@@ -594,7 +732,7 @@ footer { color: var(--muted); font-size: 14px; }
 
     <!-- 12 SKLAD -->
     <section class="ukol" id="sklad">
-      <div class="skupina">Sklad · úkol 12</div>
+      <div class="skupina">Sklad · úkol 15</div>
       <h2>Zapsat pohyb materiálu</h2>
       <p class="kdy">Když přijde materiál na sklad, nakládá se do auta, vrací se z auta nebo se vydává přímo na zakázku.</p>
       <div class="cesta"><span class="s">Kde:</span><span class="k">Sklad</span><span class="s">→</span><span class="k">🔄 Pohyby</span></div>
@@ -635,7 +773,7 @@ footer { color: var(--muted); font-size: 14px; }
         </figure>
       </div>
       <div class="box pozor"><b>Pozor:</b> Když se produkt nenajde (napíšete ho jinak než ve skladu), pohyb se zapíše jen do historie a stav skladu se nezmění. Vybírejte proto produkt vždy z nabídky.</div>
-      <div class="box tip"><b>Tip:</b> Materiál, který zapíšou montéři v docházce, nezapisujte znovu. Ze skladu se odepíše sám, když schválíte den (úkol 5).</div>
+      <div class="box tip"><b>Tip:</b> Materiál, který zapíšou montéři v docházce, nezapisujte znovu. Ze skladu se odepíše sám, když schválíte den (úkol 8).</div>
       <a class="zpet" href="#sklad">↑ Nahoru na úkol</a>
     </section>
 
