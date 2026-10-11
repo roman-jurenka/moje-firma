@@ -40,7 +40,9 @@ export async function nahratFotkuZakazky(puvodni, { slozka, contractId = null, p
   const file = pripraveno ? puvodni : await pripravitSoubor(puvodni, poradi);
   let url, storagePath, itemId = null;
   if (isConnected() || await connectSharedAccount()) {
-    const r = await uploadFileObject(`FirmaCRM/Zakázky/${bezpecnyNazev(slozka)}/${obrazek ? "Fotky" : "Dokumenty"}`, file);
+    // dokumenty a předávací protokol (i jako fotka/sken) do Dokumentů, ostatní obrázky do Fotek
+    const doDokumentu = !obrazek || ["Dokumenty", "Předávací protokol"].includes(kategorie);
+    const r = await uploadFileObject(`FirmaCRM/Zakázky/${bezpecnyNazev(slozka)}/${doDokumentu ? "Dokumenty" : "Fotky"}`, file);
     url = r.webUrl; itemId = r.itemId; storagePath = "onedrive:" + file.name;
   } else {
     const ext = (file.name || (obrazek ? "foto.jpg" : "soubor.bin")).split(".").pop();

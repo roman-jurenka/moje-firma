@@ -8,7 +8,7 @@ import { supabase } from "./supabase.js";
 import { OneDriveThumb } from "./storageUrl.jsx";
 import { seznamDokumentu, odkazNaDokumenty, ulozitDoDokumentu, zalozitSlozkuZakazky } from "./dokumentyOneDrive.js";
 import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js";
-import { pocetFotekText } from "./fotkyZakazky.js";
+import { pocetFotekText, pocetSouboruText, nahratFotkuZakazky, KATEGORIE_FOTEK } from "./fotkyZakazky.js";
 
 const karta = { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px" };
 const btnGhost = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 10, padding: "6px 11px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
@@ -18,7 +18,31 @@ const velikost = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1).replace(".", 
 const ikonaSouboru = (n) => (/\.(docx?|odt)$/i.test(n) ? "📝" : /\.(xlsx?|xlsm|csv)$/i.test(n) ? "📊" : /\.pdf$/i.test(n) ? "📕" : /\.html?$/i.test(n) ? "🌐" : /\.(jpe?g|png|heic|webp)$/i.test(n) ? "🖼" : "📄");
 
 // onDohrat({ druh, cislo? }) → Promise<boolean>: znovu vytvoří smlouvu / protokol / dodatek a nahraje ho.
-export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavrit, onFotka, onVsechnyFotky, onDohrat }) {
+export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavrit, onFotka, onVsechnyFotky, onDohrat, onNahrano, nahral = null }) {
+  // ── Nahrát do: vybraná kategorie (Dokumenty, Fotky z obhlídky, Po montáži…) ──
+  const [kam, setKam] = useState("Dokumenty");
+  const [prubehNahrani, setPrubehNahrani] = useState(null); // { hotovo, celkem }
+  const [tazeni, setTazeni] = useState(false);
+  const [zpravaNahrani, setZpravaNahrani] = useState(null); // { text, chyba }
+  const nahratSoubory = async (seznam) => {
+    const files = [...(seznam || [])];
+    if (!files.length || prubehNahrani) return;
+    setZpravaNahrani(null);
+    setPrubehNahrani({ hotovo: 0, celkem: files.length });
+    const nove = [], chyby = [];
+    for (const [i, f] of files.entries()) {
+      try {
+        nove.push(await nahratFotkuZakazky(f, { slozka, contractId: zak.contract_id || null, prubehId: zak.id, kategorie: kam, nahral, poradi: i + 1 }));
+      } catch (e) { chyby.push(`${f.name}: ${e.message || e}`); }
+      setPrubehNahrani({ hotovo: i + 1, celkem: files.length });
+    }
+    setPrubehNahrani(null);
+    if (nove.length) onNahrano?.(nove);
+    setZpravaNahrani(chyby.length
+      ? { chyba: true, text: `Nepodařilo se nahrát: ${chyby.join("; ")}` }
+      : { chyba: false, text: `✓ Nahráno ${pocetSouboruText(nove.length)} do „${kam}“` });
+    if (isConnected()) nactiSoubory();
+  };
   const [nahravam, setNahravam] = useState({}); // { [klíč řádku]: true }
   const [vysledek, setVysledek] = useState(null); // { text, chyba }
   const [nabidky, setNabidky] = useState(zak.quote_id ? null : []);
@@ -161,6 +185,25 @@ export default function SlozkaZakazky({ zak, slozka, fotky, nazevNabidky, onZavr
             ⚠ Na OneDrive se zatím neuložilo: {ceka.map((c) => (c.druh === "dodatek" ? `Dodatek č. ${c.cislo}` : c.druh === "smlouva" ? "Smlouva o dílo" : "Předávací protokol")).join(", ")} — „Zkusit znovu“ je v hlavičce zakázky.
           </div>
         )}
+
+        {/* Nahrát do */}
+        <div onDragOver={(e) => { e.preventDefault(); setTazeni(true); }} onDragLeave={() => setTazeni(false)}
+          onDrop={(e) => { e.preventDefault(); setTazeni(false); nahratSoubory(e.dataTransfer.files); }}
+          style={{ ...karta, borderStyle: "dashed", borderColor: tazeni ? "#0369a1" : "#cbd5e1", background: tazeni ? "#e0f2fe" : "#fff", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <label htmlFor="slozka-kam" style={{ fontSize: 13, fontWeight: 800 }}>⬆ Nahrát do</label>
+            <select id="slozka-kam" value={kam} onChange={(e) => setKam(e.target.value)} disabled={!!prubehNahrani}
+              style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: "7px 10px", fontSize: 14, fontFamily: "inherit" }}>
+              {KATEGORIE_FOTEK.map((k) => <option key={k} value={k}>{k === "Dokumenty" ? "📄 Dokumenty" : k === "Předávací protokol" ? "📋 Předávací protokol" : k === "Ostatní" ? "📎 Ostatní" : `📷 Fotky — ${k}`}</option>)}
+            </select>
+            <label style={{ ...btnGhost, background: "#0369a1", color: "#fff", borderColor: "#0369a1", cursor: prubehNahrani ? "default" : "pointer" }}>
+              {prubehNahrani ? `Nahrávám ${prubehNahrani.hotovo}/${prubehNahrani.celkem}…` : "Vybrat soubory"}
+              <input type="file" multiple style={{ display: "none" }} disabled={!!prubehNahrani} onChange={(e) => { const f = [...e.target.files]; e.target.value = ""; nahratSoubory(f); }} />
+            </label>
+          </div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>Fotky, PDF, Word i další soubory — víc najednou, nebo je sem přetáhni. Dokumenty a protokoly jdou na OneDrive do složky Dokumenty, fotky do složky Fotky.</div>
+          {zpravaNahrani && <div role={zpravaNahrani.chyba ? "alert" : "status"} style={{ fontSize: 13, fontWeight: 700, color: zpravaNahrani.chyba ? "#991b1b" : "#166534" }}>{zpravaNahrani.text}</div>}
+        </div>
 
         {/* Fotky */}
         <div style={karta}>
