@@ -14,7 +14,8 @@ import Servis from "./Servis.jsx";
 import RychlaObrazovka, { PracePruh } from "./RychlaObrazovka.jsx";
 import PushKarta from "./PushKarta.jsx";
 import InvoiceCreateFlow, { InvoicePreviewModal } from "./Invoicing.jsx";
-import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum, cisloFaktury } from "./invoicingUtils.js";
+import { downloadInvoicePDF, downloadReminderPDF, getInvoicePaymentInfo, exportInvoicesToExcel, nextInvNum, cisloFaktury, nastavFirmu, FIRMA_KEY } from "./invoicingUtils.js";
+import UdajeFirmy from "./UdajeFirmy.jsx";
 import { exportIsdoc } from "./isdoc.js";
 import ParovaniPlateb from "./ParovaniPlateb.jsx";
 import FrontaFaktur from "./FrontaFaktur.jsx";
@@ -1065,6 +1066,12 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     window.addEventListener("offline", goOffline);
     return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
   }, []);
+  // Údaje firmy pro faktury (hlavička, účet, kontakty) — Fakturace → Údaje firmy
+  useEffect(() => {
+    supabase.from("app_settings").select("value").eq("key", FIRMA_KEY).maybeSingle()
+      .then(({ data }) => { if (data?.value) nastavFirmu(data.value); });
+  }, []);
+
   useEffect(() => {
     const unsub = subscribeOfflineQueue(setOfflineQueueItems);
     initOfflineSync({
@@ -4230,6 +4237,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
 
   const [paidDraft, setPaidDraft] = useState({});
   const [parovani, setParovani] = useState(false); // okno Spárovat platby z výpisu
+  const [udajeFirmy, setUdajeFirmy] = useState(false); // okno Údaje firmy na faktuře
   const savePaidAmount = async (id, value) => {
     const paid_amount = Number(value) || 0;
     const prev = invoices.find(i => i.id === id);
@@ -4405,6 +4413,9 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
           <button onClick={() => setParovani(true)} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}
             title="Nahraj výpis z banky (GPC nebo CSV) a platby se spárují s fakturami podle VS">🏦 Spárovat platby z výpisu</button>
         )}
+        <button onClick={() => setUdajeFirmy(true)} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}
+          title="Název, sídlo, IČ/DIČ (kontrola podle ARES), kontakty a bankovní účet v hlavičce faktury">🏢 Údaje firmy</button>
+        {udajeFirmy && <UdajeFirmy onClose={() => setUdajeFirmy(false)} />}
         {parovani && (
           <ParovaniPlateb invoices={invoices} onClose={() => setParovani(false)}
             onUlozeno={(zmeny) => setInvoices(prev => prev.map(i => { const z = zmeny.find(x => x.id === i.id); return z ? { ...i, ...z.patch } : i; }))} />

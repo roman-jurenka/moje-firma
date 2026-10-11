@@ -15,7 +15,18 @@ export const COMPANY = {
   bankPrefix: "123",
   bankAccount: "8729910267",
   bankCode: "0100",
+  // kontakty v hlavičce faktury (doplní se v Fakturace → Údaje firmy)
+  mobil: "", tel: "", www: "", email: "", fax: "",
 };
+// Údaje firmy uložené v app_settings („firma_udaje“) — načtou se po přihlášení
+// a po úpravě v okně Údaje firmy. Výchozí hodnoty výše platí, dokud nic uloženo není.
+export const FIRMA_KEY = "firma_udaje";
+export function nastavFirmu(udaje) {
+  if (!udaje || typeof udaje !== "object") return;
+  for (const k of Object.keys(COMPANY)) if (udaje[k] != null) COMPANY[k] = String(udaje[k]);
+  COMPANY_IBAN = toIBAN(COMPANY);
+  COMPANY_ACCOUNT_DISPLAY = `${COMPANY.bankPrefix ? COMPANY.bankPrefix + "-" : ""}${COMPANY.bankAccount}/${COMPANY.bankCode}`;
+}
 
 const VAT_RATES = [0, 12, 21];
 
@@ -27,8 +38,8 @@ function toIBAN({ bankCode, bankPrefix, bankAccount }) {
   const check = String(98 - remainder).padStart(2, "0");
   return `CZ${check}${bban}`;
 }
-export const COMPANY_IBAN = toIBAN(COMPANY);
-export const COMPANY_ACCOUNT_DISPLAY = `${COMPANY.bankPrefix}-${COMPANY.bankAccount}/${COMPANY.bankCode}`;
+export let COMPANY_IBAN = toIBAN(COMPANY);
+export let COMPANY_ACCOUNT_DISPLAY = `${COMPANY.bankPrefix}-${COMPANY.bankAccount}/${COMPANY.bankCode}`;
 
 function buildSpd({ amount, vs, msg }) {
   const parts = ["SPD*1.0", `ACC:${COMPANY_IBAN}`, `AM:${Number(amount).toFixed(2)}`, "CC:CZK"];
@@ -252,6 +263,11 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   add(T(294.0, 42.1, "www:", { size: 6, color: "#333" }));
   add(T(377.9, 42.1, "fax:", { size: 6, color: "#333" }));
   add(T(290.8, 49.2, "e-mail:", { size: 6, color: "#333" }));
+  if (COMPANY.mobil) add(T(311.5, 35.0, COMPANY.mobil, { size: 6.5 }));
+  if (COMPANY.tel) add(T(392.0, 35.0, COMPANY.tel, { size: 6.5 }));
+  if (COMPANY.www) add(T(311.5, 42.1, COMPANY.www, { size: 6.5 }));
+  if (COMPANY.fax) add(T(392.0, 42.1, COMPANY.fax, { size: 6.5 }));
+  if (COMPANY.email) add(T(311.5, 49.2, COMPANY.email, { size: 6.5 }));
   if (barcodeDataUrl) add(`<img src="${barcodeDataUrl}" style="position:absolute; right:${(PAGE_W - 539.8 * PT).toFixed(2)}px; top:${(18 * PT).toFixed(2)}px; width:${(115 * PT).toFixed(2)}px; height:${(30 * PT).toFixed(2)}px;" />`);
 
   // Dělicí čára pod hlavičkou dodavatele, nad nadpisem "Faktura".
@@ -312,7 +328,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   add(T(45.2, 250.9, "Bankovní účet", { bold: true, size: 7.9 }));
   add(BOX(43.8, 201.0, 252.2, 267.7, { border: true }));
   add(BOX(206.9, 290.3, 252.2, 267.7, { border: true }));
-  add(T(82.4, 266.0, `${COMPANY.bankPrefix}-${COMPANY.bankAccount}`, { bold: true, size: 11 }));
+  add(T(82.4, 266.0, `${COMPANY.bankPrefix ? COMPANY.bankPrefix + "-" : ""}${COMPANY.bankAccount}`, { bold: true, size: 11 }));
   add(T(236.9, 266.0, COMPANY.bankCode, { bold: true, size: 11 }));
 
   // ── 7.7 Tabulka položek ──

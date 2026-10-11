@@ -15,6 +15,10 @@ const zFirmy = (s) => ({
   dic: s.dic || "",
   sidlo: s.sidlo?.textovaAdresa || [s.adresaDorucovaci?.radekAdresy1, s.adresaDorucovaci?.radekAdresy2, s.adresaDorucovaci?.radekAdresy3].filter(Boolean).join(", "),
   zanikla: !!s.datumZaniku,
+  // sídlo po částech (hlavička faktury): „Věry Pánkové 829/2“, „779 00“, „Olomouc“
+  ulice: s.sidlo ? `${s.sidlo.nazevUlice || s.sidlo.nazevCastiObce || s.sidlo.nazevObce || ""} ${s.sidlo.cisloDomovni || ""}${s.sidlo.cisloOrientacni ? "/" + s.sidlo.cisloOrientacni + (s.sidlo.cisloOrientacniPismeno || "") : ""}`.trim() : "",
+  psc: s.sidlo?.psc ? String(s.sidlo.psc).replace(/^(\d{3})(\d{2})$/, "$1 $2") : "",
+  obec: s.sidlo?.nazevObce || "",
 });
 
 // Firma podle IČO → { ico, nazev, dic, sidlo, zanikla }; null = IČO v ARES není.
