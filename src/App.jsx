@@ -1108,8 +1108,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       contract_photo: async (payload) => {
         let url, storagePath, itemId = null;
         if (isConnected()) {
-          const res = await uploadFileObject(payload.folder, payload.file);
-          url = res.webUrl; itemId = res.itemId; storagePath = "onedrive:" + payload.file.name;
+          const res = await uploadFileObject(payload.folder, payload.file, { prejmenovat: true });
+          url = res.webUrl; itemId = res.itemId; storagePath = "onedrive:" + (res.name || payload.file.name);
         } else {
           const ext = (payload.file.name || "foto.jpg").split(".").pop();
           const path = `${payload.contractId}/${crypto.randomUUID()}.${ext}`;

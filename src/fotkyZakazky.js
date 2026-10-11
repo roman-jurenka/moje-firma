@@ -25,25 +25,27 @@ export function unikatniNazev(file, poradi = 1) {
 }
 
 // Připravit soubor k nahrání: obrázek zmenšit, přejmenovat na unikátní název.
+// Dokumenty (PDF, Word…) si nechají původní název — při shodě ho OneDrive očísluje.
 export async function pripravitSoubor(puvodni, poradi = 1) {
-  const obrazek = jeObrazekSoubor(puvodni);
-  const f = obrazek ? await compressImage(puvodni) : puvodni;
-  return unikatniNazev(f, poradi);
+  if (!jeObrazekSoubor(puvodni)) return puvodni;
+  return unikatniNazev(await compressImage(puvodni), poradi);
 }
 
 export const jeObrazekSoubor = (file) => !!file && (String(file.type || "").startsWith("image/") || /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(file.name || ""));
 
 // Vrátí uložený řádek contract_photos, při chybě vyhodí výjimku.
 // pripraveno = soubor už prošel pripravitSoubor (offline fronta)
-export async function nahratFotkuZakazky(puvodni, { slozka, contractId = null, prubehId = null, ticketId = null, kategorie = null, nahral = null, popis = null, poradi = 1, pripraveno = false }) {
+// podslozka = cesta uvnitř Dokumentů / Fotek při nahrání celé složky („Revize 2026/Fotky“)
+export async function nahratFotkuZakazky(puvodni, { slozka, contractId = null, prubehId = null, ticketId = null, kategorie = null, nahral = null, popis = null, poradi = 1, pripraveno = false, podslozka = "" }) {
   const obrazek = jeObrazekSoubor(puvodni);
   const file = pripraveno ? puvodni : await pripravitSoubor(puvodni, poradi);
   let url, storagePath, itemId = null;
   if (isConnected() || await connectSharedAccount()) {
     // dokumenty a předávací protokol (i jako fotka/sken) do Dokumentů, ostatní obrázky do Fotek
     const doDokumentu = !obrazek || ["Dokumenty", "Předávací protokol"].includes(kategorie);
-    const r = await uploadFileObject(`FirmaCRM/Zakázky/${bezpecnyNazev(slozka)}/${doDokumentu ? "Dokumenty" : "Fotky"}`, file);
-    url = r.webUrl; itemId = r.itemId; storagePath = "onedrive:" + file.name;
+    const pod = String(podslozka || "").split("/").map((x) => bezpecnyNazev(x).trim()).filter(Boolean).join("/");
+    const r = await uploadFileObject(`FirmaCRM/Zakázky/${bezpecnyNazev(slozka)}/${doDokumentu ? "Dokumenty" : "Fotky"}${pod ? "/" + pod : ""}`, file, { prejmenovat: true });
+    url = r.webUrl; itemId = r.itemId; storagePath = "onedrive:" + (pod ? pod + "/" : "") + (r.name || file.name);
   } else {
     const ext = (file.name || (obrazek ? "foto.jpg" : "soubor.bin")).split(".").pop();
     const path = `${contractId || (prubehId ? `prubeh-${prubehId}` : "ostatni")}/${crypto.randomUUID()}.${ext}`;

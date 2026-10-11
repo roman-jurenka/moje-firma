@@ -250,8 +250,10 @@ async function graphPost(path, body) {
 }
 
 // ─── SLOŽKY ───────────────────────────────────────────────────────────────────
+const zalozeneSlozky = new Set(); // v tomhle okně už založené — při nahrání celé složky se nezakládají znovu
 async function ensureFolder(path) {
   // path = "FirmaCRM/Zakázky/Moje zakázka"
+  if (zalozeneSlozky.has(path)) return;
   const parts = path.split("/");
   let current = "";
   for (const part of parts) {
@@ -268,6 +270,7 @@ async function ensureFolder(path) {
       await graphPost(`/me/drive/root:/${zak[0]}:/children`, { name: "Dokumenty", folder: {}, "@microsoft.graph.conflictBehavior": "ignore" });
     } catch { /* složka už existuje */ }
   }
+  zalozeneSlozky.add(path);
 }
 
 // Založí složku (i s nadřazenými) — u složky zakázky vznikne i podsložka Dokumenty.
@@ -279,11 +282,13 @@ export async function vytvoritSlozku(path) {
 // Vrátí { webUrl, itemId } — webUrl je odkaz na otevření v OneDrive (nemusí
 // jít vždy použít přímo jako <img src>, viz getDirectDownloadUrl), itemId
 // slouží k pozdějšímu načtení čerstvého přímého odkazu na obsah souboru.
-export async function uploadFile(folderPath, fileName, content, contentType = "application/octet-stream") {
+// prejmenovat = když soubor se stejným názvem už existuje, OneDrive přidá číslo
+// (např. „zpráva 1.pdf“) místo přepsání.
+export async function uploadFile(folderPath, fileName, content, contentType = "application/octet-stream", { prejmenovat = false } = {}) {
   await ensureFolder(folderPath);
   const safeName = fileName.replace(/[/\\?%*:|"<>]/g, "_");
   const fullPath = `${folderPath}/${safeName}`;
-  const result = await graphPut(`/me/drive/root:/${fullPath}:/content`, content, contentType);
+  const result = await graphPut(`/me/drive/root:/${fullPath}:/content${prejmenovat ? "?@microsoft.graph.conflictBehavior=rename" : ""}`, content, contentType);
 
   // Vytvoř sharing link (na organizačních/firemních tenantech bývá anonymní
   // sdílení zakázané politikou — pak se použije autentizovaný webUrl, který
@@ -294,7 +299,7 @@ export async function uploadFile(folderPath, fileName, content, contentType = "a
     webUrl = share.link?.webUrl || result.webUrl;
   } catch { /* anonymní odkaz se nepovedlo vytvořit, použije se webUrl ze souboru */ }
 
-  return { webUrl, itemId: result.id };
+  return { webUrl, itemId: result.id, name: result.name || safeName };
 }
 
 // Odkaz ke sdílení celé složky (např. fotky zakázky pro objednatele) —
@@ -326,9 +331,9 @@ export async function seznamSlozky(folderPath) {
 }
 
 // Verze pro File objekt z input[type=file]
-export async function uploadFileObject(folderPath, file) {
+export async function uploadFileObject(folderPath, file, moznosti = {}) {
   const buffer = await file.arrayBuffer();
-  return uploadFile(folderPath, file.name, buffer, file.type || "application/octet-stream");
+  return uploadFile(folderPath, file.name, buffer, file.type || "application/octet-stream", moznosti);
 }
 
 // ─── ČERSTVÝ PŘÍMÝ ODKAZ NA OBSAH SOUBORU ─────────────────────────────────────
