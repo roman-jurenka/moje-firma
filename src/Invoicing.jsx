@@ -381,7 +381,12 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
             <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px" }}>
               <label style={{ ...labelStyle, marginTop: 0 }} htmlFor="fa-cislo-ucetni">Náhradní číslo faktury — když ji vystavila účetní ve svém programu (volitelné)</label>
               <input id="fa-cislo-ucetni" style={inputStyle} value={f.cisloUcetni} placeholder="např. FV-2026-0123"
-                onChange={e => set("cisloUcetni", e.target.value)} />
+                onChange={e => {
+                  // VS jde s číslem faktury: když byl prázdný nebo odpovídal dosavadnímu číslu, přepíše se na nové
+                  const nove = e.target.value, cislice = (t) => String(t || "").replace(/\D/g, "");
+                  const dosavadni = [f.cisloUcetni, editInvoice?.number, navrhCisla].map(cislice).filter(Boolean);
+                  setF(p => ({ ...p, cisloUcetni: nove, ...((!p.variableSymbol || dosavadni.includes(cislice(p.variableSymbol))) && cislice(nove) ? { variableSymbol: cislice(nove) } : {}) }));
+                }} />
               <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Když je vyplněné, ukazuje se místo našeho čísla v seznamu, na PDF, v QR platbě a upomínkách. Jde doplnit i později.</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
