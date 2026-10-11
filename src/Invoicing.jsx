@@ -223,7 +223,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
   useEffect(() => {
     if (isEdit) return undefined;
     let zruseno = false;
-    supabase.from("invoices").select("number").then(({ data }) => { if (!zruseno && data) setNavrhCisla(nextInvNum(data)); });
+    supabase.from("invoices").select("number, cislo_ucetni").then(({ data }) => { if (!zruseno && data) setNavrhCisla(nextInvNum(data)); });
     return () => { zruseno = true; };
   }, [isEdit]);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));

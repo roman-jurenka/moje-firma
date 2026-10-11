@@ -593,13 +593,18 @@ export const cisloFaktury = (inv) => (inv?.cislo_ucetni && String(inv.cislo_ucet
 // použité v daném roce + 1. Volá se s čerstvě načtenými čísly z databáze;
 // srážku dvou souběžných faktur hlídá UNIQUE na invoices.number (volající
 // při chybě 23505 zkusí znovu).
+// Další číslo = nejvyšší pořadí letošního roku + 1. Počítá se i s čísly od
+// účetní (cislo_ucetni ve stejném tvaru RRRRNNNNN), aby číslování navázalo na
+// účetnictví (např. po 202600040 následuje 202600041).
 export const nextInvNum = (invoices) => {
   const prefix = String(new Date().getFullYear());
+  const re = new RegExp(`^${prefix}(\\d{5})$`);
   const maxSeq = invoices.reduce((max, inv) => {
-    const num = String(inv.number || "");
-    if (!num.startsWith(prefix)) return max;
-    const seq = parseInt(num.slice(prefix.length), 10);
-    return isNaN(seq) ? max : Math.max(max, seq);
+    for (const num of [inv.number, inv.cislo_ucetni]) {
+      const m = String(num || "").trim().match(re);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    return max;
   }, 0);
   return `${prefix}${String(maxSeq + 1).padStart(5, "0")}`;
 };

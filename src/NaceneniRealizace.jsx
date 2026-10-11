@@ -187,7 +187,7 @@ export default function NaceneniRealizace({ zak, zakaznik, kodZakazky, slozka, s
     const splatno = zaDni(Number(zakaznik?.payment_terms_days) || 14);
     let row = null;
     for (let pokus = 0; pokus < 5 && !row; pokus++) {
-      const { data: cisla } = await supabase.from("invoices").select("number");
+      const { data: cisla } = await supabase.from("invoices").select("number, cislo_ucetni");
       const cisloF = nextInvNum(cisla || []);
       const { data, error } = await supabase.from("invoices").insert({
         number: cisloF, customer_id: zak.customer_id, amount: total - totalTax, tax: totalTax, status: "Čeká",

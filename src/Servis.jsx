@@ -728,7 +728,7 @@ function NaceneniAFaktura({ t, zakaznik, naklady, setNaklady, onZmena, onFaktura
     let row = null;
     // Číslo faktury stejně jako ve Fakturaci; při srážce dvou faktur zkusit další.
     for (let pokus = 0; pokus < 5 && !row; pokus++) {
-      const { data: cisla } = await supabase.from("invoices").select("number");
+      const { data: cisla } = await supabase.from("invoices").select("number, cislo_ucetni");
       const cislo = nextInvNum(cisla || []);
       const { data, error } = await supabase.from("invoices").insert({
         number: cislo, customer_id: t.customer_id, amount: total - totalTax, tax: totalTax, status: "Čeká",

@@ -4107,7 +4107,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
   // constraint na invoices.number, takže duplicitní číslo nikdy neprojde
   // (audit-zakazky-fakturace.md, bod 2).
   const saveFromFlow = async (f, attempt = 0) => {
-    const { data: freshNumbers } = await supabase.from("invoices").select("number");
+    const { data: freshNumbers } = await supabase.from("invoices").select("number, cislo_ucetni");
     const invNum = nextInvNum(freshNumbers || invoices);
     const { data: row, error } = await supabase.from("invoices").insert({
       number: invNum, customer_id: Number(f.customerId), amount: f.amount,
