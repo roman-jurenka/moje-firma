@@ -10,7 +10,7 @@ import { efektivniHodinyZaznamu } from "./denniZapis.js";
 import { PodkladyFormular } from "./PodkladyZakazky.jsx";
 import ProhlizecFotek from "./ProhlizecFotek.jsx";
 import { StavFakturace } from "./FakturaZakazka.jsx";
-import { nahratFotkuZakazky, pripravitSoubor, jeObrazekSoubor, KATEGORIE_FOTEK, pocetSouboruText } from "./fotkyZakazky.js";
+import { nahratFotkuZakazky, pripravitSoubor, jeObrazekSoubor, KATEGORIE_FOTEK, pocetSouboruText, polozkySouboru, souboryZPretazeni } from "./fotkyZakazky.js";
 import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import { normalizujTyp, TYPY } from "./prubehFaze.js";
 
@@ -1902,7 +1902,8 @@ function PhotosTab({ photos, contract, currentUser, setPhotos }) {
   const fileRef = useRef();
 
   const handleFiles = async (fileList) => {
-    const files = [...(fileList || [])];
+    const polozky = polozkySouboru(fileList);
+    const files = polozky.map(x => x.file);
     if (!files.length) return;
     let nahrano = 0, vefronte = 0;
     setPrubeh({ hotovo: 0, celkem: files.length });
@@ -1911,12 +1912,14 @@ function PhotosTab({ photos, contract, currentUser, setPhotos }) {
         // připravit (zmenšit, unikátní název) a nahrát; bez signálu do fronty v zařízení
         const file = await pripravitSoubor(puvodni, i + 1);
         const slozka = (contract.name || String(contract.id)).replace(/[/\\?%*:|"<>]/g, "_");
+        const cesta = polozky[i].cesta;
+        const doDokumentu = !jeObrazekSoubor(puvodni) || ["Dokumenty", "Předávací protokol"].includes(kam);
         const payload = {
-          file, contractId: contract.id, folder: `FirmaCRM/Zakázky/${slozka}/${jeObrazekSoubor(puvodni) ? "Fotky" : "Dokumenty"}`,
-          date: new Date().toLocaleDateString("sv-SE"), description: desc || null, category: kam || null, uploadedBy: currentUser?.employeeId || null,
+          file, contractId: contract.id, folder: `FirmaCRM/Zakázky/${slozka}/${doDokumentu ? "Dokumenty" : "Fotky"}${cesta ? "/" + cesta : ""}`,
+          date: new Date().toLocaleDateString("sv-SE"), description: desc || (cesta ? `${cesta}/${puvodni.name}` : null), category: kam || null, uploadedBy: currentUser?.employeeId || null,
         };
         const res = await tryOrQueue("contract_photo", `Fotka ${contract.name || contract.id}`, payload, (p) => nahratFotkuZakazky(p.file, {
-          slozka: contract.name || String(contract.id), contractId: p.contractId, kategorie: p.category, popis: p.description, nahral: p.uploadedBy, pripraveno: true,
+          slozka: contract.name || String(contract.id), contractId: p.contractId, kategorie: p.category, popis: p.description, nahral: p.uploadedBy, pripraveno: true, podslozka: cesta,
         }));
         if (res.queued) vefronte++;
         else if (res.result) { setPhotos(prev => [...prev, res.result]); nahrano++; }
@@ -1957,7 +1960,7 @@ function PhotosTab({ photos, contract, currentUser, setPhotos }) {
     <div>
       {/* Nahrání */}
       <div onDragOver={e => { e.preventDefault(); setTazeni(true); }} onDragLeave={() => setTazeni(false)}
-        onDrop={e => { e.preventDefault(); setTazeni(false); if (!prubeh) handleFiles(e.dataTransfer.files); }}
+        onDrop={async e => { e.preventDefault(); setTazeni(false); if (!prubeh) handleFiles(await souboryZPretazeni(e.dataTransfer)); }}
         style={{ background: tazeni ? "#e0f2fe" : "#f8fafc", border: `2px dashed ${tazeni ? "#0369a1" : "#e2e8f0"}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "end" }}>
           <div>
@@ -1975,10 +1978,17 @@ function PhotosTab({ photos, contract, currentUser, setPhotos }) {
             onClick={() => { if (!kam && !window.confirm("Není vybraná kategorie („Kam“). Nahrát fotky bez zařazení?")) return; fileRef.current?.click(); }}>
             {prubeh ? `Nahrávám ${prubeh.hotovo}/${prubeh.celkem}…` : "📷 Vybrat fotky / soubory"}
           </button>
+          {!prubeh && (
+            <label style={{ ...S.btn("#fff"), color: "#334155", border: "1px solid #cbd5e1", padding: "10px 16px", cursor: "pointer", textAlign: "center" }} title="Nahraje celou složku i s podsložkami">
+              📁 Vybrat složku
+              <input type="file" multiple webkitdirectory="" directory="" style={{ display: "none" }}
+                onChange={e => { const files = [...e.target.files]; e.target.value = ""; handleFiles(files); }} />
+            </label>
+          )}
         </div>
         <input ref={fileRef} type="file" multiple style={{ display: "none" }}
           onChange={e => { const files = [...e.target.files]; e.target.value = ""; handleFiles(files); }} />
-        <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>Můžeš vybrat víc fotek naráz nebo je sem přetáhnout. Jde nahrát i PDF, Word a další soubory.</div>
+        <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>Můžeš vybrat víc fotek naráz, celou složku i s podsložkami, nebo je sem přetáhnout. Jde nahrát i PDF, Word a další soubory.</div>
         {prubeh && (
           <div style={{ height: 6, background: "#e2e8f0", borderRadius: 3, marginTop: 8, overflow: "hidden" }} role="progressbar" aria-valuenow={prubeh.hotovo} aria-valuemax={prubeh.celkem}>
             <div style={{ height: "100%", width: `${(prubeh.hotovo / prubeh.celkem) * 100}%`, background: "#0369a1", transition: "width .2s" }} />

@@ -62,5 +62,36 @@ export async function nahratFotkuZakazky(puvodni, { slozka, contractId = null, p
   return data;
 }
 
+// Vybrané nebo přetažené soubory → [{ file, cesta }]; cesta = podsložka při nahrání
+// celé složky (z webkitRelativePath). Systémové a dočasné soubory se vynechají.
+export function polozkySouboru(seznam) {
+  return [...(seznam || [])]
+    .map((x) => (x instanceof File ? { file: x, cesta: (x.webkitRelativePath || "").split("/").slice(0, -1).join("/") } : x))
+    .filter((x) => x?.file && !/^(\.ds_store|thumbs\.db|desktop\.ini)$/i.test(x.file.name) && !x.file.name.startsWith("~$"));
+}
+
+// Přetažené soubory i složky (drag & drop) → [{ file, cesta }]; složky se projdou rekurzivně.
+// Položky se musí převzít hned při události (než doběhne první await).
+export async function souboryZPretazeni(dt) {
+  const polozky = [...(dt?.items || [])].map((it) => it.webkitGetAsEntry?.()).filter(Boolean);
+  if (!polozky.length) return [...(dt?.files || [])];
+  const out = [];
+  const projit = async (entry, cesta) => {
+    if (entry.isFile) {
+      out.push({ file: await new Promise((ok, chyba) => entry.file(ok, chyba)), cesta });
+    } else if (entry.isDirectory) {
+      const ctenar = entry.createReader();
+      const nova = cesta ? `${cesta}/${entry.name}` : entry.name;
+      for (;;) {
+        const davka = await new Promise((ok, chyba) => ctenar.readEntries(ok, chyba));
+        if (!davka.length) break;
+        for (const e of davka) await projit(e, nova);
+      }
+    }
+  };
+  for (const e of polozky) await projit(e, "");
+  return out;
+}
+
 export const pocetFotekText = (n) => `${n} ${n === 1 ? "fotka" : n < 5 ? "fotky" : "fotek"}`;
 export const pocetSouboruText = (n) => `${n} ${n === 1 ? "soubor" : n < 5 ? "soubory" : "souborů"}`;

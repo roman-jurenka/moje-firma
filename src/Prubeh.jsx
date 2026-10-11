@@ -4,6 +4,7 @@ import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { nahratFotkuZakazky, pocetFotekText, pocetSouboruText, jeObrazekSoubor, KATEGORIE_FOTEK } from "./fotkyZakazky.js";
 import ProhlizecFotek from "./ProhlizecFotek.jsx";
+import NahratDoZakazky from "./NahratDoZakazky.jsx";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
@@ -2901,14 +2902,18 @@ export default function Prubeh({
     const kFotky = <div id="pr-fotky-karta" style={{ ...karta, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontWeight: 800, fontSize: 16 }}>📷 Fotky zakázky{vsechnyFotky.length ? ` (${vsechnyFotky.length})` : ""}</div>
-            {otevrena && (
-              <select aria-label="Nahrát fotky do kategorie" value="" disabled={!!nahravam} style={{ ...inp, width: "auto", padding: "5px 8px", fontSize: 13 }}
-                onChange={(e) => { if (e.target.value) vybratFotkyKategorie(z, e.target.value); }}>
-                <option value="">{nahravam ? "Nahrávám…" : "+ Nahrát fotky do…"}</option>
-                {poradiKat.map((k) => <option key={k} value={k}>{k}</option>)}
-              </select>
-            )}
           </div>
+          {otevrena && (
+            <NahratDoZakazky id={`pr-${z.id}`} slozka={contractById(z.contract_id)?.name || z.nazev || String(z.id)} contractId={z.contract_id || null} prubehId={z.id}
+              nahral={currentUser?.employeeId || null} vychoziKam={poradiKat[0]} kategorie={[...new Set([...poradiKat, ...KATEGORIE_FOTEK])]}
+              onNahrano={async (nove, kat) => {
+                setFotkyZ((m) => ({ ...m, [z.id]: [...nove, ...(m[z.id] || [])] }));
+                // úkol „fotky uložené“ té kategorie se po nahrání sám odškrtne (jako u tlačítek u úkolů)
+                const f = fazeById[z.faze];
+                const ukol = (f ? ukolyPro(f, z.typ) : []).find((u) => u.fotky === kat && !ukolHotovy(z, f, u, autoZ(z)));
+                if (ukol) await toggleUkol(z, f, ukol);
+              }} />
+          )}
           {vsechnyFotky.length === 0 ? (
             <div style={{ fontSize: 13, color: "#94a3b8" }}>Zatím žádné fotky — nahrávají se u úkolů fází (obhlídka, montáž) nebo tady.</div>
           ) : <>
