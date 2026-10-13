@@ -40,7 +40,7 @@ const ZAKLAD_FAZI = [
   ] },
 
   { id: "zaloha", sekce: "bo", nazev: "Záloha", typy: { SRV: "o", REA: "-" }, ukoly: [
-    { id: "faktura", text: "Zálohová faktura vystavená" },
+    { id: "faktura", text: "Zálohová faktura vystavená", zalohovaFaktura: true },
     { id: "zaplacena", text: "Záloha zaplacená", brana: true },
   ] },
   { id: "dokumentace", sekce: "bo", nazev: "Dokumentace", typy: { FVR: "o", SRV: "-", HRM: "o", ELK: "o", REA: "-" }, ukoly: [
