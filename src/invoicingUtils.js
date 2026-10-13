@@ -438,7 +438,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
     const rcTop = Math.max(celkemTop, poznTop) + 30;
     add(T(42.5, rcTop, "Daň odvede zákazník (reverse charge).", { size: 7.9 }));
     const sazby = [[21, "základní"], [12, "snížené"]].filter(([s]) => Math.abs(byRate[s].zaklad) > 0.004);
-    sazby.forEach(([s, nazev], k) => add(T(42.5, rcTop + 22 + k * 11, `Pro režim Přenesení daň. povinnosti v ${nazev} sazbě DPH činí základ: ${fmtKc2(byRate[s].zaklad)} Kč`, { size: 7.9 })));
+    sazby.forEach(([s, nazev], k) => add(T(42.5, rcTop + 22 + k * 11, `Pro režim Přenesení daň. povinnosti v ${nazev} sazbě DPH činí základ: ${fmtKc2(byRate[s].zaklad * (1 - discountPercent / 100))} Kč`, { size: 7.9 })));
     rcKonec = rcTop + 22 + Math.max(0, sazby.length - 1) * 11;
   }
 
