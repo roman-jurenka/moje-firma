@@ -445,7 +445,8 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
                 <input type="checkbox" disabled={locked} checked={f.prenesenaDph} onChange={e => {
                   const zapnuto = e.target.checked;
                   // u přenesené povinnosti má položka sazbu (většinou 21 %), DPH se jen neúčtuje — 0 % se přepne na 21 %
-                  setF(p => ({ ...p, prenesenaDph: zapnuto, items: zapnuto ? p.items.map(it => (Number(it.vatRate) === 0 ? { ...it, vatRate: 21 } : it)) : p.items }));
+                  // (záporné řádky = odečet zaplacené zálohy zůstávají v 0 %, „bez uvedené sazby“)
+                  setF(p => ({ ...p, prenesenaDph: zapnuto, items: zapnuto ? p.items.map(it => (Number(it.vatRate) === 0 && (Number(it.qty) || 0) * (Number(it.price) || 0) >= 0 ? { ...it, vatRate: 21 } : it)) : p.items }));
                 }} />
                 Přenesená daňová povinnost (DPH odvede zákazník)
               </label>
