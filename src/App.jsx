@@ -4341,7 +4341,11 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
       if (!`${inv.number} ${inv.cislo_ucetni || ""} ${cust?.name || ""}`.toLowerCase().includes(q)) return false;
     }
     return true;
-  });
+  })
+    // nejnovější nahoře: datum vystavení, pak číslo faktury (i od účetní), pak čas založení
+    .sort((a, b) => String(b.issued || "").localeCompare(String(a.issued || ""))
+      || String(cisloFaktury(b)).localeCompare(String(cisloFaktury(a)), "cs", { numeric: true })
+      || String(b.created_at || "").localeCompare(String(a.created_at || "")));
 
   return (
     <>
