@@ -442,7 +442,11 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
                 Dílčí faktura (bez rozpisu) — počítá se, kolik zbývá dofakturovat
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }} title="§ 92a zákona o DPH — stavební a montážní práce pro plátce DPH">
-                <input type="checkbox" disabled={locked} checked={f.prenesenaDph} onChange={e => set("prenesenaDph", e.target.checked)} />
+                <input type="checkbox" disabled={locked} checked={f.prenesenaDph} onChange={e => {
+                  const zapnuto = e.target.checked;
+                  // u přenesené povinnosti má položka sazbu (většinou 21 %), DPH se jen neúčtuje — 0 % se přepne na 21 %
+                  setF(p => ({ ...p, prenesenaDph: zapnuto, items: zapnuto ? p.items.map(it => (Number(it.vatRate) === 0 ? { ...it, vatRate: 21 } : it)) : p.items }));
+                }} />
                 Přenesená daňová povinnost (DPH odvede zákazník)
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
