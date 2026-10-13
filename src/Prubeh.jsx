@@ -5,6 +5,7 @@ import Docxtemplater from "docxtemplater";
 import { nahratFotkuZakazky, pocetFotekText, pocetSouboruText, jeObrazekSoubor, KATEGORIE_FOTEK } from "./fotkyZakazky.js";
 import ProhlizecFotek from "./ProhlizecFotek.jsx";
 import NahratDoZakazky from "./NahratDoZakazky.jsx";
+import ZalohovaFaktura from "./ZalohovaFaktura.jsx";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
@@ -309,6 +310,7 @@ export default function Prubeh({
 
   // ── Odvozené hodnoty ──
   const quoteById = (id) => quotes.find((q) => q.id === id);
+  const [zalohaZakId, setZalohaZakId] = useState(null); // otevřený formulář zálohové faktury (fáze Záloha)
   const contractById = (id) => contracts.find((k) => k.id === id);
   const autoZ = (z) => {
     const q = z.quote_id ? quoteById(z.quote_id) : null;
@@ -2656,12 +2658,35 @@ export default function Prubeh({
                             💰 {z.naceneni_rea?.invoice_number ? `Faktura ${z.naceneni_rea.invoice_number}` : "Nacenění a faktura"}
                           </button>
                         )}
+                        {u.zalohovaFaktura && otevrena && (
+                          <button type="button" style={tlAkce} onClick={(e) => akce(e, () => setZalohaZakId(zalohaZakId === z.id ? null : z.id))}>
+                            🧾 Vystavit zálohovou fakturu
+                          </button>
+                        )}
                         {u.email && (
                           <button type="button" style={tlAkce} onClick={(e) => akce(e, () => otevritUzaviraciEmail(z))}>
                             <i className="ti ti-mail" aria-hidden="true"></i> Připravit uzavírací e-mail
                           </button>
                         )}
                       </label>
+
+                      {u.zalohovaFaktura && zalohaZakId === z.id && (() => {
+                        const q = z.quote_id ? quoteById(z.quote_id) : null;
+                        const k = contractById(z.contract_id);
+                        return (
+                          <ZalohovaFaktura zak={z} contract={k} zakaznik={zakaznik(z.customer_id)}
+                            cenaBezDph={konecnaCenaNabidky(q?.data).bez || Number(z.hodnota) || Number(k?.price) || 0}
+                            dphPct={Number(q?.data?.zakaznik?.dph ?? 21)}
+                            onZavrit={() => setZalohaZakId(null)}
+                            onVystaveno={async (row, proc) => {
+                              setZalohaZakId(null);
+                              const cislo = row.cislo_ucetni || row.number;
+                              await pridatPoznamku(z, `Vystavena zálohová faktura ${cislo} (${String(proc).replace(".", ",")} %).`, true);
+                              if (!hot) await toggleUkol(z, f, u);
+                              ukazHlasku(`✓ Zálohová faktura ${cislo} vystavená — najdeš ji ve Fakturaci`);
+                            }} />
+                        );
+                      })()}
 
                       {u.udaje && zAuto && udajeForm?.id !== z.id && (
                         <div style={{ padding: "0 12px 10px 40px", fontSize: 13, color: "#475569" }}>
