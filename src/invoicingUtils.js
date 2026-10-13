@@ -420,13 +420,17 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   // ── 7.9 Souhrn k úhradě — kotveno na recTop stejně jako rekapitulace, aby
   // se nepřekrývalo s tabulkou položek při větším počtu řádků (offsety
   // odpovídají rozestupům z referenčního vzoru se 2 položkami). ──
-  const slevaTop = recTop + 27.1, celkemUhrTop = recTop + 44.0, zbyvaTop = recTop + 61.0, poznTop = recTop + 76.0;
+  const slevaTop = recTop + 27.1, celkemUhrTop = recTop + 44.0, uhrazenoTop = recTop + 61.0, zbyvaTop = recTop + 78.0, poznTop = recTop + 93.0;
   add(T(356.0, slevaTop, "Sleva v %:", { bold: true, size: 10.7 }));
   add(T(506.1, slevaTop, fmtKc2(discountPercent), { bold: true, size: 10.7, align: "right" }));
   add(T(319.4, celkemUhrTop, "Celkem k úhradě:", { bold: true, size: 10.7 }));
   add(T(506.3, celkemUhrTop, fmtKc2(toPay), { bold: true, size: 10.7, align: "right" }));
   add(BOX(514.4, 544.1, celkemUhrTop - 14.5, celkemUhrTop + 2.5, { fill: "#e6e6e6" }));
   add(T(522.5, celkemUhrTop, "Kč", { bold: true, size: 10.7 }));
+  // Zaplacená záloha se odečítá záporným řádkem v položkách (jako ve vzoru z Money S3),
+  // proto je tu 0,00 — řádek je kvůli shodě s formátem vzoru.
+  add(T(318.0, uhrazenoTop, "Uhrazeno zálohou:", { bold: true, size: 10.7 }));
+  add(T(506.3, uhrazenoTop, fmtKc2(0), { bold: true, size: 10.7, align: "right" }));
   add(T(334.9, zbyvaTop, "Zbývá uhradit:", { bold: true, size: 10.7 }));
   add(T(506.3, zbyvaTop, fmtKc2(remaining), { bold: true, size: 10.7, align: "right" }));
   add(T(327.5, poznTop, "Pozn.: částky obsahují zaokrouhlení.", { italic: true, size: 7.9 }));
@@ -436,10 +440,15 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   if (prenesena) {
     const rcTop = Math.max(celkemTop, poznTop) + 30;
     add(T(42.5, rcTop, "Daň odvede zákazník (reverse charge).", { size: 7.9 }));
-    // položky s 0 % (starší faktury) se u přenesené povinnosti počítají do základní sazby
-    const zakladSazby = { 21: byRate[21].zaklad + byRate[0].zaklad, 12: byRate[12].zaklad };
-    const sazby = [[21, "základní"], [12, "snížené"]].filter(([s]) => Math.abs(zakladSazby[s]) > 0.004);
-    sazby.forEach(([s, nazev], k) => add(T(42.5, rcTop + 22 + k * 11, `Pro režim Přenesení daň. povinnosti v ${nazev} sazbě DPH činí základ: ${fmtKc2(zakladSazby[s] * (1 - discountPercent / 100))} Kč`, { size: 7.9 })));
+    // 0 % (např. odečet zaplacené zálohy) se uvádí zvlášť „bez uvedené sazby“, ať je
+    // v základní sazbě vidět celá cena dodávky (jako v Money S3). Jen když je celá
+    // faktura v 0 % (starší faktury), počítá se 0 % do základní sazby jako dřív.
+    const jenNula = Math.abs(byRate[21].zaklad) <= 0.004 && Math.abs(byRate[12].zaklad) <= 0.004;
+    const zakladSazby = jenNula
+      ? { 0: 0, 21: byRate[0].zaklad, 12: 0 }
+      : { 0: byRate[0].zaklad, 21: byRate[21].zaklad, 12: byRate[12].zaklad };
+    const sazby = [[0, "bez uvedené sazby DPH"], [21, "v základní sazbě DPH"], [12, "ve snížené sazbě DPH"]].filter(([s]) => Math.abs(zakladSazby[s]) > 0.004);
+    sazby.forEach(([s, nazev], k) => add(T(42.5, rcTop + 22 + k * 11, `Pro režim Přenesení daň. povinnosti ${nazev} činí základ: ${fmtKc2(zakladSazby[s] * (1 - discountPercent / 100))} Kč`, { size: 7.9 })));
     rcKonec = rcTop + 22 + Math.max(0, sazby.length - 1) * 11;
   }
 
