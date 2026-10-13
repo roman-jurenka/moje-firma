@@ -4119,7 +4119,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
       discount_percent: f.discountPercent || 0,
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
-      dilci: !!f.dilci, pocitano_na_papire: !!f.pocitanoNaPapire,
+      dilci: !!f.dilci, pocitano_na_papire: !!f.pocitanoNaPapire, prenesena_dph: !!f.prenesenaDph,
     }).select().single();
     if (error) {
       // 23505 = unique_violation — dvě faktury se srazily na stejném čísle;
@@ -4165,7 +4165,7 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
       customer_ico: f.customerIco || null, customer_dic: f.customerDic || null,
       discount_percent: f.discountPercent || 0,
       constant_symbol: f.constantSymbol || null, specific_symbol: f.specificSymbol || null,
-      dilci: !!f.dilci, pocitano_na_papire: !!f.pocitanoNaPapire,
+      dilci: !!f.dilci, pocitano_na_papire: !!f.pocitanoNaPapire, prenesena_dph: !!f.prenesenaDph,
       updated_at: new Date().toISOString(),
     }).eq("id", f.id).select().single();
     if (error) { alert("Fakturu se nepodařilo uložit: " + error.message); return; }

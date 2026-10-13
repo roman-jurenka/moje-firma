@@ -62,11 +62,13 @@ function fmtDateCzPlain(v) {
 
 // Spočítá základ/DPH/celkem za řádek i souhrn podle sazby — používá se jak
 // ve formuláři (živý náhled), tak při generování PDF.
-export function computeInvoiceTotals(items) {
+// prenesena = přenesená daňová povinnost (reverse charge): DPH se neúčtuje,
+// sazba u položky zůstává (rekapitulace „základ v sazbě 21 %“).
+export function computeInvoiceTotals(items, prenesena = false) {
   const lines = (items || []).map(it => {
     const zaklad = (Number(it.qty) || 0) * (Number(it.price) || 0);
     const rate = VAT_RATES.includes(Number(it.vatRate)) ? Number(it.vatRate) : 0;
-    const dph = zaklad * rate / 100;
+    const dph = prenesena ? 0 : zaklad * rate / 100;
     return { ...it, vatRate: rate, zaklad, dph, celkem: zaklad + dph };
   });
   const byRate = {};
@@ -237,17 +239,31 @@ function BOX(x0Pt, x1Pt, top0Pt, top1Pt, opts = {}) {
 // živý náhled na obrazovce, aby obojí vypadalo naprosto stejně. Souřadnice
 // odpovídají přesné specifikaci vzoru z Money S3 (viz konverzace) — každý
 // prvek je umístěný absolutně na milimetr přesně, ne přes flexbox odhad.
+// Adresa zákazníka na faktuře: řádky z adresy (víc řádků), nebo jeden řádek
+// rozdělený na ulici a „PSČ obec“ („Rapotín 824, 788 13 Rapotín“). Sídlo z ARES má přednost.
+export function adresaNaFakture(customer) {
+  const text = String(customer?.sidlo || customer?.address || "").trim();
+  if (!text) return { ulice: "", obec: "", stat: "" };
+  const radky = text.includes("\n") ? text.split("\n").map(s => s.trim()).filter(Boolean) : text.split(",").map(s => s.trim()).filter(Boolean);
+  const i = radky.findIndex(s => /^\d{3}\s?\d{2}\b/.test(s));
+  const psc = (s) => s.replace(/^(\d{3})\s?(\d{2})\b/, "$1 $2");
+  // ulice = první část s číslem domu (část obce z ARES „Nové Sady“ se vynechá)
+  if (i > 0) return { ulice: radky.slice(0, i).find(s => /\d/.test(s)) || radky[0], obec: psc(radky[i]), stat: radky.slice(i + 1).join(", ") || "Česká republika" };
+  return { ulice: radky[0], obec: radky.slice(1).join(", "), stat: "Česká republika" };
+}
+
 export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDataUrl) {
-  const { lines, byRate, total } = computeInvoiceTotals(invoice.items);
+  const prenesena = !!invoice.prenesena_dph;
+  const { lines, byRate, total } = computeInvoiceTotals(invoice.items, prenesena);
   const discountPercent = Number(invoice.discount_percent) || 0;
   const toPay = getDiscountedTotal(total, discountPercent);
   const remaining = invoice.status === "Zaplacena" ? 0 : toPay;
   const custName = customer?.company || customer?.name || "";
   const custPerson = customer?.company && customer?.name ? customer.name : "";
-  const addrParts = (customer?.address || "").split("\n").map(s => s.trim()).filter(Boolean);
-  const custStreet = addrParts[0] || "";
-  const custCity = addrParts.slice(1).join(", ");
-  const title = invoice.is_deposit ? "Faktura - záloha" : "Faktura";
+  const adresa = adresaNaFakture(customer);
+  const custStreet = adresa.ulice, custCity = adresa.obec, custCountry = adresa.stat;
+  const custIco = invoice.customer_ico || customer?.ico || "", custDic = invoice.customer_dic || customer?.dic || "";
+  const title = invoice.is_deposit ? "Faktura - záloha" : "Faktura - daňový doklad";
   const els = [];
   const add = (html) => { if (html) els.push(html); };
 
@@ -288,8 +304,9 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   if (custPerson) add(T(306.0, 141, custPerson, { bold: true, size: 7.9 }));
   add(T(303.2, 157.4, custStreet, { bold: true, size: 7.9 }));
   add(T(303.2, 168.7, custCity, { bold: true, size: 7.9 }));
-  add(TL(303.2, 194.7, "IČ:", invoice.customer_ico, { gapPt: 4 }));
-  add(TL(393.0, 194.7, "DIČ:", invoice.customer_dic, { gapPt: 4 }));
+  if (custCountry) add(T(303.2, 179.0, custCountry, { bold: true, size: 7.9 }));
+  add(TL(303.2, 194.7, "IČ:", custIco, { gapPt: 4 }));
+  add(TL(393.0, 194.7, "DIČ:", custDic, { gapPt: 4 }));
   add(LINE(303.2, 539.8, 202, {}));
   add(T(303.2, 212.6, "Konečný příjemce", { bold: true, size: 7.9 }));
   add(T(385.3, 209.1, "e-mail:", { size: 6, color: "#333" }));
@@ -298,6 +315,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   if (custPerson) add(T(305.4, 242, custPerson, { size: 7.9 }));
   add(T(303.2, 248.7, custStreet, { size: 7.9 }));
   add(T(303.2, 258.7, custCity, { size: 7.9 }));
+  if (custCountry) add(T(303.2, 268.7, custCountry, { size: 7.9 }));
 
   // ── 7.4 QR platba ──
   add(`<img src="${qrDataUrl}" style="position:absolute; left:${(193.84 * PT).toFixed(2)}px; top:${(86.08 * PT).toFixed(2)}px; width:${(92.44 * PT).toFixed(2)}px; height:${(92.44 * PT).toFixed(2)}px;" />`);
@@ -322,6 +340,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   add(BOX(206.9, 290.3, 211.1, 222.4, { fill: "#e6e6e6" }));
   add(T(208.2, 221.1, vs, { bold: true, size: 7.9 }));
   add(TL(165.8, 232.5, "specifický:", invoice.specific_symbol || "", { labelBold: false, valueBold: false, gapPt: 5 }));
+  if (!invoice.is_deposit) add(TL(48.0, 232.5, "zd. plnění:", fmtDateCzPlain(invoice.duzp || invoice.issued), { labelBold: false, valueBold: false, gapPt: 5 }));
 
   // ── 7.6 Bankovní účet ──
   add(BOX(43.8, 127.3, 240.8, 252.1, { fill: "#e6e6e6" }));
@@ -413,8 +432,18 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   add(T(506.3, zbyvaTop, fmtKc2(remaining), { bold: true, size: 10.7, align: "right" }));
   add(T(327.5, poznTop, "Pozn.: částky obsahují zaokrouhlení.", { italic: true, size: 7.9 }));
 
+  // ── Přenesená daňová povinnost (§ 92a zákona o DPH) ──
+  let rcKonec = poznTop;
+  if (prenesena) {
+    const rcTop = Math.max(celkemTop, poznTop) + 30;
+    add(T(42.5, rcTop, "Daň odvede zákazník (reverse charge).", { size: 7.9 }));
+    const sazby = [[21, "základní"], [12, "snížené"]].filter(([s]) => Math.abs(byRate[s].zaklad) > 0.004);
+    sazby.forEach(([s, nazev], k) => add(T(42.5, rcTop + 22 + k * 11, `Pro režim Přenesení daň. povinnosti v ${nazev} sazbě DPH činí základ: ${fmtKc2(byRate[s].zaklad)} Kč`, { size: 7.9 })));
+    rcKonec = rcTop + 22 + Math.max(0, sazby.length - 1) * 11;
+  }
+
   // ── 7.10 Patička ──
-  const footerTop = Math.max(558.9, poznTop + 40);
+  const footerTop = Math.max(558.9, poznTop + 40, rcKonec + 30);
   add(LINE(400, 539.8, footerTop - 12, {}));
   add(T(446.3, footerTop, "Razítko a podpis", { size: 8 }));
 
@@ -424,7 +453,7 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
 
 // Připraví data pro živý náhled faktury na obrazovce (stejný vzhled jako PDF).
 export async function buildInvoicePreview(invoice, customer) {
-  const { total } = computeInvoiceTotals(invoice.items);
+  const { total } = computeInvoiceTotals(invoice.items, invoice.prenesena_dph);
   const toPay = getDiscountedTotal(total, invoice.discount_percent);
   const [{ vs, qrDataUrl }, barcodeDataUrl] = await Promise.all([
     getInvoiceQr(invoice, toPay), getInvoiceBarcode(cisloFaktury(invoice)),
@@ -444,7 +473,7 @@ export async function downloadInvoicePDF(invoice, customer) {
   ]);
   const html2canvas = html2canvasMod.default;
 
-  const { total } = computeInvoiceTotals(invoice.items);
+  const { total } = computeInvoiceTotals(invoice.items, invoice.prenesena_dph);
   const toPay = getDiscountedTotal(total, invoice.discount_percent);
   const [{ vs, qrDataUrl }, barcodeDataUrl] = await Promise.all([
     getInvoiceQr(invoice, toPay), getInvoiceBarcode(cisloFaktury(invoice)),

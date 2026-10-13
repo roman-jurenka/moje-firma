@@ -50,7 +50,8 @@ export function invoiceToIsdoc(inv, customer) {
   const sleva = Number(inv.discount_percent) || 0;
   const k = sleva > 0 ? (1 - sleva / 100) : 1;
   const polozky = (inv.items || []).map((it) => ({ ...it, price: (Number(it.price) || 0) * k }));
-  const { lines, byRate, total, totalTax } = computeInvoiceTotals(polozky);
+  const prenesena = !!inv.prenesena_dph;
+  const { lines, byRate, total, totalTax } = computeInvoiceTotals(polozky, prenesena);
   const zaklad = total - totalTax;
   const cislo = cisloFaktury(inv);
   const zaloha = !!inv.is_deposit;
@@ -79,7 +80,7 @@ export function invoiceToIsdoc(inv, customer) {
       <DifferenceTaxInclusiveAmount>${n2(v.celkem)}</DifferenceTaxInclusiveAmount>
       <TaxCategory><Percent>${rate}</Percent></TaxCategory>
     </TaxSubTotal>`).join("");
-  const kUhrade = getDiscountedTotal(computeInvoiceTotals(inv.items || []).total, sleva);
+  const kUhrade = getDiscountedTotal(computeInvoiceTotals(inv.items || [], prenesena).total, sleva);
   const odberatel = strana({
     nazev: customer?.company || customer?.name || "",
     ico: inv.customer_ico || customer?.ico || "", dic: inv.customer_dic || customer?.dic || "",
@@ -96,7 +97,7 @@ export function invoiceToIsdoc(inv, customer) {
   <TaxPointDate>${x(inv.issued)}</TaxPointDate>
   <VATApplicable>true</VATApplicable>
   <ElectronicPossibilityAgreementReference></ElectronicPossibilityAgreementReference>
-  <Note>${x(inv.order_ref ? `Objednávka / zakázka: ${inv.order_ref}` : "")}</Note>
+  <Note>${x([inv.order_ref ? `Objednávka / zakázka: ${inv.order_ref}` : "", prenesena ? "Daň odvede zákazník (reverse charge) — přenesená daňová povinnost podle § 92a zákona o DPH." : ""].filter(Boolean).join(" "))}</Note>
   <LocalCurrencyCode>CZK</LocalCurrencyCode>
   <CurrRate>1</CurrRate>
   <RefCurrRate>1</RefCurrRate>

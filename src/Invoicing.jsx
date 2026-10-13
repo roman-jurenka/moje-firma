@@ -204,7 +204,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     constantSymbol: editInvoice.constant_symbol || "", specificSymbol: editInvoice.specific_symbol || "",
     variableSymbol: editInvoice.variable_symbol || (editInvoice.number || "").replace(/\D/g, ""),
     cisloUcetni: editInvoice.cislo_ucetni || "",
-    dilci: !!editInvoice.dilci, pocitanoNaPapire: !!editInvoice.pocitano_na_papire,
+    dilci: !!editInvoice.dilci, pocitanoNaPapire: !!editInvoice.pocitano_na_papire, prenesenaDph: !!editInvoice.prenesena_dph,
     items: (editInvoice.items && editInvoice.items.length) ? editInvoice.items : [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
   } : {
     customerId: "", invoiceType: "vydaná", isDeposit: false, orderRef: "",
@@ -212,7 +212,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
     due: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     status: "Čeká", customerIco: "", customerDic: "", discountPercent: 0,
     constantSymbol: defaultConstantSymbol || "", specificSymbol: "", variableSymbol: "", cisloUcetni: "",
-    dilci: false, pocitanoNaPapire: false,
+    dilci: false, pocitanoNaPapire: false, prenesenaDph: false,
     items: [{ desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }],
   });
   // fotky výpočtu z papíru nahrané u nové faktury — po uložení se k ní přiřadí
@@ -268,7 +268,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
   const addItem = () => setF(p => ({ ...p, items: [...p.items, { desc: "", qty: 1, unit: "ks", price: "", vatRate: 21 }] }));
   const removeItem = (i) => setF(p => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }));
 
-  const { lines, total, totalTax } = computeInvoiceTotals(f.items);
+  const { lines, total, totalTax } = computeInvoiceTotals(f.items, f.prenesenaDph);
   const vybranaZakazka = (contracts || []).find(c => String(c.id) === String(fromContractId)) || null;
 
   const submit = () => {
@@ -287,7 +287,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
       amount: total - totalTax, tax: totalTax,
       contractId: fromContractId ? Number(fromContractId) : null,
       billedEntryIds,
-      dilci: !!f.dilci, pocitanoNaPapire: !!f.pocitanoNaPapire, papirFotkyIds,
+      dilci: !!f.dilci, pocitanoNaPapire: !!f.pocitanoNaPapire, papirFotkyIds, prenesenaDph: !!f.prenesenaDph,
     });
   };
 
@@ -440,6 +440,10 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                 <input type="checkbox" disabled={locked} checked={f.dilci} onChange={e => set("dilci", e.target.checked)} />
                 Dílčí faktura (bez rozpisu) — počítá se, kolik zbývá dofakturovat
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }} title="§ 92a zákona o DPH — stavební a montážní práce pro plátce DPH">
+                <input type="checkbox" disabled={locked} checked={f.prenesenaDph} onChange={e => set("prenesenaDph", e.target.checked)} />
+                Přenesená daňová povinnost (DPH odvede zákazník)
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                 <input type="checkbox" checked={f.pocitanoNaPapire} onChange={e => { set("pocitanoNaPapire", e.target.checked); if (e.target.checked) setFormTab("papir"); }} />
