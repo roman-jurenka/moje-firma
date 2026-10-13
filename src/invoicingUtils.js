@@ -259,7 +259,8 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   const toPay = getDiscountedTotal(total, discountPercent);
   const remaining = invoice.status === "Zaplacena" ? 0 : toPay;
   const custName = customer?.company || customer?.name || "";
-  const custPerson = customer?.company && customer?.name ? customer.name : "";
+  // Na faktuře jen název odběratele (jako ve vzoru z účetnictví) — kontaktní osoba se už pod něj nepíše,
+  // u živnostníků se jinak jméno opakovalo dvakrát (Ing. Jaromír Janků / Jaromír Janků).
   const adresa = adresaNaFakture(customer);
   const custStreet = adresa.ulice, custCity = adresa.obec, custCountry = adresa.stat;
   const custIco = invoice.customer_ico || customer?.ico || "", custDic = invoice.customer_dic || customer?.dic || "";
@@ -301,7 +302,6 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
 
   // ── 7.3 Blok odběratele ──
   add(T(306.0, 124.4, custName, { bold: true, size: 9 }));
-  if (custPerson) add(T(306.0, 141, custPerson, { bold: true, size: 7.9 }));
   add(T(303.2, 157.4, custStreet, { bold: true, size: 7.9 }));
   add(T(303.2, 168.7, custCity, { bold: true, size: 7.9 }));
   if (custCountry) add(T(303.2, 179.0, custCountry, { bold: true, size: 7.9 }));
@@ -312,7 +312,6 @@ export function buildInvoiceHtmlBody(invoice, customer, qrDataUrl, vs, barcodeDa
   add(T(385.3, 209.1, "e-mail:", { size: 6, color: "#333" }));
   add(T(395.8, 219.0, "tel.:", { size: 6, color: "#333" }));
   add(T(305.4, 228.9, custName, { size: 7.9 }));
-  if (custPerson) add(T(305.4, 242, custPerson, { size: 7.9 }));
   add(T(303.2, 248.7, custStreet, { size: 7.9 }));
   add(T(303.2, 258.7, custCity, { size: 7.9 }));
   if (custCountry) add(T(303.2, 268.7, custCountry, { size: 7.9 }));
