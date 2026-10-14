@@ -132,6 +132,7 @@ ${prohlaseni.length ? `<h2>Prohlášení předávajícího</h2>
 <p style="font-size:9pt">* Nehodící se škrtněte</p>` : ""}
 ${prejimajici.length ? `<h2>Prohlášení přejímajícího</h2>
 <ol>${prejimajici.map((b) => `<li>${b.casti.map((c) => (c.b ? `<b>${esc(c.t)}</b>` : esc(c.t))).join("")}</li>`).join("")}</ol>` : ""}
+${d.protokol?.zaver ? `<p><b>Předávající a přejímající</b> ${esc(d.protokol.zaver)}</p>` : ""}
 
 <h2>Instalovaná zařízení</h2>
 <table><tr><th>Zařízení / typ</th><th>Výrobní číslo</th><th>Poznámka</th></tr>${radky}</table>

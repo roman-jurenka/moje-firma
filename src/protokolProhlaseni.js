@@ -115,6 +115,13 @@ export function vychoziPredmet(typ) {
   return "Dodávka a montáž solární elektrárny";
 }
 
+// Závěrečné prohlášení za „Předávající a přejímající …“ (tučný začátek je v šabloně).
+export function vychoziZaver(typ) {
+  const co = typ === "FVR" ? "rozšíření solární elektrárny, a solární elektrárna"
+    : typ === "FVO" ? "solární elektrárny na ohřev vody, a tato" : "solární elektrárny, a tato";
+  return `výslovně prohlašují, že níže uvedeného dne a v místě, resp. na adrese instalace, došlo k dodávce a montáži ${co} je ve stavu, který je zaznamenán v tomto předávacím protokolu. Obsah protokolu odpovídá skutečnosti a údaje v něm zaznamenané jsou pravdivé.`;
+}
+
 // Nastavení protokolu → značky šablony: [{ casti: [{ t, b }] }]
 // klic "body" = prohlášení předávajícího, "prejimajici" = přejímajícího
 export function znackyProhlaseni(nastaveni, klic = "body") {
