@@ -37,6 +37,8 @@ import { StorageImg } from "./storageUrl.jsx";
 import * as ui from "./ui.js";
 import { DOVEDNOSTI, dovednost, NA_STAROSTI, naStarosti, umi, seraditPodleDovednosti } from "./dovednosti.js";
 import { PodkladyNahled } from "./PodkladyZakazky.jsx";
+import Navrh3D from "./Navrh3D.jsx";
+import StatikaFve from "./StatikaFve.jsx";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -446,6 +448,8 @@ const NAV = [
   { id: "dashboard", label: "Přehled", icon: "ti-layout-dashboard", group: "Přehled" },
   { id: "customers", label: "Zákazníci", icon: "ti-users", group: "Obchod" },
   { id: "pricing", label: "Nacenění", icon: "ti-calculator", group: "Obchod" },
+  { id: "navrh3d", label: "3D návrh FVE", icon: "ti-3d-cube-sphere", group: "Obchod" },
+  { id: "statika", label: "Statika FVE", icon: "ti-building-bridge", group: "Obchod" },
   { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "Obchod" },
   { id: "contracts", label: "Zakázky", icon: "ti-file-invoice", group: "Realizace" },
   { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Realizace" },
@@ -1144,7 +1148,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // Náklady jsou teď záložkou ve Finančním toku — kdo má jen Náklady, vidí Finanční tok s nimi.
   const sFinanci = bezDeals.includes("costs") && !bezDeals.includes("finance") ? [...bezDeals, "finance"] : bezDeals;
   // Servis vidí každý, kdo pracuje se zakázkami nebo v terénu (kancelář i technici).
-  const allowedTabs = !sFinanci.includes("servis") && (sFinanci.includes("contracts") || sFinanci.includes("attendance")) ? [...sFinanci, "servis"] : sFinanci;
+  const sServisem = !sFinanci.includes("servis") && (sFinanci.includes("contracts") || sFinanci.includes("attendance")) ? [...sFinanci, "servis"] : sFinanci;
+  // 3D návrh FVE a hromosvodu a Statiku FVE vidí každý, kdo naceňuje.
+  const allowedTabs = sServisem.includes("pricing") ? [...new Set([...sServisem, "navrh3d", "statika"])] : sServisem;
   const visibleNav = NAV.filter(n => allowedTabs.includes(n.id));
   const groups = [...new Set(visibleNav.map(n => n.group))];
 
@@ -1696,6 +1702,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         })()}
 
         {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} />}
+
+        {tab === "navrh3d" && allowedTabs.includes("navrh3d") && <Navrh3D />}
+        {tab === "statika" && allowedTabs.includes("statika") && <StatikaFve contracts={contracts} customers={customers} currentUser={currentUser} />}
 
         {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents}
           onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
