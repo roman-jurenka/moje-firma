@@ -13,7 +13,7 @@ import * as ui from "./ui.js";
 import {
   STRANY, TYPY_STRECHY, TRIDY_LPS, vychoziNavrh, plochyStrechy, steny, vyskaHrebene, sklonZHrebene,
   panelyPole, panelSeVejde, rozmerPanelu, vyplnPlochu, bodPlochy, navrhniHromosvod, trasaSvodu,
-  drahaVedeni, patyTyce, blizkePanely, soupis, v3, poziceBodu, jePevny, spoje, vyskaStrechy, NAD_STRECHOU, pristavky, seznamPristavku, TYPY_PREKAZEK, valivaKoule, POLOMER_KOULE,
+  drahaVedeni, patyTyce, blizkePanely, soupis, v3, poziceBodu, jePevny, spoje, vyskaStrechy, NAD_STRECHOU, pristavky, seznamPristavku, TYPY_PREKAZEK, valivaKoule, POLOMER_KOULE, obdelnikPrvku, odstupy, polohaPodleOdstupu,
 } from "./navrh3dGeometrie.js";
 import { vyrovnejFotku } from "./perspektiva.js";
 import * as rz from "./rizikoBlesk.js";
@@ -73,10 +73,18 @@ const REZIMY = [
   { id: "vedeni", nazev: "Jímací vedení", ikona: "ti-line", napoveda: "Klepejte body vedení po střeše, přes okraj na stěnu a k zemi (= svod). Zelený bod se přichytí. Hotovo / Enter, nebo „Svod k zemi“." },
   { id: "svod", nazev: "Svod", ikona: "ti-arrow-down-bar", napoveda: "Klepněte na stěnu – přidá se svod. Existující svod přetáhněte po fasádě jinam." },
   { id: "tyc", nazev: "Jímací tyč", ikona: "ti-antenna", napoveda: "Klepněte na střechu, kam se má postavit jímací tyč." },
-  { id: "prekazka", nazev: "Komín / okno", ikona: "ti-box", napoveda: "Klepněte na střechu – vloží se komín, střešní okno nebo jiná překážka (typ v záložce FVE). Tažením ji posunete." },
+  { id: "prekazka", nazev: "Komín / okno", ikona: "ti-box", napoveda: "Klepněte na střechu – vloží se vybraný prvek v nastaveném rozměru (záložka FVE). Tažením ho posunete, odstupy od okrajů zadáte čísly." },
   { id: "merit", nazev: "Měřit", ikona: "ti-ruler-measure", napoveda: "Klepněte na dva body – změří se vzdálenost." },
   { id: "mazat", nazev: "Mazat", ikona: "ti-eraser", napoveda: "Klepněte na panel, vedení, svod nebo tyč – smaže se." },
 ];
+
+// Běžné rozměry překážek (šířka × délka po spádu, m)
+const PRESETY_PREKAZEK = {
+  okno: [["55×78", 0.55, 0.78], ["66×98", 0.66, 0.98], ["66×118", 0.66, 1.18], ["78×98", 0.78, 0.98], ["78×118", 0.78, 1.18], ["78×140", 0.78, 1.4], ["94×118", 0.94, 1.18], ["114×118", 1.14, 1.18], ["134×98", 1.34, 0.98]],
+  komin: [["30×30", 0.3, 0.3], ["45×45", 0.45, 0.45], ["60×60", 0.6, 0.6], ["90×60", 0.9, 0.6], ["120×60", 1.2, 0.6]],
+  jina: [["15×15", 0.15, 0.15], ["30×30", 0.3, 0.3], ["50×50", 0.5, 0.5], ["100×50", 1, 0.5]],
+};
+const IKONY_PREKAZEK = { komin: "ti-building-factory-2", okno: "ti-window", jina: "ti-box" };
 
 const ZALOZKY = [["rozmery", "1 Rozměry"], ["fotky", "2 Fotky"], ["fve", "3 FVE"], ["hromosvod", "4 Hromosvod"], ["riziko", "5 Riziko"], ["soupis", "6 Soupis"]];
 
@@ -275,6 +283,7 @@ export default function Navrh3D() {
   const [novePole, setNovePole] = useState({ radky: 2, sloupce: 5, orientace: "vysku", naklon: 15 });
   const [vyskaTyce, setVyskaTyce] = useState(2);
   const [novaPrekazka, setNovaPrekazka] = useState("komin");
+  const [rozmeryNove, setRozmeryNove] = useState(() => Object.fromEntries(Object.entries(TYPY_PREKAZEK).map(([k, t]) => [k, { sirka: t.sirka, hloubka: t.hloubka, vyska: t.vyska }])));
   const [editRohy, setEditRohy] = useState(null);
   const [generuji, setGeneruji] = useState(false);         // id stěny, jejíž rohy se značí
   const [chybaUlozeni, setChybaUlozeni] = useState(false);
@@ -614,6 +623,36 @@ export default function Navrh3D() {
       s.skupDum.add(m);
     }
 
+    // kóty vybraného FVE pole / komínu / okna k okrajům plochy
+    {
+      const jePole = vybrane?.typ === "pole";
+      const prvek = jePole ? n.fve.find(p => p.id === vybrane.id) : vybrane?.typ === "prekazka" ? (n.prekazky || []).find(o => o.id === vybrane.id) : null;
+      const f = prvek && plochy[prvek.plocha];
+      if (f) {
+        const r = obdelnikPrvku(n, prvek, jePole);
+        const o = odstupy(f, r);
+        const nad = 0.3;
+        const kota3d = (a, b, hodnota, popis) => {
+          const A = bodPlochy(f, a[0], a[1], nad), B = bodPlochy(f, b[0], b[1], nad);
+          const barva = hodnota < -0.005 ? "#dc2626" : "#f5821f";
+          const mat = new THREE.LineBasicMaterial({ color: barva, depthTest: false });
+          const smer = v3.norm(v3.sub(B, A)), kolmo = v3.cross(f.N, smer);
+          const car = [A, B, v3.add(A, v3.mul(kolmo, 0.15)), v3.sub(A, v3.mul(kolmo, 0.15)), v3.add(B, v3.mul(kolmo, 0.15)), v3.sub(B, v3.mul(kolmo, 0.15))];
+          const g = new THREE.BufferGeometry().setFromPoints(car.map(q => new THREE.Vector3(...q)));
+          const l = new THREE.LineSegments(g, mat);
+          l.renderOrder = 10;
+          s.skupPom.add(l);
+          const st = stitek3d(`${popis} ${cislo(hodnota)} m`, { background: barva, color: "#fff", border: "none", fontSize: "11px" });
+          st.position.set(...v3.mul(v3.add(A, B), 0.5));
+          s.skupPom.add(st);
+        };
+        kota3d([o.rh[0], o.vm], [r.u, o.vm], o.vlevo, "◀");
+        kota3d([r.u + r.w, o.vm], [o.rh[1], o.vm], o.vpravo, "▶");
+        kota3d([o.um, o.rv[0]], [o.um, r.v], o.okap, "▼ okap");
+        kota3d([o.um, r.v + r.h], [o.um, o.rv[1]], o.hreben, "▲ hřeben");
+      }
+    }
+
     // hromosvod
     const hs = n.hromosvod || {};
     const matDrat = new THREE.MeshStandardMaterial({ color: "#b9c2cb", metalness: 0.75, roughness: 0.3 });
@@ -625,6 +664,13 @@ export default function Navrh3D() {
       m.position.set(x, 1.6, z);
       g.add(m);
     };
+    // číslování zkušebních svorek: nejdřív svody, pak ručně kreslené svody k zemi (stejně jako v PDF)
+    const stitekZs = (cisloZs, x, z) => {
+      const st = stitek3d(`ZS${cisloZs}`, { background: "#0E3B5E", color: "#fff", border: "2px solid #fff", fontSize: "12px", padding: "2px 7px" });
+      st.position.set(x, 2.15, z);
+      s.skupPom.add(st);
+    };
+    let cisloRucne = (hs.svody || []).length;
     for (const ved of hs.vedeni || []) {
       const g = new THREE.Group();
       g.userData = { typ: "vedeni", id: ved.id };
@@ -632,14 +678,17 @@ export default function Navrh3D() {
       kresliVodic(n, g, d, vybrane?.typ === "vedeni" && vybrane.id === ved.id ? matDratVyber : matDrat, matPodp);
       const k = d[d.length - 1];
       if (k[1] < 0.3 && d.length > 1 && d[d.length - 2][1] > 1.8) zkusebniSvorka(g, k[0], k[2]);
+      const kon = ved.body[ved.body.length - 1];
+      if (jePevny(kon) && kon[1] < 0.3) stitekZs(++cisloRucne, k[0], k[2]);
       s.skupHs.add(g);
     }
-    for (const sv of hs.svody || []) {
+    for (const [iSv, sv] of (hs.svody || []).entries()) {
       const g = new THREE.Group();
       g.userData = { typ: "svod", id: sv.id };
       const t = trasaSvodu(n, sv);
       kresliVodic(n, g, t, vybrane?.typ === "svod" && vybrane.id === sv.id ? matDratVyber : matDrat, matPodp);
       zkusebniSvorka(g, t[0][0], t[0][2]);
+      stitekZs(iSv + 1, t[0][0], t[0][2]);
       s.skupHs.add(g);
     }
     // spoje: svorka tam, kde vodič navazuje, červeně volný konec
@@ -927,7 +976,7 @@ export default function Navrh3D() {
         } else if (rezim === "prekazka" && hit.typ === "strecha") {
           const f = plochy[hit.plocha];
           const d = v3.sub(hit.bod, f.O);
-          const vz = TYPY_PREKAZEK[novaPrekazka];
+          const vz = rozmeryNove[novaPrekazka] || TYPY_PREKAZEK[novaPrekazka];
           const o = { id: noveId("o"), typ: novaPrekazka, plocha: f.index, sirka: vz.sirka, hloubka: vz.hloubka, vyska: vz.vyska,
             u: Math.round((v3.dot(d, f.U) - vz.sirka / 2) / 0.05) * 0.05, v: Math.round((v3.dot(d, f.V) - vz.hloubka / 2) / 0.05) * 0.05 };
           zmen(n => ({ ...n, prekazky: [...(n.prekazky || []), o] }));
@@ -1097,6 +1146,31 @@ export default function Navrh3D() {
   const exportCsv = () => stahnout(`${souborNazev}_soupis.csv`, "﻿" + [["Položka", "Množství", "Jednotka"], ...radkySoupisu].map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\r\n"), "text/csv");
 
   const vybranePole = vybrane?.typ === "pole" ? navrh.fve.find(p => p.id === vybrane.id) : null;
+  // Zadání odstupů od okrajů plochy — posune prvek na přesné místo.
+  const odstupyPrvku = (prvek, jePole) => {
+    const f = plochy[prvek.plocha];
+    if (!f) return null;
+    const r = obdelnikPrvku(navrh, prvek, jePole);
+    const o = odstupy(f, r);
+    const nastav = (strana) => (hodnota) => {
+      const nova = polohaPodleOdstupu(f, r, strana, Number(hodnota) || 0);
+      const kam = jePole ? "fve" : "prekazky";
+      zmen(n => ({ ...n, [kam]: (n[kam] || []).map(x => (x.id === prvek.id ? { ...x, ...nova } : x)) }));
+    };
+    const zaok = (x) => Math.round(x * 100) / 100;
+    return (
+      <div style={{ background: "#fff7ed", borderRadius: 8, padding: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Odstupy od okrajů plochy (m) – zadáním hodnoty se prvek posune</div>
+        <div style={S.mrizka}>
+          {cisloPole("◀ Od levé hrany", zaok(o.vlevo), nastav("vlevo"), 0.05, null)}
+          {cisloPole("Od pravé hrany ▶", zaok(o.vpravo), nastav("vpravo"), 0.05, null)}
+          {cisloPole("▼ Od okapu", zaok(o.okap), nastav("okap"), 0.05, null)}
+          {cisloPole(f.sklon < 5 ? "▲ Od horní hrany" : "▲ Od hřebene / horní hrany", zaok(o.hreben), nastav("hreben"), 0.05, null)}
+        </div>
+        <div style={S.maly}>Měřeno v rovině střechy od okraje krytiny (včetně přesahu); vlevo/vpravo při pohledu na plochu zvenku. Rozměr prvku {cislo(r.w)} × {cislo(r.h)} m.</div>
+      </div>
+    );
+  };
   const zmenPole = (id, zmena) => zmen(n => ({ ...n, fve: n.fve.map(p => p.id === id ? { ...p, ...zmena } : p) }));
   const hs = navrh.hromosvod || {};
   const plochaNaPolozku = (p) => plochy[p.plocha];
@@ -1349,9 +1423,37 @@ export default function Navrh3D() {
       <div style={{ border: `1px solid ${ui.barvy.okraj}`, borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
         <b style={{ fontSize: 13 }}>Komíny, střešní okna a jiné překážky</b>
         <div style={S.radek}>
-          {Object.entries(TYPY_PREKAZEK).map(([k, t]) => <button key={k} style={S.stitek(novaPrekazka === k)} onClick={() => setNovaPrekazka(k)}>{t.nazev}</button>)}
-          <button style={S.btn(rezim === "prekazka" ? ui.barvy.akcent : ui.barvy.primarni)} onClick={() => zmenRezim("prekazka")}><i className="ti ti-pointer" /> Vložit na střechu</button>
+          {Object.entries(TYPY_PREKAZEK).map(([k, t]) => {
+            const aktivni = rezim === "prekazka" && novaPrekazka === k;
+            return (
+              <button key={k} style={S.btn(aktivni ? ui.barvy.akcent : ui.barvy.primarni)} onClick={() => { setNovaPrekazka(k); if (!aktivni) zmenRezim("prekazka"); else zmenRezim("pohled"); }}>
+                <i className={`ti ${IKONY_PREKAZEK[k]}`} /> {aktivni ? "Vkládám: " : "+ "}{t.nazev}
+              </button>
+            );
+          })}
         </div>
+        {(() => {
+          const r = rozmeryNove[novaPrekazka];
+          const nastavNove = (zm) => setRozmeryNove(x => ({ ...x, [novaPrekazka]: { ...x[novaPrekazka], ...zm } }));
+          return (
+            <div style={{ background: rezim === "prekazka" ? "#fff7ed" : ui.barvy.poleBg, border: `1px solid ${rezim === "prekazka" ? ui.barvy.akcent : ui.barvy.okraj}`, borderRadius: 8, padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>
+                Rozměr vkládaného prvku – {TYPY_PREKAZEK[novaPrekazka].nazev.toLowerCase()}
+                {rezim === "prekazka" && <span style={{ color: ui.barvy.akcent }}> · klepněte na střechu</span>}
+              </div>
+              <div style={S.radek}>
+                {PRESETY_PREKAZEK[novaPrekazka].map(([t, w, h]) => (
+                  <button key={t} style={{ ...S.stitek(Math.abs(r.sirka - w) < 1e-6 && Math.abs(r.hloubka - h) < 1e-6), padding: "4px 8px" }} onClick={() => nastavNove({ sirka: w, hloubka: h })}>{t}</button>
+                ))}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: novaPrekazka === "okno" ? "1fr 1fr" : "1fr 1fr 1fr", gap: 6 }}>
+                {cisloPole("Šířka (m)", r.sirka, v => nastavNove({ sirka: Math.max(0.05, v) }), 0.05, 0.05)}
+                {cisloPole("Délka po spádu (m)", r.hloubka, v => nastavNove({ hloubka: Math.max(0.05, v) }), 0.05, 0.05)}
+                {novaPrekazka !== "okno" && cisloPole("Výška nad střechou (m)", r.vyska, v => nastavNove({ vyska: Math.max(0, v) }), 0.1)}
+              </div>
+            </div>
+          );
+        })()}
         <div style={S.maly}>Panely drží od překážek stejný odstup jako od okraje ({cislo(navrh.okrajFve)} m), „Vyplnit plochu“ je obejde. Automatický hromosvod ke komínu přidá jímací tyč.</div>
         {(navrh.prekazky || []).map(o => {
           const zm = (k) => (v) => zmen(n => ({ ...n, prekazky: n.prekazky.map(x => x.id === o.id ? { ...x, [k]: v } : x) }));
@@ -1362,11 +1464,21 @@ export default function Navrh3D() {
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{TYPY_PREKAZEK[o.typ]?.nazev} – {plochy[o.plocha]?.nazev}</span>
                 <button style={S.obrys} onClick={e => { e.stopPropagation(); zmen(n => ({ ...n, prekazky: n.prekazky.filter(x => x.id !== o.id) })); setVybrane(null); }}>✕</button>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: o.typ === "okno" ? "1fr 1fr" : "1fr 1fr 1fr", gap: 6 }}>
-                {cisloPole("Šířka (m)", o.sirka, zm("sirka"), 0.05)}
-                {cisloPole("Hloubka (m)", o.hloubka, zm("hloubka"), 0.05)}
-                {o.typ !== "okno" && cisloPole("Nad střechou (m)", o.vyska, zm("vyska"), 0.1)}
+              <div onClick={e => e.stopPropagation()} style={{ display: "grid", gridTemplateColumns: o.typ === "okno" ? "1fr 1fr" : "1fr 1fr 1fr", gap: 6 }}>
+                {cisloPole("Šířka (m)", o.sirka, v => zm("sirka")(Math.max(0.05, v)), 0.05, 0.05)}
+                {cisloPole("Délka po spádu (m)", o.hloubka, v => zm("hloubka")(Math.max(0.05, v)), 0.05, 0.05)}
+                {o.typ !== "okno" && cisloPole("Výška nad střechou (m)", o.vyska, zm("vyska"), 0.1)}
               </div>
+              {vybr && (
+                <div style={S.radek} onClick={e => e.stopPropagation()}>
+                  <span style={S.maly}>Velikost:</span>
+                  {(PRESETY_PREKAZEK[o.typ] || []).map(([t, w, h]) => (
+                    <button key={t} style={{ ...S.stitek(Math.abs(o.sirka - w) < 1e-6 && Math.abs(o.hloubka - h) < 1e-6), padding: "4px 8px" }}
+                      onClick={() => zmen(n => ({ ...n, prekazky: n.prekazky.map(x => (x.id === o.id ? { ...x, sirka: w, hloubka: h } : x)) }))}>{t}</button>
+                  ))}
+                </div>
+              )}
+              {vybr && <div onClick={e => e.stopPropagation()}>{odstupyPrvku(o, false)}</div>}
             </div>
           );
         })}
@@ -1386,6 +1498,7 @@ export default function Navrh3D() {
             <button style={S.stitek(vybranePole.orientace === "sirku")} onClick={() => zmenPole(vybranePole.id, { orientace: "sirku" })}>Na šířku</button>
             {plochaNaPolozku(vybranePole)?.sklon < 5 && <span style={S.maly}>náklon <input type="number" style={{ ...S.pole, width: 60 }} value={vybranePole.naklon || 0} onChange={e => zmenPole(vybranePole.id, { naklon: Number(e.target.value) || 0 })} />°</span>}
           </div>
+          {odstupyPrvku(vybranePole, true)}
           <div style={S.radek}>
             <span style={S.maly}>Posun o 10 cm:</span>
             {[["◀", -0.1, 0], ["▶", 0.1, 0], ["▲ ke hřebeni", 0, 0.1], ["▼ k okapu", 0, -0.1]].map(([t, du, dv]) => (
@@ -1447,7 +1560,7 @@ export default function Navrh3D() {
       <div>
         <b style={{ fontSize: 13 }}>Svody ({souhrn.pocetSvodu} ks, {cislo(souhrn.svodyDelka, 1)} m)</b>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-          {(hs.svody || []).map((s, i) => polozkaSeznamu("svod", s.id, `Svod ${i + 1} – ${polohaSvodu(s).text}`))}
+          {(hs.svody || []).map((s, i) => polozkaSeznamu("svod", s.id, `ZS${i + 1} – ${polohaSvodu(s).text}`))}
           {vybrane?.typ === "svod" && (() => {
             const sv = (hs.svody || []).find(x => x.id === vybrane.id);
             if (!sv) return null;

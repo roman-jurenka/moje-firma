@@ -205,8 +205,8 @@ function pudorys(n, { body = null } = {}) {
     g.font = `700 10px ${PISMO}`; g.textAlign = "center"; g.textBaseline = "middle";
     for (const s of svody) {
       g.fillStyle = "#fff"; g.strokeStyle = "#dc2626"; g.lineWidth = 2;
-      g.beginPath(); g.arc(X(s.x), Z(s.z), 9, 0, Math.PI * 2); g.fill(); g.stroke();
-      g.fillStyle = "#dc2626"; g.fillText(`S${s.cislo}`, X(s.x), Z(s.z) + 0.5);
+      g.beginPath(); g.arc(X(s.x), Z(s.z), 12, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.fillStyle = "#dc2626"; g.fillText(`ZS${s.cislo}`, X(s.x), Z(s.z) + 0.5);
     }
     g.textBaseline = "alphabetic";
   }
@@ -478,10 +478,10 @@ export async function vytvorMontazniDokumentaci({ navrh: n, snimky, snimkyKoule 
   stranka("Výkres hromosvodu", `
     <h2>Ochrana před bleskem – půdorys (LPS třídy ${trida})</h2>
     <img src="${pudorys(n)}" style="width:100%;border:1px solid #e2e8f0">
-    <div class="leg"><span><i style="background:#dc2626;height:3px"></i>jímací vedení</span><span>⭘ S1… svod se zkušební svorkou</span><span>▲ jímací tyč</span><span><i style="border-top:2px dashed #7c4a1e;height:0"></i>obvodový zemnič</span><span><i style="background:rgba(31,50,86,0.35)"></i>FVE</span></div>
+    <div class="leg"><span><i style="background:#dc2626;height:3px"></i>jímací vedení</span><span>⭘ ZS1… svod se zkušební svorkou</span><span>▲ jímací tyč</span><span><i style="border-top:2px dashed #7c4a1e;height:0"></i>obvodový zemnič</span><span><i style="background:rgba(31,50,86,0.35)"></i>FVE</span></div>
     <h3>Svody</h3>
-    <table><thead><tr><th>Svod</th><th>Umístění (vlevo = při pohledu na stěnu zvenku)</th><th class="r">Délka (m)</th><th>Zkušební svorka</th></tr></thead><tbody>
-      ${svody.map(s => `<tr><td>S${s.cislo}</td><td>${esc(s.popis)}</td><td class="r">${cislo(s.delka, 1)}</td><td>ve výšce cca 1,6 m nad terénem</td></tr>`).join("") || `<tr><td colspan="4">Bez svodů</td></tr>`}
+    <table><thead><tr><th>Zkušební svorka</th><th>Umístění (vlevo = při pohledu na stěnu zvenku)</th><th class="r">Délka (m)</th><th>Zkušební svorka</th></tr></thead><tbody>
+      ${svody.map(s => `<tr><td>ZS${s.cislo}</td><td>${esc(s.popis)}</td><td class="r">${cislo(s.delka, 1)}</td><td>ve výšce cca 1,6 m nad terénem</td></tr>`).join("") || `<tr><td colspan="4">Bez svodů</td></tr>`}
     </tbody></table>
     <h3>Parametry</h3>
     <table><tbody>

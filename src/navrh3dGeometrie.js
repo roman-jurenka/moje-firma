@@ -691,3 +691,38 @@ export function valivaKoule(n, krok = 0.5) {
   const chraneno = body.filter(b => b.chranen).length;
   return { R, body, koule, procento: body.length ? (100 * chraneno) / body.length : 100, nechranenych: body.length - chraneno };
 }
+
+// ── Odstupy prvku (FVE pole, komín, okno) od okrajů plochy ──
+// Měří se v rovině střechy: vlevo/vpravo ve výšce středu prvku, k okapu
+// a k hřebeni (horní hraně) ve svislici středu prvku. Vlevo/vpravo při pohledu
+// na plochu zvenku (okap dole).
+const rozsahV = (poly, u) => rozsahU(poly.map(([a, b]) => [b, a]), u);
+
+export function obdelnikPrvku(n, prvek, jePole) {
+  if (!jePole) return { u: prvek.u, v: prvek.v, w: prvek.sirka, h: prvek.hloubka };
+  const p = panelyPole(n, prvek);
+  const { pw } = rozmerPanelu(n, prvek);
+  const posl = p[p.length - 1];
+  return { u: prvek.u, v: prvek.v, w: prvek.sloupce * pw + (prvek.sloupce - 1) * n.mezeraFve, h: posl.v + posl.hloubka - prvek.v };
+}
+
+export function odstupy(plocha, r) {
+  const vm = r.v + r.h / 2, um = r.u + r.w / 2;
+  const rh = rozsahU(plocha.poly2d, vm) || [r.u, r.u + r.w];
+  const rv = rozsahV(plocha.poly2d, um) || [r.v, r.v + r.h];
+  return { vlevo: r.u - rh[0], vpravo: rh[1] - (r.u + r.w), okap: r.v - rv[0], hreben: rv[1] - (r.v + r.h), rh, rv, um, vm };
+}
+
+// Nová poloha prvku tak, aby měl zadaný odstup od zvolené hrany.
+// U šikmých hran (valba, polovalba) se rozsah mění s polohou — proto pár iterací.
+export function polohaPodleOdstupu(plocha, r, strana, hodnota) {
+  let { u, v } = r;
+  for (let i = 0; i < 4; i++) {
+    const o = odstupy(plocha, { ...r, u, v });
+    if (strana === "vlevo") u = o.rh[0] + hodnota;
+    else if (strana === "vpravo") u = o.rh[1] - r.w - hodnota;
+    else if (strana === "okap") v = o.rv[0] + hodnota;
+    else if (strana === "hreben") v = o.rv[1] - r.h - hodnota;
+  }
+  return { u: Math.round(u * 1000) / 1000, v: Math.round(v * 1000) / 1000 };
+}
