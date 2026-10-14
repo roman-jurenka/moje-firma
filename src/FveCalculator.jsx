@@ -6,6 +6,7 @@ import { PRAZDNA_FVE, applyPreset, POLOZKY_NOVE_INSTALACE, zapnutePolozkyNoveIns
 import { DRUHY_SERVISU, UKON_DOPRAVA, ZMENA_PRIPOJENI, textyNabidky, ukonyZCfg, cenaUkonu, soucetUkonu, ukonBezCeny, seznamyPodleTypu, maSeznamNoveFve, odhadVynosu } from "./nabidkaTexty.js";
 import NabidkaNahled from "./NabidkaNahled.jsx";
 import { vypocetSlevy } from "./slevaNabidky.js";
+import { aktualniFirma, aktualizujOdkazy, upozorneniFirmy } from "./firmaDokumenty.js";
 
 // ─── FVE kalkulačka — přesně podle Excelu "Kalkulačka sestav" ──────────────
 // Materiál/práce/služby se vybírají z ceníku (tabulka fve_cenik_items),
@@ -323,7 +324,10 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
       const fveVeta = jobType === "FVR" ? "na rozšíření stávající fotovoltaické elektrárny"
         : jobType === "FVO" ? "fotovoltaického ohřevu vody" : "fotovoltaické elektrárny";
 
+      // údaje firmy (zápatí) vždy nejnovější z Údajů firmy, zkontrolované proti ARES
+      const { znacky: firma, rozdily } = await aktualniFirma();
       doc.render({
+        ...firma,
         fveVeta,
         vykonVeta,
         cisloOP: cfg.cisloOP || "—",
@@ -343,6 +347,8 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
         zahrnuto: (cfg.zahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
         nezahrnuto: (cfg.nezahrnutoItems || []).filter((it) => it.checked).map((it) => it.text),
       });
+      aktualizujOdkazy(doc.getZip());
+      if (rozdily.length) window.alert(upozorneniFirmy(rozdily));
 
       const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
       const PRESET_LABELS = { light: "LIGHT", basic: "BASIC", optimal: "OPTIMAL", premium: "PREMIUM", emobilita: "E-MOBILITA", servis: "SERVIS", custom: "Vlastni" };

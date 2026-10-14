@@ -8,6 +8,7 @@ import NahratDoZakazky from "./NahratDoZakazky.jsx";
 import ZalohovaFaktura from "./ZalohovaFaktura.jsx";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
+import { aktualniFirma, aktualizujOdkazy, upozorneniFirmy } from "./firmaDokumenty.js";
 import { vychoziProhlaseni, vychoziPrejimajici, vychoziPredmet, vychoziZaver, znackyProhlaseni, volbyTextu, vyresit, bezZnacek } from "./protokolProhlaseni.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { UZAVIRACI_EMAIL_KEY, VYCHOZI_UZAVIRACI_EMAIL, ZNACKY_UZAVIRACIHO_EMAILU, vyplnitSablonu } from "./uzaviraciEmail.js";
@@ -494,7 +495,11 @@ export default function Prubeh({
       || await nactiSablonu(`${druh}_sablona.docx`);
     if (!res) return false;
     const doc = new Docxtemplater(new PizZip(await res.arrayBuffer()), { paragraphLoop: true, linebreaks: true, nullGetter: () => "" });
-    doc.render(hodnoty);
+    // údaje firmy (zápatí) vždy nejnovější z Údajů firmy, zkontrolované proti ARES
+    const { znacky, rozdily } = await aktualniFirma();
+    doc.render({ ...znacky, ...hodnoty });
+    aktualizujOdkazy(doc.getZip());
+    if (stahnout && rozdily.length) window.alert(upozorneniFirmy(rozdily));
     const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     const soubor = `${nazevSouboru}.docx`.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim();
     if (!stahnout) return { blob, soubor };
