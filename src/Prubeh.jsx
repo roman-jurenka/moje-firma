@@ -8,6 +8,7 @@ import NahratDoZakazky from "./NahratDoZakazky.jsx";
 import ZalohovaFaktura from "./ZalohovaFaktura.jsx";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
+import { vychoziProhlaseni, vychoziPrejimajici, vychoziPredmet, znackyProhlaseni, volbyTextu, vyresit, bezZnacek } from "./protokolProhlaseni.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { UZAVIRACI_EMAIL_KEY, VYCHOZI_UZAVIRACI_EMAIL, ZNACKY_UZAVIRACIHO_EMAILU, vyplnitSablonu } from "./uzaviraciEmail.js";
 import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js";
@@ -187,6 +188,7 @@ export default function Prubeh({
   const [pruvodceMin, setPruvodceMin] = useState(() => { try { return localStorage.getItem("proudos-pruvodce-min") === "1"; } catch { return false; } });
   const prepnoutPruvodce = () => setPruvodceMin((m) => { try { localStorage.setItem("proudos-pruvodce-min", m ? "0" : "1"); } catch { /* bez úložiště */ } return !m; });
   const [dodatekForm, setDodatekForm] = useState(null); // { popis, cena_nova, termin, aktualizovatCenu }
+  const [protokolForm, setProtokolForm] = useState(null); // { zakId, predmet, body: [{ id, nazev, text, volby, zahrnout, upravit }] }
   const [viceForm, setViceForm] = useState(null); // víc zakázek z jedné nabídky: { radky: [{ id?, nazev, misto, hodnota }] }
   const [galerieKat, setGalerieKat] = useState({ zakId: null, kat: "vse" }); // filtr karty Fotky zakázky
   const [prohlizec, setProhlizec] = useState(null);   // { fotky, i } — prohlížeč fotek přes celou obrazovku
@@ -515,14 +517,27 @@ export default function Prubeh({
     }
   };
   // Soubor dokumentu (smlouva / protokol / dodatek) — se stažením, nebo potichu pro opakované nahrání.
+  // U protokolu je „dod“ nastavení z okna (předmět, body prohlášení); při opakovaném
+  // nahrání se vezme uložené u zakázky, jinak výchozí podle nabídky.
   const souborDokumentu = async (zak, druh, dod, stahnout = true) => {
-    const d = podkladyDokumentu(zak);
+    const d = { ...podkladyDokumentu(zak), protokol: druh === "protokol" ? nastaveniProtokolu(zak, dod) : null };
     const jmeno = d.zakaznik.name || zak.nazev || "";
     const cislo = d.cisloOP || d.cisloZakazky;
     const [nazev, html] = druh === "smlouva" ? [`Smlouva o dílo ${cislo} ${jmeno}`, () => htmlSmlouvy(d)]
       : druh === "protokol" ? [`Předávací protokol ${cislo} ${jmeno}`, () => htmlProtokolu(d)]
       : [`Dodatek ${dod.cislo} ${d.cisloZakazky} ${jmeno}`, () => htmlDodatku(d, dod)];
     return (await zVlastniSablony(druh, znackySablony(d, druh === "dodatek" ? dod : undefined), nazev, zak.typ, stahnout)) || stahnoutWord(nazev, html(), stahnout);
+  };
+  const vychoziNastaveniProtokolu = (zak) => {
+    const fve = zak.quote_id ? quoteById(zak.quote_id)?.data?.fve : undefined;
+    return { predmet: vychoziPredmet(zak.typ), body: vychoziProhlaseni(zak.typ, fve), prejimajici: vychoziPrejimajici(zak.typ, fve) };
+  };
+  // Nastavení z okna, jinak naposledy použité u zakázky, jinak podle nabídky (chybějící části doplní).
+  const nastaveniProtokolu = (zak, n) => ({ ...vychoziNastaveniProtokolu(zak), ...(n || zak.dokumenty?.protokol?.nastaveni || {}) });
+  const otevritProtokol = (zak) => {
+    const n = nastaveniProtokolu(zak);
+    const sUpravou = (seznam) => seznam.map((b) => ({ ...b, upravit: false }));
+    setProtokolForm({ zakId: zak.id, predmet: n.predmet, body: sUpravou(n.body), prejimajici: sUpravou(n.prejimajici) });
   };
   // Dokumenty, které se nepovedlo uložit na OneDrive — drží se v dokumenty.onedriveCeka,
   // dokud se nenahrají (upozornění v zakázce i v seznamu, Zkusit znovu).
@@ -618,6 +633,10 @@ export default function Prubeh({
       dodatekCislo: dod ? String(dod.cislo) : "", dodatekPopis: dod?.popis || "",
       cenaPuvodni: dod ? kc(dod.cena_puvodni) || "…………" : "", cenaNova: dod ? kc(dod.cena_nova) : "",
       // Věta v předávacím protokolu FVE („… JE PŘEDÁNA A PŘEVZATA / PŘEVZETÍ … BYLO ODMÍTNUTO“)
+      // Předávací protokol: předmět a body prohlášení předávajícího (okno před vygenerováním)
+      predmetPredani: d.protokol?.predmet || vychoziPredmet(d.typ),
+      prohlaseni: znackyProhlaseni(d.protokol),
+      prejimajici: znackyProhlaseni(d.protokol, "prejimajici"),
       elektrarna: ELEKTRARNA_TYPU[d.typ]?.[0] || "SOLÁRNÍ ELEKTRÁRNA",
       elektrarny: ELEKTRARNA_TYPU[d.typ]?.[1] || "SOLÁRNÍ ELEKTRÁRNY",
       zmenaCeny: nova != null && rozdil !== 0,
@@ -633,9 +652,10 @@ export default function Prubeh({
       let od = {};
       let popis = NAZEV_DRUHU[druh];
       if (druh === "smlouva" || druh === "protokol") {
-        const soubor = await souborDokumentu(zak, druh);
+        const soubor = await souborDokumentu(zak, druh, dodatek);
         od = await naOneDrive(zak, soubor);
-        const dokumenty = sCekanim({ ...(zak.dokumenty || {}), [druh]: { ...zaznam, soubor: soubor.soubor, onedrive: od.onedrive || null } }, druh, null, od, soubor.soubor);
+        const nastaveni = druh === "protokol" && dodatek ? { nastaveni: dodatek } : {};
+        const dokumenty = sCekanim({ ...(zak.dokumenty || {}), [druh]: { ...zaznam, soubor: soubor.soubor, onedrive: od.onedrive || null, ...nastaveni } }, druh, null, od, soubor.soubor);
         await uloz(zak, { dokumenty }, `${druh === "smlouva" ? "Vygenerovaný návrh smlouvy o dílo" : "Vygenerovaný předávací protokol"}${od.onedrive ? " — uložený na OneDrive (Dokumenty)" : " — na OneDrive se NEuložil"}.`);
       } else if (druh === "dodatek") {
         const dodatky = zak.dokumenty?.dodatky || [];
@@ -1362,7 +1382,7 @@ export default function Prubeh({
         <button type="button" style={tl} disabled={generuji} onClick={() => vygenerovatDokument(z, "smlouva")}>Vygenerovat</button>
         <button type="button" style={tl} disabled={!!nahravam} onClick={() => vybratFotkyKategorie(z, "Smlouva")}>Sken</button></span>;
       if (akce === "protokol") return <span style={{ display: "flex", gap: 4 }}>
-        <button type="button" style={tl} disabled={generuji} onClick={() => vygenerovatDokument(z, "protokol")}>Vygenerovat</button>
+        <button type="button" style={tl} disabled={generuji} onClick={() => otevritProtokol(z)}>Vygenerovat</button>
         <button type="button" style={tl} disabled={!!nahravam} onClick={() => vybratFotkyKategorie(z, "Předávací protokol")}>Sken</button></span>;
       if (akce === "podklady") return <button type="button" style={tl} onClick={() => otevritPodklady(z)}>Vyplnit</button>;
       if (akce === "misto") return <button type="button" style={tl} onClick={() => setEditMisto({ adresa: z.misto_adresa || zakaznik(z.customer_id)?.address || "", kontakt: z.misto_kontakt || "", telefon: z.misto_telefon || "", vztah: z.misto_vztah || "" })}>Doplnit</button>;
@@ -1432,7 +1452,7 @@ export default function Prubeh({
               <span style={{ fontSize: 11, color: "#64748b", width: "100%" }}>Dokumenty:</span>
               <button type="button" style={tl} disabled={generuji} onClick={() => vygenerovatDokument(z, "smlouva")}><i className="ti ti-file-text" aria-hidden="true"></i> Návrh smlouvy</button>
               <button type="button" style={tl} onClick={() => setDodatekForm({ popis: "", cena_nova: "", termin: "", aktualizovatCenu: true })}><i className="ti ti-file-plus" aria-hidden="true"></i> Dodatek o změně</button>
-              {odPredani && <button type="button" style={tl} disabled={generuji} onClick={() => vygenerovatDokument(z, "protokol")}><i className="ti ti-clipboard-check" aria-hidden="true"></i> Předávací protokol</button>}
+              {odPredani && <button type="button" style={tl} disabled={generuji} onClick={() => otevritProtokol(z)}><i className="ti ti-clipboard-check" aria-hidden="true"></i> Předávací protokol</button>}
             </div>
           )}
 
@@ -1491,6 +1511,86 @@ export default function Prubeh({
               await vygenerovatDokument(z, "dodatek", { popis: d.popis.trim(), cena_nova: d.cena_nova, termin: d.termin || null, aktualizovatCenu: d.aktualizovatCenu });
               setDodatekForm(null);
             }}>{generuji ? "Generuji…" : "Vygenerovat dodatek"}</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Předávací protokol: předmět a body prohlášení předávajícího ──
+  const vykresliProtokol = () => {
+    if (!protokolForm) return null;
+    const z = rows.find((r) => r.id === protokolForm.zakId);
+    if (!z) return null;
+    const p = protokolForm;
+    const setBod = (klic, i, patch) => setProtokolForm({ ...p, [klic]: p[klic].map((b, j) => {
+      if (j !== i) return b;
+      const nb = { ...b, ...patch };
+      if (patch.text != null) { const n = volbyTextu(nb.text).length; nb.volby = Array.from({ length: n }, (_, k) => nb.volby?.[k] ?? null); }
+      return nb;
+    }) });
+    const zavrit = () => setProtokolForm(null);
+    const seznam = (klic) => (<>
+      {p[klic].map((b, i) => {
+        const volby = volbyTextu(b.text);
+        return (
+          <div key={b.id} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 10px", background: b.zahrnout ? "#fff" : "#f8fafc" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 14, flex: 1, cursor: "pointer" }}>
+                <input type="checkbox" checked={b.zahrnout} onChange={(e) => setBod(klic, i, { zahrnout: e.target.checked })} /> {b.nazev}
+              </label>
+              {b.zahrnout && <button type="button" style={{ ...btnGhost, padding: "2px 8px", fontSize: 12 }} onClick={() => setBod(klic, i, { upravit: !b.upravit })}>{b.upravit ? "Hotovo" : "Upravit text"}</button>}
+              {b.id.startsWith("vlastni") && <button type="button" style={{ ...btnGhost, padding: "2px 8px", fontSize: 12, color: "#b91c1c" }} aria-label="Smazat bod"
+                onClick={() => setProtokolForm({ ...p, [klic]: p[klic].filter((_, j) => j !== i) })}>✕</button>}
+            </div>
+            {b.zahrnout && (
+              <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                {volby.map((moznosti, k) => (
+                  <div key={k} style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {moznosti.map((m, v) => <button key={v} type="button" style={volbaBtn(b.volby?.[k] === v)} onClick={() => setBod(klic, i, { volby: b.volby.map((x, kk) => (kk === k ? v : x)) })}>{kratce(m)}</button>)}
+                    <button type="button" style={volbaBtn(b.volby?.[k] == null)} onClick={() => setBod(klic, i, { volby: b.volby.map((x, kk) => (kk === k ? null : x)) })}>ke škrtnutí *</button>
+                  </div>
+                ))}
+                {b.upravit
+                  ? <><textarea style={{ ...inp, minHeight: 70, resize: "vertical", fontSize: 13 }} value={b.text} autoFocus={!b.text} placeholder="Text bodu prohlášení…" onChange={(e) => setBod(klic, i, { text: e.target.value })} />
+                    <div style={{ fontSize: 11, color: "#64748b" }}>**text** = tučně · [JE|NENÍ] = volba (vybere se tlačítky výše)</div></>
+                  : <div style={{ fontSize: 13, color: "#334155" }}>{bezZnacek(vyresit(b.text, b.volby)) || <i style={{ color: "#94a3b8" }}>prázdný bod se do protokolu nedá</i>}</div>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div><button type="button" style={{ ...btnGhost, padding: "5px 11px", fontSize: 13 }}
+        onClick={() => setProtokolForm({ ...p, [klic]: [...p[klic], { id: `vlastni-${Date.now()}`, nazev: "Vlastní bod", text: "", volby: [], zahrnout: true, upravit: true }] })}>+ Přidat vlastní bod</button></div>
+    </>);
+
+    const volbaBtn = (aktivni) => ({ ...btnGhost, padding: "3px 9px", fontSize: 12, fontWeight: 600, ...(aktivni ? { background: "#0369a1", color: "#fff", borderColor: "#0369a1" } : {}) });
+    const kratce = (s) => { const t = bezZnacek(s).trim(); return t.length > 34 ? t.slice(0, 32) + "…" : t; };
+    return (
+      <div role="dialog" aria-modal="true" aria-label="Předávací protokol" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        onClick={(e) => { if (e.target === e.currentTarget) zavrit(); }}>
+        <div style={{ ...karta, width: "min(720px, 100%)", maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>Předávací protokol — {z.nazev}</div>
+          <div><label style={lbl} htmlFor="pr-prot-predmet">Předmět předání</label>
+            <input id="pr-prot-predmet" style={inp} value={p.predmet} onChange={(e) => setProtokolForm({ ...p, predmet: e.target.value })} /></div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 800 }}>Prohlášení předávajícího</div>
+            <button type="button" style={{ ...btnGhost, padding: "3px 9px", fontSize: 12 }} onClick={() => {
+              const n = vychoziNastaveniProtokolu(z);
+              const sUpravou = (seznam) => seznam.map((b) => ({ ...b, upravit: false }));
+              setProtokolForm({ ...p, predmet: n.predmet, body: sUpravou(n.body), prejimajici: sUpravou(n.prejimajici) });
+            }}>↺ Podle nabídky</button>
+          </div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>Body jsou předvyplněné podle kalkulace nabídky{z.typ === "FVR" ? " — u rozšíření jen k tomu, co se dodává" : ""}. Volba, kterou nevybereš, zůstane v protokolu jako „JE / NENÍ *“ ke škrtnutí.</div>
+          {seznam("body")}
+          <div style={{ fontWeight: 800, marginTop: 6 }}>Prohlášení přejímajícího</div>
+          {seznam("prejimajici")}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: -16, background: "#fff", padding: "8px 0" }}>
+            <button type="button" style={btnGhost} onClick={zavrit}>Zrušit</button>
+            <button type="button" style={btn("#0369a1")} disabled={generuji} onClick={async () => {
+              await vygenerovatDokument(z, "protokol", { predmet: p.predmet.trim() || vychoziPredmet(z.typ), body: p.body.map(({ upravit, ...b }) => b), prejimajici: p.prejimajici.map(({ upravit, ...b }) => b) }); // eslint-disable-line no-unused-vars
+              zavrit();
+            }}>{generuji ? "Generuji…" : "Vygenerovat protokol"}</button>
           </div>
         </div>
       </div>
@@ -1918,6 +2018,7 @@ export default function Prubeh({
       `}</style>
       {vykresliPruvodce()}
       {vykresliDodatek()}
+      {vykresliProtokol()}
       {vykresliVice()}
       {vykresliUzavEmail()}
       {vykresliMaterial()}

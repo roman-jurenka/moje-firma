@@ -5,6 +5,7 @@
 // vhodné nechat zkontrolovat, případně ho tady upravit na firemní verzi.
 
 import { COMPANY, COMPANY_ACCOUNT_DISPLAY } from "./invoicingUtils.js";
+import { znackyProhlaseni } from "./protokolProhlaseni.js";
 
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const kc = (n) => `${Math.round(Number(n) || 0).toLocaleString("cs-CZ")} Kč`;
@@ -116,14 +117,21 @@ ${podpisy(d)}`;
 // ── Předávací protokol ──
 export function htmlProtokolu(d) {
   const radky = Array.from({ length: 4 }, () => "<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>").join("");
+  const prohlaseni = znackyProhlaseni(d.protokol), prejimajici = znackyProhlaseni(d.protokol, "prejimajici");
   const telo = `<h1>PŘEDÁVACÍ PROTOKOL</h1>
 <div class="pod">k zakázce ${hod(d.cisloZakazky)} · ${hod(d.nazev)}</div>
 ${strany(d)}
 
 <h2>Předmět předání</h2>
 <p>Dílo <b>${hod(d.predmet)}</b> na adrese <b>${hod(d.misto)}</b>, provedené podle smlouvy o dílo č. ${hod(d.cisloZakazky)}${d.nabidka?.cislo ? ` a nabídky č. ${esc(d.nabidka.cislo)}` : ""}.</p>
+${d.protokol?.predmet ? `<p><b>Předmět předání:</b> ${esc(d.protokol.predmet)}</p>` : ""}
 ${komponenty(d)}
 ${technicke(d)}
+${prohlaseni.length ? `<h2>Prohlášení předávajícího</h2>
+<ol>${prohlaseni.map((b) => `<li>${b.casti.map((c) => (c.b ? `<b>${esc(c.t)}</b>` : esc(c.t))).join("")}</li>`).join("")}</ol>
+<p style="font-size:9pt">* Nehodící se škrtněte</p>` : ""}
+${prejimajici.length ? `<h2>Prohlášení přejímajícího</h2>
+<ol>${prejimajici.map((b) => `<li>${b.casti.map((c) => (c.b ? `<b>${esc(c.t)}</b>` : esc(c.t))).join("")}</li>`).join("")}</ol>` : ""}
 
 <h2>Instalovaná zařízení</h2>
 <table><tr><th>Zařízení / typ</th><th>Výrobní číslo</th><th>Poznámka</th></tr>${radky}</table>
