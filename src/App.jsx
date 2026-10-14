@@ -1703,7 +1703,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} />}
 
-        {tab === "navrh3d" && allowedTabs.includes("navrh3d") && <Navrh3D />}
+        {tab === "navrh3d" && allowedTabs.includes("navrh3d") && <Navrh3D currentUser={currentUser} />}
         {tab === "statika" && allowedTabs.includes("statika") && <StatikaFve contracts={contracts} customers={customers} currentUser={currentUser} />}
 
         {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents}

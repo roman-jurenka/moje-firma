@@ -18,6 +18,7 @@ import {
 import { vyrovnejFotku } from "./perspektiva.js";
 import * as rz from "./rizikoBlesk.js";
 import { vytvorMontazniDokumentaci, vytvorListRizika } from "./montazniDokumentace.js";
+import { nactiSeznam, nactiNavrh, ulozNavrh as ulozDoDatabaze, smazNavrh, nactiZakazky } from "./navrhyCloud.js";
 
 const ODSTUP_FASADA = 0.08;
 
@@ -272,7 +273,11 @@ function RohyEditor({ foto, nazev, onUlozit, onZavrit }) {
   );
 }
 
-export default function Navrh3D() {
+// Návrh, na kterém někdo opravdu pracoval (prázdný nový návrh se do databáze neukládá).
+const maObsah = (n) => !!(Object.keys(n.fotky || {}).length || n.fve?.length || n.prekazky?.length || n.hromosvod?.vedeni?.length
+  || n.hromosvod?.svody?.length || (n.nazev && n.nazev !== "Nový návrh") || n.zakaznik || n.contractId);
+
+export default function Navrh3D({ currentUser } = {}) {
   const [navrhy, setNavrhy] = useState(nactiNavrhy);
   const [navrh, setNavrh] = useState(() => nactiNavrhy()[0] || vychoziNavrh());
   const [zalozka, setZalozka] = useState("rozmery");
@@ -313,6 +318,44 @@ export default function Navrh3D() {
   });
   const zpet = () => { const p = historie.current.pop(); if (p) setNavrh(p); };
   const zmenHs = (fn) => zmen(n => ({ ...n, hromosvod: { ...n.hromosvod, ...(typeof fn === "function" ? fn(n.hromosvod) : fn) } }));
+
+  // ── Databáze: seznam návrhů, zakázky, průběžné ukládání ──
+  const [cloudSeznam, setCloudSeznam] = useState([]);
+  const [stavDb, setStavDb] = useState("nacitam");   // nacitam | ok | uklada | chyba
+  const [zakazky, setZakazky] = useState([]);
+  const posledniUlozeni = useRef("");
+  const uzivatel = currentUser?.name || currentUser?.email || "";
+  useEffect(() => {
+    let zivy = true;
+    nactiSeznam().then(x => { if (zivy) { setCloudSeznam(x); setStavDb("ok"); } }).catch(() => zivy && setStavDb("chyba"));
+    nactiZakazky().then(x => zivy && setZakazky(x)).catch(() => {});
+    return () => { zivy = false; };
+  }, []);
+  useEffect(() => {
+    if (!maObsah(navrh)) return undefined;
+    const t = setTimeout(async () => {
+      const otiskNavrhu = JSON.stringify({ ...navrh, upraveno: null });
+      if (otiskNavrhu === posledniUlozeni.current) return;
+      setStavDb("uklada");
+      try {
+        const fotky = await ulozDoDatabaze(navrh, uzivatel);
+        posledniUlozeni.current = otiskNavrhu;
+        // cesty k nahraným fotkám a autor zpět do návrhu (bez zápisu do historie)
+        const zmenaFotek = Object.entries(fotky).some(([k, f]) => f?.cesta !== navrh.fotky?.[k]?.cesta);
+        if (zmenaFotek || !navrh.vytvoril) {
+          setNavrh(prev => (prev.id !== navrh.id ? prev : {
+            ...prev, vytvoril: prev.vytvoril || uzivatel || "?",
+            fotky: Object.fromEntries(Object.entries(prev.fotky || {}).map(([k, f]) => [k, fotky[k]?.cesta && f?.data === fotky[k].data ? { ...f, cesta: fotky[k].cesta, otisk: fotky[k].otisk } : f])),
+          }));
+        }
+        setCloudSeznam(prev => [{ id: navrh.id, nazev: navrh.nazev, zakaznik: navrh.zakaznik, contract_id: navrh.contractId || null, updated_at: new Date().toISOString(), upravil: uzivatel }, ...prev.filter(x => x.id !== navrh.id)]);
+        setStavDb("ok");
+      } catch {
+        setStavDb("chyba");
+      }
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [navrh, uzivatel]);
 
   // Automatické ukládání do zařízení.
   useEffect(() => {
@@ -1089,9 +1132,30 @@ export default function Navrh3D() {
 
   // ── Správa návrhů ──
   const novy = () => { historie.current = []; setNavrh(vychoziNavrh()); setVybrane(null); setZalozka("rozmery"); };
-  const otevrit = (id) => { const x = navrhy.find(q => q.id === id); if (x) { historie.current = []; setNavrh(x); setVybrane(null); } };
-  const smazatNavrh = () => {
-    if (!window.confirm(`Smazat návrh „${navrh.nazev}“ z tohoto zařízení?`)) return;
+  // Otevře návrh: novější verze vyhrává (v zařízení, nebo v databázi).
+  const otevrit = async (id) => {
+    const mistni = navrhy.find(q => q.id === id);
+    const vDb = cloudSeznam.find(q => q.id === id);
+    historie.current = []; setVybrane(null);
+    if (vDb && (!mistni || new Date(vDb.updated_at) > new Date(mistni.upraveno || 0))) {
+      try {
+        setStavDb("nacitam");
+        const x = await nactiNavrh(id);
+        posledniUlozeni.current = JSON.stringify({ ...x, upraveno: null });
+        setNavrh({ ...vychoziNavrh(), ...x });
+        setStavDb("ok");
+        return;
+      } catch { setStavDb("chyba"); }
+    }
+    if (mistni) setNavrh(mistni);
+  };
+  const smazatNavrh = async () => {
+    const vDb = cloudSeznam.some(x => x.id === navrh.id);
+    if (!window.confirm(vDb ? `Smazat návrh „${navrh.nazev}“ pro všechny (z databáze i z tohoto zařízení)?` : `Smazat návrh „${navrh.nazev}“ z tohoto zařízení?`)) return;
+    if (vDb) {
+      try { await smazNavrh(navrh.id); } catch { window.alert("Návrh se nepodařilo smazat z databáze."); return; }
+      setCloudSeznam(prev => prev.filter(x => x.id !== navrh.id));
+    }
     const zbytek = navrhy.filter(x => x.id !== navrh.id);
     ulozNavrhy(zbytek); setNavrhy(zbytek);
     historie.current = [];
@@ -1191,6 +1255,14 @@ export default function Navrh3D() {
       <div style={S.mrizka}>
         <label><span style={S.popisek}>Název návrhu</span><input style={S.pole} value={navrh.nazev} onChange={e => zmen({ nazev: e.target.value }, { doHistorie: false })} /></label>
         <label><span style={S.popisek}>Zákazník / adresa</span><input style={S.pole} value={navrh.zakaznik} onChange={e => zmen({ zakaznik: e.target.value }, { doHistorie: false })} /></label>
+      </div>
+      <div>
+        <label><span style={S.popisek}>Zakázka</span>
+          <select style={S.pole} value={navrh.contractId || ""} onChange={e => zmen({ contractId: e.target.value ? Number(e.target.value) : null }, { doHistorie: false })}>
+            <option value="">– nepřiřazeno –</option>
+            {zakazky.map(z => <option key={z.id} value={z.id}>{z.code ? `${z.code} – ` : ""}{z.name}</option>)}
+          </select>
+        </label>
       </div>
       <div style={S.mrizka}>
         {cisloPole("Délka – přední stěna (m)", navrh.delka, v => zmen({ delka: Math.max(1, Number(v) || 1) }))}
@@ -1804,9 +1876,15 @@ export default function Navrh3D() {
         <h1 style={{ ...ui.nadpis, fontSize: 22 }}>🏠 3D návrh domu – FVE a hromosvod</h1>
         <div style={S.radek}>
           <select style={{ ...S.pole, width: "auto", maxWidth: 220 }} value={navrh.id} onChange={e => otevrit(e.target.value)}>
-            {!navrhy.some(x => x.id === navrh.id) && <option value={navrh.id}>{navrh.nazev}</option>}
-            {navrhy.map(x => <option key={x.id} value={x.id}>{x.nazev}{x.zakaznik ? ` – ${x.zakaznik}` : ""}</option>)}
+            {(() => {
+              const vse = [...cloudSeznam.map(x => ({ ...x, db: true })), ...navrhy.filter(x => !cloudSeznam.some(c => c.id === x.id))];
+              if (!vse.some(x => x.id === navrh.id)) vse.unshift({ id: navrh.id, nazev: navrh.nazev });
+              return vse.map(x => <option key={x.id} value={x.id}>{x.db ? "☁ " : ""}{x.nazev}{x.zakaznik ? ` – ${x.zakaznik}` : ""}</option>);
+            })()}
           </select>
+          <span style={{ ...S.maly, color: stavDb === "chyba" ? ui.barvy.chyba : ui.barvy.textSlaby }} title="Návrhy se ukládají do databáze a vidí je všichni, kdo pracují s 3D návrhy">
+            {stavDb === "uklada" ? "☁ Ukládám…" : stavDb === "chyba" ? "⚠ Neuloženo v databázi (offline?) – zkusím znovu při další změně" : stavDb === "nacitam" ? "☁ Načítám…" : maObsah(navrh) ? "☁ Uloženo" : ""}
+          </span>
           <button style={S.btn(ui.barvy.uspech)} onClick={novy}><i className="ti ti-plus" /> Nový</button>
           <button style={S.btn(ui.barvy.akcent)} disabled={generuji} onClick={montazniDokumentace} title="Montážní dokumentace v PDF"><i className="ti ti-file-type-pdf" /> {generuji ? "Vytvářím…" : "Dokumentace PDF"}</button>
           <button style={S.obrys} onClick={zpet} title="Zpět (Ctrl+Z)"><i className="ti ti-arrow-back-up" /> Zpět</button>
