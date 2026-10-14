@@ -9,11 +9,14 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //
 // Auth: stejný sdílený klíč jako faktury-prijem (secret FAKTURY_PRIJEM_TOKEN),
 // posílá se jako `Authorization: Bearer <klíč>`. Nasazená s verify_jwt=false.
+//
+// GET (stejný klíč) vrátí poslední uloženou jízdu každého vozidla a počty jízd
+// po dnech, aby úloha věděla, od kterého dne dopisovat a které dny chybí.
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
@@ -38,19 +41,44 @@ const datum = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null);
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  if (req.method !== "POST" && req.method !== "GET") return json({ error: "method_not_allowed" }, 405);
 
   const ocekavany = Deno.env.get("FAKTURY_PRIJEM_TOKEN");
   const prisly = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!ocekavany || prisly !== ocekavany) return json({ error: "unauthorized" }, 401);
+
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  // poslední zápis za každé vozidlo
+  if (req.method === "GET") {
+    const { data: vozidla, error } = await supabase.from("gps_vozidla").select("kod, nazev, spz");
+    if (error) return json({ error: "vozidla_select_failed", detail: error.message }, 500);
+    const out = [];
+    for (const v of vozidla ?? []) {
+      const { data: posl } = await supabase.from("gps_jizdy").select("datum, zacatek, konec")
+        .eq("vozidlo_kod", v.kod).order("datum", { ascending: false }).order("zacatek", { ascending: false })
+        .limit(1).maybeSingle();
+      // počty jízd po dnech za posledních 35 dní — úloha je porovná s Knihou jízd a doplní vynechané dny
+      const { data: radky } = await supabase.from("gps_jizdy").select("datum, km")
+        .eq("vozidlo_kod", v.kod).gte("datum", new Date(Date.now() - 35 * 864e5).toISOString().slice(0, 10));
+      const dny: Record<string, { pocet: number; km: number }> = {};
+      for (const r of radky ?? []) {
+        const d = (dny[r.datum] ??= { pocet: 0, km: 0 });
+        d.pocet++; d.km = Math.round((d.km + Number(r.km ?? 0)) * 10) / 10;
+      }
+      out.push({
+        ...v, posledni_datum: posl?.datum ?? null, posledni_zacatek: posl?.zacatek ?? null, posledni_konec: posl?.konec ?? null,
+        dny: Object.entries(dny).sort(([a], [b]) => a.localeCompare(b)).map(([datum, x]) => ({ datum, ...x })),
+      });
+    }
+    return json({ ok: true, vozidla: out });
+  }
 
   let vstup: Vstup;
   try { vstup = await req.json(); } catch { return json({ error: "invalid_json" }, 400); }
   const kod = String(vstup?.vozidlo?.kod ?? "").trim();
   if (!kod) return json({ error: "missing_vozidlo_kod" }, 400);
   if (!Array.isArray(vstup.jizdy)) return json({ error: "missing_jizdy" }, 400);
-
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   // vozidlo: nové dostane výchozího řidiče z nastavení, existující se jen doplní
   const { data: stavajici } = await supabase.from("gps_vozidla").select("kod").eq("kod", kod).maybeSingle();
