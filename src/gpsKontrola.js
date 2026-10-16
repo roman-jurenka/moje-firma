@@ -20,7 +20,7 @@ export function zastavky(jizdy) {
 }
 
 // slova adresy bez diakritiky; PSČ a „CZ“ pryč
-const slova = (a) => bezDiakritiky(a).replace(/\b\d{3}\s?\d{2}\b/g, " ").replace(/[,.]/g, " ").split(/\s+/)
+export const slova = (a) => bezDiakritiky(a).replace(/\b\d{3}\s?\d{2}\b/g, " ").replace(/[,.]/g, " ").split(/\s+/)
   .filter((w) => w && w !== "cz" && w !== "ceska" && w !== "republika" && w !== "kraj" && (w.length >= 3 || /\d/.test(w)));
 
 // jak moc adresa zastávky odpovídá adrese zakázky (0–1)

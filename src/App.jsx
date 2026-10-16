@@ -28,6 +28,7 @@ import DenniZapis from "./DenniZapis.jsx";
 import SchvalovaniDochazky from "./SchvalovaniDochazky.jsx";
 import MzdovePodklady from "./MzdovePodklady.jsx";
 import ZiskovostZakazek from "./ZiskovostZakazek.jsx";
+import JizdyGps from "./JizdyGps.jsx";
 import ZasobyMist from "./ZasobyMist.jsx";
 import { handleOAuthCallback, isConnected, uploadFileObject, maybeAutoBackup } from "./onedrive.js";
 import * as outlookCal from "./outlookCalendar.js";
@@ -9683,6 +9684,9 @@ function PermissionsPanel({ currentUser }) {
 
 function KnihaJizd({ currentUser, employees, contracts }) {
   const isHR = ["admin", "hr", "manager"].includes(currentUser?.role);
+  // vedení vidí i jízdy z GPS Dozoru (ostatním je RLS stejně nevrátí)
+  const vidiGps = isHR || (currentUser?.navOverride || []).includes("hr");
+  const [kjTab, setKjTab] = useState(vidiGps ? "gps" : "rucni");
   const canEditKm = currentUser?.role === "admin" || !!currentUser?.canEditKm;
   const [logs, setLogs] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -9977,12 +9981,29 @@ function KnihaJizd({ currentUser, employees, contracts }) {
   const totalKm = logs.reduce((s, l) => s + (l.km_total || 0), 0);
   const totalCost = totalKm * 6.5;
 
+  const zalozky = vidiGps && (
+    <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+      {[["gps", "📍 Jízdy z GPS"], ["rucni", "📒 Ruční záznamy"]].map(([id, t]) => (
+        <button key={id} type="button" aria-pressed={kjTab === id} onClick={() => setKjTab(id)}
+          style={{ ...S.btn(kjTab === id ? "#0369a1" : "#e2e8f0"), color: kjTab === id ? "#fff" : "#334155", border: "1px solid #e2e8f0" }}>{t}</button>
+      ))}
+    </div>
+  );
+  if (vidiGps && kjTab === "gps") return (
+    <div>
+      <div style={S.header}><h1 style={S.h1}>🚗 Kniha jízd</h1></div>
+      {zalozky}
+      <JizdyGps currentUser={currentUser} employees={employees} contracts={contracts || []} />
+    </div>
+  );
+
   return (
     <div>
       <div style={S.header}>
         <h1 style={S.h1}>🚗 Kniha jízd</h1>
         <button style={S.btn()} onClick={() => setShowForm(!showForm)}>+ Přidat jízdu</button>
       </div>
+      {zalozky}
 
       {/* Filtry */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
