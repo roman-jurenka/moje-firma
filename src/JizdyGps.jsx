@@ -59,14 +59,46 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
   }, [mesic]);
 
   const zakazkySAdresou = contracts.filter((c) => c.address);
-  const navrh = (j) => {
+  const navrhSeShodou = (j) => {
     let nej = null;
     for (const c of zakazkySAdresou) {
       const s = shodaJizdy(j.do_adresa, c.address);
       if (s >= 0.6 && (!nej || s > nej.s)) nej = { c, s };
     }
-    return nej?.c || null;
+    return nej;
   };
+  const navrh = (j) => navrhSeShodou(j)?.c || null;
+  // našeptávač s podrobnostmi o zakázce (po najetí myší / fokusu)
+  const [info, setInfo] = useState(null); // { k, x, y } — poloha na obrazovce (tabulka se posouvá, tooltip je fixed)
+  const infoKlic = info?.k || null;
+  const [zakaznici, setZakaznici] = useState([]);
+  useEffect(() => {
+    supabase.from("customers").select("id, name, company, phone").then(({ data }) => setZakaznici(data || []));
+  }, []);
+  const infoZakazky = (c, j, shoda) => {
+    const zk = zakaznici.find((x) => x.id === c.customer_id);
+    const radek = (l, v) => (v ? <div style={{ display: "flex", gap: 6 }}><span style={{ color: "#94a3b8", minWidth: 74 }}>{l}</span><span style={{ fontWeight: 600 }}>{v}</span></div> : null);
+    return (
+      <div role="tooltip" style={{ position: "fixed", zIndex: 1000, top: info?.y ?? 0, left: info?.x ?? 0, width: 300, background: "#0f172a", color: "#e2e8f0", borderRadius: 10, padding: "10px 12px", fontSize: 12, lineHeight: 1.45, boxShadow: "0 10px 30px rgba(0,0,0,.3)", display: "flex", flexDirection: "column", gap: 3, textAlign: "left", whiteSpace: "normal" }}>
+        <div style={{ fontWeight: 800, fontSize: 13, color: "#fff" }}>{c.name}</div>
+        {radek("Kód", [c.code, c.type].filter(Boolean).join(" · "))}
+        {radek("Stav", c.status)}
+        {radek("Zákazník", zk ? [zk.company || zk.name, zk.phone].filter(Boolean).join(" · ") : "")}
+        {radek("Adresa", c.address)}
+        {radek("Cíl jízdy", kratkaAdresa(j.do_adresa))}
+        {Number(c.price) > 0 && radek("Cena", `${Math.round(Number(c.price)).toLocaleString("cs-CZ")} Kč`)}
+        {shoda != null && <div style={{ marginTop: 3, color: shoda >= 0.8 ? "#86efac" : "#fcd34d" }}>Shoda adresy {Math.round(shoda * 100)} %{shoda >= 0.8 ? " — sedí číslo domu / obec" : " — zkontroluj"}</div>}
+      </div>
+    );
+  };
+  const ukazInfo = (k, el) => {
+    const r = el.getBoundingClientRect();
+    const x = Math.max(8, Math.min(r.left, window.innerWidth - 308));
+    const y = r.bottom + 220 > window.innerHeight ? Math.max(8, r.top - 220) : r.bottom + 4;
+    setInfo({ k, x, y });
+  };
+  const skryjInfo = (k) => setInfo((i) => (i?.k === k ? null : i));
+  const hoverProps = (k) => ({ onMouseEnter: (e) => ukazInfo(k, e.currentTarget), onMouseLeave: () => skryjInfo(k), onFocus: (e) => ukazInfo(k, e.currentTarget), onBlur: () => skryjInfo(k) });
   const vozidlo = (kod) => vozidla.find((v) => v.kod === kod);
   const ridic = (kod) => employees.find((e) => String(e.id) === String(vozidlo(kod)?.ridic_employee_id))?.name || "—";
   const nazevAuta = (v) => String(v?.nazev || v?.kod || "").replace(/^\d+-/, "");
@@ -158,7 +190,9 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
                 <tbody>
                   {js.map((j) => {
                     const st = stavy[klic(j)];
-                    const nv = !st?.contract_id ? navrh(j) : null;
+                    const nvs = !st?.contract_id ? navrhSeShodou(j) : null;
+                    const nv = nvs?.c || null;
+                    const prirazena = st?.contract_id ? zakazka(st.contract_id) : null;
                     return (
                       <tr key={klic(j)} style={{ borderTop: "1px solid #f1f5f9", background: st?.schvaleno ? "#f0fdf4" : undefined }}>
                         <td style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}><b>{hm(j.zacatek)}–{hm(j.konec)}</b><div style={{ fontSize: 11, color: "#64748b" }}>{minut(j.doba_min)}{j.stani_min ? ` · stání ${minut(j.stani_min)}` : ""}</div></td>
@@ -171,8 +205,12 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
                             <option value="">— bez zakázky —</option>
                             {contracts.map((c) => <option key={c.id} value={c.id}>{c.code ? `${c.code} · ` : ""}{c.name}</option>)}
                           </select>
-                          {nv && <div style={{ fontSize: 11, marginTop: 3 }}>návrh: <button type="button" style={{ background: "none", border: "none", color: "#0369a1", fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 11 }} onClick={() => ulozitStav(j, { contract_id: nv.id })}>{nv.code || nv.name} ✓</button></div>}
-                          {st?.contract_id && <div style={{ fontSize: 11, color: "#15803d" }}>✓ přiřazeno{zakazka(st.contract_id)?.code ? ` · ${zakazka(st.contract_id).code}` : ""}</div>}
+                          {nv && <div style={{ fontSize: 11, marginTop: 3, position: "relative" }}>návrh: <button type="button" {...hoverProps(`n${klic(j)}`)} aria-describedby={infoKlic === `n${klic(j)}` ? `info-${klic(j)}` : undefined}
+                            style={{ background: "none", border: "none", color: "#0369a1", fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 11, textDecoration: "underline dotted" }} onClick={() => ulozitStav(j, { contract_id: nv.id })}>{nv.code || nv.name} ✓</button>
+                            {infoKlic === `n${klic(j)}` && <div id={`info-${klic(j)}`}>{infoZakazky(nv, j, nvs.s)}</div>}</div>}
+                          {prirazena && <div style={{ fontSize: 11, color: "#15803d", position: "relative" }}>
+                            <span tabIndex={0} {...hoverProps(`p${klic(j)}`)} style={{ cursor: "help", textDecoration: "underline dotted" }}>✓ přiřazeno{prirazena.code ? ` · ${prirazena.code}` : ""}</span>
+                            {infoKlic === `p${klic(j)}` && infoZakazky(prirazena, j, prirazena.address ? shodaJizdy(j.do_adresa, prirazena.address) : null)}</div>}
                         </td>
                         <td style={{ ...td, whiteSpace: "nowrap" }}>
                           {st?.schvaleno
