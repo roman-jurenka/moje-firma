@@ -11,7 +11,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import * as ui from "./ui.js";
 import {
-  STRANY, TYPY_STRECHY, TRIDY_LPS, vychoziNavrh, plochyStrechy, steny, vyskaHrebene, sklonZHrebene,
+  STRANY, TYPY_STRECHY, TRIDY_LPS, vychoziNavrh, plochyStrechy, steny, vyskaHrebene, sklonZHrebene, delkyStrechy, rozmerZDelkyStrechy, soustavaStrechy,
   panelyPole, panelSeVejde, rozmerPanelu, vyplnPlochu, bodPlochy, navrhniHromosvod, trasaSvodu,
   drahaVedeni, patyTyce, blizkePanely, soupis, v3, poziceBodu, jePevny, spoje, vyskaStrechy, NAD_STRECHOU, pristavky, seznamPristavku, TYPY_PREKAZEK, valivaKoule, POLOMER_KOULE, obdelnikPrvku, odstupy, polohaPodleOdstupu,
 } from "./navrh3dGeometrie.js";
@@ -167,18 +167,9 @@ function stitek3d(text, styl = {}, onKlik = null) {
     Object.assign(d.style, { pointerEvents: "auto", cursor: "pointer", textDecoration: "underline dotted" });
     d.title = "Klepněte a zadejte přesnou délku";
     d.addEventListener("pointerdown", (e) => e.stopPropagation());
-    d.addEventListener("click", (e) => { e.stopPropagation(); onKlik(); });
+    d.addEventListener("click", (e) => { e.stopPropagation(); onKlik(d); });
   }
   return new CSS2DObject(d);
-}
-
-// zeptá se na délku v metrech (desetinná čárka i tečka); null = zrušeno / nesmysl
-function zeptatSeNaDelku(popis, hodnota) {
-  const v = window.prompt(`${popis} (m):`, String(Math.round((Number(hodnota) || 0) * 100) / 100).replace(".", ","));
-  if (v == null) return null;
-  const x = Number(String(v).replace(/\s/g, "").replace(",", "."));
-  if (!Number.isFinite(x) || x < 0) { window.alert("Zadejte číslo v metrech, např. 4,6"); return null; }
-  return x;
 }
 
 function valec(a, b, r, mat) {
@@ -603,13 +594,24 @@ export default function Navrh3D({ currentUser } = {}) {
 
     // kóty
     const L = n.delka / 2, W = n.sirka / 2;
-    const klik = (...a) => () => kotaKlikRef.current?.(...a);
+    const klik = (...a) => (el) => kotaKlikRef.current?.(...a, el);
     const k1 = stitek3d(`${cislo(n.delka)} m`, {}, klik("dum", "delka", "Délka domu", n.delka)); k1.position.set(0, 0.1, W + 0.8); s.skupPom.add(k1);
     const k2 = stitek3d(`${cislo(n.sirka)} m`, {}, klik("dum", "sirka", "Šířka domu", n.sirka)); k2.position.set(L + 0.8, 0.1, 0); s.skupPom.add(k2);
     const k3 = stitek3d(`okap ${cislo(n.vyskaOkapu)} m`, {}, klik("dum", "vyskaOkapu", "Výška okapu", n.vyskaOkapu)); k3.position.set(L + 0.3, n.vyskaOkapu, W + 0.3); s.skupPom.add(k3);
     if (n.strecha !== "plocha") {
       const vrch = plochy.flatMap(f => f.body).reduce((a, b) => (b[1] > a[1] ? b : a));
-      const k4 = stitek3d(`hřeben ${cislo(vyskaHrebene(n))} m`, {}, klik("hreben", "Výška hřebene", vyskaHrebene(n))); k4.position.set(vrch[0], vrch[1] + 0.5, vrch[2]); s.skupPom.add(k4);
+      const k4 = stitek3d(`hřeben ${cislo(vyskaHrebene(n))} m`, {}, klik("hreben", null, "Výška hřebene", vyskaHrebene(n))); k4.position.set(vrch[0], vrch[1] + 0.5, vrch[2]); s.skupPom.add(k4);
+    }
+    // délky střechy (klepnutím jde zadat přesná délka)
+    {
+      const S = soustavaStrechy(n), ds = delkyStrechy(n), p = Math.max(0, Number(n.presah) || 0);
+      const doSveta = (rx, y, rz) => [rx * S.c + rz * S.s, y, -rx * S.s + rz * S.c];
+      const hr = vyskaHrebene(n);
+      const styl = { background: "#7c2d12", color: "#fff", border: "none" };
+      const ko = stitek3d(`střecha u okapu ${cislo(ds.okap)} m`, styl, klik("strecha", "okap", "Délka střechy u okapu (podél hřebene)", ds.okap));
+      ko.position.set(...doSveta(0, n.vyskaOkapu - 0.15, S.B / 2 + p + 0.2)); s.skupPom.add(ko);
+      const kk = stitek3d(`${n.strecha === "plocha" ? "střecha" : "krokev"} ${cislo(ds.krokev)} m`, styl, klik("strecha", "krokev", n.strecha === "plocha" ? "Druhý rozměr střechy" : "Délka krokve (od okapu k hřebeni)", ds.krokev));
+      kk.position.set(...doSveta(S.A / 2 + p + 0.3, n.strecha === "plocha" ? n.vyskaOkapu : (n.vyskaOkapu + hr) / 2, n.strecha === "pultova" ? 0 : (S.B / 2 + p) / 2)); s.skupPom.add(kk);
     }
     // světové strany
     const az = (n.azimutPredni || 0) * Math.PI / 180;
@@ -705,7 +707,7 @@ export default function Navrh3D({ currentUser } = {}) {
           l.renderOrder = 10;
           s.skupPom.add(l);
           const st = stitek3d(`${popis} ${cislo(hodnota)} m`, { background: barva, color: "#fff", border: "none", fontSize: "11px" },
-            () => kotaKlikRef.current?.("odstup", { prvekId: prvek.id, jePole, strana }, nazvyStran[strana], hodnota));
+            (el) => kotaKlikRef.current?.("odstup", { prvekId: prvek.id, jePole, strana }, nazvyStran[strana], hodnota, el));
           st.position.set(...v3.mul(v3.add(A, B), 0.5));
           s.skupPom.add(st);
         };
@@ -1256,28 +1258,50 @@ export default function Navrh3D({ currentUser } = {}) {
     );
   };
   const zmenPole = (id, zmena) => zmen(n => ({ ...n, fve: n.fve.map(p => p.id === id ? { ...p, ...zmena } : p) }));
-  // Klepnutí na kótu v 3D: zadání přesné délky (rozměry domu, výška hřebene, odstupy prvku od okrajů)
-  // (nastavuje se po vykreslení, ať 3D kóty volají aktuální obsluhu s aktuálním návrhem)
+  // Klepnutí na kótu v 3D: pod číslem se otevře malý editor (−/+, číslo), model se hýbe hned.
+  // (obsluha se nastavuje po vykreslení, ať 3D kóty volají aktuální verzi)
+  const [upravaKoty, setUpravaKoty] = useState(null); // { co, kde, popis, puvodni, text, x, y, zmeneno }
   useEffect(() => {
-    kotaKlikRef.current = (co, kde, popis, hodnota) => {
-      if (co === "dum") {
-        const x = zeptatSeNaDelku(popis, hodnota);
-        if (x != null && x > 0) zmen({ [kde]: x });
-      } else if (co === "hreben") {
-        const x = zeptatSeNaDelku(kde, popis);
-        if (x != null) zmen(n => ({ ...n, sklon: sklonZHrebene(n, x) }));
-      } else if (co === "odstup") {
-        const x = zeptatSeNaDelku(popis, hodnota);
-        if (x == null) return;
-        const kam = kde.jePole ? "fve" : "prekazky";
-        const prvek = (navrh[kam] || []).find(p => p.id === kde.prvekId);
-        const f = prvek && plochy[prvek.plocha];
-        if (!f) return;
-        const nova = polohaPodleOdstupu(f, obdelnikPrvku(navrh, prvek, kde.jePole), kde.strana, x);
-        zmen(n => ({ ...n, [kam]: (n[kam] || []).map(p => (p.id === prvek.id ? { ...p, ...nova } : p)) }));
-      }
+    kotaKlikRef.current = (co, kde, popis, hodnota, el) => {
+      const kontejner = mountRef.current?.parentElement;
+      const rk = kontejner?.getBoundingClientRect(), re = el?.getBoundingClientRect?.();
+      const x = rk && re ? Math.max(4, Math.min(re.left - rk.left + re.width / 2 - 110, rk.width - 224)) : 20;
+      const y = rk && re ? Math.min(re.bottom - rk.top + 6, rk.height - 120) : 20;
+      const h = Math.round((Number(hodnota) || 0) * 100) / 100;
+      setUpravaKoty({ co, kde, popis, puvodni: h, text: String(h).replace(".", ","), x, y, zmeneno: false });
     };
   });
+  // nastaví délku podle druhu kóty
+  const nastavKotu = (u, x, doHistorie) => {
+    if (!Number.isFinite(x) || x < 0) return;
+    if (u.co === "dum") { if (x > 0) zmen({ [u.kde]: x }, { doHistorie }); }
+    else if (u.co === "strecha") { if (x > 0) zmen(n => ({ ...n, ...rozmerZDelkyStrechy(n, u.kde, x) }), { doHistorie }); }
+    else if (u.co === "hreben") zmen(n => ({ ...n, sklon: sklonZHrebene(n, x) }), { doHistorie });
+    else if (u.co === "odstup") {
+      const kam = u.kde.jePole ? "fve" : "prekazky";
+      zmen(n => {
+        const prvek = (n[kam] || []).find(p => p.id === u.kde.prvekId);
+        const fl = prvek && plochyStrechy(n)[prvek.plocha];
+        if (!fl) return n;
+        const nova = polohaPodleOdstupu(fl, obdelnikPrvku(n, prvek, u.kde.jePole), u.kde.strana, x);
+        return { ...n, [kam]: n[kam].map(p => (p.id === prvek.id ? { ...p, ...nova } : p)) };
+      }, { doHistorie });
+    }
+  };
+  const zmenitKotu = (text) => {
+    const u = upravaKoty;
+    if (!u) return;
+    const x = Number(String(text).replace(/\s/g, "").replace(",", "."));
+    const platne = String(text).trim() !== "" && Number.isFinite(x);
+    if (platne) nastavKotu(u, x, !u.zmeneno);
+    setUpravaKoty({ ...u, text, zmeneno: u.zmeneno || platne });
+  };
+  const posunoutKotu = (krok) => {
+    const x = Number(String(upravaKoty?.text ?? "").replace(",", "."));
+    const nova = Math.max(0, Math.round(((Number.isFinite(x) ? x : upravaKoty.puvodni) + krok) * 100) / 100);
+    zmenitKotu(String(nova).replace(".", ","));
+  };
+  const zrusitKotu = () => { if (upravaKoty?.zmeneno) nastavKotu(upravaKoty, upravaKoty.puvodni, false); setUpravaKoty(null); };
 
   const hs = navrh.hromosvod || {};
   const plochaNaPolozku = (p) => plochy[p.plocha];
@@ -1329,6 +1353,18 @@ export default function Navrh3D({ currentUser } = {}) {
           {cisloPole("…nebo výška hřebene (m)", Math.round(vyskaHrebene(navrh) * 100) / 100, v => zmen(n => ({ ...n, sklon: sklonZHrebene(n, Number(v) || 0) })), 0.1)}
         </div>
       )}
+      {(() => {
+        const ds = delkyStrechy(navrh);
+        return (
+          <div>
+            <div style={S.mrizka}>
+              {cisloPole("Délka střechy u okapu (m)", Math.round(ds.okap * 100) / 100, v => { const x = Number(v); if (x > 0) zmen(n => ({ ...n, ...rozmerZDelkyStrechy(n, "okap", x) })); }, 0.05)}
+              {cisloPole(navrh.strecha === "plocha" ? "Druhý rozměr střechy (m)" : "Délka krokve – okap → hřeben (m)", Math.round(ds.krokev * 100) / 100, v => { const x = Number(v); if (x > 0) zmen(n => ({ ...n, ...rozmerZDelkyStrechy(n, "krokev", x) })); }, 0.05)}
+            </div>
+            <div style={S.maly}>Délky střechy včetně přesahu {cislo(navrh.presah)} m — zadáním se dopočítá {ds.osaA === "delka" ? "délka" : "šířka"} / {ds.osaB === "delka" ? "délka" : "šířka"} domu, sklon a přesah zůstanou. Jdou zadat i klepnutím na hnědé kóty v modelu.</div>
+          </div>
+        );
+      })()}
       {navrh.strecha === "polovalba" && (
         <div style={S.mrizka}>
           {cisloPole("Valbička – pokles od hřebene (m)", navrh.polovalba?.vyska ?? 1, v => zmen(n => ({ ...n, polovalba: { ...(n.polovalba || {}), vyska: v } })), 0.1)}
@@ -1954,6 +1990,31 @@ export default function Navrh3D({ currentUser } = {}) {
           </div>
           <div style={{ position: "relative", height: sirokyDisplej ? "calc(100dvh - 210px)" : "62dvh", minHeight: 360, borderRadius: 12, overflow: "hidden", border: `1px solid ${ui.barvy.okraj}` }}>
             <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />
+            {upravaKoty && (
+              <div role="dialog" aria-label={upravaKoty.popis} onPointerDown={e => e.stopPropagation()}
+                style={{ position: "absolute", left: upravaKoty.x, top: upravaKoty.y, width: 220, zIndex: 20, background: "#fffbeb", border: "2px solid #f59e0b", borderRadius: 10, padding: 8, boxShadow: "0 8px 24px rgba(0,0,0,.25)", display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e" }}>{upravaKoty.popis}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <button type="button" aria-label="Zmenšit o 5 cm" onClick={() => posunoutKotu(-0.05)} style={{ ...S.obrys, padding: "4px 10px", fontSize: 16, fontWeight: 800 }}>−</button>
+                  <input autoFocus inputMode="decimal" value={upravaKoty.text} aria-label={upravaKoty.popis}
+                    onChange={e => zmenitKotu(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") setUpravaKoty(null);
+                      else if (e.key === "Escape") zrusitKotu();
+                      else if (e.key === "ArrowUp") { e.preventDefault(); posunoutKotu(e.shiftKey ? 0.01 : 0.05); }
+                      else if (e.key === "ArrowDown") { e.preventDefault(); posunoutKotu(e.shiftKey ? -0.01 : -0.05); }
+                    }}
+                    style={{ flex: 1, minWidth: 0, textAlign: "center", fontSize: 18, fontWeight: 800, color: "#9a3412", background: "#fff", border: "2px solid #fdba74", borderRadius: 8, padding: "4px 6px", fontFamily: "inherit" }} />
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>m</span>
+                  <button type="button" aria-label="Zvětšit o 5 cm" onClick={() => posunoutKotu(0.05)} style={{ ...S.obrys, padding: "4px 10px", fontSize: 16, fontWeight: 800 }}>+</button>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button type="button" onClick={() => setUpravaKoty(null)} style={{ ...S.btn(ui.barvy.uspech), flex: 1, padding: "5px 8px" }}>✓ Hotovo</button>
+                  <button type="button" onClick={zrusitKotu} style={{ ...S.obrys, padding: "5px 8px" }}>Zrušit</button>
+                </div>
+                <div style={{ fontSize: 10, color: "#92400e" }}>Šipky ↑↓ po 5 cm (se Shiftem po 1 cm), Enter = hotovo, Esc = zrušit.</div>
+              </div>
+            )}
             <div style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 4 }}>
               {[["3d", "3D"], ["predni", "Zepředu"], ["prava", "Zprava"], ["zadni", "Zezadu"], ["leva", "Zleva"], ["shora", "Shora"]].map(([k, t]) => (
                 <button key={k} onClick={() => pohled(k)} style={{ ...S.stitek(false), padding: "4px 8px", fontSize: 11, background: "rgba(255,255,255,0.9)" }}>{t}</button>

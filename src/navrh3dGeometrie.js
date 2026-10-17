@@ -171,6 +171,34 @@ export const vyskaHrebene = (n) => {
   return n.vyskaOkapu + (S.B / 2) * t;
 };
 
+// Délky střechy (včetně přesahu): u okapu = podél hřebene, krokev = od okapu k hřebeni
+// (u ploché střechy druhý rozměr). osaA / osaB = které pole domu („delka“ / „sirka“) jim odpovídá.
+export function delkyStrechy(n) {
+  const S = soustavaStrechy(n);
+  const p = Math.max(0, Number(n.presah) || 0);
+  const rot = (((Number(n.otoceni) || 0) % 360) + 360) % 360;
+  const kolmo = rot === 90 || rot === 270;
+  const prohozeno = n.strecha === "valbova" && (kolmo ? n.sirka : n.delka) < (kolmo ? n.delka : n.sirka);
+  const osaA = (kolmo !== prohozeno) ? "sirka" : "delka";
+  const osaB = osaA === "delka" ? "sirka" : "delka";
+  const cos = Math.cos(rad(n.sklon));
+  const run = n.strecha === "pultova" ? S.B : S.B / 2;
+  return {
+    okap: S.A + 2 * p,
+    krokev: n.strecha === "plocha" ? S.B + 2 * p : (run + p) / Math.max(0.05, cos),
+    osaA, osaB,
+  };
+}
+// Z délky střechy u okapu / krokve nový rozměr domu (sklon a přesah zůstanou): { delka } nebo { sirka }
+export function rozmerZDelkyStrechy(n, co, hodnota) {
+  const p = Math.max(0, Number(n.presah) || 0);
+  const d = delkyStrechy(n);
+  if (co === "okap") return { [d.osaA]: Math.max(1, hodnota - 2 * p) };
+  if (n.strecha === "plocha") return { [d.osaB]: Math.max(1, hodnota - 2 * p) };
+  const run = hodnota * Math.cos(rad(n.sklon)) - p;
+  return { [d.osaB]: Math.max(1, n.strecha === "pultova" ? run : 2 * run) };
+}
+
 // Opačný výpočet: z výšky hřebene sklon.
 export const sklonZHrebene = (n, hreben) => {
   const S = soustavaStrechy(n);
