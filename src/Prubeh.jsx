@@ -60,7 +60,7 @@ const CSS = `
 .pr-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 2fr) 48px; align-items: center; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
 .pr-row.pr-klik { cursor: pointer; }
 .pr-row.pr-klik:hover { filter: brightness(0.985); }
-.pr-panel { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 24px); overflow: auto; padding-bottom: 8px; }
+.pr-panel { position: sticky; top: calc(var(--horni-lista, 64px) + env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - var(--horni-lista, 64px) - 12px); overflow: auto; padding-bottom: 8px; }
 .pr-kpi { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 .pr-grid.pr-jedna { grid-template-columns: minmax(0, 1fr); }
 .pr-siroky { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
@@ -2008,7 +2008,8 @@ export default function Prubeh({
         @keyframes pr-hlasi { 0%, 70%, 100% { transform: translateY(0); } 80% { transform: translateY(-7px); } 90% { transform: translateY(0); } }
         @media (prefers-reduced-motion: reduce) { .pr-panacek-hlasi { animation: none; } }
         @media (max-width: 768px) {
-          .pr-pruvodce, .pr-pruvodce-mini { bottom: calc(84px + env(safe-area-inset-bottom)); right: 8px !important; }
+          /* nad plovoucím tlačítkem příchodu/odchodu (vlevo dole), ať se na úzkém displeji nepřekrývají */
+          .pr-pruvodce, .pr-pruvodce-mini { bottom: calc(136px + env(safe-area-inset-bottom)); right: 8px !important; }
           .pr-bublina { max-width: 170px !important; }
           div.pr-pruvodce { left: 8px; width: auto !important; }
           .pr-vice-hlavicka { display: none !important; }

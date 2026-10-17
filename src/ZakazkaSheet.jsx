@@ -62,7 +62,7 @@ export const PRAZDNA_DATA = {
 
 const S = {
   app: { fontFamily: ui.pismo, background: ui.barvy.pozadi, minHeight:"100vh", color: ui.barvy.text },
-  topBar: { background:"#ffffff", borderBottom:"1px solid #e2e8f0", padding:"12px 20px", display:"flex", alignItems:"center", gap:12, position:"sticky", top:0, zIndex:100 },
+  topBar: { background:"#ffffff", borderBottom:"1px solid #e2e8f0", padding:"12px 20px", display:"flex", alignItems:"center", gap:12, position:"sticky", top:"calc(var(--horni-lista, 64px) + env(safe-area-inset-top))", zIndex:100 },
   scroll: { display:"flex", gap:14, padding:"16px 20px", overflowX:"auto", alignItems:"flex-start", minHeight:"calc(100vh - 110px)" },
   card: (a,barva) => ({ minWidth:310, maxWidth:310, background:"#ffffff", borderRadius:14, border:`1px solid ${a?barva:"#e2e8f0"}`, overflow:"hidden", flexShrink:0, transition:"border-color 0.15s" }),
   cH: (barva) => ({ background:barva+"18", padding:"12px 14px", borderBottom:"1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }),

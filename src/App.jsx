@@ -1260,7 +1260,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         title={predchoziTab ? `Zpět na: ${NAV.find(n => n.id === predchoziTab)?.label || "předchozí obrazovku"}` : "Zpět (zatím není kam)"}
         aria-label="Zpět na předchozí obrazovku"
         style={{
-          position: "fixed", top: 14, right: 108, zIndex: 500,
+          position: "fixed", top: 14, right: 108, zIndex: 150,
           width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
           background: "#fff", color: "#0E3B5E", cursor: predchoziTab ? "pointer" : "default",
           opacity: predchoziTab ? 1 : 0.4,
@@ -1274,7 +1274,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         className="pwa-top-btn" onClick={obnovitAplikaci} disabled={obnovuji}
         title="Obnovit celou aplikaci (nejnovější verze a data)" aria-label="Obnovit aplikaci"
         style={{
-          position: "fixed", top: 14, right: 62, zIndex: 500,
+          position: "fixed", top: 14, right: 62, zIndex: 150,
           width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
           background: "#fff", color: "#0E3B5E", cursor: obnovuji ? "wait" : "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
@@ -1287,7 +1287,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         className="pwa-top-btn" onClick={() => setGSearchOpen(o => !o)}
         title="Hledat" aria-label="Hledat napříč appkou"
         style={{
-          position: "fixed", top: 14, right: 16, zIndex: 500,
+          position: "fixed", top: 14, right: 16, zIndex: 150,
           width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
           background: "#fff", color: "#0E3B5E", cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
@@ -1301,7 +1301,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           className="pwa-top-btn" onClick={() => retryOfflineQueueNow()}
           title={!isOnline ? "Appka je offline — zápisy se ukládají do zařízení a odešlou se samy po obnovení signálu" : "Klikni pro okamžité odeslání čekajících záznamů"}
           style={{
-            position: "fixed", top: 14, right: 154, zIndex: 500,
+            position: "fixed", top: 14, right: 154, zIndex: 150,
             display: "flex", alignItems: "center", gap: 6,
             height: 38, borderRadius: 19, border: "1px solid #f59e0b",
             background: "#fff7ed", color: "#b45309", cursor: "pointer",
@@ -1388,7 +1388,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       {myEmpId && (
         <button className="mobile-checkin-fab" onClick={checkin}
           style={{
-            display: "none", position: "fixed", bottom: 18, right: 18, zIndex: 480,
+            display: "none", position: "fixed", bottom: 18, right: 18, zIndex: 150,
             background: todayRecord?.checkout ? "#34d399" : todayRecord?.checkin ? "#f59e0b" : "#0369a1",
             color: "#fff", border: "none", borderRadius: 28, padding: "14px 20px",
             fontSize: 14, fontWeight: 700, boxShadow: "0 4px 16px #0004", alignItems: "center", gap: 8,
@@ -1402,10 +1402,14 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       <style>{`
         /* Boční menu: na počítači pevně vlevo (obsah je odsazený o 220 px),
            na mobilu schované a otevírá se hamburgerem nebo tlačítkem "Více". */
+        /* Plovoucí tlačítka vpravo nahoře (zpět, obnovit, hledat) zabírají horních ~52 px —
+           obsah i lepivé lišty začínají až pod nimi, aby je tlačítka nepřekrývala. */
+        :root { --horni-lista: 64px; }
+        /* Tlačítka i plovoucí Příchod/Odchod jsou pod vrstvou oken (z-index 200+), ať nezakrývají jejich ✕ a tlačítka. */
         .sidebar-nav { transform: translateX(-100%); padding-top: env(safe-area-inset-top) !important; padding-bottom: env(safe-area-inset-bottom) !important; }
         @media (min-width: 769px) {
           .sidebar-nav { transform: none; }
-          .main-content { margin-left: 220px !important; }
+          .main-content { margin-left: 220px !important; padding-top: calc(var(--horni-lista) + env(safe-area-inset-top)) !important; }
         }
         /* iPhone: appka spuštěná z ikony na ploše jede přes celou obrazovku i pod výřez a home indikátor
            (viewport-fit=cover), proto vše pevně umístěné odsazujeme o bezpečné okraje. Mimo iPhone jsou

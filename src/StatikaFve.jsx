@@ -248,7 +248,7 @@ export default function StatikaFve({ contracts = [], customers = [], currentUser
           </div>
         </div>
 
-        <div style={{ flex: "1 1 340px", minWidth: 0, position: "sticky", top: 10 }}>
+        <div style={{ flex: "1 1 340px", minWidth: 0, position: "sticky", top: "calc(var(--horni-lista, 64px) + env(safe-area-inset-top))" }}>
           <div style={S.karta}>
             <h3 style={S.h3}>Výsledek</h3>
             {sikma ? (
