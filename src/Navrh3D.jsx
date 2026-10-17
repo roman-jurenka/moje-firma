@@ -155,14 +155,30 @@ function CisloVstup({ value, onChange, krok, min, style }) {
   );
 }
 
-function stitek3d(text, styl = {}) {
+// onKlik = kóta jde zadat ručně (klepnutím se otevře zadání přesné délky)
+function stitek3d(text, styl = {}, onKlik = null) {
   const d = document.createElement("div");
   d.textContent = text;
   Object.assign(d.style, {
     background: "rgba(255,255,255,0.9)", border: "1px solid #cbd5e1", borderRadius: "5px", padding: "1px 6px",
     font: "700 11px " + ui.pismo, color: "#0E3B5E", whiteSpace: "nowrap", pointerEvents: "none", ...styl,
   });
+  if (onKlik) {
+    Object.assign(d.style, { pointerEvents: "auto", cursor: "pointer", textDecoration: "underline dotted" });
+    d.title = "Klepněte a zadejte přesnou délku";
+    d.addEventListener("pointerdown", (e) => e.stopPropagation());
+    d.addEventListener("click", (e) => { e.stopPropagation(); onKlik(); });
+  }
   return new CSS2DObject(d);
+}
+
+// zeptá se na délku v metrech (desetinná čárka i tečka); null = zrušeno / nesmysl
+function zeptatSeNaDelku(popis, hodnota) {
+  const v = window.prompt(`${popis} (m):`, String(Math.round((Number(hodnota) || 0) * 100) / 100).replace(".", ","));
+  if (v == null) return null;
+  const x = Number(String(v).replace(/\s/g, "").replace(",", "."));
+  if (!Number.isFinite(x) || x < 0) { window.alert("Zadejte číslo v metrech, např. 4,6"); return null; }
+  return x;
 }
 
 function valec(a, b, r, mat) {
@@ -311,6 +327,7 @@ export default function Navrh3D({ currentUser } = {}) {
   }, [navrh]);
 
   // Změna návrhu s možností vrátit zpět.
+  const kotaKlikRef = useRef(null);
   const zmen = (fn, { doHistorie = true } = {}) => setNavrh(prev => {
     if (doHistorie) { historie.current.push(prev); if (historie.current.length > 60) historie.current.shift(); }
     const dalsi = typeof fn === "function" ? fn(prev) : { ...prev, ...fn };
@@ -586,12 +603,13 @@ export default function Navrh3D({ currentUser } = {}) {
 
     // kóty
     const L = n.delka / 2, W = n.sirka / 2;
-    const k1 = stitek3d(`${cislo(n.delka)} m`); k1.position.set(0, 0.1, W + 0.8); s.skupPom.add(k1);
-    const k2 = stitek3d(`${cislo(n.sirka)} m`); k2.position.set(L + 0.8, 0.1, 0); s.skupPom.add(k2);
-    const k3 = stitek3d(`okap ${cislo(n.vyskaOkapu)} m`); k3.position.set(L + 0.3, n.vyskaOkapu, W + 0.3); s.skupPom.add(k3);
+    const klik = (...a) => () => kotaKlikRef.current?.(...a);
+    const k1 = stitek3d(`${cislo(n.delka)} m`, {}, klik("dum", "delka", "Délka domu", n.delka)); k1.position.set(0, 0.1, W + 0.8); s.skupPom.add(k1);
+    const k2 = stitek3d(`${cislo(n.sirka)} m`, {}, klik("dum", "sirka", "Šířka domu", n.sirka)); k2.position.set(L + 0.8, 0.1, 0); s.skupPom.add(k2);
+    const k3 = stitek3d(`okap ${cislo(n.vyskaOkapu)} m`, {}, klik("dum", "vyskaOkapu", "Výška okapu", n.vyskaOkapu)); k3.position.set(L + 0.3, n.vyskaOkapu, W + 0.3); s.skupPom.add(k3);
     if (n.strecha !== "plocha") {
       const vrch = plochy.flatMap(f => f.body).reduce((a, b) => (b[1] > a[1] ? b : a));
-      const k4 = stitek3d(`hřeben ${cislo(vyskaHrebene(n))} m`); k4.position.set(vrch[0], vrch[1] + 0.5, vrch[2]); s.skupPom.add(k4);
+      const k4 = stitek3d(`hřeben ${cislo(vyskaHrebene(n))} m`, {}, klik("hreben", "Výška hřebene", vyskaHrebene(n))); k4.position.set(vrch[0], vrch[1] + 0.5, vrch[2]); s.skupPom.add(k4);
     }
     // světové strany
     const az = (n.azimutPredni || 0) * Math.PI / 180;
@@ -675,7 +693,8 @@ export default function Navrh3D({ currentUser } = {}) {
         const r = obdelnikPrvku(n, prvek, jePole);
         const o = odstupy(f, r);
         const nad = 0.3;
-        const kota3d = (a, b, hodnota, popis) => {
+        const nazvyStran = { vlevo: "Odstup od levé hrany", vpravo: "Odstup od pravé hrany", okap: "Odstup od okapu", hreben: "Odstup od hřebene / horní hrany" };
+        const kota3d = (a, b, hodnota, popis, strana) => {
           const A = bodPlochy(f, a[0], a[1], nad), B = bodPlochy(f, b[0], b[1], nad);
           const barva = hodnota < -0.005 ? "#dc2626" : "#f5821f";
           const mat = new THREE.LineBasicMaterial({ color: barva, depthTest: false });
@@ -685,14 +704,15 @@ export default function Navrh3D({ currentUser } = {}) {
           const l = new THREE.LineSegments(g, mat);
           l.renderOrder = 10;
           s.skupPom.add(l);
-          const st = stitek3d(`${popis} ${cislo(hodnota)} m`, { background: barva, color: "#fff", border: "none", fontSize: "11px" });
+          const st = stitek3d(`${popis} ${cislo(hodnota)} m`, { background: barva, color: "#fff", border: "none", fontSize: "11px" },
+            () => kotaKlikRef.current?.("odstup", { prvekId: prvek.id, jePole, strana }, nazvyStran[strana], hodnota));
           st.position.set(...v3.mul(v3.add(A, B), 0.5));
           s.skupPom.add(st);
         };
-        kota3d([o.rh[0], o.vm], [r.u, o.vm], o.vlevo, "◀");
-        kota3d([r.u + r.w, o.vm], [o.rh[1], o.vm], o.vpravo, "▶");
-        kota3d([o.um, o.rv[0]], [o.um, r.v], o.okap, "▼ okap");
-        kota3d([o.um, r.v + r.h], [o.um, o.rv[1]], o.hreben, "▲ hřeben");
+        kota3d([o.rh[0], o.vm], [r.u, o.vm], o.vlevo, "◀", "vlevo");
+        kota3d([r.u + r.w, o.vm], [o.rh[1], o.vm], o.vpravo, "▶", "vpravo");
+        kota3d([o.um, o.rv[0]], [o.um, r.v], o.okap, "▼ okap", "okap");
+        kota3d([o.um, r.v + r.h], [o.um, o.rv[1]], o.hreben, "▲ hřeben", "hreben");
       }
     }
 
@@ -1236,6 +1256,29 @@ export default function Navrh3D({ currentUser } = {}) {
     );
   };
   const zmenPole = (id, zmena) => zmen(n => ({ ...n, fve: n.fve.map(p => p.id === id ? { ...p, ...zmena } : p) }));
+  // Klepnutí na kótu v 3D: zadání přesné délky (rozměry domu, výška hřebene, odstupy prvku od okrajů)
+  // (nastavuje se po vykreslení, ať 3D kóty volají aktuální obsluhu s aktuálním návrhem)
+  useEffect(() => {
+    kotaKlikRef.current = (co, kde, popis, hodnota) => {
+      if (co === "dum") {
+        const x = zeptatSeNaDelku(popis, hodnota);
+        if (x != null && x > 0) zmen({ [kde]: x });
+      } else if (co === "hreben") {
+        const x = zeptatSeNaDelku(kde, popis);
+        if (x != null) zmen(n => ({ ...n, sklon: sklonZHrebene(n, x) }));
+      } else if (co === "odstup") {
+        const x = zeptatSeNaDelku(popis, hodnota);
+        if (x == null) return;
+        const kam = kde.jePole ? "fve" : "prekazky";
+        const prvek = (navrh[kam] || []).find(p => p.id === kde.prvekId);
+        const f = prvek && plochy[prvek.plocha];
+        if (!f) return;
+        const nova = polohaPodleOdstupu(f, obdelnikPrvku(navrh, prvek, kde.jePole), kde.strana, x);
+        zmen(n => ({ ...n, [kam]: (n[kam] || []).map(p => (p.id === prvek.id ? { ...p, ...nova } : p)) }));
+      }
+    };
+  });
+
   const hs = navrh.hromosvod || {};
   const plochaNaPolozku = (p) => plochy[p.plocha];
   const rezimInfo = REZIMY.find(r => r.id === rezim);
