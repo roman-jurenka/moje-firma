@@ -11,7 +11,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import * as ui from "./ui.js";
 import {
-  STRANY, TYPY_STRECHY, TRIDY_LPS, vychoziNavrh, plochyStrechy, steny, vyskaHrebene, sklonZHrebene, delkyStrechy, rozmerZDelkyStrechy, soustavaStrechy,
+  STRANY, TYPY_STRECHY, TRIDY_LPS, TYPY_ZEMNICE, typZemnice, zemnicTrasy, vychoziNavrh, plochyStrechy, steny, vyskaHrebene, sklonZHrebene, delkyStrechy, rozmerZDelkyStrechy, soustavaStrechy,
   panelyPole, panelSeVejde, rozmerPanelu, vyplnPlochu, bodPlochy, navrhniHromosvod, trasaSvodu,
   drahaVedeni, patyTyce, blizkePanely, soupis, v3, poziceBodu, jePevny, spoje, vyskaStrechy, NAD_STRECHOU, pristavky, seznamPristavku, TYPY_PREKAZEK, valivaKoule, POLOMER_KOULE, obdelnikPrvku, odstupy, polohaPodleOdstupu,
 } from "./navrh3dGeometrie.js";
@@ -792,12 +792,20 @@ export default function Navrh3D({ currentUser } = {}) {
       }
       s.skupHs.add(g);
     }
-    if (hs.zemnic) {
-      const o = 1;
-      const body = [[-L - o, W + o], [L + o, W + o], [L + o, -W - o], [-L - o, -W - o], [-L - o, W + o]].map(([x, z]) => new THREE.Vector3(x, 0.03, z));
-      const car = new THREE.Line(new THREE.BufferGeometry().setFromPoints(body), new THREE.LineDashedMaterial({ color: "#7c4a1e", dashSize: 0.4, gapSize: 0.25 }));
-      car.computeLineDistances();
-      s.skupPom.add(car);
+    // uzemnění (obvodový / do U / samostatné zemniče u svodů)
+    {
+      const zt = zemnicTrasy(n);
+      const matZ = new THREE.LineDashedMaterial({ color: "#7c4a1e", dashSize: 0.4, gapSize: 0.25 });
+      for (const c of zt.cary) {
+        const car = new THREE.Line(new THREE.BufferGeometry().setFromPoints(c.map(([x, z]) => new THREE.Vector3(x, 0.03, z))), matZ);
+        car.computeLineDistances();
+        s.skupPom.add(car);
+      }
+      for (const [x, z] of zt.tyce) {
+        const tyc = valec([x, 0.25, z], [x, -0.6, z], 0.04, new THREE.MeshStandardMaterial({ color: "#7c4a1e" }));
+        tyc.userData.typ = "ignor";
+        s.skupPom.add(tyc);
+      }
     }
     // valivá koule: body střechy (zelená = chráněno, červená = koule se dotkne) a koule nad plochami
     if (koule) {
@@ -1224,7 +1232,8 @@ export default function Navrh3D({ currentUser } = {}) {
       if (spdPos) for (const p of rz.navrhSpd(rv, spdPos, { blizkoFve: s.blizko, maFve: s.panelu > 0 }).polozky) r.push([`${p.typ} – ${p.nazev} (${p.text})`, p.id === "fve-dc" ? "dle počtu MPPT" : 1, p.id === "fve-dc" ? "" : "ks"]);
     }
     if (s.zemnic) {
-      r.push(["Zemnič FeZn 30×4 (obvodový, 1 m od domu)", Math.ceil(s.zemnic), "m"]);
+      r.push([s.zemnicTyp === "samostatne" ? "Zemnicí vodič FeZn Ø10 (pata svodu → tyč)" : `Zemnič FeZn 30×4 (${s.zemnicTyp === "u" ? "do U" : "obvodový"}, ${cislo((navrh.hromosvod || {}).zemnicOdstup ?? 1)} m od domu)`, Math.ceil(s.zemnic), "m"]);
+      if (s.zemnicTyci) r.push([`Zemnicí tyč ${cislo(s.zemnicDelkaTyce)} m`, s.zemnicTyci, "ks"]);
       if (s.pocetSvodu) r.push(["Zemnící vodič FeZn Ø10 ke zkušební svorce", s.pocetSvodu * 2, "m"]);
     }
     return r;
@@ -1776,9 +1785,30 @@ export default function Navrh3D({ currentUser } = {}) {
           </>
         )}
       </div>
-      <label style={{ ...S.maly, display: "flex", gap: 6, alignItems: "center" }}>
-        <input type="checkbox" checked={!!hs.zemnic} onChange={e => zmenHs({ zemnic: e.target.checked })} /> Obvodový zemnič 1 m od domu ({cislo(souhrn.zemnic, 1)} m)
-      </label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, background: "#faf5f0", borderRadius: 8, padding: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700 }}>Uzemnění <span style={{ fontWeight: 400, color: ui.barvy.textSlaby }}>— {souhrn.zemnicTyp === "samostatne" ? `${souhrn.zemnicTyci} zemnicích tyčí, vodič ${cislo(souhrn.zemnic, 1)} m` : souhrn.zemnic ? `${cislo(souhrn.zemnic, 1)} m pásku` : "bez zemniče"}</span></div>
+        <div style={S.radek}>
+          {TYPY_ZEMNICE.map(t => <button key={t.id} style={S.stitek(typZemnice(hs) === t.id)} onClick={() => zmenHs({ zemnicTyp: t.id, zemnic: t.id !== "zadny" })}>{t.nazev}</button>)}
+        </div>
+        {typZemnice(hs) === "u" && (
+          <div style={S.radek}>
+            <span style={S.maly}>Volná strana:</span>
+            {STRANY.map(st => <button key={st.id} style={S.stitek((hs.zemnicOtevreno || "predni") === st.id)} onClick={() => zmenHs({ zemnicOtevreno: st.id })}>{st.nazev}</button>)}
+          </div>
+        )}
+        {typZemnice(hs) !== "zadny" && (
+          <div style={S.mrizka}>
+            {cisloPole(typZemnice(hs) === "samostatne" ? "Tyč od zdi (m)" : "Vzdálenost od domu (m)", hs.zemnicOdstup ?? 1, v => zmenHs({ zemnicOdstup: Math.max(0, Number(v) || 0) }), 0.1)}
+            {typZemnice(hs) === "samostatne"
+              ? cisloPole("Délka zemnicí tyče (m)", hs.zemnicTyc ?? 2, v => zmenHs({ zemnicTyc: Math.max(0.5, Number(v) || 2) }), 0.5)
+              : <>
+                  {cisloPole("Posun ← → (m)", hs.zemnicPosun?.x ?? 0, v => zmenHs({ zemnicPosun: { ...(hs.zemnicPosun || {}), x: Number(v) || 0 } }), 0.1, null)}
+                  {cisloPole("Posun dopředu / dozadu (m)", hs.zemnicPosun?.z ?? 0, v => zmenHs({ zemnicPosun: { ...(hs.zemnicPosun || {}), z: Number(v) || 0 } }), 0.1, null)}
+                </>}
+          </div>
+        )}
+        <div style={S.maly}>Od paty každého svodu vede spojka k zemniči (u samostatných zemničů k zemnicí tyči). V modelu hnědá čárkovaná čára.</div>
+      </div>
       {souhrn.blizko > 0 && <div style={{ ...S.maly, color: ui.barvy.varovani }}>⚠ {souhrn.blizko} panelů je blíž než s = {cislo(hs.odstup)} m od jímací soustavy.</div>}
       {souhrn.nepropojeno > 0
         ? <div style={{ ...S.maly, color: ui.barvy.chyba }}>⚠ {souhrn.nepropojeno} volných konců vodičů – v modelu červeně „nepropojeno“. Dotáhněte je na jiné vedení, svod nebo k zemi.</div>

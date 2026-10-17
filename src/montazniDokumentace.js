@@ -6,7 +6,7 @@
 import { COMPANY } from "./invoicingUtils.js";
 import {
   plochyStrechy, panelyPole, rozmerPanelu, rozsahU, steny, drahaVedeni, trasaSvodu, patyTyce,
-  pristavky, bodPlochy, jePevny, vyskaHrebene, bodyJimaci, STRANY, TYPY_STRECHY, TYPY_PREKAZEK, TRIDY_LPS, POLOMER_KOULE, soupis, v3,
+  pristavky, bodPlochy, jePevny, vyskaHrebene, bodyJimaci, STRANY, TYPY_STRECHY, TYPY_PREKAZEK, TRIDY_LPS, POLOMER_KOULE, soupis, v3, zemnicTrasy, typZemnice,
 } from "./navrh3dGeometrie.js";
 import * as rz from "./rizikoBlesk.js";
 
@@ -188,7 +188,13 @@ function pudorys(n, { body = null } = {}) {
     for (const b of body) { g.fillStyle = b.chranen ? "#16a34a" : "#dc2626"; g.beginPath(); g.arc(X(b.p[0]), Z(b.p[2]), 1.8, 0, Math.PI * 2); g.fill(); }
   } else {
     // zemnič
-    if (hs.zemnic) { g.setLineDash([7, 5]); g.strokeStyle = "#7c4a1e"; g.lineWidth = 1.5; g.strokeRect(X(-n.delka / 2 - 1), Z(-n.sirka / 2 - 1), (n.delka + 2) * k, (n.sirka + 2) * k); g.setLineDash([]); }
+    {
+      const zt = zemnicTrasy(n);
+      g.setLineDash([7, 5]); g.strokeStyle = "#7c4a1e"; g.lineWidth = 1.5;
+      for (const c of zt.cary) { g.beginPath(); c.forEach(([x, z], i) => (i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z)))); g.stroke(); }
+      g.setLineDash([]); g.fillStyle = "#7c4a1e";
+      for (const [x, z] of zt.tyce) { g.beginPath(); g.arc(X(x), Z(z), 3, 0, Math.PI * 2); g.fill(); }
+    }
     // vedení
     g.strokeStyle = "#dc2626"; g.lineWidth = 2;
     for (const v of hs.vedeni || []) {
@@ -433,7 +439,7 @@ export async function vytvorMontazniDokumentaci({ navrh: n, snimky, snimkyKoule 
       <tr><th style="width:32%">Objekt / zákazník</th><td>${esc(n.zakaznik || n.nazev)}</td></tr>
       <tr><th>Stavba</th><td>${cislo(n.delka)} × ${cislo(n.sirka)} m, okap ${cislo(n.vyskaOkapu)} m, hřeben ${cislo(vyskaHrebene(n))} m, střecha ${esc(typStrechy)} ${n.strecha !== "plocha" ? `${cislo(n.sklon, 0)}°` : ""}</td></tr>
       <tr><th>FVE</th><td>${sh.panelu} ks panelů ${n.panel.wp} Wp = <b>${cislo(sh.kwp)} kWp</b>; ${sh.poPlochach.map(p => `${esc(p.nazev)} ${p.pocet} ks`).join(", ") || "—"}</td></tr>
-      <tr><th>Ochrana před bleskem</th><td>LPS třídy ${trida}, jímací vedení ${cislo(sh.jimaci, 1)} m, ${sh.pocetSvodu} svodů, ${sh.tyci} jímacích tyčí${hs.zemnic ? ", obvodový zemnič" : ""}</td></tr>
+      <tr><th>Ochrana před bleskem</th><td>LPS třídy ${trida}, jímací vedení ${cislo(sh.jimaci, 1)} m, ${sh.pocetSvodu} svodů, ${sh.tyci} jímacích tyčí${{ obvod: ", obvodový zemnič", u: ", zemnič do U", samostatne: `, ${sh.zemnicTyci} samostatných zemničů (tyče)` }[typZemnice(hs)] || ""}</td></tr>
       <tr><th>Riziko R1 (ČSN EN 62305-2)</th><td class="${riz.vyhovuje ? "ok" : "ne"}">${exp10(riz.R1)} ${riz.vyhovuje ? "≤" : ">"} R<sub>T</sub> = 10⁻⁵ — ${riz.vyhovuje ? "vyhovuje" : "nevyhovuje"}</td></tr>
       ${koule ? `<tr><th>Valivá koule R = ${koule.R} m</th><td class="${koule.nechranenych ? "ne" : "ok"}">${koule.nechranenych ? `nechráněno ${koule.nechranenych} kontrolních bodů` : "celá střecha v ochranném prostoru"}</td></tr>` : ""}
       <tr><th>Zpracoval / datum</th><td>${esc(COMPANY.name)} · ${datum}</td></tr>

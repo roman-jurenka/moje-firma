@@ -617,6 +617,81 @@ export function blizkePanely(n) {
 }
 
 // Soupis pro nacenění.
+// ── Uzemnění ──
+// hs.zemnicTyp: "obvod" (kolem domu, typ B) | "u" (do U, jedna strana volná) |
+// "samostatne" (zemnič u každého svodu, typ A) | "zadny". Starší návrhy mají jen
+// hs.zemnic true/false. zemnicOdstup = vzdálenost od domu (m), zemnicPosun = posun
+// celého zemniče { x, z } (m), zemnicOtevreno = volná strana u „do U“,
+// zemnicTyc = délka zemnicí tyče u samostatných zemničů (m).
+export const TYPY_ZEMNICE = [
+  { id: "obvod", nazev: "Kolem domu" },
+  { id: "u", nazev: "Do U" },
+  { id: "samostatne", nazev: "Samostatný u svodu" },
+  { id: "zadny", nazev: "Bez zemniče" },
+];
+export const typZemnice = (hs) => hs?.zemnicTyp || (hs?.zemnic === false ? "zadny" : hs?.zemnic ? "obvod" : "zadny");
+
+// Paty svodů (kde svod vstupuje do země) — automatické svody i ručně kreslené k zemi.
+export function patySvodu(n) {
+  const hs = n.hromosvod || {};
+  const auto = (hs.svody || []).map(sv => { const t = trasaSvodu(n, sv); return [t[0][0], t[0][2]]; });
+  const rucne = (hs.vedeni || []).map(v => v.body[v.body.length - 1]).filter(k => k && jePevny(k) && k[1] < 0.3).map(k => [k[0], k[2]]);
+  return [...auto, ...rucne];
+}
+
+// Trasy zemniče v půdorysu: { cary: [[[x, z], …], …], tyce: [[x, z], …], delka, tyci }
+export function zemnicTrasy(n) {
+  const hs = n.hromosvod || {};
+  const typ = typZemnice(hs);
+  if (typ === "zadny") return { typ, cary: [], tyce: [], delka: 0, tyci: 0 };
+  const o = Math.max(0, Number(hs.zemnicOdstup ?? 1));
+  const px = Number(hs.zemnicPosun?.x) || 0, pz = Number(hs.zemnicPosun?.z) || 0;
+  const L = n.delka / 2 + o, W = n.sirka / 2 + o;
+  const P = (x, z) => [x + px, z + pz];
+  const delkaCary = (c) => c.slice(1).reduce((s, q, i) => s + Math.hypot(q[0] - c[i][0], q[1] - c[i][1]), 0);
+  if (typ === "samostatne") {
+    // od paty svodu kolmo od zdi ven k zemnicí tyči
+    const LL = n.delka / 2, WW = n.sirka / 2;
+    const cary = [], tyce = [];
+    for (const [x, z] of patySvodu(n)) {
+      const dx = Math.abs(Math.abs(x) - LL) < Math.abs(Math.abs(z) - WW) ? Math.sign(x) || 1 : 0;
+      const dz = dx ? 0 : Math.sign(z) || 1;
+      const t = [x + dx * Math.max(0.5, o), z + dz * Math.max(0.5, o)];
+      cary.push([[x, z], t]);
+      tyce.push(t);
+    }
+    return { typ, cary, tyce, delka: cary.reduce((s, c) => s + delkaCary(c), 0), tyci: tyce.length, delkaTyce: Number(hs.zemnicTyc) || 2 };
+  }
+  const rohy = { pl: P(-L, W), pp: P(L, W), zp: P(L, -W), zl: P(-L, -W) };
+  // obvod: přední → pravá → zadní → levá; „do U“ = obvod bez volné strany
+  const strany = { predni: [rohy.pl, rohy.pp], prava: [rohy.pp, rohy.zp], zadni: [rohy.zp, rohy.zl], leva: [rohy.zl, rohy.pl] };
+  const poradi = ["predni", "prava", "zadni", "leva"];
+  let cara;
+  if (typ === "u") {
+    const volna = hs.zemnicOtevreno || "predni";
+    const i = poradi.indexOf(volna);
+    const zbytek = [1, 2, 3].map(k => poradi[(i + k) % 4]);
+    cara = [strany[zbytek[0]][0], ...zbytek.map(sid => strany[sid][1])];
+  } else {
+    cara = [rohy.pl, rohy.pp, rohy.zp, rohy.zl, rohy.pl];
+  }
+  // spojky od pat svodů k zemniči (nejkratší cesta kolmo od zdi)
+  const spojky = patySvodu(n).map(([x, z]) => {
+    const LL = n.delka / 2, WW = n.sirka / 2;
+    const naBoku = Math.abs(Math.abs(x) - LL) < Math.abs(Math.abs(z) - WW);
+    const cil = naBoku ? [Math.sign(x) * L + px, z] : [x, Math.sign(z) * W + pz];
+    // u „do U“ na volné straně zemnič není — spojka pokračuje k nejbližšímu rohu zemniče
+    const strana = naBoku ? (x > 0 ? "prava" : "leva") : (z > 0 ? "predni" : "zadni");
+    if (typ === "u" && strana === (hs.zemnicOtevreno || "predni")) {
+      const [r1, r2] = strany[strana];
+      const blizsi = Math.hypot(r1[0] - cil[0], r1[1] - cil[1]) <= Math.hypot(r2[0] - cil[0], r2[1] - cil[1]) ? r1 : r2;
+      return [[x, z], cil, blizsi];
+    }
+    return [[x, z], cil];
+  });
+  return { typ, cary: [cara, ...spojky], tyce: [], delka: delkaCary(cara) + spojky.reduce((s, c) => s + delkaCary(c), 0), tyci: 0 };
+}
+
 export function soupis(n) {
   const plochy = plochyStrechy(n);
   const panelu = n.fve.reduce((s, p) => s + p.radky * p.sloupce, 0);
@@ -629,14 +704,15 @@ export function soupis(n) {
   const jimaci = delky.reduce((s, d) => s + d.strecha, 0);
   const svodyRucne = (hs.vedeni || []).filter(v => { const k = v.body[v.body.length - 1]; return jePevny(k) && k[1] < 0.3; }).length;
   const svodyDelka = (hs.svody || []).reduce((s, sv) => s + delkaLomene(trasaSvodu(n, sv)), 0) + delky.reduce((s, d) => s + d.svod, 0);
-  const zemnic = hs.zemnic ? 2 * (n.delka + 2) + 2 * (n.sirka + 2) : 0;
+  const zt = zemnicTrasy(n);
+  const zemnic = zt.delka;
   const pocetSvodu = (hs.svody || []).length + svodyRucne;
   return {
     panelu,
     kwp: (panelu * n.panel.wp) / 1000,
     plochaPanelu: panelu * n.panel.sirka * n.panel.vyska,
     poPlochach,
-    jimaci, svodyDelka, pocetSvodu, zemnic,
+    jimaci, svodyDelka, pocetSvodu, zemnic, zemnicTyp: zt.typ, zemnicTyci: zt.tyci, zemnicDelkaTyce: zt.delkaTyce || 0,
     tyci: (hs.tyce || []).length,
     podperyStrecha: Math.ceil(jimaci / 1.0),
     podperyStena: Math.ceil(svodyDelka / 1.0),
