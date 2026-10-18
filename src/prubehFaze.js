@@ -105,7 +105,7 @@ const ZAKLAD_FAZI = [
   ] },
   { id: "vyuctovani", sekce: "uz", nazev: "Vyúčtování", ukoly: [
     // u REA tlačítko Nacenění realizace (Excel / ceník podle skutečnosti) → faktura
-    { id: "faktura", text: "Konečná faktura vystavená", naceneniRea: true },
+    { id: "faktura", text: "Konečná faktura vystavená", naceneniRea: true, dofakturace: true },
     { id: "zaplaceno", text: "Doplatek zaplacený", brana: true },
   ] },
   { id: "archiv", sekce: "uz", nazev: "Archiv", ukoly: [

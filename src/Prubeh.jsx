@@ -6,6 +6,7 @@ import { nahratFotkuZakazky, pocetFotekText, pocetSouboruText, jeObrazekSoubor, 
 import ProhlizecFotek from "./ProhlizecFotek.jsx";
 import NahratDoZakazky from "./NahratDoZakazky.jsx";
 import ZalohovaFaktura from "./ZalohovaFaktura.jsx";
+import DofakturaceFaktura from "./DofakturaceFaktura.jsx";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { aktualniFirma, aktualizujOdkazy, upozorneniFirmy } from "./firmaDokumenty.js";
@@ -314,6 +315,7 @@ export default function Prubeh({
   // ── Odvozené hodnoty ──
   const quoteById = (id) => quotes.find((q) => q.id === id);
   const [zalohaZakId, setZalohaZakId] = useState(null); // otevřený formulář zálohové faktury (fáze Záloha)
+  const [dofakturaZakId, setDofakturaZakId] = useState(null); // otevřený formulář konečné faktury (fáze Vyúčtování)
   const contractById = (id) => contracts.find((k) => k.id === id);
   const autoZ = (z) => {
     const q = z.quote_id ? quoteById(z.quote_id) : null;
@@ -2768,6 +2770,11 @@ export default function Prubeh({
                             💰 {z.naceneni_rea?.invoice_number ? `Faktura ${z.naceneni_rea.invoice_number}` : "Nacenění a faktura"}
                           </button>
                         )}
+                        {u.dofakturace && z.typ !== "REA" && otevrena && (
+                          <button type="button" style={tlAkce} onClick={(e) => akce(e, () => setDofakturaZakId(dofakturaZakId === z.id ? null : z.id))}>
+                            🧾 Dofakturovat zbývající částku
+                          </button>
+                        )}
                         {u.zalohovaFaktura && otevrena && (
                           <button type="button" style={tlAkce} onClick={(e) => akce(e, () => setZalohaZakId(zalohaZakId === z.id ? null : z.id))}>
                             🧾 Vystavit zálohovou fakturu
@@ -2779,6 +2786,24 @@ export default function Prubeh({
                           </button>
                         )}
                       </label>
+
+                      {u.dofakturace && dofakturaZakId === z.id && (() => {
+                        const q = z.quote_id ? quoteById(z.quote_id) : null;
+                        const k = contractById(z.contract_id);
+                        return (
+                          <DofakturaceFaktura zak={z} contract={k} zakaznik={zakaznik(z.customer_id)}
+                            cenaBezDph={konecnaCenaNabidky(q?.data).bez || Number(z.hodnota) || Number(k?.price) || 0}
+                            dphPct={Number(q?.data?.zakaznik?.dph ?? 21)}
+                            onZavrit={() => setDofakturaZakId(null)}
+                            onVystaveno={async (row) => {
+                              setDofakturaZakId(null);
+                              const cislo = row.cislo_ucetni || row.number;
+                              await pridatPoznamku(z, `Vystavena konečná faktura ${cislo} (dofakturace zbývající částky).`, true);
+                              if (!hot) await toggleUkol(z, f, u);
+                              ukazHlasku(`✓ Konečná faktura ${cislo} vystavená — najdeš ji ve Fakturaci`);
+                            }} />
+                        );
+                      })()}
 
                       {u.zalohovaFaktura && zalohaZakId === z.id && (() => {
                         const q = z.quote_id ? quoteById(z.quote_id) : null;
