@@ -7300,7 +7300,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
     return () => { zruseno = true; };
   }, [detailEvent]);
   const [form, setForm] = useState({
-    date: fmt(today), work_type: "Zakázka", title: "",
+    date: fmt(today), date_to: "", vikendy: false, dalsi_zamestnanci: [], work_type: "Zakázka", title: "",
     customer_name: "", customer_company: "", address: "",
     contact_name: "", contact_phone: "", work_description: "",
     contract_id: "", employee_id: currentUser?.id || "", na_starosti: "",
@@ -7469,67 +7469,96 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
     return getInvoicePaymentInfo(inv).isOverdue;
   });
 
+  // Dny rozsahu od–do; u vícedenního rozsahu se víkendy přeskočí, pokud
+  // není zaškrtnuto „včetně víkendů“. Jednodenní akce platí i o víkendu.
+  const dnyRozsahu = (od, doDne, vikendy) => {
+    if (!od) return [];
+    const [y, m, d] = od.split("-").map(Number);
+    const konec = doDne && doDne > od ? doDne : od;
+    if (konec === od) return [od];
+    const dny = [];
+    for (let dt = new Date(y, m - 1, d); fmt2(dt) <= konec && dny.length < 370; dt.setDate(dt.getDate() + 1)) {
+      const den = dt.getDay();
+      if (vikendy || (den !== 0 && den !== 6)) dny.push(fmt2(dt));
+    }
+    return dny;
+  };
+  const prazdnyForm = () => ({ date: fmt(today), date_to: "", vikendy: false, dalsi_zamestnanci: [], work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", employee_id: currentUser?.id || "", na_starosti: "" });
+
+  const poslatDoOutlooku = async (ev) => {
+    if (!outlookConn || String(ev.employee_id) !== String(currentUser.id)) return;
+    try {
+      const outlookId = await outlookCal.pushCalendarEvent(ev);
+      if (outlookId !== ev.outlook_event_id) {
+        await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", ev.id);
+        setCalendarEvents(prev => prev.map(e => e.id === ev.id ? { ...e, outlook_event_id: outlookId } : e));
+      }
+    } catch (e) { console.error("Outlook push selhal:", e); }
+  };
+
+  // Uloží akci; s rozsahem od–do a dalšími zaměstnanci založí kopii pro
+  // každý den a každého člověka (jeden řádek = jeden den jednoho člověka).
+  // Vlastní akce se rovnou pošlou do Outlooku, cizí si dotáhne majitel.
   const saveEvent = async () => {
-    const empId = isAdmin ? (form.employee_id || currentUser.id) : currentUser.id;
-    const emp = employees.find(e => e.id === Number(empId));
-    const payload = {
-      ...form,
-      employee_id: Number(empId),
-      employee_name: emp ? emp.name : currentUser.name,
-      contract_id: form.contract_id ? Number(form.contract_id) : null,
-      na_starosti: form.na_starosti || null,
+    const { date_to, vikendy, dalsi_zamestnanci, ...zaklad } = form;
+    const dny = dnyRozsahu(form.date, date_to, vikendy);
+    if (dny.length === 0) { alert("V zadaném rozsahu není žádný pracovní den — zaškrtni „včetně víkendů“ nebo uprav datum."); return; }
+    const hlavni = Number(isAdmin ? (form.employee_id || currentUser.id) : currentUser.id);
+    const lide = [hlavni, ...(isAdmin ? (dalsi_zamestnanci || []).map(Number) : [])].filter((id, i, a) => id && a.indexOf(id) === i);
+    const pocet = dny.length * lide.length;
+    const tvar = (n, j, d, m) => n === 1 ? j : n < 5 ? d : m;
+    if (pocet > 1 && !window.confirm("Založí se " + pocet + " " + tvar(pocet, "akce", "akce", "akcí") + " (" + dny.length + " " + tvar(dny.length, "den", "dny", "dní") + " × " + lide.length + " " + tvar(lide.length, "člověk", "lidé", "lidí") + "). Pokračovat?")) return;
+    const radek = (empId, date) => {
+      const emp = employees.find(e => e.id === empId);
+      return { ...zaklad, date, employee_id: empId, employee_name: emp ? emp.name : currentUser.name, contract_id: form.contract_id ? Number(form.contract_id) : null, na_starosti: form.na_starosti || null };
     };
+    const nove = [];
+    for (const empId of lide) for (const den of dny) nove.push(radek(empId, den));
     if (editEventId) {
       const existing = calendarEvents.find(e => e.id === editEventId);
+      const payload = nove.shift();
       const { error } = await supabase.from("calendar_events").update(payload).eq("id", editEventId);
       if (error) { alert("Úpravu se nepodařilo uložit: " + error.message); return; }
       const updated = { ...existing, ...payload };
       setCalendarEvents(prev => prev.map(e => e.id === editEventId ? updated : e));
       // Outlook PATCH namísto nové akce — pushCalendarEvent podle
       // outlook_event_id sám pozná, že se má existující akce jen upravit.
-      if (outlookConn && String(payload.employee_id) === String(currentUser.id)) {
-        try {
-          const outlookId = await outlookCal.pushCalendarEvent(updated);
-          if (outlookId !== updated.outlook_event_id) {
-            await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", editEventId);
-            setCalendarEvents(prev => prev.map(e => e.id === editEventId ? { ...e, outlook_event_id: outlookId } : e));
-          }
-        } catch (e) { console.error("Outlook push selhal:", e); }
-      }
-    } else {
-      const { data } = await supabase.from("calendar_events").insert(payload).select().single();
-      if (data) {
-        setCalendarEvents(prev => [...prev, data]);
-        // Vlastní akce (přihlášený uživatel = přiřazený zaměstnanec) se rovnou
-        // pošle do jeho Outlooku, pokud má připojení — cizí přiřazení se dotáhnou
-        // až přes tlačítko Synchronizovat na straně toho, komu patří.
-        if (outlookConn && String(payload.employee_id) === String(currentUser.id)) {
-          try {
-            const outlookId = await outlookCal.pushCalendarEvent(data);
-            await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", data.id);
-            setCalendarEvents(prev => prev.map(e => e.id === data.id ? { ...e, outlook_event_id: outlookId } : e));
-          } catch (e) { console.error("Outlook push selhal:", e); }
-        }
-      }
+      await poslatDoOutlooku(updated);
+    }
+    if (nove.length > 0) {
+      const { data, error } = await supabase.from("calendar_events").insert(nove).select();
+      if (error) { alert("Akce se nepodařilo uložit: " + error.message); return; }
+      setCalendarEvents(prev => [...prev, ...(data || [])]);
+      for (const ev of data || []) await poslatDoOutlooku(ev);
     }
     setShowAdd(false);
     setEditEventId(null);
-    setForm({ date: fmt(today), work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", employee_id: currentUser?.id || "", na_starosti: "" });
+    setForm(prazdnyForm());
   };
 
   // Předvyplní formulář daty existující události a otevře stejný modal jako
   // "Přidat událost" — dřív šlo z detailu jen Smazat, takže i drobná oprava
   // (překlep v adrese, špatný čas) znamenala smazat a založit celou akci
   // znovu (a ztratit propojení s Outlookem).
-  const startEditEvent = (ev) => {
-    setForm({
-      date: ev.date || fmt(today), work_type: ev.work_type || "Zakázka", title: ev.title || "",
+  const formZAkce = (ev) => ({
+      date: ev.date || fmt(today), date_to: "", vikendy: false, dalsi_zamestnanci: [], work_type: ev.work_type || "Zakázka", title: ev.title || "",
       customer_name: ev.customer_name || "", customer_company: ev.customer_company || "", address: ev.address || "",
       contact_name: ev.contact_name || "", contact_phone: ev.contact_phone || "", work_description: ev.work_description || "",
       contract_id: ev.contract_id ? String(ev.contract_id) : "", employee_id: ev.employee_id || currentUser?.id || "",
-      na_starosti: ev.na_starosti || "",
-    });
+      na_starosti: ev.na_starosti || "", prubeh_id: ev.prubeh_id || null,
+  });
+  const startEditEvent = (ev) => {
+    setForm(formZAkce(ev));
     setEditEventId(ev.id);
+    setDetailEvent(null);
+    setShowAdd(true);
+  };
+
+  // Kopie akce — stejný formulář jako nová akce, předvyplněný; jde vybrat
+  // další zaměstnance a rozsah dní.
+  const startCopyEvent = (ev) => {
+    setForm(formZAkce(ev));
+    setEditEventId(null);
     setDetailEvent(null);
     setShowAdd(true);
   };
@@ -7609,7 +7638,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
               <button onClick={() => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); }} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>Dnes</button>
             )}
           </div>
-          <button onClick={() => { setEditEventId(null); setShowAdd(true); }} style={S.btn()}>+ Přidat událost</button>
+          <button onClick={() => { setEditEventId(null); setForm(prazdnyForm()); setShowAdd(true); }} style={S.btn()}>+ Přidat událost</button>
         </div>
       </div>
 
@@ -7742,10 +7771,20 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div>
-                <label style={S.label}>Datum</label>
-                <input type="date" style={S.input} value={form.date} onChange={e => setForm(f => ({...f, date: e.target.value}))} />
+                <label style={S.label}>Datum od</label>
+                <input type="date" style={S.input} value={form.date} onChange={e => setForm(f => ({...f, date: e.target.value, date_to: f.date_to && f.date_to < e.target.value ? "" : f.date_to}))} />
               </div>
               <div>
+                <label style={S.label}>Datum do (nepovinné)</label>
+                <input type="date" style={S.input} value={form.date_to || ""} min={form.date} onChange={e => setForm(f => ({...f, date_to: e.target.value}))} />
+              </div>
+              {form.date_to && form.date_to > form.date && (
+                <div style={{ gridColumn: "1 / -1", marginTop: -6, fontSize: 12, color: "#475569", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={!!form.vikendy} onChange={e => setForm(f => ({...f, vikendy: e.target.checked}))} /> včetně víkendů</label>
+                  <span>→ {dnyRozsahu(form.date, form.date_to, form.vikendy).length} dní v kalendáři{editEventId ? " (tato akce zůstane na prvním dni, na další dny se založí kopie)" : ""}</span>
+                </div>
+              )}
+              <div style={{ gridColumn: "1 / -1" }}>
                 <label style={S.label}>Typ práce</label>
                 <select style={S.input} value={form.work_type} onChange={e => setForm(f => ({...f, work_type: e.target.value}))}>
                   {Object.keys(WORK_TYPES).map(k => <option key={k}>{k}</option>)}
@@ -7774,6 +7813,19 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
                   <select style={S.input} value={form.employee_id} onChange={e => setForm(f => ({...f, employee_id: e.target.value}))}>
                     {serazeni.map(e => <option key={e.id} value={e.id}>{umi(e, form.na_starosti) === true ? "✓ " : ""}{e.name}{(e.dovednosti || []).length ? ` (${e.dovednosti.map(id => dovednost(id).ikona).join("")})` : ""}</option>)}
                   </select>
+                  <label style={S.label}>Zkopírovat i pro další zaměstnance</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                    {serazeni.filter(e => String(e.id) !== String(form.employee_id)).map(e => {
+                      const vybran = (form.dalsi_zamestnanci || []).map(String).includes(String(e.id));
+                      return (
+                        <button type="button" key={e.id} aria-pressed={vybran}
+                          onClick={() => setForm(f => ({ ...f, dalsi_zamestnanci: vybran ? f.dalsi_zamestnanci.filter(x => String(x) !== String(e.id)) : [...(f.dalsi_zamestnanci || []), e.id] }))}
+                          style={{ padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: vybran ? "1px solid #2563eb" : "1px solid #cbd5e1", background: vybran ? "#eff6ff" : "#fff", color: vybran ? "#1d4ed8" : "#334155" }}>
+                          {vybran ? "✓ " : "+ "}{e.name}
+                        </button>
+                      );
+                    })}
+                  </div>
                   {umiVybrany === false && (
                     <div style={{ fontSize: 12, color: "#b45309", marginTop: -6, marginBottom: 6 }}>
                       ⚠️ {vybrany?.name} nemá v profilu dovednost „{dovednost(potreba).label}“.{serazeni.some(e => umi(e, form.na_starosti)) ? " Lidé s ✓ ji mají." : " Nikdo ji zatím v profilu nemá — doplň ji v Zaměstnancích."}
@@ -7924,6 +7976,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
 
               <div style={{ display: "flex", gap: 10 }}>
                 {canEdit && <button onClick={() => startEditEvent(detailEvent)} style={{ ...S.btn(), flex: 1 }}>✏️ Upravit</button>}
+                <button onClick={() => startCopyEvent(detailEvent)} style={{ ...S.btn("#0f766e"), flex: 1 }}>📋 Kopírovat</button>
                 {canDelete && <button onClick={() => deleteEvent(detailEvent.id)} style={{ ...S.btn("#ef4444"), flex: 1 }}>🗑 Smazat</button>}
                 <button onClick={() => setDetailEvent(null)} style={{ ...S.btnGhost, flex: 1 }}>Zavřít</button>
               </div>
