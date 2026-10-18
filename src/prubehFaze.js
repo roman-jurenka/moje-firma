@@ -131,7 +131,7 @@ export function pouzijNastaveni(nastaveni) {
     const ukoly = Array.isArray(u.ukoly) && u.ukoly.length
       ? u.ukoly.filter((x) => String(x.text || "").trim()).map((x) => {
         const z = f.ukoly.find((b) => b.id === x.id);
-        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, naceneniRea: z.naceneniRea, cast: z.cast, jenTypy: z.jenTypy, krome: z.krome, ...x } : x;
+        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, naceneniRea: z.naceneniRea, zalohovaFaktura: z.zalohovaFaktura, dofakturace: z.dofakturace, cast: z.cast, jenTypy: z.jenTypy, krome: z.krome, ...x } : x;
       })
       : f.ukoly;
     return {

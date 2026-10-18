@@ -21,6 +21,8 @@ import ParovaniPlateb from "./ParovaniPlateb.jsx";
 import FrontaFaktur from "./FrontaFaktur.jsx";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 import { seraditPodleShody } from "./hledani.js";
+import HledaniVsude from "./HledaniVsude.jsx";
+import PenizeVisi from "./PenizeVisi.jsx";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
 import FirmaAres from "./FirmaAres.jsx";
 import { aktualizovatZakaznikyZAres, cisteIco } from "./ares.js";
@@ -954,7 +956,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // znovu lokálně. Výsledky jen odkážou na správnou záložku (bez hlubokého
   // linkování na konkrétní záznam — to je case pro příště).
   const [gSearchOpen, setGSearchOpen] = useState(false);
-  const [gQuery, setGQuery] = useState("");
   const loadPendingReqCount = () => {
     supabase.from("attendance_change_requests").select("id", { count: "exact", head: true })
       .eq("status", "čeká na schválení")
@@ -982,7 +983,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         supabase.from("projects").select("*, project_steps(*)").order("id"),
         supabase.from("costs").select("*").order("id"),
         supabase.rpc("get_attendance_full"),
-        supabase.from("contracts").select("id, name, status, customer_id, code, type, address, deal_id, budget_prace, budget_material, budget_doprava, budget_vice_prace, budget_vice_material, budget_vice_doprava").order("name"),
+        supabase.from("contracts").select("id, name, status, customer_id, code, type, address, datum_predani, deal_id, budget_prace, budget_material, budget_doprava, budget_vice_prace, budget_vice_material, budget_vice_doprava").order("name"),
         supabase.from("contract_cost_entries").select("id, employee_id, amount_cost, amount_client, contract_id, attendance_id, cost_type, is_extra, approved, billed").order("id"),
         supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50),
         supabase.from("calendar_events").select("*").order("date"),
@@ -1199,14 +1200,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   })();
   const bellCount = overdueBellInvoices.length + lowStock.length + pendingReqCount + dueSoonTasks.length;
 
-  const gq = gQuery.trim().toLowerCase();
-  const gResults = gq.length < 2 ? null : {
-    customers: customers.filter(c => (c.name || "").toLowerCase().includes(gq) || (c.company || "").toLowerCase().includes(gq)).slice(0, 5),
-    contracts: (contracts || []).filter(c => (c.name || "").toLowerCase().includes(gq) || (c.code || "").toLowerCase().includes(gq)).slice(0, 5),
-    invoices: invoices.filter(i => (i.number || "").toLowerCase().includes(gq)).slice(0, 5),
-    products: products.filter(p => (p.name || "").toLowerCase().includes(gq) || (p.sku || "").toLowerCase().includes(gq)).slice(0, 5),
-  };
-  const gTotal = gResults ? gResults.customers.length + gResults.contracts.length + gResults.invoices.length + gResults.products.length : 0;
   const totalPayroll = employees.filter(e => e.status === "Aktivní").reduce((s, e) => s + e.salary, 0);
 
 
@@ -1282,7 +1275,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       </button>
       <button
         className="pwa-top-btn" onClick={() => setGSearchOpen(o => !o)}
-        title="Hledat" aria-label="Hledat napříč appkou"
+        title="Hledat (Ctrl+K)" aria-label="Hledat napříč appkou"
         style={{
           position: "fixed", top: 14, right: 16, zIndex: 150,
           width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
@@ -1310,62 +1303,18 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           {!isOnline ? "Offline" : `${offlineQueueItems.length} čeká na odeslání`}
         </button>
       )}
-      {gSearchOpen && (
-        <>
-          <div onClick={() => { setGSearchOpen(false); setGQuery(""); }} style={{ position: "fixed", inset: 0, zIndex: 490 }} />
-          <div style={{ position: "fixed", top: 56, right: 16, zIndex: 500, width: 340, maxWidth: "92vw", maxHeight: "72vh", overflowY: "auto", background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 12px 32px #0003", padding: 14 }}>
-            <input autoFocus value={gQuery} onChange={e => setGQuery(e.target.value)}
-              placeholder="Hledat zákazníka, zakázku, fakturu, produkt…"
-              style={{ ...S.input, marginBottom: gResults ? 10 : 0 }} />
-            {gQuery.trim().length > 0 && gQuery.trim().length < 2 && <div style={{ fontSize: 12, color: "#64748b" }}>Piš aspoň 2 znaky.</div>}
-            {gResults && gTotal === 0 && <div style={{ fontSize: 12, color: "#64748b" }}>Nic nenalezeno.</div>}
-            {gResults && gResults.customers.length > 0 && (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Zákazníci</div>
-                {gResults.customers.map(c => (
-                  <div key={`c-${c.id}`} onClick={() => { setTab("customers"); setGSearchOpen(false); setGQuery(""); }}
-                    style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
-                    <i className="ti ti-user" aria-hidden="true" style={{ marginRight: 6, color: "#0369a1" }}></i>{c.name}{c.company ? ` — ${c.company}` : ""}
-                  </div>
-                ))}
-              </div>
-            )}
-            {gResults && gResults.contracts.length > 0 && (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Zakázky</div>
-                {gResults.contracts.map(c => (
-                  <div key={`co-${c.id}`} onClick={() => { setTab("contracts"); setGSearchOpen(false); setGQuery(""); }}
-                    style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
-                    <i className="ti ti-briefcase" aria-hidden="true" style={{ marginRight: 6, color: "#a78bfa" }}></i>{c.name}{c.code ? ` (${c.code})` : ""}
-                  </div>
-                ))}
-              </div>
-            )}
-            {gResults && gResults.invoices.length > 0 && (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Faktury</div>
-                {gResults.invoices.map(i => (
-                  <div key={`i-${i.id}`} onClick={() => { setTab("invoices"); setGSearchOpen(false); setGQuery(""); }}
-                    style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
-                    <i className="ti ti-file-invoice" aria-hidden="true" style={{ marginRight: 6, color: "#34d399" }}></i>{i.number}
-                  </div>
-                ))}
-              </div>
-            )}
-            {gResults && gResults.products.length > 0 && (
-              <div>
-                <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Sklad</div>
-                {gResults.products.map(p => (
-                  <div key={`p-${p.id}`} onClick={() => { setTab("warehouse"); setGSearchOpen(false); setGQuery(""); }}
-                    style={{ padding: "6px 4px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}>
-                    <i className="ti ti-package" aria-hidden="true" style={{ marginRight: 6, color: "#f59e0b" }}></i>{p.name}{p.sku ? ` (${p.sku})` : ""}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
+      <HledaniVsude open={gSearchOpen} setOpen={setGSearchOpen}
+        customers={customers} contracts={contracts || []} invoices={invoices} products={products}
+        allowedTabs={allowedTabs}
+        onOtevrit={(druh, x) => {
+          if (druh === "prubeh") { setPrubehInitialId(x.id); setTab("prubeh"); }
+          else if (druh === "zakazka") { setContractInitialId(x.id); setTab("contracts"); }
+          else if (druh === "zakaznik") { setSearch(x.company || x.name || ""); setTab("customers"); }
+          else if (druh === "faktura") setTab("invoices");
+          else if (druh === "servis") setTab("servis");
+          else if (druh === "produkt") setTab("warehouse");
+          setSidebarOpen(false);
+        }} />
       <DbChybaHlaska />
       {/* Rychlý check-in/check-out — na mobilu je postranní panel schovaný za
           hamburgerem, takže bez tohohle by ho terénní pracovník musel nejdřív
@@ -1596,6 +1545,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
               costs={costs} toggleTask={toggleTaskGlobal} setTab={setTab}
               contracts={contracts} attendance={attendance} costEntries={costEntries}
               dnMaterialCost={dnMaterialCostTotal} dnMaterialClient={dnMaterialClientTotal}
+              onOtevritPrubeh={(id) => { setPrubehInitialId(id); setTab("prubeh"); }}
               onOpenSheet={(id, name) => { setSheetContractId(id); setSheetContractName(name); setTab("sheets"); }}
             />
         )}
@@ -2086,7 +2036,7 @@ function widgetCardHeader(icon, label, color, action) {
 }
 
 function Dashboard({ customers, deals, tasks, invoices, products, employees, projects,
-  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, costs, toggleTask, setTab, contracts, attendance, onOpenSheet, costEntries, dnMaterialCost, dnMaterialClient }) {
+  totalRevenue, pendingRevenue, overdueRevenue, lowStock, totalPayroll, costs, toggleTask, setTab, contracts, attendance, onOpenSheet, costEntries, dnMaterialCost, dnMaterialClient, onOtevritPrubeh }) {
   const [sheetSearch, setSheetSearch] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [hiddenWidgets, setHiddenWidgets] = useState(() => {
@@ -2193,6 +2143,8 @@ function Dashboard({ customers, deals, tasks, invoices, products, employees, pro
           </div>
         ))}
       </div>
+
+      <PenizeVisi invoices={invoices} customers={customers} setTab={setTab} onOtevritPrubeh={onOtevritPrubeh} />
 
       {overdueReceivables.length > 0 && (
         <div style={{ ...S.card, marginBottom: 24, cursor: "pointer" }} onClick={() => setTab("invoices")}>

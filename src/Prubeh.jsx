@@ -183,6 +183,7 @@ export default function Prubeh({
 
   // Fotky zakázky (i z obhlídky, kdy ještě neexistuje zakázka — vazba přes prubeh_id).
   const [fotkyZ, setFotkyZ] = useState({});          // { [prubehId]: [...] }
+  const [fakturyZ, setFakturyZ] = useState({});      // { [prubehId]: [...] } — faktury zakázky pro kontroly vyúčtování
   const [nahravam, setNahravam] = useState(null);     // kategorie, která se právě nahrává
   const [udajeForm, setUdajeForm] = useState(null);   // { id, ean, jistic_a, faze }
   const [generuji, setGeneruji] = useState(false);
@@ -216,6 +217,11 @@ export default function Prubeh({
     const podminka = `prubeh_id.eq.${vybrano}${vybranyContract ? `,contract_id.eq.${vybranyContract}` : ""}`;
     supabase.from("contract_photos").select("*").or(podminka).order("created_at", { ascending: false })
       .then(({ data }) => { if (!zruseno) setFotkyZ((m) => ({ ...m, [vybrano]: data || [] })); });
+    if (vybranyContract) {
+      supabase.from("invoices").select("id, number, cislo_ucetni, amount, tax, status, paid_amount, discount_percent, due, issued, is_deposit, invoice_type, contract_id")
+        .eq("contract_id", vybranyContract)
+        .then(({ data }) => { if (!zruseno) setFakturyZ((m) => ({ ...m, [vybrano]: data || [] })); });
+    }
     return () => { zruseno = true; };
   }, [vybrano, vybranyContract]);
 
@@ -775,12 +781,21 @@ export default function Prubeh({
       dalsi_krok: krokProFazi(nz, cil), dalsi_krok_termin: terminFaze(cil), dalsi_krok_kdo: vlastnikSekce(zak, cil.sekce),
     }, textPoznamky);
     if (ok) await synchronizovatStare(zak, cil.id, contractId);
+    const iPredani = FAZE.findIndex((x) => x.id === "predani");
+    if (ok && FAZE.findIndex((x) => x.id === zak.faze) <= iPredani && FAZE.findIndex((x) => x.id === cil.id) > iPredani) await zapsatPredani(contractId);
     return ok;
   };
 
   const kontrolyZ = (zak) => kontrolyZakazky(zak, {
     quote: zak.quote_id ? quoteById(zak.quote_id) : null, fotky: fotkyZ[zak.id] || [], zakaznik: zakaznik(zak.customer_id),
+    faktury: zak.contract_id ? fakturyZ[zak.id] : undefined, cena: Number(zak.hodnota) || Number(contractById(zak.contract_id)?.price) || 0,
   });
+  // Datum předání díla (začátek záruky) — zapíše se, když zakázka odejde
+  // z kroku Předání nebo se uzavře; ručně zadané datum se nepřepisuje.
+  const zapsatPredani = async (contractIdZ) => {
+    if (!contractIdZ) return;
+    await supabase.from("contracts").update({ datum_predani: new Date().toLocaleDateString("sv-SE") }).eq("id", contractIdZ).is("datum_predani", null);
+  };
   const posunDal = async (zak) => {
     const f = fazeById[zak.faze];
     if (!fazeHotova(zak, f, autoZ(zak))) {
@@ -797,10 +812,11 @@ export default function Prubeh({
     // Upozornění (oranžová, hlavně z dřívějších fází) posun natvrdo neblokují — u starších
     // převzatých zakázek by jinak nešlo nic posunout — ale musí se vědomě odkliknout.
     const pozor = kontroly.filter((x) => x.uroven === "pozor");
+    const uzavira = !dalsiFaze(zak);
     if (pozor.length && !(await zeptat({
-      titulek: "Posunout zakázku i přes upozornění?",
-      text: `Zakázka má ještě ${pozor.length === 1 ? "nevyřešené upozornění" : `${pozor.length} nevyřešená upozornění`}:\n\n${pozor.map((x) => "• " + x.text).join("\n")}`,
-      potvrdit: "Posunout dál i tak",
+      titulek: uzavira ? "Uzavřít zakázku i přes upozornění?" : "Posunout zakázku i přes upozornění?",
+      text: `Zakázka má ještě ${pozor.length === 1 ? "nevyřešené upozornění" : `${pozor.length} nevyřešená upozornění`}:\n\n${pozor.map((x) => "• " + x.text).join("\n")}${uzavira ? "\n\nPotvrzení se zapíše do historie zakázky." : ""}`,
+      potvrdit: uzavira ? "Uzavřít i tak – vím o tom" : "Posunout dál i tak",
     }))) return;
     setPracuji(true);
     if (pozor.length) await pridatPoznamku(zak, `Posunuto dál přes upozornění: ${pozor.map((x) => x.text).join("; ")}`, true);
@@ -809,6 +825,7 @@ export default function Prubeh({
       await uloz(zak, { stav: "uzavrena", dalsi_krok: null, dalsi_krok_termin: null, duvod_cekani: null }, "Zakázka uzavřená.");
       if (zak.contract_id) {
         await supabase.from("contracts").update({ status: "Fakturována" }).eq("id", zak.contract_id);
+        await zapsatPredani(zak.contract_id);
       }
       ukazHlasku("✓ Zakázka uzavřená a přesunutá do archivu");
       setPracuji(false);
@@ -882,7 +899,7 @@ export default function Prubeh({
         if (await presun(nz2, cil, null)) ukazHlasku(`⏭ Krok přeskočen — teď ${nazevFaze(cil, zak.typ)}`);
       } else {
         await uloz(zak, { stav: "uzavrena", dalsi_krok: null, dalsi_krok_termin: null, duvod_cekani: null }, "Zakázka uzavřená.");
-        if (zak.contract_id) await supabase.from("contracts").update({ status: "Fakturována" }).eq("id", zak.contract_id);
+        if (zak.contract_id) { await supabase.from("contracts").update({ status: "Fakturována" }).eq("id", zak.contract_id); await zapsatPredani(zak.contract_id); }
         ukazHlasku("✓ Zakázka uzavřená a přesunutá do archivu");
       }
     }
@@ -1393,6 +1410,7 @@ export default function Prubeh({
         <button type="button" style={tl} disabled={generuji} onClick={() => otevritProtokol(z)}>Vygenerovat</button>
         <button type="button" style={tl} disabled={!!nahravam} onClick={() => vybratFotkyKategorie(z, "Předávací protokol")}>Sken</button></span>;
       if (akce === "podklady") return <button type="button" style={tl} onClick={() => otevritPodklady(z)}>Vyplnit</button>;
+      if (akce === "dofakturace") return z.faze === "vyuctovani" && z.typ !== "REA" ? <button type="button" style={tl} onClick={() => setDofakturaZakId(z.id)}>Dofakturovat</button> : null;
       if (akce === "misto") return <button type="button" style={tl} onClick={() => setEditMisto({ adresa: z.misto_adresa || zakaznik(z.customer_id)?.address || "", kontakt: z.misto_kontakt || "", telefon: z.misto_telefon || "", vztah: z.misto_vztah || "" })}>Doplnit</button>;
       return null;
     };
@@ -2797,6 +2815,7 @@ export default function Prubeh({
                             onZavrit={() => setDofakturaZakId(null)}
                             onVystaveno={async (row) => {
                               setDofakturaZakId(null);
+                              setFakturyZ((m) => ({ ...m, [z.id]: [...(m[z.id] || []), row] }));
                               const cislo = row.cislo_ucetni || row.number;
                               await pridatPoznamku(z, `Vystavena konečná faktura ${cislo} (dofakturace zbývající částky).`, true);
                               if (!hot) await toggleUkol(z, f, u);

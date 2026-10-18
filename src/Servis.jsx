@@ -14,6 +14,8 @@ import { nahratFotkuZakazky, pocetFotekText } from "./fotkyZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import { computeInvoiceTotals, nextInvNum } from "./invoicingUtils.js";
 import { konecnaCenaNabidky, vypocetSlevy } from "./slevaNabidky.js";
+import { ZARUKA_KEY, VYCHOZI_MESICE, stavZaruky, fmtDen } from "./zaruka.js";
+import { TYPY } from "./prubehFaze.js";
 
 const STAVY_TICKETU = ["Nový", "Naplánovaný", "V řešení", "Čeká na díl", "Vyřešený", "Vyfakturovaný", "Zrušený"];
 const STAV_BARVA = {
@@ -41,7 +43,26 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
   const [noviZakaznici, setNoviZakaznici] = useState([]);
   const [noveZakazky, setNoveZakazky] = useState([]);
   const customers = [...zakazniciProps, ...noviZakaznici.filter((c) => !zakazniciProps.some((x) => x.id === c.id))];
-  const contracts = [...zakazkyProps, ...noveZakazky.filter((c) => !zakazkyProps.some((x) => x.id === c.id))];
+  // Datum předání doplněné tady (záruka) — než se promítne do seznamů v appce.
+  const [datumyPredani, setDatumyPredani] = useState({});
+  const contracts = [...zakazkyProps, ...noveZakazky.filter((c) => !zakazkyProps.some((x) => x.id === c.id))]
+    .map((c) => (c.id in datumyPredani ? { ...c, datum_predani: datumyPredani[c.id] } : c));
+  const [zarukyNast, setZarukyNast] = useState({});
+  const [nastaveniZaruk, setNastaveniZaruk] = useState(false);
+  const smiNastavit = ["admin", "manager"].includes(currentUser?.role);
+  useEffect(() => {
+    supabase.from("app_settings").select("value").eq("key", ZARUKA_KEY).maybeSingle().then(({ data }) => setZarukyNast(data?.value || {}));
+  }, []);
+  const ulozitDatumPredani = async (contractIdZ, datum) => {
+    const { error } = await supabase.from("contracts").update({ datum_predani: datum || null }).eq("id", contractIdZ);
+    if (error) { alert("Datum předání se nepodařilo uložit: " + error.message); return; }
+    setDatumyPredani((m) => ({ ...m, [contractIdZ]: datum || null }));
+  };
+  const ulozitZaruky = async (nove) => {
+    const { error } = await supabase.from("app_settings").upsert({ key: ZARUKA_KEY, value: nove, updated_at: new Date().toISOString() });
+    if (error) { alert("Nastavení záruk se nepodařilo uložit: " + error.message); return; }
+    setZarukyNast(nove);
+  };
   const vlozeny = !!contractId;
   const [tickety, setTickety] = useState([]);
   const [nacteno, setNacteno] = useState(false);
@@ -239,6 +260,46 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
         </div>
       )}
 
+      {!vlozeny && (() => {
+        const brzy = contracts.map((c) => ({ c, z: stavZaruky(c, zarukyNast) })).filter((x) => x.z?.brzyKonci).sort((a, b) => a.z.zbyvaDni - b.z.zbyvaDni);
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+            {brzy.length > 0 && (
+              <div style={{ ...ui.karta, padding: "10px 12px", borderLeft: "4px solid #F5821F" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#c2410c", marginBottom: 4 }}>⏳ Záruka brzy končí — příležitost nabídnout kontrolu</div>
+                {brzy.slice(0, 6).map(({ c, z }) => (
+                  <div key={c.id} style={{ fontSize: 13, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                    <span>{[c.code, c.name].filter(Boolean).join(" · ")} · {zakaznik(c.customer_id)?.name || ""}</span>
+                    <span style={{ color: ui.barvy.textSlaby }}>do {fmtDen(z.do)} · {z.zbyvaDni === 0 ? "dnes" : `za ${z.zbyvaDni} dní`}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {smiNastavit && (
+              <div>
+                <button type="button" style={ui.tlacitkoObrys("male")} aria-expanded={nastaveniZaruk} onClick={() => setNastaveniZaruk((v) => !v)}>
+                  <i className="ti ti-settings" aria-hidden="true"></i> Délka záruk
+                </button>
+                {nastaveniZaruk && (
+                  <div style={{ ...ui.karta, padding: 12, marginTop: 6 }}>
+                    <div style={{ fontSize: 12, color: ui.barvy.textSlaby, marginBottom: 8 }}>Záruka v měsících od předání díla, podle typu zakázky. Prázdné = {VYCHOZI_MESICE} měsíců.</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                      {TYPY.map((t) => (
+                        <label key={t.id} style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span>{t.label}</span>
+                          <input id={`zaruka-${t.id}`} style={ui.pole} inputMode="numeric" placeholder={String(VYCHOZI_MESICE)} defaultValue={zarukyNast[t.id] || ""}
+                            onBlur={(e) => { const v = Number(e.target.value); const nove = { ...zarukyNast }; if (v > 0) nove[t.id] = v; else delete nove[t.id]; if (JSON.stringify(nove) !== JSON.stringify(zarukyNast)) ulozitZaruky(nove); }} />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {tickety.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginBottom: 12 }}>
           <div style={{ ...ui.karta, padding: "10px 12px", borderLeft: "4px solid #b45309" }}>
@@ -300,6 +361,7 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
 
       {formular && (
         <FormularTicketu formular={formular} setFormular={setFormular} zakazky={contracts} zakaznici={customers} zakazka={zakazka} zakaznik={zakaznik}
+          zarukyNast={zarukyNast} onDatumPredani={ulozitDatumPredani}
           technici={technici} pevnaZakazka={vlozeny} ukladam={ukladam} onUlozit={ulozitTicket} />
       )}
 
@@ -314,9 +376,20 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
 }
 
 // ── Formulář nového / upravovaného ticketu ──
-function FormularTicketu({ formular: f, setFormular, zakazky, zakaznici, zakazka, zakaznik, technici, pevnaZakazka, ukladam, onUlozit }) {
-  const set = (patch) => setFormular({ ...f, ...patch });
+function FormularTicketu({ formular: f, setFormular, zakazky, zakaznici, zakazka, zakaznik, technici, pevnaZakazka, ukladam, onUlozit, zarukyNast = {}, onDatumPredani }) {
+  // U nového ticketu se druh (záruka / placený) předvyplní podle záruky
+  // vybrané zakázky — dokud ho člověk nepřepne ručně.
+  const druhZeZaruky = (k) => {
+    if (f.id || f.placenyRucne || !k) return {};
+    const z = stavZaruky(k, zarukyNast);
+    return z ? { placeny: !z.vZaruce } : {};
+  };
+  const set = (patch) => {
+    const k = patch.contract_id && patch.contract_id !== f.contract_id ? zakazka(patch.contract_id) : null;
+    setFormular({ ...f, ...druhZeZaruky(k), ...patch });
+  };
   const vybrana = zakazka(f.contract_id);
+  const zaruka = vybrana ? stavZaruky(vybrana, zarukyNast) : null;
   // Zákazník: vybraný ručně, nebo ten ze zvolené zakázky.
   const vybranyZak = zakaznik(f.customer_id) || zakaznik(vybrana?.customer_id);
   const predvyplnit = (k, z) => ({
@@ -469,6 +542,25 @@ function FormularTicketu({ formular: f, setFormular, zakazky, zakaznici, zakazka
         <div><label style={ui.popisek} htmlFor="st-popis">Popis</label>
           <textarea id="st-popis" style={{ ...ui.pole, minHeight: 70, resize: "vertical" }} value={f.popis} placeholder="Co zákazník hlásí, od kdy, kód chyby…" onChange={(e) => set({ popis: e.target.value })} /></div>
 
+        {vybrana && (
+          <div role="status" style={{ borderRadius: 10, padding: "8px 10px", fontSize: 13, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center",
+            background: !zaruka ? "#f8fafc" : zaruka.vZaruce ? "#f0fdf4" : "#fef2f2", border: `1px solid ${!zaruka ? "#e2e8f0" : zaruka.vZaruce ? "#bbf7d0" : "#fecaca"}` }}>
+            {zaruka ? (
+              <>
+                <b style={{ color: zaruka.vZaruce ? "#15803d" : "#b91c1c" }}>{zaruka.vZaruce ? `🛡 V záruce do ${fmtDen(zaruka.do)}` : `Po záruce od ${fmtDen(zaruka.do)}`}</b>
+                <span style={{ color: ui.barvy.textSlaby }}>předáno {fmtDen(zaruka.od)} · {zaruka.mesice} měsíců</span>
+                {zaruka.brzyKonci && <span style={{ color: "#c2410c", fontWeight: 700 }}>končí za {zaruka.zbyvaDni} dní</span>}
+              </>
+            ) : <span style={{ color: ui.barvy.textSlaby }}>Datum předání díla neznáme — doplň ho a záruka se spočítá sama:</span>}
+            <input type="date" aria-label="Datum předání díla" style={{ ...ui.pole, width: "auto", padding: "4px 8px", marginLeft: "auto" }}
+              value={vybrana.datum_predani || ""} onChange={(e) => {
+                onDatumPredani?.(vybrana.id, e.target.value);
+                const z = stavZaruky({ ...vybrana, datum_predani: e.target.value || null }, zarukyNast);
+                if (z && !f.id && !f.placenyRucne) setFormular({ ...f, placeny: !z.vZaruce });
+              }} />
+          </div>
+        )}
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={ui.popisek}>Priorita</label>
             <div style={{ display: "flex", gap: 4 }}>
@@ -480,7 +572,7 @@ function FormularTicketu({ formular: f, setFormular, zakazky, zakaznici, zakazka
           <div><label style={ui.popisek}>Druh</label>
             <div style={{ display: "flex", gap: 4 }}>
               {[[false, "Záruka"], [true, "Placený"]].map(([v, label]) => (
-                <button key={label} type="button" aria-pressed={f.placeny === v} onClick={() => set({ placeny: v })}
+                <button key={label} type="button" aria-pressed={f.placeny === v} onClick={() => set({ placeny: v, placenyRucne: true })}
                   style={{ ...(f.placeny === v ? ui.tlacitko(ui.barvy.primarniTmava, "male") : ui.tlacitkoObrys("male")), flex: 1 }}>{label}</button>
               ))}
             </div></div>

@@ -8,6 +8,7 @@
 import { FAZE, fazePlati, ukolyPro } from "./prubehFaze.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { pocetVyplnenych } from "./podkladyZakazky.js";
+import { getInvoicePaymentInfo, cisloFaktury } from "./invoicingUtils.js";
 
 export const MIN_FOTEK = { "Obhlídka": 3, "Po montáži": 5 };
 
@@ -37,7 +38,7 @@ export const NAVOD = {
 const poradi = (id) => FAZE.findIndex((f) => f.id === id);
 const pocetFotek = (n) => `${n} ${n === 1 ? "fotka" : n > 1 && n < 5 ? "fotky" : "fotek"}`;
 
-// ctx: { quote, fotky: [contract_photos], zakaznik, typ }
+// ctx: { quote, fotky: [contract_photos], zakaznik, typ, faktury?: [invoices zakázky], cena?: cena zakázky bez nabídky }
 // Vrací [{ uroven: "chyba" | "pozor" | "ok", text, akce?, blokuje }]
 export function kontrolyZakazky(z, ctx) {
   const iTed = poradi(z.faze);
@@ -111,6 +112,24 @@ export function kontrolyZakazky(z, ctx) {
   const skenProt = kat("Předávací protokol");
   pridat("predani", !!dok.protokol || skenProt > 0, "Předávací protokol není vygenerovaný ani nahraný.",
     skenProt ? `Podepsaný protokol nahraný (${pocetFotek(skenProt)})` : "Předávací protokol vygenerovaný", "protokol");
+
+  // Vyúčtování a uzavření: zbývá dofakturovat, nezaplacené faktury. Jen
+  // upozornění — u uzavření je musí člověk vědomě odkliknout („vím o tom“)
+  // a zapíše se to do historie zakázky.
+  if (Array.isArray(ctx.faktury)) {
+    const vydane = ctx.faktury.filter((i) => i.status !== "Storno" && (i.invoice_type || "vydaná") === "vydaná");
+    const cena = cenaNabidky || Number(ctx.cena) || 0;
+    const fakturovano = vydane.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+    const kc = (n) => `${Math.round(n).toLocaleString("cs-CZ")} Kč`;
+    if (cena > 0) {
+      pridat("vyuctovani", cena - fakturovano <= 1, `Zbývá dofakturovat ${kc(cena - fakturovano)} bez DPH (cena ${kc(cena)}, vyfakturováno ${kc(fakturovano)}).`,
+        `Vyfakturováno vše (${kc(fakturovano)} bez DPH)`, "dofakturace", true);
+    } else {
+      pridat("vyuctovani", false, "Zakázka nemá cenu — nejde zkontrolovat, jestli je vše vyfakturované.", "", null, true);
+    }
+    const nezaplacene = vydane.filter((i) => !getInvoicePaymentInfo(i).isPaid);
+    pridat("archiv", nezaplacene.length === 0, `Nezaplacené faktury: ${nezaplacene.map((i) => cisloFaktury(i)).join(", ")}.`, "Všechny faktury zakázky jsou zaplacené", null, true);
+  }
 
   if ((dok.dodatky || []).length) {
     vysledky.push({ uroven: "ok", text: `Dodatky ke smlouvě: ${dok.dodatky.map((d) => `č. ${d.cislo}`).join(", ")}` });
