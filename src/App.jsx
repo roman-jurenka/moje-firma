@@ -20,6 +20,7 @@ import { exportIsdoc } from "./isdoc.js";
 import ParovaniPlateb from "./ParovaniPlateb.jsx";
 import FrontaFaktur from "./FrontaFaktur.jsx";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
+import { seraditPodleShody } from "./hledani.js";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
 import FirmaAres from "./FirmaAres.jsx";
 import { aktualizovatZakaznikyZAres, cisteIco } from "./ares.js";
@@ -153,12 +154,8 @@ function SearchSelect({ options, value, onChange, placeholder = "— vyberte —
   const selected = options.find(o => String(o.id) === String(value));
   // bez ohledu na velikost písmen a diakritiku („si“ najde i „Šindelář“);
   // o.hledat = další text k prohledání (kód zakázky, zákazník…)
-  const bezDiakritiky = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const words = bezDiakritiky(q).trim().split(/\s+/).filter(Boolean);
-  const filtered = words.length === 0 ? options : options.filter(o => {
-    const label = bezDiakritiky(`${o.label || ""} ${o.hledat || ""}`);
-    return words.every(w => label.includes(w));
-  });
+  // s tolerancí překlepů, nejpodobnější nahoře
+  const filtered = seraditPodleShody(options, q, o => `${o.label || ""} ${o.popis || ""} ${o.hledat || ""}`);
   return (
     <div ref={ref} style={{ position: "relative", ...style }}>
       <input
@@ -7815,8 +7812,14 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
             </div>
 
             <label style={S.label}>Zakázka</label>
-            <select style={S.input} value={form.contract_id} onChange={e => {
-              const cid = e.target.value;
+            <SearchSelect
+              placeholder="— napiš název, zákazníka nebo kód —"
+              options={contracts.filter(c => zakazkaVeVyberu(c, form.contract_id)).map(c => {
+                const zak = (customers || []).find(x => x.id === c.customer_id);
+                return { id: c.id, label: c.name, popis: [c.code, zak?.company || zak?.name, c.status].filter(Boolean).join(" · "), hledat: [zak?.name, c.address].filter(Boolean).join(" ") };
+              })}
+              value={form.contract_id}
+              onChange={cid => {
               const contract = contracts.find(c => String(c.id) === cid);
               const cust = contract?.customer_id ? (customers || []).find(cu => cu.id === contract.customer_id) : null;
               setForm(f => ({
@@ -7829,10 +7832,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
                 contact_name: cust ? cust.name : f.contact_name,
                 contact_phone: cust ? (cust.phone || "") : f.contact_phone,
               }));
-            }}>
-              <option value="">— vyberte zakázku —</option>
-              {contracts.map(c => <option key={c.id} value={c.id}>{c.code ? `[${c.code}] ` : ""}{c.name}</option>)}
-            </select>
+            }} />
 
             <label style={S.label}>Popis práce</label>
             <textarea style={{ ...S.input, minHeight: 80, resize: "vertical" }} value={form.work_description} onChange={e => setForm(f => ({...f, work_description: e.target.value}))} placeholder="Co bude probíhat..." />
