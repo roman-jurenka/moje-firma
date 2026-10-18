@@ -46,6 +46,8 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
   const [tickety, setTickety] = useState([]);
   const [nacteno, setNacteno] = useState(false);
   const [filtr, setFiltr] = useState("otevrene");
+  const [druh, setDruh] = useState("vse"); // vse | placeny | zaruka
+  const [nakladyTicketu, setNakladyTicketu] = useState({}); // ticket_id → { naklad, klient }
   const [hledat, setHledat] = useState("");
   const [formular, setFormular] = useState(null);     // nový / upravovaný ticket
   const [detailId, setDetailId] = useState(null);
@@ -55,6 +57,17 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
     let q = supabase.from("service_tickets").select("*").order("created_at", { ascending: false });
     if (contractId) q = q.eq("contract_id", contractId);
     q.then(({ data }) => { setTickety(data || []); setNacteno(true); });
+    // náklady servisu po ticketech (záruka = platíme my, placený = fakturuje se zákazníkovi)
+    supabase.from("contract_cost_entries").select("ticket_id, amount_cost, amount_client, date").not("ticket_id", "is", null)
+      .then(({ data }) => {
+        const m = {};
+        for (const x of data || []) {
+          const k = x.ticket_id; m[k] = m[k] || { naklad: 0, klient: 0, rok: 0 };
+          m[k].naklad += Number(x.amount_cost) || 0; m[k].klient += Number(x.amount_client) || 0;
+          if (String(x.date || "").startsWith(String(new Date().getFullYear()))) m[k].rok += Number(x.amount_cost) || 0;
+        }
+        setNakladyTicketu(m);
+      });
   }, [contractId]);
 
   const zakazka = (id) => contracts.find((c) => c.id === Number(id));
@@ -192,6 +205,7 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
       || (filtr === "otevrene" && !UZAVRENE.includes(t.stav))
       || (filtr === "moje" && !UZAVRENE.includes(t.stav) && mojeId && t.technik_id === mojeId)
       || (filtr === "vyresene" && UZAVRENE.includes(t.stav)))
+    .filter((t) => druh === "vse" || (druh === "placeny" ? t.placeny : !t.placeny))
     .filter((t) => !q || [t.cislo, t.nazev, t.popis, zakazka(t.contract_id)?.name, zakazka(t.contract_id)?.code, zakaznik(t.customer_id)?.name, technik(t.technik_id)?.name]
       .some((x) => String(x || "").toLowerCase().includes(q)));
   const pocet = (fn) => tickety.filter(fn).length;
@@ -202,6 +216,13 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
     ["vse", "Vše", tickety.length],
   ];
   const detail = tickety.find((t) => t.id === detailId);
+  // souhrn záruka × placený (náklady z práce a materiálu zapsaných k ticketům)
+  const souhrnDruhu = (placeny) => {
+    const ts = tickety.filter((t) => !!t.placeny === placeny);
+    return { pocet: ts.length, naklad: ts.reduce((s0, t) => s0 + (nakladyTicketu[t.id]?.naklad || 0), 0), rok: ts.reduce((s0, t) => s0 + (nakladyTicketu[t.id]?.rok || 0), 0), klient: ts.reduce((s0, t) => s0 + (nakladyTicketu[t.id]?.klient || 0), 0) };
+  };
+  const sZaruka = souhrnDruhu(false), sPlaceny = souhrnDruhu(true);
+  const kc0 = (v) => `${Math.round(v).toLocaleString("cs-CZ")} Kč`;
 
   return (
     <div style={{ textAlign: "left" }}>
@@ -217,6 +238,27 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
           <button type="button" style={ui.tlacitko(undefined, "male")} onClick={() => otevritFormular(null)}><i className="ti ti-plus" aria-hidden="true"></i> Nový servisní ticket</button>
         </div>
       )}
+
+      {tickety.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginBottom: 12 }}>
+          <div style={{ ...ui.karta, padding: "10px 12px", borderLeft: "4px solid #b45309" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>🛡 Záruka — platíme my</div>
+            <div style={{ fontSize: 13 }}><b>{sZaruka.pocet}</b> servisů · náklady celkem <b>{kc0(sZaruka.naklad)}</b> · letos <b>{kc0(sZaruka.rok)}</b></div>
+          </div>
+          <div style={{ ...ui.karta, padding: "10px 12px", borderLeft: "4px solid #15803d" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>💰 Placený — platí zákazník</div>
+            <div style={{ fontSize: 13 }}><b>{sPlaceny.pocet}</b> servisů · zákazníkům <b>{kc0(sPlaceny.klient)}</b> · náklady {kc0(sPlaceny.naklad)}</div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: 12, color: ui.barvy.textSlaby }}>Druh:</span>
+        {[["vse", "Vše"], ["zaruka", "🛡 Záruka"], ["placeny", "💰 Placený"]].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setDruh(id)} aria-pressed={druh === id}
+            style={druh === id ? ui.tlacitko(ui.barvy.primarniTmava, "male") : ui.tlacitkoObrys("male")}>{label}</button>
+        ))}
+      </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         {filtry.map(([id, label, n]) => (
@@ -241,7 +283,7 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
                   style={{ ...ui.karta, padding: "12px 16px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
                     borderLeft: `4px solid ${PRIORITY.find(([p]) => p === t.priorita)?.[1] || ui.barvy.okraj}` }}>
                   <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: ui.barvy.textSlaby, fontWeight: 700 }}>{t.cislo} · {t.placeny ? "Placený" : "Záruka"}{t.priorita === "Vysoká" ? " · spěchá" : ""}</div>
+                    <div style={{ fontSize: 12, color: ui.barvy.textSlaby, fontWeight: 700 }}>{t.cislo} · {t.placeny ? "Placený" : "Záruka"}{nakladyTicketu[t.id]?.naklad ? ` · náklad ${kc0(nakladyTicketu[t.id].naklad)}` : ""}{t.priorita === "Vysoká" ? " · spěchá" : ""}</div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: ui.barvy.text }}>{t.nazev}</div>
                     {!vlozeny && <div style={{ fontSize: 12, color: ui.barvy.textMekky }}>{[k?.code, k?.name, zakaznik(t.customer_id)?.name].filter(Boolean).join(" · ")}</div>}
                   </div>
