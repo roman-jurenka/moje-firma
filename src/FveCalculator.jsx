@@ -199,18 +199,21 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
 
   if (!cenik) return <div style={{ ...S.card, color: "#475569" }}>Načítám ceník…</div>;
 
-  const panel = findItem(cenik.panely, cfg.panel.name);
-  const konstr = findItem(cenik.konstrukce, cfg.konstrukce.name);
-  const stridac = findItem(cenik.stridace, cfg.stridac.name);
+  // Náklad na 1 ks jde u řádku materiálu přepsat (cfg[key].cenaKs — např. jiná
+  // nákupní cena u dodavatele); prázdné = cena z ceníku. Platí pro celý výpočet.
+  const sNakladem = (it, c) => (c?.cenaKs === "" || c?.cenaKs == null ? it : { ...it, cena: Number(c.cenaKs) || 0, cenaCenik: it.cena });
+  const panel = sNakladem(findItem(cenik.panely, cfg.panel.name), cfg.panel);
+  const konstr = sNakladem(findItem(cenik.konstrukce, cfg.konstrukce.name), cfg.konstrukce);
+  const stridac = sNakladem(findItem(cenik.stridace, cfg.stridac.name), cfg.stridac);
   const zarukaItem = findItem(cenik.zaruky_stridac, cfg.stridac.name);
-  const baterie = findItem(cenik.baterie, cfg.baterie.name);
-  const bms = findItem(cenik.bms, cfg.bms.name);
-  const rozvadecDc = findItem(cenik.rozvadec_dc, cfg.rozvadecDc.name);
-  const ostatniFixed = findItem(cenik.ostatni, cfg.ostatniFixed.name);
-  const backup = findItem(cenik.ostatni, cfg.backup.name);
-  const wallbox = findItem(cenik.ostatni, cfg.wallbox.name);
-  const regulace = findItem(cenik.regulace, cfg.regulace.name);
-  const bojler = findItem(cenik.bojlery, cfg.bojler.name);
+  const baterie = sNakladem(findItem(cenik.baterie, cfg.baterie.name), cfg.baterie);
+  const bms = sNakladem(findItem(cenik.bms, cfg.bms.name), cfg.bms);
+  const rozvadecDc = sNakladem(findItem(cenik.rozvadec_dc, cfg.rozvadecDc.name), cfg.rozvadecDc);
+  const ostatniFixed = sNakladem(findItem(cenik.ostatni, cfg.ostatniFixed.name), cfg.ostatniFixed);
+  const backup = sNakladem(findItem(cenik.ostatni, cfg.backup.name), cfg.backup);
+  const wallbox = sNakladem(findItem(cenik.ostatni, cfg.wallbox.name), cfg.wallbox);
+  const regulace = sNakladem(findItem(cenik.regulace, cfg.regulace.name), cfg.regulace);
+  const bojler = sNakladem(findItem(cenik.bojlery, cfg.bojler.name), cfg.bojler);
   const elmr = findItem(cenik.elmr, cfg.elmr);
   const dotaceZaklad = findItem(cenik.dotace_zaklad, cfg.dotaceZaklad);
   const prace = { elektro: findItem(cenik.prace, "Elektro práce").cena, strecha: findItem(cenik.prace, "Střecha práce").cena, instalater: findItem(cenik.prace, "Instalatérské práce + materiál").cena };
@@ -516,7 +519,24 @@ export default function FveCalculator({ value, onChange, currentUser, onUseAsTar
     const prepsano = c.marzeOverride !== "" && c.marzeOverride != null;
     return radek({
       klic: key, nazev, n: nRadku([key, nazev, list, item]), frac: rowMarzeFrac(c), slabe: nepouzita(item, c),
-      polozka: <Sel list={list} value={item.name} onChange={(name) => setItem(key, { name })} style={{ ...S.select, marginBottom: 0, width: "100%" }} />,
+      polozka: (
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          <Sel list={list} value={item.name} onChange={(name) => setItem(key, { name, cenaKs: "" })} style={{ ...S.select, marginBottom: 0, width: "100%", minWidth: 0, flex: "1 1 auto" }} />
+          {!uZak && (() => {
+            const vlastni = c.cenaKs !== "" && c.cenaKs != null;
+            const cenik1 = vlastni ? item.cenaCenik : item.cena;
+            return (
+              <label style={{ display: "flex", flexDirection: "column", flex: "0 0 108px", fontSize: 10, color: "#64748b", lineHeight: 1.2 }}>
+                náklad / ks
+                <input type="number" min="0" aria-label={`Náklad na 1 ks – ${nazev} (Kč bez DPH)`} placeholder={String(Math.round(cenik1 || 0))}
+                  title={vlastni ? `Vlastní náklad na 1 ks — v ceníku ${fmtKc(cenik1)}. Vymaž pro cenu z ceníku.` : "Náklad na 1 ks z ceníku — přepiš, když nakupuješ za jinou cenu"}
+                  style={{ ...inpS, padding: "4px 6px", fontSize: 13, textAlign: "right", color: vlastni ? "#0369a1" : "#64748b", fontWeight: vlastni ? 700 : 400, borderColor: vlastni ? "#0369a1" : undefined }}
+                  value={c.cenaKs ?? ""} onChange={(e) => setItem(key, { cenaKs: e.target.value })} />
+              </label>
+            );
+          })()}
+        </span>
+      ),
       mnozstvi: pocetInput(`Množství – ${nazev}`, c.qty, (v) => setItem(key, { qty: v })),
       marzeBunka: (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
