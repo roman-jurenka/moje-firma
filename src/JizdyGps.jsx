@@ -18,7 +18,15 @@ import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 function shodaJizdy(gps, adresaZakazky) {
   const sz = slova(adresaZakazky), sg = slova(gps);
   const cz = sz.filter((w) => /\d/.test(w)), cg = sg.filter((w) => /\d/.test(w));
-  if (cz.length && cg.length && !cz.some((c) => cg.includes(c))) return 0;
+  if (cz.length && cg.length && !cz.some((c) => cg.includes(c))) {
+    // GPS často vrátí číslo vedlejší budovy (Kuželova 895 × 896) — sousední
+    // číslo projde, jen když sedí ulice i obec
+    const cisloDomu = (w) => parseInt(String(w).split("/")[0], 10);
+    const blizko = (a, b) => { const x = cisloDomu(a), y = cisloDomu(b); return x > 0 && y > 0 && Math.abs(x - y) <= 4; };
+    if (!cz.some((c) => cg.some((g) => blizko(c, g)))) return 0;
+    const ostatni = sz.filter((w) => !/\d/.test(w));
+    return ostatni.length >= 2 && ostatni.every((w) => sg.includes(w)) ? 0.75 : 0;
+  }
   if (!cz.length && !sz.every((w) => sg.includes(w))) return 0;
   return shodaAdresy(gps, adresaZakazky);
 }
