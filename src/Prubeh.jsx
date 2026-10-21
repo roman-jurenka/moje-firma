@@ -9,6 +9,9 @@ import ZalohovaFaktura from "./ZalohovaFaktura.jsx";
 import DofakturaceFaktura from "./DofakturaceFaktura.jsx";
 import { KartaMilniky, KartaPlatby } from "./KartyMilnikyPlatby.jsx";
 import { autoMilniku, stitkyZakazky } from "./milnikyZakazky.js";
+import StavZakazkyGraf from "./StavZakazkyGraf.jsx";
+import TabuleOddeleni from "./TabuleOddeleni.jsx";
+import { soubezne, stavOddeleni, hlavniFaze, pohledOdd, stavFazeOdd, postupOdd, oddPoTerminu, posunOdd, oddFaze, aktivni, HOTOVO, CEKA } from "./oddeleniZakazky.js";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { aktualniFirma, aktualizujOdkazy, upozorneniFirmy } from "./firmaDokumenty.js";
@@ -29,7 +32,7 @@ import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
   nazevFaze, ukolyPro, nazevCasti, CASTI_MONTAZE, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
   branaSekce, NAZEV_BRANY, postupSekce, FAZE_ZE_STAVU_ZAKAZKY, FAZE_ZE_STAGE, STAV_ZAKAZKY_ZE_SEKCE, STAGE_Z_FAZE,
-  NASTAVENI_KEY, pouzijNastaveni, zakladFaze, pravidlo, PRAVIDLA_TYPU, terminFaze, planovaneMd,
+  NASTAVENI_KEY, pouzijNastaveni, zakladFaze, pravidlo, PRAVIDLA_TYPU, terminFaze, planovaneMd, fazePlati,
 } from "./prubehFaze.js";
 
 // ─── Průběh zakázek (varianta D: přehled + panel dalšího kroku) ─────────────
@@ -82,6 +85,7 @@ const CSS = `
   .pr-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pr-wrap { padding: 16px; }
   .pr-siroky, .pr-prubeh-radek, .pr-siroky > .pr-sloupec:last-child { grid-template-columns: minmax(0, 1fr); }
+  .pr-drahy { grid-template-columns: minmax(0, 1fr) !important; }
 }
 `;
 
@@ -101,10 +105,14 @@ function Kolecko({ barva = "#b45309", size = 16 }) {
 
 // Buňka s postupem v sekci (proužky fází + název aktuální fáze).
 function BunkaSekce({ z, sekceIds }) {
-  const p = postupSekce(z, sekceIds);
+  // Za obchodem běží kancelář a realizace souběžně — každý sloupec ukazuje své oddělení.
+  const odd = sekceIds.includes("ob") ? "ob" : sekceIds.includes("re") ? "re" : "bo";
+  const p = soubezne(z) ? postupOdd(z, odd) : postupSekce(z, sekceIds);
   if (p === null) return <span style={{ fontSize: 12, color: "#94a3b8" }}>—</span>;
   if (p === "hotovo") return <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: "#15803d" }}><Fajfka size={14} />hotovo</span>;
-  const s = sekceById[p.sekce];
+  if (p.ceka) return <span style={{ fontSize: 12, color: "#92400e" }}>⏸ {p.ceka}</span>;
+  const s = p.barva ? { barva: p.barva } : sekceById[p.sekce];
+  const po = p.termin && p.termin < new Date().toLocaleDateString("sv-SE");
   return (
     <div>
       <div style={{ display: "flex", gap: 3, width: 96 }}>
@@ -113,6 +121,7 @@ function BunkaSekce({ z, sekceIds }) {
         ))}
       </div>
       <div style={{ fontSize: 12, color: "#334155", marginTop: 4 }}>{p.sekce === "uz" ? "Uzavření · " : ""}{p.poradi} {p.nazev}</div>
+      {p.termin && <div style={{ fontSize: 11, color: po ? "#b91c1c" : "#64748b", fontWeight: po ? 700 : 400 }}>{po ? "⚠ " : ""}do {fmtDatum(p.termin)}</div>}
     </div>
   );
 }
@@ -169,6 +178,8 @@ export default function Prubeh({
   const [jednaId, setJednaId] = useState(null);       // zobrazit jen jednu konkrétní zakázku
   const [vyberOkno, setVyberOkno] = useState(false);  // vyskakovací okno s výběrem zakázky
   const [vyberHledat, setVyberHledat] = useState("");
+  const [oddVyber, setOddVyber] = useState(null);     // oddělení, na kterém se v otevřené zakázce pracuje (bo / re)
+  const [tabule, setTabule] = useState(false);        // 📊 Tabule oddělení místo seznamu
   const [editMisto, setEditMisto] = useState(null);
   const [novyUkol, setNovyUkol] = useState(null);
   const [zprava, setZprava] = useState("");
@@ -336,14 +347,16 @@ export default function Prubeh({
     };
   };
   const dnes = dnesIso();
-  const poTerminu = (z) => z.stav === "otevrena" && z.dalsi_krok_termin && z.dalsi_krok_termin < dnes;
+  const poTerminu = (z) => z.stav === "otevrena" && ((z.dalsi_krok_termin && z.dalsi_krok_termin < dnes) || oddPoTerminu(z, dnes).length > 0);
+  // Lidé, kteří mají zakázku teď na starosti v souběžných odděleních (kancelář, realizace).
+  const lideOdd = (z) => { if (!soubezne(z)) return []; const st = stavOddeleni(z); return ["bo", "re"].filter((o) => aktivni(st[o])).map((o) => st[o].kdo).filter(Boolean); };
   const sekceZ = (z) => fazeById[z.faze]?.sekce || "ob";
   const dlouho = (z) => z.stav === "otevrena" && dnyOd(z.faze_od) > (fazeById[z.faze]?.dny || 999);
   const posledniPozn = (id) => poznamky.find((p) => p.prubeh_id === id && !p.system);
 
   const otevrene = rows.filter((z) => z.stav === "otevrena");
   const kpi = {
-    naMe: otevrene.filter((z) => z.dalsi_krok_kdo && z.dalsi_krok_kdo === ja).length,
+    naMe: otevrene.filter((z) => (z.dalsi_krok_kdo && z.dalsi_krok_kdo === ja) || lideOdd(z).includes(ja)).length,
     poTerminu: otevrene.filter(poTerminu).length,
     pripraveno: otevrene.filter((z) => z.faze === "material" && fazeHotova(z, fazeById.material, autoZ(z))).length,
     dlouho: otevrene.filter(dlouho).length,
@@ -355,7 +368,8 @@ export default function Prubeh({
     .filter((z) => (uzavrene ? z.stav !== "otevrena" : z.stav === "otevrena"))
     .filter((z) => {
       if (fronta === "vse") return true;
-      if (fronta === "moje") return [z.dalsi_krok_kdo, z.vlastnik_obchod, z.vlastnik_bo, z.vlastnik_re].includes(ja);
+      if (fronta === "moje") return [z.dalsi_krok_kdo, z.vlastnik_obchod, z.vlastnik_bo, z.vlastnik_re, ...lideOdd(z)].includes(ja);
+      if (soubezne(z) && (fronta === "bo" || fronta === "re")) return aktivni(stavOddeleni(z)[fronta]);
       if (fronta === "bo") return ["bo", "uz"].includes(sekceZ(z));
       return sekceZ(z) === fronta;
     })
@@ -363,6 +377,9 @@ export default function Prubeh({
     .sort((a, b) => (poTerminu(b) - poTerminu(a)) || String(a.dalsi_krok_termin || "9999").localeCompare(String(b.dalsi_krok_termin || "9999")));
 
   const z = rows.find((r) => r.id === vybrano) || null;
+  // Otevřená zakázka „pohledem oddělení“ (kancelář / realizace): úkoly, průvodce
+  // a Hotovo → pracují s fází vybraného oddělení (viz oddeleniZakazky.js).
+  const zV = z ? pohledOdd(z, oddVyber) : null;
   // Na užší obrazovce je panel pod seznamem — po kliknutí na něj rovnou sjedeme.
   // V okně zakázky posunout řadu kroků tak, aby byl aktuální krok vidět.
   const fazeOkna = jednaId ? rows.find((r) => r.id === jednaId)?.faze : null;
@@ -374,11 +391,11 @@ export default function Prubeh({
   }, [jednaId, fazeOkna]);
   // Otevřít okno zakázky (místo seznamu) — kroky nahoře, pod nimi přehled.
   const otevritOkno = (id) => {
-    setVybrano(id); setJednaId(id); setEditKrok(null); setDraft(""); setEditMisto(null); setNovyUkol(null); setZprava(""); setVsechnyZpravy(false);
+    setVybrano(id); setJednaId(id); setOddVyber(null); setEditKrok(null); setDraft(""); setEditMisto(null); setNovyUkol(null); setZprava(""); setVsechnyZpravy(false);
     window.scrollTo({ top: 0 });
   };
   const vybrat = (id) => {
-    setVybrano(id); setEditKrok(null); setDraft(""); setEditMisto(null); setNovyUkol(null); setZprava(""); setVsechnyZpravy(false);
+    setVybrano(id); setOddVyber(null); setEditKrok(null); setDraft(""); setEditMisto(null); setNovyUkol(null); setZprava(""); setVsechnyZpravy(false);
     if (window.innerWidth <= 1150) setTimeout(() => document.getElementById("pr-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   };
 
@@ -771,7 +788,47 @@ export default function Prubeh({
     }
   };
 
-  const presun = async (zak, cil, textPoznamky) => {
+  // Posun jednoho oddělení (kancelář / realizace) souběžné zakázky. cil může být
+  // i CEKA (kancelář čeká na realizaci) nebo HOTOVO (realizace skončila).
+  // Sloupec faze dostane „hlavní“ fázi, aby seděly seznamy a stav staré zakázky.
+  const presunOddeleni = async (zak, cil, textPoznamky) => {
+    const odd = cil.id === CEKA || cil.id === HOTOVO ? zak._odd : oddFaze(cil);
+    const st = zak._st || stavOddeleni(zak);
+    const real = rows.find((r) => r.id === zak.id) || zak;
+    // Realizace jde na montáž až po zaplacení zálohy — jde vědomě pustit i tak.
+    const zalohaChybi = odd === "re" && cil.sekce === "re" && fazeById[st.re?.faze]?.sekce !== "re"
+      && fazePlati(fazeById.zaloha, zak) && !(zak.preskocene || []).includes("zaloha") && !(zak.hotove_ukoly || {})["zaloha.zaplacena"];
+    if (zalohaChybi) {
+      if (!(await zeptat({ titulek: "Záloha ještě není zaplacená", text: "Kancelář zatím nemá zaplacenou zálohu. Pustit realizaci dál i tak?", potvrdit: "Pustit realizaci i tak" }))) return false;
+      await pridatPoznamku(zak, "Realizace puštěná dál bez zaplacené zálohy.", true);
+    }
+    const ted = tedIso();
+    const nove = posunOdd(zak, st, odd, cil, { ted, termin: (f) => terminFaze(f), kdo: (f) => vlastnikSekce(zak, f.sekce === "uz" ? "uz" : odd) });
+    const hlavni = hlavniFaze({ ...st, ...nove }) || real.faze;
+    const krokF = fazeById[[CEKA, HOTOVO].includes(cil.id) ? hlavni : cil.id];
+    const patch = { oddeleni: nove, duvod_cekani: null };
+    if (hlavni !== real.faze) { patch.faze = hlavni; patch.faze_od = ted; }
+    if (krokF) {
+      patch.dalsi_krok = krokProFazi({ ...real, ...patch, faze: krokF.id }, krokF);
+      patch.dalsi_krok_termin = terminFaze(krokF);
+      patch.dalsi_krok_kdo = vlastnikSekce(zak, krokF.sekce === "uz" ? "uz" : oddFaze(krokF));
+    }
+    const ok = await uloz(zak, patch, textPoznamky);
+    if (ok && patch.faze && fazeById[hlavni]?.sekce !== fazeById[real.faze]?.sekce) await synchronizovatStare(real, hlavni, real.contract_id);
+    if (ok && odd === "re" && cil.id === HOTOVO) await zapsatPredani(real.contract_id);
+    return ok;
+  };
+
+  const presun = async (zak, cil, textPoznamky, navic = {}) => {
+    if (zak._odd || zak._st) {
+      // návrat do obchodu = zakázka zase jde jednou řadou, souběžná oddělení se vynulují
+      if (oddFaze(cil) === "ob") {
+        const cisty = { ...zak };
+        delete cisty._odd; delete cisty._st;
+        return presun(cisty, cil, textPoznamky, { oddeleni: {} });
+      }
+      return presunOddeleni(zak, cil, textPoznamky);
+    }
     const staraSekce = sekceZ(zak);
     let contractId = zak.contract_id;
     if (staraSekce === "ob" && cil.sekce !== "ob") {
@@ -781,7 +838,7 @@ export default function Prubeh({
     const nz = { ...zak, faze: cil.id, contract_id: contractId };
     const ok = await uloz(zak, {
       faze: cil.id, faze_od: tedIso(), contract_id: contractId, duvod_cekani: null,
-      dalsi_krok: krokProFazi(nz, cil), dalsi_krok_termin: terminFaze(cil), dalsi_krok_kdo: vlastnikSekce(zak, cil.sekce),
+      dalsi_krok: krokProFazi(nz, cil), dalsi_krok_termin: terminFaze(cil), dalsi_krok_kdo: vlastnikSekce(zak, cil.sekce), ...navic,
     }, textPoznamky);
     if (ok) await synchronizovatStare(zak, cil.id, contractId);
     const iPredani = FAZE.findIndex((x) => x.id === "predani");
@@ -846,7 +903,7 @@ export default function Prubeh({
   const predchozi = (zak) => {
     const i = FAZE.findIndex((f) => f.id === zak.faze);
     return FAZE.slice(0, Math.max(0, i)).reverse()
-      .find((f) => pravidlo(f, zak.typ) !== "-" && (!(zak.preskocene || []).includes(f.id) || jePreskocenyKrok(zak, f))) || predchoziFaze(zak);
+      .find((f) => pravidlo(f, zak.typ) !== "-" && (!zak._odd || oddFaze(f) === zak._odd) && (!(zak.preskocene || []).includes(f.id) || jePreskocenyKrok(zak, f))) || predchoziFaze(zak);
   };
   const vratit = async (zak) => {
     const cil = predchozi(zak);
@@ -857,7 +914,8 @@ export default function Prubeh({
   const vratitNa = async (zak, cil) => {
     if (!cil || zak.stav !== "otevrena") return;
     const iCil = FAZE.findIndex((x) => x.id === cil.id);
-    if (iCil >= FAZE.findIndex((x) => x.id === zak.faze)) return;
+    // u souběžné zakázky se vrací v oddělení cílového kroku (o jeho pořadí rozhoduje řada kroků)
+    if (!zak._st && iCil >= FAZE.findIndex((x) => x.id === zak.faze)) return;
     if (!(await zeptat({ titulek: "Vrátit zakázku zpět?", text: `Zakázka se vrátí do kroku „${nazevFaze(cil, zak.typ)}“. Hotové úkoly zůstanou odškrtnuté.`, potvrdit: "Vrátit zpět" }))) return;
     setPracuji(true);
     let nz = zak;
@@ -1378,7 +1436,7 @@ export default function Prubeh({
   // Co teď dělat, kontroly (chyby brání posunu), tlačítka k nápravě,
   // dokumenty a přepnutí do další fáze.
   const vykresliPruvodce = () => {
-    const z = vybranyRadek;
+    const z = vybranyRadek && pohledOdd(vybranyRadek, oddVyber);
     if (!z || z.stav !== "otevrena") return null;
     const f = fazeById[z.faze];
     if (!f) return null;
@@ -2113,6 +2171,8 @@ export default function Prubeh({
           </div>
           {smiNastavit && <button type="button" style={btnGhost} onClick={() => setNastaveniForm(Object.fromEntries(FAZE.map((f) => [f.id, { dny: f.dny, typy: Object.fromEntries(TYPY.map((t) => [t.id, pravidlo(f, t.id)])), ukoly: f.ukoly.map((u) => ({ ...u })) }])))}>⚙️ Nastavení fází</button>}
           {smiNastavit && <button type="button" style={btnGhost} onClick={otevritRozpad} title="Šablony rozpadu materiálu (konstrukce na 1 panel)">🧩 Rozpad materiálu</button>}
+          <button type="button" style={tabule ? btn("#0f172a") : btnGhost} aria-pressed={tabule} onClick={() => { setTabule((t) => !t); setJednaId(null); }}
+            title="Všechny zakázky po odděleních — obchod, kancelář, realizace — ve sloupcích podle fází">{tabule ? "☰ Seznam zakázek" : "📊 Tabule oddělení"}</button>
           <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "", zakRezim: null, zakHledat: "", novyZak: { name: "", phone: "", email: "", adresa: "" }, telefonZak: null, kontakt: { jmeno: "", telefon: "", vztah: "" } })}>+ Nová poptávka</button>
         </div>
       </div>
@@ -2140,7 +2200,11 @@ export default function Prubeh({
         </div>
       )}
 
-      <div className="pr-grid pr-jedna">
+      {tabule && (
+        <TabuleOddeleni rows={rows} zakaznik={zakaznik} kodZakazky={(r) => contractById(r.contract_id)?.code} dnes={dnes} ja={ja}
+          onOtevrit={(id, odd) => { setTabule(false); otevritOkno(id); setOddVyber(odd === "ob" ? null : odd); }} />
+      )}
+      <div className="pr-grid pr-jedna" style={tabule ? { display: "none" } : undefined}>
         <div style={{ ...karta, padding: 0, overflow: "hidden" }}>
           <div style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #e2e8f0", alignItems: "center", flexWrap: "wrap" }}>
             <button type="button" style={btn("#0f172a")} onClick={() => { setVyberHledat(""); setVyberOkno(true); }} title="Najít zakázku a otevřít ji">🎯 Najít zakázku</button>
@@ -2475,6 +2539,7 @@ export default function Prubeh({
 
   // ── Pravý panel vybrané zakázky ──
   function vykresliPanel(siroky = false) {
+    const z = zV; // pohled vybraného oddělení (u zakázky v obchodu je to rovnou řádek)
     const f = fazeById[z.faze];
     const s = sekceById[f.sekce];
     const auto = autoZ(z);
@@ -2502,6 +2567,12 @@ export default function Prubeh({
     const stavFaze = (fx, i) => {
       if ((z.preskocene || []).includes(fx.id)) return "preskoceno";
       if (z.stav === "uzavrena") return "hotovo";
+      if (z._st) { // souběžná oddělení: každá fáze podle svého oddělení
+        const so = stavFazeOdd(z._st, fx);
+        if (so === "ted") return z.stav === "prohrana" ? "prohrano" : "ted";
+        if (so === "hotovo") return "hotovo";
+        return fazeKRozhodnuti(fx, z) ? "mozna" : "ceka";
+      }
       if (i < iTed) return "hotovo";
       if (i === iTed) return z.stav === "prohrana" ? "prohrano" : "ted";
       return fazeKRozhodnuti(fx, z) ? "mozna" : "ceka";
@@ -2543,7 +2614,7 @@ export default function Prubeh({
           </div>
           <div style={{ fontSize: 13, color: "#475569" }}>{[k?.code, zakaznik(z.customer_id)?.name, z.hodnota ? fmtKc(z.hodnota) : null].filter(Boolean).join(" · ")}</div>
           <div style={{ fontSize: 13, color: "#334155", marginTop: 2 }}>
-            {otevrena ? <>Teď: <b style={{ color: s.tmava }}>{s.nazev} · {nazevFaze(f, z.typ)}</b> · ve fázi {dny(dniFaze)} <span style={{ color: dniFaze > f.dny ? "#c2410c" : "#64748b" }}>(obvykle {dny(f.dny)})</span></>
+            {otevrena ? <>{z._odd ? "Pracuješ na: " : "Teď: "}<b style={{ color: s.tmava }}>{z._odd ? (z._odd === "bo" ? "Kancelář" : "Realizace") : s.nazev} · {nazevFaze(f, z.typ)}</b> · ve fázi {dny(dniFaze)} <span style={{ color: dniFaze > f.dny ? "#c2410c" : "#64748b" }}>(obvykle {dny(f.dny)})</span></>
               : z.stav === "prohrana" ? <b>Prohráno: {z.prohra_duvod}</b> : <b style={{ color: "#15803d" }}>Uzavřená zakázka</b>}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
@@ -2643,8 +2714,8 @@ export default function Prubeh({
                   <div style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center", alignItems: "center", height: 36 }}>
                     {n > 0 && <div aria-hidden="true" style={{ position: "absolute", left: 0, right: "50%", top: "50%", height: 3, marginTop: -1.5, background: caraHotova ? "#86efac" : "#e2e8f0" }} />}
                     {n < kroky.length - 1 && <div aria-hidden="true" style={{ position: "absolute", left: "50%", right: 0, top: "50%", height: 3, marginTop: -1.5, background: st === "hotovo" || st === "preskoceno" ? "#86efac" : "#e2e8f0" }} />}
-                    {otevrena && i < iTed ? (
-                      <button type="button" className="pr-krok-zpet" onClick={() => vratitNa(z, fx)} disabled={pracuji}
+                    {otevrena && (z._st ? st === "hotovo" : i < iTed) ? (
+                      <button type="button" className="pr-krok-zpet" onClick={() => vratitNa(z._st ? { ...z, _odd: oddFaze(fx) } : z, fx)} disabled={pracuji}
                         aria-label={`Vrátit zakázku do kroku ${nazevFaze(fx, z.typ)}`} title={`Klikni pro návrat do kroku ${nazevFaze(fx, z.typ)}`}
                         style={{ position: "relative", width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, cursor: "pointer", padding: 0, fontFamily: "inherit", ...kruh }}>
                         {st === "hotovo" ? "✓" : st === "preskoceno" ? "⏭" : n + 1}
@@ -3135,6 +3206,17 @@ export default function Prubeh({
             ))}
           </div>
         );
+    // Termín / člověk jednoho oddělení (uloží se i odvozený stav ostatních).
+    const ulozitOdd = (odd, zmena) => {
+      const st = z._st || stavOddeleni(z);
+      const nove = { bo: st.bo, re: st.re, [odd]: { ...st[odd], ...zmena } };
+      const popis = zmena.termin !== undefined ? `termín ${zmena.termin ? fmtDatum(zmena.termin) : "smazán"}` : `má na starosti ${zmena.kdo || "nikdo"}`;
+      return uloz(z, { oddeleni: nove }, `${odd === "bo" ? "Kancelář" : "Realizace"}: ${popis}.`);
+    };
+    const kOddeleni = z._st && (
+      <StavZakazkyGraf z={z} st={z._st} vybrane={z._odd} dnes={dnes} lide={lide} otevrena={otevrena}
+        onVybrat={(odd) => setOddVyber(odd)} onUlozitOdd={ulozitOdd} />
+    );
     const kMilniky = <KartaMilniky z={z} dnes={dnes} otevrena={otevrena} onUlozit={(patch, pozn) => uloz(z, patch, pozn)} />;
     const kPlatby = <KartaPlatby z={z} contract={k} zakaznik={zakaznik(z.customer_id)} dnes={dnes} otevrena={otevrena}
       cenaBezDph={konecnaCenaNabidky(qq?.data).bez || Number(z.hodnota) || Number(k?.price) || 0}
@@ -3159,7 +3241,7 @@ export default function Prubeh({
     if (!siroky) {
       return (
         <div className="pr-panel" id="pr-panel">
-          {kHlavicka}{kPrubeh}{kDalsiKrok}{kUkolyFaze}{kPlatby}{kMilniky}{kPodklady}{kFotky}{kProc}{kMisto}{kUkoly}{kZpravy}{kHistorie}{kBrana}{kKdo}
+          {kHlavicka}{kOddeleni}{kPrubeh}{kDalsiKrok}{kUkolyFaze}{kPlatby}{kMilniky}{kPodklady}{kFotky}{kProc}{kMisto}{kUkoly}{kZpravy}{kHistorie}{kBrana}{kKdo}
         </div>
       );
     }
@@ -3168,6 +3250,7 @@ export default function Prubeh({
       <div className="pr-siroky" id="pr-panel">
         <div className="pr-cela">{kKroky}</div>
         <div className="pr-cela">{kHlavicka}</div>
+        {kOddeleni && <div className="pr-cela">{kOddeleni}</div>}
         <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}{kMilniky}</div>
         <div className="pr-sloupec">{kPlatby}{kFotky}{kProc}{kHistorie}</div>
         <div className="pr-sloupec">{kMisto}{kPodklady}{kUkoly}{kZpravy}{kKdo}</div>
