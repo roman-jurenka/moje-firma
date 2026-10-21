@@ -10,9 +10,11 @@ const PROCENTO_KEY = "zaloha_procento";
 const iso = (d) => d.toLocaleDateString("sv-SE");
 const cislo = (v) => { const t = String(v ?? "").replace(/\s/g, "").replace(",", "."); return t === "" ? NaN : Number(t); };
 
-// cenaBezDph = výchozí základ (z nabídky / zakázky), dphPct = sazba z nabídky
-export default function ZalohovaFaktura({ zak, contract, zakaznik, cenaBezDph = 0, dphPct = 21, onVystaveno, onZavrit }) {
-  const [procento, setProcento] = useState("50");
+// cenaBezDph = výchozí základ (z nabídky / zakázky), dphPct = sazba z nabídky,
+// vychoziProcento = procento z platebního kalendáře (pak se nepamatuje naposledy použité)
+export default function ZalohovaFaktura({ zak, contract, zakaznik, cenaBezDph = 0, dphPct = 21, vychoziProcento = null, onVystaveno, onZavrit }) {
+  const zPlanu = vychoziProcento != null;
+  const [procento, setProcento] = useState(zPlanu ? String(vychoziProcento) : "50");
   const [zaklad, setZaklad] = useState(String(Math.round(cenaBezDph || 0)));
   const [dph, setDph] = useState([0, 12, 21].includes(Number(dphPct)) ? Number(dphPct) : 21);
   const [splatnost, setSplatnost] = useState(String(zakaznik?.payment_terms_days || 14));
@@ -22,14 +24,16 @@ export default function ZalohovaFaktura({ zak, contract, zakaznik, cenaBezDph = 
 
   useEffect(() => {
     let zruseno = false;
-    supabase.from("app_settings").select("value").eq("key", PROCENTO_KEY).maybeSingle()
-      .then(({ data }) => { if (!zruseno && data?.value?.procento) setProcento(String(data.value.procento)); });
+    if (!zPlanu) {
+      supabase.from("app_settings").select("value").eq("key", PROCENTO_KEY).maybeSingle()
+        .then(({ data }) => { if (!zruseno && data?.value?.procento) setProcento(String(data.value.procento)); });
+    }
     if (zak.contract_id) {
       supabase.from("invoices").select("id, number, cislo_ucetni, amount, tax, items, status").eq("contract_id", zak.contract_id).eq("is_deposit", true)
         .then(({ data }) => { if (!zruseno) setPredchozi((data || []).filter((i) => i.status !== "Storno")); });
     }
     return () => { zruseno = true; };
-  }, [zak.contract_id]);
+  }, [zak.contract_id, zPlanu]);
 
   const p = cislo(procento), z = cislo(zaklad);
   const castka = Number.isFinite(p) && Number.isFinite(z) ? Math.round(z * p) / 100 : 0;
@@ -58,7 +62,7 @@ export default function ZalohovaFaktura({ zak, contract, zakaznik, cenaBezDph = 
     }
     if (!row) { setPracuji(false); setChyba("Číslo faktury se opakovaně srazilo, zkus to znovu."); return; }
     await supabase.from("invoice_events").insert({ invoice_id: row.id, type: "vystavena" });
-    await supabase.from("app_settings").upsert({ key: PROCENTO_KEY, value: { procento: p }, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    if (!zPlanu) await supabase.from("app_settings").upsert({ key: PROCENTO_KEY, value: { procento: p }, updated_at: new Date().toISOString() }, { onConflict: "key" });
     setPracuji(false);
     onVystaveno?.(row, p);
   };
