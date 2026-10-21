@@ -47,11 +47,12 @@ const ZAKLAD_FAZI = [
     { id: "projekt", text: "Projekt / schéma zapojení hotové" },
   ] },
   { id: "distributor", sekce: "bo", nazev: "Distributor", typy: { FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "o", REA: "-" }, ukoly: [
-    { id: "zadost", text: "Žádost u distributora podaná" },
-    { id: "souhlas", text: "Souhlas distributora", brana: true },
+    // auto "m_…" = úkol se odškrtne sám, když je vyplněný úřední milník (milnikyZakazky.js)
+    { id: "zadost", text: "Žádost u distributora podaná", auto: "m_zadost_pripojeni" },
+    { id: "souhlas", text: "Souhlas distributora", brana: true, auto: "m_sop_prijata" },
   ] },
   { id: "dotace", sekce: "bo", nazev: "Dotace", typy: { FVE: "o", FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "-", REA: "-" }, ukoly: [
-    { id: "zadost", text: "Žádost o dotaci podaná" },
+    { id: "zadost", text: "Žádost o dotaci podaná", auto: "m_dotace_podana" },
   ] },
   { id: "material", sekce: "bo", nazev: "Materiál a termín", nazevTyp: { SRV: "Termín", REA: "Termín a materiál" }, ukoly: [
     { id: "objednan", text: "Materiál objednaný (nebo skladem)", brana: true, material: true },
@@ -86,7 +87,7 @@ const ZAKLAD_FAZI = [
     { id: "test", text: "Zprovozněno a otestováno" },
   ] },
   { id: "revize", sekce: "re", nazev: "Revize", typy: { SRV: "o", REA: "o" }, ukoly: [
-    { id: "zprava", text: "Revizní zpráva hotová", brana: true },
+    { id: "zprava", text: "Revizní zpráva hotová", brana: true, auto: "m_revize" },
   ] },
   { id: "predani", sekce: "re", nazev: "Předání", ukoly: [
     { id: "protokol", text: "Předávací protokol podepsaný", brana: true },
@@ -94,7 +95,7 @@ const ZAKLAD_FAZI = [
   ] },
 
   { id: "pripojeni", sekce: "uz", nazev: "Připojení", typy: { FVR: "o", SRV: "-", HRM: "-", ELK: "o", REA: "-" }, ukoly: [
-    { id: "ppp", text: "Uvedeno do provozu u distributora" },
+    { id: "ppp", text: "Uvedeno do provozu u distributora", auto: "m_pretoky" },
   ] },
   // Jen u realizace na objednávku (REA): objednatel dostane fotky, předávací
   // protokol a uzavírací e-mail (tlačítko Připravit uzavírací e-mail).
@@ -131,7 +132,7 @@ export function pouzijNastaveni(nastaveni) {
     const ukoly = Array.isArray(u.ukoly) && u.ukoly.length
       ? u.ukoly.filter((x) => String(x.text || "").trim()).map((x) => {
         const z = f.ukoly.find((b) => b.id === x.id);
-        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, naceneniRea: z.naceneniRea, zalohovaFaktura: z.zalohovaFaktura, dofakturace: z.dofakturace, cast: z.cast, jenTypy: z.jenTypy, krome: z.krome, ...x } : x;
+        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, naceneniRea: z.naceneniRea, zalohovaFaktura: z.zalohovaFaktura, dofakturace: z.dofakturace, cast: z.cast, jenTypy: z.jenTypy, krome: z.krome, ...x, auto: x.auto || z.auto } : x;
       })
       : f.ukoly;
     return {
