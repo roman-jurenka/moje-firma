@@ -1,6 +1,7 @@
 // ─── Tabule oddělení (Průběh → 📊 Tabule oddělení) ───────────────────────────
 // Všechny otevřené zakázky na jedné obrazovce: pro obchod, kancelář
-// a realizaci zvlášť sloupce podle fází, v nich karty zakázek (kolik dní ve
+// a realizaci zvlášť řádky podle fází (pod sebou), v nich zakázky vedle sebe
+// jako jednořádkové štítky (kolik dní ve
 // fázi, termín, kdo). Zakázka za obchodem je v kanceláři i v realizaci
 // zároveň — každé oddělení ji vidí ve své fázi. Klik na kartu otevře zakázku.
 import { useState } from "react";
@@ -25,6 +26,7 @@ function poloha(z, odd, st) {
 export default function TabuleOddeleni({ rows = [], zakaznik, kodZakazky, dnes, ja, onOtevrit }) {
   const [jenMoje, setJenMoje] = useState(false);
   const [skryte, setSkryte] = useState({});
+  const [skrytPrazdne, setSkrytPrazdne] = useState(false);
   const otevrene = rows.filter((z) => z.stav === "otevrena");
   const stavy = Object.fromEntries(otevrene.map((z) => [z.id, stavOddeleni(z)]));
 
@@ -33,6 +35,9 @@ export default function TabuleOddeleni({ rows = [], zakaznik, kodZakazky, dnes, 
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", fontSize: 14, color: "#334155" }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <input type="checkbox" checked={jenMoje} onChange={(e) => setJenMoje(e.target.checked)} /> Jen moje
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={skrytPrazdne} onChange={(e) => setSkrytPrazdne(e.target.checked)} /> Skrýt prázdné fáze
         </label>
         <span style={{ fontSize: 13, color: "#64748b" }}>Zakázka po podpisu smlouvy je v kanceláři i v realizaci zároveň — každé oddělení ji vidí ve své fázi.</span>
       </div>
@@ -55,18 +60,19 @@ export default function TabuleOddeleni({ rows = [], zakaznik, kodZakazky, dnes, 
               <span style={{ marginLeft: "auto", fontSize: 13, color: o.tmava }}>{zabaleno ? "▸ rozbalit" : "▾ sbalit"}</span>
             </button>
             {!zabaleno && (
-              <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: 12, alignItems: "flex-start" }}>
+              <div style={{ display: "flex", flexDirection: "column" }}>
                 {sloupce.map((s) => {
                   const vSloupci = karty.filter(({ p }) => p.sloupec === s.id)
                     .sort((a, b) => String(a.p.termin || "9999").localeCompare(String(b.p.termin || "9999")));
+                  if (skrytPrazdne && vSloupci.length === 0) return null;
                   return (
-                    <div key={s.id} style={{ flex: "0 0 200px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, display: "flex", flexDirection: "column", maxHeight: 520 }}>
-                      <div style={{ padding: "8px 10px", display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6, borderBottom: "1px solid #e2e8f0" }}>
+                    <div key={s.id} className="tab-radek" style={{ display: "grid", gridTemplateColumns: "170px minmax(0, 1fr)", borderTop: "1px solid #eef2f6", minHeight: 42 }}>
+                      <div style={{ padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, background: "#f8fafc", borderRight: "1px solid #eef2f6" }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: s.id === CEKA ? "#64748b" : "#0f172a" }}>{s.id === CEKA ? "⏸ " : ""}{s.nazev}</span>
                         <span style={{ fontSize: 12, fontWeight: 800, color: vSloupci.length ? o.tmava : "#94a3b8" }}>{vSloupci.length}</span>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 8, overflowY: "auto" }}>
-                        {vSloupci.length === 0 && <div style={{ fontSize: 12, color: "#cbd5e1", textAlign: "center", padding: "6px 0" }}>—</div>}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 10px", alignItems: "center", minWidth: 0 }}>
+                        {vSloupci.length === 0 && <span style={{ fontSize: 12, color: "#cbd5e1" }}>—</span>}
                         {vSloupci.map(({ z, p }) => {
                           const po = p.termin && p.termin < dnes;
                           const dlouho = s.faze && dnyOd(p.od) > (fazeById[s.id]?.dny || 999);
@@ -74,14 +80,14 @@ export default function TabuleOddeleni({ rows = [], zakaznik, kodZakazky, dnes, 
                           return (
                             <button key={z.id} type="button" onClick={() => onOtevrit?.(z.id, o.id)}
                               title={`${z.nazev} — otevřít zakázku${s.faze ? ` (${nazevFaze(s.faze, z.typ)})` : ""}`}
-                              style={{ textAlign: "left", background: "#fff", border: `1px solid ${po ? "#fca5a5" : "#e2e8f0"}`, borderLeft: `4px solid ${po ? "#dc2626" : o.barva}`, borderRadius: 10, padding: "7px 9px", cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", gap: 3 }}>
-                              <span style={{ fontWeight: 800, fontSize: 13, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{z.nazev}</span>
-                              <span style={{ fontSize: 11, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[kodZakazky?.(z), zakaznik?.(z.customer_id)?.name].filter(Boolean).join(" · ") || " "}</span>
-                              <span style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", fontSize: 11 }}>
+                              style={{ textAlign: "left", background: "#fff", border: `1px solid ${po ? "#fca5a5" : "#e2e8f0"}`, borderLeft: `4px solid ${po ? "#dc2626" : o.barva}`, borderRadius: 8, padding: "5px 9px", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 7, maxWidth: "100%", minWidth: 0 }}>
+                              <span style={{ fontWeight: 800, fontSize: 13, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{z.nazev}</span>
+                              {(kodZakazky?.(z) || zakaznik?.(z.customer_id)?.name) && <span style={{ fontSize: 11, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{[kodZakazky?.(z), zakaznik?.(z.customer_id)?.name].filter(Boolean).join(" · ")}</span>}
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, whiteSpace: "nowrap" }}>
                                 {z.typ && <span style={{ background: tb[0], color: tb[1], borderRadius: 5, padding: "0 5px", fontWeight: 700 }}>{z.typ}</span>}
                                 <span style={{ color: dlouho ? "#c2410c" : "#64748b", fontWeight: dlouho ? 700 : 400 }}>{dnyOd(p.od)} d</span>
                                 {p.termin && <span style={{ color: po ? "#b91c1c" : "#475569", fontWeight: po ? 800 : 500 }}>{po ? "⚠ " : ""}do {fmtDatum(p.termin)}</span>}
-                                {p.kdo && <span title={p.kdo} style={{ marginLeft: "auto", width: 20, height: 20, borderRadius: "50%", background: o.svetla, color: o.tmava, fontWeight: 800, fontSize: 10, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{inicialy(p.kdo)}</span>}
+                                {p.kdo && <span title={p.kdo} style={{ width: 20, height: 20, borderRadius: "50%", background: o.svetla, color: o.tmava, fontWeight: 800, fontSize: 10, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{inicialy(p.kdo)}</span>}
                               </span>
                             </button>
                           );
