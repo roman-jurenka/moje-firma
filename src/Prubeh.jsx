@@ -7,6 +7,8 @@ import ProhlizecFotek from "./ProhlizecFotek.jsx";
 import NahratDoZakazky from "./NahratDoZakazky.jsx";
 import ZalohovaFaktura from "./ZalohovaFaktura.jsx";
 import DofakturaceFaktura from "./DofakturaceFaktura.jsx";
+import { KartaMilniky, KartaPlatby } from "./KartyMilnikyPlatby.jsx";
+import { autoMilniku, stitkyZakazky } from "./milnikyZakazky.js";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { aktualniFirma, aktualizujOdkazy, upozorneniFirmy } from "./firmaDokumenty.js";
@@ -330,6 +332,7 @@ export default function Prubeh({
       nabidkaOdeslana: !!q && ["Odesláno", "Schváleno"].includes(q.status),
       nabidkaRozhodnuta: !!q && ["Schváleno", "Zamítnuto"].includes(q.status),
       udajeVyplnene: !!(z.udaje?.ean && z.udaje?.jistic_a && z.udaje?.faze),
+      ...autoMilniku(z),
     };
   };
   const dnes = dnesIso();
@@ -2196,6 +2199,12 @@ export default function Prubeh({
                         </div>
                         {dlouho(r) && <div style={{ display: "inline-flex", marginTop: 5, marginRight: 6, background: "#ffedd5", color: "#9a3412", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 }}>déle než obvykle · {dni} / {fazeById[r.faze]?.dny} dní</div>}
                         {r.duvod_cekani && <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 5, background: "#fef3c7", color: "#78350f", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 }}>{nazevDuvodu(r.duvod_cekani).toLowerCase()} · {dny(dni)}</div>}
+                        {stitkyZakazky(r, dnes).map((st) => (
+                          <div key={st.text} style={{ display: "inline-flex", marginTop: 5, marginRight: 6, borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700,
+                            background: st.uroven === "chyba" ? "#fee2e2" : st.uroven === "faktura" ? "#e0f2fe" : "#ffedd5", color: st.uroven === "chyba" ? "#991b1b" : st.uroven === "faktura" ? "#075985" : "#9a3412" }}>
+                            {st.uroven === "faktura" ? "" : "⚠ "}{st.text}
+                          </div>
+                        ))}
                         {pz && <div style={{ fontSize: 12, color: "#475569", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>💬 {pz.text}</div>}
                       </>}
                 </div>
@@ -2759,9 +2768,11 @@ export default function Prubeh({
                   return [nadpisCasti, (
                     <div key={u.id} style={{ borderTop: i && !nadpisCasti ? "1px solid #f1f5f9" : "none", background: hot ? "#fff" : "#fffbeb" }}>
                       <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", fontSize: 14, cursor: zAuto ? "default" : "pointer", flexWrap: "wrap" }}>
-                        <input type="checkbox" checked={hot} disabled={!!zAuto} onChange={() => (u.material && !hot ? otevritMaterial(z) : u.naceneniRea && z.typ === "REA" && !hot ? setReaForm(z.id) : toggleUkol(z, f, u))} style={{ width: 18, height: 18, accentColor: s.barva }} />
+                        <input type="checkbox" checked={hot} disabled={!!zAuto} onChange={() => (u.material && !hot ? otevritMaterial(z) : u.naceneniRea && z.typ === "REA" && !hot ? setReaForm(z.id)
+                          : String(u.auto || "").startsWith("m_") && !hot ? uloz(z, { milniky: { ...(z.milniky || {}), [u.auto.slice(2)]: dnes } }, `Milník „${u.text}“: dnes (z úkolu fáze).`)
+                            : toggleUkol(z, f, u))} style={{ width: 18, height: 18, accentColor: s.barva }} />
                         <span style={{ flex: "1 1 0%", minWidth: 0, fontWeight: hot ? 400 : 700 }}>{u.text}</span>
-                        {zAuto && <span style={{ fontSize: 11, color: "#64748b" }}>{u.udaje ? "vyplněno" : "z nabídky"}</span>}
+                        {zAuto && <span style={{ fontSize: 11, color: "#64748b" }}>{u.udaje ? "vyplněno" : String(u.auto).startsWith("m_") ? `milník ${fmtDatum(z.milniky?.[u.auto.slice(2)])}` : "z nabídky"}</span>}
                         {u.brana && <span title="Podmínka brány" style={{ fontSize: 11, color: "#15803d", fontWeight: 700 }}>brána</span>}
                         {u.fotky && (
                           <button type="button" style={tlAkce} disabled={!!nahravam} onClick={(e) => akce(e, () => vybratFotky(z, f, u))}>
@@ -3124,6 +3135,15 @@ export default function Prubeh({
             ))}
           </div>
         );
+    const kMilniky = <KartaMilniky z={z} dnes={dnes} otevrena={otevrena} onUlozit={(patch, pozn) => uloz(z, patch, pozn)} />;
+    const kPlatby = <KartaPlatby z={z} contract={k} zakaznik={zakaznik(z.customer_id)} dnes={dnes} otevrena={otevrena}
+      cenaBezDph={konecnaCenaNabidky(qq?.data).bez || Number(z.hodnota) || Number(k?.price) || 0}
+      dphPct={Number(qq?.data?.zakaznik?.dph ?? 21)}
+      onUlozit={(patch, pozn) => uloz(z, patch, pozn)}
+      onFaktura={(inv) => {
+        setFakturyZ((m) => ({ ...m, [z.id]: [...(m[z.id] || []), inv] }));
+        ukazHlasku(`✓ Faktura ${inv.cislo_ucetni || inv.number} vystavená — najdeš ji ve Fakturaci`);
+      }} />;
     const kKdo = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
           <div style={{ fontWeight: 800, fontSize: 16 }}>Kdo za co odpovídá</div>
           {[["vlastnik_obchod", "Obchod", "#0369a1"], ["vlastnik_bo", "Back office", "#92400e"], ["vlastnik_re", "Realizace", "#15803d"]].map(([key, label, barva]) => (
@@ -3139,7 +3159,7 @@ export default function Prubeh({
     if (!siroky) {
       return (
         <div className="pr-panel" id="pr-panel">
-          {kHlavicka}{kPrubeh}{kDalsiKrok}{kUkolyFaze}{kPodklady}{kFotky}{kProc}{kMisto}{kUkoly}{kZpravy}{kHistorie}{kBrana}{kKdo}
+          {kHlavicka}{kPrubeh}{kDalsiKrok}{kUkolyFaze}{kPlatby}{kMilniky}{kPodklady}{kFotky}{kProc}{kMisto}{kUkoly}{kZpravy}{kHistorie}{kBrana}{kKdo}
         </div>
       );
     }
@@ -3148,8 +3168,8 @@ export default function Prubeh({
       <div className="pr-siroky" id="pr-panel">
         <div className="pr-cela">{kKroky}</div>
         <div className="pr-cela">{kHlavicka}</div>
-        <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}</div>
-        <div className="pr-sloupec">{kFotky}{kProc}{kHistorie}</div>
+        <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}{kMilniky}</div>
+        <div className="pr-sloupec">{kPlatby}{kFotky}{kProc}{kHistorie}</div>
         <div className="pr-sloupec">{kMisto}{kPodklady}{kUkoly}{kZpravy}{kKdo}</div>
       </div>
     );
