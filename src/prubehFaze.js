@@ -209,13 +209,31 @@ export const fazeKRozhodnuti = (f, z) => pravidlo(f, z.typ) === "o"
 export const platneFaze = (z) => FAZE.filter((f) => fazePlati(f, z));
 export const fazeSekce = (z, sekceId) => platneFaze(z).filter((f) => f.sekce === sekceId);
 
+// ── Souběžná oddělení ──
+// Po obchodu běží kancelář (bo) a realizace (re) souběžně, každá ve své fázi
+// (zakazky_prubeh.oddeleni, logika v oddeleniZakazky.js). Materiál a termín
+// patří realizaci; uzavření (připojení, vyúčtování, archiv) kanceláři, ta na
+// něj čeká, až realizace skončí. Řádek „pohled oddělení“ (z._odd) má ve faze
+// fázi daného oddělení — dalsiFaze / predchoziFaze pak chodí jen po ní.
+export const CEKA = "__ceka";       // oddělení čeká (na obchod / na dokončení realizace)
+export const HOTOVO = "__hotovo";   // oddělení má hotovo
+export const oddFaze = (f) => (!f ? null : f.id === "material" ? "re" : f.sekce === "ob" ? "ob" : f.sekce === "re" ? "re" : "bo");
+export const FAZE_CEKA_RE = { id: CEKA, sekce: "bo", nazev: "Čeká na dokončení realizace", ukoly: [], dny: 999 };
+export const FAZE_RE_HOTOVO = { id: HOTOVO, sekce: "re", nazev: "Realizace hotová", ukoly: [], dny: 999 };
+
 export function dalsiFaze(z) {
   const i = FAZE.findIndex((f) => f.id === z.faze);
+  if (z._odd) {
+    const dalsi = FAZE.slice(i + 1).find((f) => oddFaze(f) === z._odd && fazePlati(f, z)) || null;
+    if (z._odd === "re" && !dalsi) return FAZE_RE_HOTOVO;
+    if (z._odd === "bo" && dalsi?.sekce === "uz" && fazeById[z.faze]?.sekce !== "uz" && z._st?.re?.faze !== HOTOVO) return FAZE_CEKA_RE;
+    return dalsi;
+  }
   return FAZE.slice(i + 1).find((f) => fazePlati(f, z)) || null;
 }
 export function predchoziFaze(z) {
   const i = FAZE.findIndex((f) => f.id === z.faze);
-  return FAZE.slice(0, Math.max(0, i)).reverse().find((f) => fazePlati(f, z)) || null;
+  return FAZE.slice(0, Math.max(0, i)).reverse().find((f) => fazePlati(f, z) && (!z._odd || oddFaze(f) === z._odd)) || null;
 }
 
 // Úkoly fáze, které platí pro daný typ zakázky (jenTypy / krome).
