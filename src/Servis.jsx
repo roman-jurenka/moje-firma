@@ -16,6 +16,7 @@ import { computeInvoiceTotals, nextInvNum } from "./invoicingUtils.js";
 import { konecnaCenaNabidky, vypocetSlevy } from "./slevaNabidky.js";
 import { ZARUKA_KEY, VYCHOZI_MESICE, stavZaruky, fmtDen } from "./zaruka.js";
 import { TYPY } from "./prubehFaze.js";
+import ServisniZprava from "./ServisniZprava.jsx";
 
 const STAVY_TICKETU = ["Nový", "Naplánovaný", "V řešení", "Čeká na díl", "Vyřešený", "Vyfakturovaný", "Zrušený"];
 const STAV_BARVA = {
@@ -631,6 +632,7 @@ function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, 
   const [reseni, setReseni] = useState(t.reseni || "");
   const [fotky, setFotky] = useState([]);
   const [naklady, setNaklady] = useState([]);
+  const [zprava, setZprava] = useState(false); // otevřená servisní zpráva k podpisu
   const [nahravam, setNahravam] = useState(false);
   const [polozka, setPolozka] = useState(null);
   const fotoInput = useRef(null);
@@ -722,7 +724,9 @@ function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, 
           {t.popis && <div style={{ gridColumn: "1 / -1" }}><span style={ui.popisek}>Popis</span><div style={{ whiteSpace: "pre-wrap" }}>{t.popis}</div></div>}
           <div style={{ gridColumn: "1 / -1", fontSize: 11, color: ui.barvy.textSlaby }}>Založil {t.zalozil || "?"} {new Date(t.created_at).toLocaleDateString("cs-CZ")}</div>
         </div>
-        <div><button type="button" style={ui.tlacitkoObrys("male")} onClick={onUpravit}><i className="ti ti-pencil" aria-hidden="true"></i> Upravit (technik, termín…)</button></div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" style={ui.tlacitkoObrys("male")} onClick={onUpravit}><i className="ti ti-pencil" aria-hidden="true"></i> Upravit (technik, termín…)</button>
+          <button type="button" style={ui.tlacitko(ui.barvy.akcent, "male")} onClick={() => setZprava(true)}>📝 Servisní zpráva k podpisu</button></div>
+        {zprava && <ServisniZprava t={t} zakazka={zakazka} zakaznik={zakaznik} technik={technik} naklady={naklady} fotky={fotky} currentUser={currentUser} onZavrit={() => setZprava(false)} />}
 
         <div style={sekce}>
           <div style={nadpisSekce}>Řešení</div>
