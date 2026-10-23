@@ -2467,6 +2467,13 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [showArchived, setShowArchived] = useState(false);
+  const [siroke, setSiroke] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1180px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1180px)");
+    const h = (e) => setSiroke(e.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  }, []);
   const [typeFilter, setTypeFilter] = useState("Vše");
   const [tagFilter, setTagFilter] = useState("Vše");
   const [sortBy, setSortBy] = useState("name");
@@ -2567,132 +2574,8 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
     closeModal();
   };
 
-  return (
-    <>
-      <div style={S.header}>
-        <h1 style={S.h1}>Zákazníci</h1>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <input style={S.search} placeholder="🔍 Hledat..." value={search} onChange={e => setSearch(e.target.value)} />
-          <button style={showArchived ? S.btn("#334155") : S.btnGhost} onClick={() => setShowArchived(!showArchived)}>
-            {showArchived ? "← Zpět na aktivní" : `🗑️ Smazaní (${archivedCount})`}
-          </button>
-          {!showArchived && <button style={S.btn()} onClick={() => setModal({ type: "addCustomer" })}>+ Přidat</button>}
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 170, padding: "8px 12px" }}>
-          {["Vše", "Koncový zákazník", "Firma"].map(t => <option key={t}>{t}</option>)}
-        </select>
-        <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 150, padding: "8px 12px" }}>
-          {["Vše", "Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
-        </select>
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 190, padding: "8px 12px" }}>
-          <option value="name">Řadit: Jméno (A–Z)</option>
-          <option value="company">Řadit: Firma (A–Z)</option>
-          <option value="invoices">Řadit: Počet faktur</option>
-          <option value="newest">Řadit: Nejnovější</option>
-        </select>
-        {(typeFilter !== "Vše" || tagFilter !== "Vše") && (
-          <button onClick={() => { setTypeFilter("Vše"); setTagFilter("Vše"); }} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
-            ✕ Zrušit filtr
-          </button>
-        )}
-        <button disabled={exportBusy || filtered.length === 0} onClick={handleExportCustomers} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
-          {exportBusy ? "…" : "📊 Export do Excelu"}
-        </button>
-        <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>{filtered.length} z {customers.filter(c => !!c.archived === showArchived).length}</span>
-      </div>
-      <div style={S.card}>
-        <table style={S.table}>
-          <thead><tr>{["Jméno", "Typ", "Firma", "Email", "Telefon", "Faktury", "Štítek", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr><td colSpan={8} style={{ ...S.td, color: "#334155", textAlign: "center", padding: 20 }}>{showArchived ? "Žádní smazaní zákazníci." : "Žádní zákazníci."}</td></tr>
-            )}
-            {filtered.map((c, i) => {
-              const custInvoices = invoices.filter(inv => inv.customerId === c.id);
-              return (
-                <tr key={c.id} style={{ cursor: "pointer", opacity: c.archived ? 0.6 : 1 }} onClick={() => setModal({ type: "customerDetail", data: c })}>
-                  <td style={S.td}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={S.avatar(avatarColors[i % 6])}>{getInitial(c.name)}</div>
-                      <span style={{ color: "#1A1A1A", fontWeight: 600 }}>{c.name}</span>
-                    </div>
-                  </td>
-                  <td style={S.td}>
-                    <span style={S.tag(c.customer_type === "Firma" ? "#0d9488" : "#475569")}>
-                      {c.customer_type === "Firma" ? "🏢 Firma" : "👤 Koncový"}
-                    </span>
-                  </td>
-                  <td style={S.td}>{c.company}</td>
-                  <td style={S.td}>{c.email}</td>
-                  <td style={S.td}>{c.phone || "—"}</td>
-                  <td style={S.td}>{custInvoices.length} faktur</td>
-                  <td style={S.td}><span style={S.tag(TAG_COLORS[c.tag] || "#0369a1")}>{c.tag}</span></td>
-                  <td style={S.td}>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {!c.archived && (
-                        <button onClick={e => { e.stopPropagation(); openEdit(c); }} style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 11 }}>✏️ Upravit</button>
-                      )}
-                      {c.archived ? (
-                        <button onClick={e => { e.stopPropagation(); restoreCustomer(c.id); }} style={{ ...S.btn("#34d399"), padding: "4px 10px", fontSize: 11 }}>↺ Obnovit</button>
-                      ) : (
-                        <button onClick={e => { e.stopPropagation(); archiveCustomer(c.id); }} style={{ ...S.btn("#ef4444"), padding: "4px 10px", fontSize: 11 }}>🗑️ Smazat</button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {modal?.type === "addCustomer" && (
-        <div style={S.modal}>
-          <div style={S.modalBox}>
-            <ModalHeader title="Nový zákazník" onClose={closeModal} />
-            <label style={S.label}>Typ zákazníka</label>
-            <select style={S.select} value={newC.customer_type} onChange={e => setNewC({ ...newC, customer_type: e.target.value })}>
-              <option value="Koncový zákazník">👤 Koncový zákazník</option>
-              <option value="Firma">🏢 Firma</option>
-            </select>
-            {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"]].map(([l, k]) => (
-              <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={newC[k]} onChange={e => setNewC({ ...newC, [k]: e.target.value })} /></div>
-            ))}
-            {newC.customer_type === "Firma" && <FirmaAres hodnoty={newC} onZmena={p => setNewC(v => ({ ...v, ...p }))} />}
-            <label style={S.label}>Štítek</label>
-            <select style={S.select} value={newC.tag} onChange={e => setNewC({ ...newC, tag: e.target.value })}>
-              {["Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
-            </select>
-            <ModalActions onSave={save} onClose={closeModal} />
-          </div>
-        </div>
-      )}
-
-      {modal?.type === "editCustomer" && (
-        <div style={S.modal}>
-          <div style={S.modalBox}>
-            <ModalHeader title="Upravit zákazníka" onClose={closeModal} />
-            <label style={S.label}>Typ zákazníka</label>
-            <select style={S.select} value={editC.customer_type} onChange={e => setEditC({ ...editC, customer_type: e.target.value })}>
-              <option value="Koncový zákazník">👤 Koncový zákazník</option>
-              <option value="Firma">🏢 Firma</option>
-            </select>
-            {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"]].map(([l, k]) => (
-              <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={editC[k]} onChange={e => setEditC({ ...editC, [k]: e.target.value })} /></div>
-            ))}
-            {editC.customer_type === "Firma" && <FirmaAres hodnoty={editC} onZmena={p => setEditC(v => ({ ...v, ...p }))} />}
-            <label style={S.label}>Štítek</label>
-            <select style={S.select} value={editC.tag} onChange={e => setEditC({ ...editC, tag: e.target.value })}>
-              {["Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
-            </select>
-            <ModalActions onSave={saveEdit} onClose={closeModal} />
-          </div>
-        </div>
-      )}
-
-      {modal?.type === "customerDetail" && (() => {
+  // Na širokém displeji detail zákazníka v panelu vedle tabulky (Outlook), jinak v okně.
+  const detailZakaznika = (vPanelu) => {
         const c = modal.data;
         const custInv = invoices.filter(i => i.customerId === c.id);
         const custDeals = deals.filter(d => d.customerId === c.id);
@@ -2704,8 +2587,8 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
         const custInvoicedTotal = custInv.filter(i => i.status !== "Storno").reduce((s, i) => s + (Number(i.amount) || 0) + (Number(i.tax) || 0), 0);
         const custOpenDealsCount = custDeals.filter(d => d.stage !== "Vyhráno" && d.stage !== "Prohráno").length;
         return (
-          <div style={S.modal} onClick={closeModal}>
-            <div style={{ ...S.modalBox, width: 600 }} onClick={e => e.stopPropagation()}>
+          <div style={vPanelu ? { position: "sticky", top: "var(--horni-lista)", maxHeight: "calc(100dvh - var(--horni-lista) - 40px)", overflowY: "auto", background: "#fff", border: "1px solid #E3E6EA", borderRadius: 8 } : S.modal} onClick={vPanelu ? undefined : closeModal}>
+            <div style={vPanelu ? { padding: 16 } : { ...S.modalBox, width: 600 }} onClick={e => e.stopPropagation()}>
               <ModalHeader title={c.name} onClose={closeModal} />
               <div style={{ color: "#475569", fontSize: 13, marginBottom: 16 }}>
                 {c.company && <span style={{ fontWeight: 600, color: "#64748b" }}>{c.company} · </span>}
@@ -2799,7 +2682,137 @@ function Customers({ customers, setCustomers, invoices, deals, communication, se
             </div>
           </div>
         );
-      })()}
+  };
+
+  return (
+    <>
+      <div style={S.header}>
+        <h1 style={S.h1}>Zákazníci</h1>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <input style={S.search} placeholder="🔍 Hledat..." value={search} onChange={e => setSearch(e.target.value)} />
+          <button style={showArchived ? S.btn("#334155") : S.btnGhost} onClick={() => setShowArchived(!showArchived)}>
+            {showArchived ? "← Zpět na aktivní" : `🗑️ Smazaní (${archivedCount})`}
+          </button>
+          {!showArchived && <button style={S.btn()} onClick={() => setModal({ type: "addCustomer" })}>+ Přidat</button>}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 170, padding: "8px 12px" }}>
+          {["Vše", "Koncový zákazník", "Firma"].map(t => <option key={t}>{t}</option>)}
+        </select>
+        <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 150, padding: "8px 12px" }}>
+          {["Vše", "Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ ...S.select, marginBottom: 0, width: 190, padding: "8px 12px" }}>
+          <option value="name">Řadit: Jméno (A–Z)</option>
+          <option value="company">Řadit: Firma (A–Z)</option>
+          <option value="invoices">Řadit: Počet faktur</option>
+          <option value="newest">Řadit: Nejnovější</option>
+        </select>
+        {(typeFilter !== "Vše" || tagFilter !== "Vše") && (
+          <button onClick={() => { setTypeFilter("Vše"); setTagFilter("Vše"); }} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
+            ✕ Zrušit filtr
+          </button>
+        )}
+        <button disabled={exportBusy || filtered.length === 0} onClick={handleExportCustomers} style={{ ...S.btnGhost, padding: "8px 14px", fontSize: 12 }}>
+          {exportBusy ? "…" : "📊 Export do Excelu"}
+        </button>
+        <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>{filtered.length} z {customers.filter(c => !!c.archived === showArchived).length}</span>
+      </div>
+      <div style={siroke && modal?.type === "customerDetail" ? { display: "grid", gridTemplateColumns: "minmax(0, 1.25fr) minmax(380px, 1fr)", gap: 12, alignItems: "start" } : undefined}>
+      <div style={{ ...S.card, minWidth: 0, overflowX: "auto" }}>
+        <table style={S.table}>
+          <thead><tr>{["Jméno", "Typ", "Firma", "Email", "Telefon", "Faktury", "Štítek", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} style={{ ...S.td, color: "#334155", textAlign: "center", padding: 20 }}>{showArchived ? "Žádní smazaní zákazníci." : "Žádní zákazníci."}</td></tr>
+            )}
+            {filtered.map((c, i) => {
+              const custInvoices = invoices.filter(inv => inv.customerId === c.id);
+              return (
+                <tr key={c.id} style={{ cursor: "pointer", opacity: c.archived ? 0.6 : 1, background: siroke && modal?.type === "customerDetail" && modal.data?.id === c.id ? "#E8F0F8" : undefined }} onClick={() => setModal({ type: "customerDetail", data: c })}>
+                  <td style={S.td}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={S.avatar(avatarColors[i % 6])}>{getInitial(c.name)}</div>
+                      <span style={{ color: "#1A1A1A", fontWeight: 600 }}>{c.name}</span>
+                    </div>
+                  </td>
+                  <td style={S.td}>
+                    <span style={S.tag(c.customer_type === "Firma" ? "#0d9488" : "#475569")}>
+                      {c.customer_type === "Firma" ? "🏢 Firma" : "👤 Koncový"}
+                    </span>
+                  </td>
+                  <td style={S.td}>{c.company}</td>
+                  <td style={S.td}>{c.email}</td>
+                  <td style={S.td}>{c.phone || "—"}</td>
+                  <td style={S.td}>{custInvoices.length} faktur</td>
+                  <td style={S.td}><span style={S.tag(TAG_COLORS[c.tag] || "#0369a1")}>{c.tag}</span></td>
+                  <td style={S.td}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {!c.archived && (
+                        <button onClick={e => { e.stopPropagation(); openEdit(c); }} style={{ ...S.btnGhost, padding: "4px 10px", fontSize: 11 }}>✏️ Upravit</button>
+                      )}
+                      {c.archived ? (
+                        <button onClick={e => { e.stopPropagation(); restoreCustomer(c.id); }} style={{ ...S.btn("#34d399"), padding: "4px 10px", fontSize: 11 }}>↺ Obnovit</button>
+                      ) : (
+                        <button onClick={e => { e.stopPropagation(); archiveCustomer(c.id); }} style={{ ...S.btn("#ef4444"), padding: "4px 10px", fontSize: 11 }}>🗑️ Smazat</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {siroke && modal?.type === "customerDetail" && detailZakaznika(true)}
+      </div>
+
+      {modal?.type === "addCustomer" && (
+        <div style={S.modal}>
+          <div style={S.modalBox}>
+            <ModalHeader title="Nový zákazník" onClose={closeModal} />
+            <label style={S.label}>Typ zákazníka</label>
+            <select style={S.select} value={newC.customer_type} onChange={e => setNewC({ ...newC, customer_type: e.target.value })}>
+              <option value="Koncový zákazník">👤 Koncový zákazník</option>
+              <option value="Firma">🏢 Firma</option>
+            </select>
+            {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"]].map(([l, k]) => (
+              <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={newC[k]} onChange={e => setNewC({ ...newC, [k]: e.target.value })} /></div>
+            ))}
+            {newC.customer_type === "Firma" && <FirmaAres hodnoty={newC} onZmena={p => setNewC(v => ({ ...v, ...p }))} />}
+            <label style={S.label}>Štítek</label>
+            <select style={S.select} value={newC.tag} onChange={e => setNewC({ ...newC, tag: e.target.value })}>
+              {["Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
+            </select>
+            <ModalActions onSave={save} onClose={closeModal} />
+          </div>
+        </div>
+      )}
+
+      {modal?.type === "editCustomer" && (
+        <div style={S.modal}>
+          <div style={S.modalBox}>
+            <ModalHeader title="Upravit zákazníka" onClose={closeModal} />
+            <label style={S.label}>Typ zákazníka</label>
+            <select style={S.select} value={editC.customer_type} onChange={e => setEditC({ ...editC, customer_type: e.target.value })}>
+              <option value="Koncový zákazník">👤 Koncový zákazník</option>
+              <option value="Firma">🏢 Firma</option>
+            </select>
+            {[["Jméno", "name"], ["Firma", "company"], ["Email", "email"], ["Telefon", "phone"]].map(([l, k]) => (
+              <div key={k}><label style={S.label}>{l}</label><input style={S.input} value={editC[k]} onChange={e => setEditC({ ...editC, [k]: e.target.value })} /></div>
+            ))}
+            {editC.customer_type === "Firma" && <FirmaAres hodnoty={editC} onZmena={p => setEditC(v => ({ ...v, ...p }))} />}
+            <label style={S.label}>Štítek</label>
+            <select style={S.select} value={editC.tag} onChange={e => setEditC({ ...editC, tag: e.target.value })}>
+              {["Nový", "Aktivní", "VIP"].map(t => <option key={t}>{t}</option>)}
+            </select>
+            <ModalActions onSave={saveEdit} onClose={closeModal} />
+          </div>
+        </div>
+      )}
+
+      {modal?.type === "customerDetail" && !siroke && detailZakaznika(false)}
     </>
   );
 }
