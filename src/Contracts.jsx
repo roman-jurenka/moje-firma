@@ -362,6 +362,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
+  const [siroke, setSiroke] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1180px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1180px)");
+    const h = (e) => setSiroke(e.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  }, []);
   const [activeTab, setActiveTab] = useState({});       // {contractId: tab}
   const [detailView, setDetailView] = useState({});     // {contractId: "prehled"|"popis"}
   const [modal, setModal] = useState(null);
@@ -859,75 +866,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const totalPages = Math.max(1, Math.ceil(visibleContracts.length / PAGE_SIZE));
   const pageContracts = visibleContracts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  return (
-    <>
-      {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1A1A1A", margin: 0 }}>Zakázky</h1>
-        <button style={S.btn()} onClick={() => setModal({ type: "newContract" })}>+ Nová zakázka</button>
-      </div>
-
-      {/* STATS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
-        {[
-          { label: "Celkem zakázek", value: contracts.length, color: "#0369a1" },
-          { label: "Probíhá", value: contracts.filter(c => c.status === "Probíhá").length, color: "#0369a1" },
-          { label: "Celkový obrat", value: fmtKc(contracts.reduce((s, c) => s + Number(c.price || 0), 0)), color: "#34d399" },
-          { label: "Celkový zisk", value: fmtKc(contracts.reduce((s, c) => s + contractProfit(c).profit, 0)), color: "#f59e0b" },
-        ].map(st => (
-          <div key={st.label} style={S.statCard(st.color)}>
-            <div style={S.statLabel}>{st.label}</div>
-            <div style={S.statValue(st.color)}>{st.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* FILTR */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
-        <input
-          style={{ ...S.input, marginBottom: 0, flex: 1, fontSize: 13 }}
-          placeholder="🔍 Hledat zakázku..."
-          value={searchQ}
-          onChange={e => { setSearchQ(e.target.value); setPage(1); }} />
-        {["aktivní","vše","Nová","Probíhá","Dokončena","Fakturována"].map(s => (
-          <button key={s} onClick={() => { setFilterStatus(s); setPage(1); }}
-            style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid", fontSize: 12, cursor: "pointer", fontWeight: filterStatus === s ? 700 : 400,
-              background: filterStatus === s ? "#0369a1" : "#e2e8f0",
-              color: filterStatus === s ? "#fff" : "#64748b",
-              borderColor: filterStatus === s ? "#0369a1" : "#e2e8f0" }}>
-            {s === "vše" ? "Vše" : s === "aktivní" ? "Aktivní" : s}
-          </button>
-        ))}
-        <select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}
-          style={{ ...S.select, marginBottom: 0, width: 170, fontSize: 12 }}>
-          <option value="newest">Řadit: Nejnovější</option>
-          <option value="oldest">Řadit: Nejstarší</option>
-          <option value="name">Řadit: Název A-Z</option>
-          <option value="value">Řadit: Hodnota</option>
-          <option value="profit">Řadit: Zisk</option>
-        </select>
-      </div>
-
-      {/* SEZNAM ZAKÁZEK */}
-      {contracts.length === 0 && (
-        <div style={{ ...S.card, color: "#475569", textAlign: "center", padding: 40 }}>
-          Žádné zakázky. Klikněte "+ Nová zakázka" nebo převeďte obchodní případ.
-        </div>
-      )}
-      {contracts.length > 0 && visibleContracts.length === 0 && (
-        <div style={{ ...S.card, color: "#475569", textAlign: "center", padding: 40 }}>
-          {filterStatus === "aktivní"
-            ? "Žádné aktivní zakázky — všechny jsou dokončené nebo fakturované. Zobrazit je můžeš přes filtr \"Vše\"."
-            : "Žádná zakázka neodpovídá filtru/hledání."}
-        </div>
-      )}
-
-      {pageContracts.map(contract => {
+  // Tři panely (Outlook): na širokém displeji seznam zakázek vlevo, detail vpravo.
+  const kartaZakazky = (contract, vPanelu = false) => {
         const cust = customers.find(c => c.id === contract.customer_id);
         const sums = contractSums(contract.id);
         const { totalCost, totalRevenue, profit } = contractProfit(contract);
         const profitPct = totalRevenue > 0 ? Math.round((profit / totalRevenue) * 100) : 0;
-        const isExpanded = expandedId === contract.id;
+        const isExpanded = vPanelu || expandedId === contract.id;
         const tab = getTab(contract.id);
         const contEntries = entries.filter(e => e.contract_id === contract.id);
         const contPhotos = photos.filter(p => p.contract_id === contract.id);
@@ -943,7 +888,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         const sc = STATUS_COLORS[contract.status] || STATUS_COLORS["Nová"];
 
         return (
-          <div key={contract.id} style={{ ...S.card, marginBottom: 14, border: isExpanded ? "1px solid #0369a155" : "1px solid #e2e8f0" }}>
+          <div key={contract.id} style={{ ...S.card, marginBottom: vPanelu ? 0 : 14, border: vPanelu ? "none" : isExpanded ? "1px solid #0E3B5E55" : "1px solid #E3E6EA" }}>
 
             {/* HLAVIČKA ZAKÁZKY */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: isExpanded ? 20 : 0 }}>
@@ -992,11 +937,11 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 style={{ background: "#f8717111", border: "1px solid #f8717133", borderRadius: 8, padding: "6px 10px", color: "#f87171", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
                 🗑
               </button>
-              <button
+              {!vPanelu && <button
                 onClick={() => setExpandedId(isExpanded ? null : contract.id)}
                 style={{ background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 14px", color: "#64748b", cursor: "pointer", fontSize: 12, flexShrink: 0 }}>
                 {isExpanded ? "▲ Sbalit" : "▼ Detail"}
-              </button>
+              </button>}
             </div>
 
             {/* DETAIL */}
@@ -1399,7 +1344,108 @@ export default function Contracts({ customers, employees, currentUser, initialDe
             })()}
           </div>
         );
-      })}
+  };
+
+  return (
+    <>
+      <style>{`
+        .zk-panely { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.9fr); border: 1px solid #E3E6EA; border-radius: 8px; background: #fff; align-items: start; margin-bottom: 14px; }
+        .zk-seznam { border-right: 1px solid #E3E6EA; max-height: calc(100dvh - var(--horni-lista) - 40px); overflow-y: auto; position: sticky; top: var(--horni-lista); }
+        .zk-detail { min-width: 0; }
+        .zk-radek { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; background: #fff; border: none; border-bottom: 1px solid #EEF0F3; padding: 9px 12px; cursor: pointer; font-family: inherit; font-size: 12.5px; color: #1F2937; }
+        .zk-radek:hover { background: #F5F7FA; }
+        .zk-radek.on { background: #E8F0F8; box-shadow: inset 3px 0 0 #0E3B5E; }
+        .zk-radek:focus-visible { outline: 2px solid #0E3B5E; outline-offset: -2px; }
+        .zk-r1, .zk-r2 { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+        .zk-r1 b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .zk-r1 > span { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 700; }
+        .zk-r2 > span:first-child { color: #4B5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .zk-r2 > span:last-child { white-space: nowrap; font-size: 11.5px; }
+      `}</style>
+      {/* HEADER */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1A1A1A", margin: 0 }}>Zakázky</h1>
+        <button style={S.btn()} onClick={() => setModal({ type: "newContract" })}>+ Nová zakázka</button>
+      </div>
+
+      {/* STATS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
+        {[
+          { label: "Celkem zakázek", value: contracts.length, color: "#0369a1" },
+          { label: "Probíhá", value: contracts.filter(c => c.status === "Probíhá").length, color: "#0369a1" },
+          { label: "Celkový obrat", value: fmtKc(contracts.reduce((s, c) => s + Number(c.price || 0), 0)), color: "#34d399" },
+          { label: "Celkový zisk", value: fmtKc(contracts.reduce((s, c) => s + contractProfit(c).profit, 0)), color: "#f59e0b" },
+        ].map(st => (
+          <div key={st.label} style={S.statCard(st.color)}>
+            <div style={S.statLabel}>{st.label}</div>
+            <div style={S.statValue(st.color)}>{st.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* FILTR */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
+        <input
+          style={{ ...S.input, marginBottom: 0, flex: 1, fontSize: 13 }}
+          placeholder="🔍 Hledat zakázku..."
+          value={searchQ}
+          onChange={e => { setSearchQ(e.target.value); setPage(1); }} />
+        {["aktivní","vše","Nová","Probíhá","Dokončena","Fakturována"].map(s => (
+          <button key={s} onClick={() => { setFilterStatus(s); setPage(1); }}
+            style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid", fontSize: 12, cursor: "pointer", fontWeight: filterStatus === s ? 700 : 400,
+              background: filterStatus === s ? "#0369a1" : "#e2e8f0",
+              color: filterStatus === s ? "#fff" : "#64748b",
+              borderColor: filterStatus === s ? "#0369a1" : "#e2e8f0" }}>
+            {s === "vše" ? "Vše" : s === "aktivní" ? "Aktivní" : s}
+          </button>
+        ))}
+        <select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}
+          style={{ ...S.select, marginBottom: 0, width: 170, fontSize: 12 }}>
+          <option value="newest">Řadit: Nejnovější</option>
+          <option value="oldest">Řadit: Nejstarší</option>
+          <option value="name">Řadit: Název A-Z</option>
+          <option value="value">Řadit: Hodnota</option>
+          <option value="profit">Řadit: Zisk</option>
+        </select>
+      </div>
+
+      {/* SEZNAM ZAKÁZEK */}
+      {contracts.length === 0 && (
+        <div style={{ ...S.card, color: "#475569", textAlign: "center", padding: 40 }}>
+          Žádné zakázky. Klikněte "+ Nová zakázka" nebo převeďte obchodní případ.
+        </div>
+      )}
+      {contracts.length > 0 && visibleContracts.length === 0 && (
+        <div style={{ ...S.card, color: "#475569", textAlign: "center", padding: 40 }}>
+          {filterStatus === "aktivní"
+            ? "Žádné aktivní zakázky — všechny jsou dokončené nebo fakturované. Zobrazit je můžeš přes filtr \"Vše\"."
+            : "Žádná zakázka neodpovídá filtru/hledání."}
+        </div>
+      )}
+
+      {siroke && pageContracts.length > 0 ? (() => {
+        const vybrana = pageContracts.find(c => c.id === expandedId) || pageContracts[0];
+        return (
+          <div className="zk-panely">
+            <div className="zk-seznam" role="list" aria-label="Zakázky">
+              {pageContracts.map(c => {
+                const cust = customers.find(x => x.id === c.customer_id);
+                const { totalRevenue } = contractProfit(c);
+                const sc = STATUS_COLORS[c.status] || STATUS_COLORS["Nová"];
+                const on = c.id === vybrana.id;
+                return (
+                  <button key={c.id} type="button" role="listitem" aria-current={on ? "true" : undefined} className={`zk-radek${on ? " on" : ""}`} onClick={() => setExpandedId(c.id)}>
+                    <span className="zk-r1"><b>{c.name}</b><span>{fmtKc(totalRevenue)}</span></span>
+                    <span className="zk-r2"><span>{[c.code, cust?.company || cust?.name].filter(Boolean).join(" · ") || "—"}</span>
+                      <span style={{ color: sc.color, fontWeight: 700 }}>{c.status}</span></span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="zk-detail">{kartaZakazky(vybrana, true)}</div>
+          </div>
+        );
+      })() : pageContracts.map(contract => kartaZakazky(contract, false))}
 
       {/* STRÁNKOVÁNÍ */}
       {totalPages > 1 && (
