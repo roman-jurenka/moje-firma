@@ -73,6 +73,23 @@ const CSS = `
 .pr-siroky > .pr-cela { grid-column: 1 / -1; }
 .pr-siroky > .pr-cela > div { height: 100%; box-sizing: border-box; }
 .pr-sloupec { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* Detail zakázky (Outlook): vlevo „Teď“, vpravo karta vlastností; na mobilu pod sebou jako sbalitelné sekce (Google) */
+.pr-v4 { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); gap: 14px; align-items: start; }
+.pr-v4 > .pr-cela { grid-column: 1 / -1; }
+.pr-vlastnosti { background: #fff; border: 1px solid #E3E6EA; border-radius: 12px; overflow: hidden; position: sticky; top: var(--horni-lista); max-height: calc(100dvh - var(--horni-lista) - 24px); overflow-y: auto; }
+.pr-vl + .pr-vl { border-top: 1px solid #EEF0F3; }
+.pr-vl-hlava { width: 100%; display: grid; grid-template-columns: 128px minmax(0, 1fr) 16px; gap: 10px; align-items: center; padding: 10px 14px; background: #fff; border: none; cursor: pointer; font-family: inherit; text-align: left; font-size: 13.5px; color: #1F2937; }
+.pr-vl-hlava:hover { background: #F5F7FA; }
+.pr-vl-hlava[aria-expanded="true"] { background: #F5F7FA; }
+.pr-vl-hlava:focus-visible { outline: 2px solid #0E3B5E; outline-offset: -2px; }
+.pr-vl-label { color: #6B7280; font-size: 12.5px; }
+.pr-vl-hodnota { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-vl-obsah { padding: 0 10px 10px; background: #F5F7FA; }
+.pr-vl-obsah > div { border: none !important; border-radius: 10px !important; }
+@media (max-width: 900px) {
+  .pr-v4 { grid-template-columns: minmax(0, 1fr); }
+  .pr-vlastnosti { position: static; max-height: none; border-radius: 16px; }
+}
 .pr-prubeh-radek { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px !important; }
 @media (max-width: 1150px) { .pr-grid { grid-template-columns: 1fr; } .pr-panel { position: static; max-height: none; } }
 @media (max-width: 1150px) {
@@ -90,6 +107,20 @@ const CSS = `
 `;
 
 const karta = { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: "16px 20px" };
+
+// Řádek karty vlastností: „popisek – hodnota“, klik rozbalí plnou kartu pod ním.
+function Vlastnost({ label, hodnota, upozorneni = false, otevreno, onPrepnout, children }) {
+  return (
+    <div className="pr-vl">
+      <button type="button" className="pr-vl-hlava" aria-expanded={otevreno} onClick={onPrepnout}>
+        <span className="pr-vl-label">{label}</span>
+        <span className="pr-vl-hodnota" style={upozorneni ? { color: "#B42318", fontWeight: 700 } : undefined}>{hodnota || "—"}</span>
+        <span aria-hidden="true" style={{ color: "#6B7280" }}>{otevreno ? "▾" : "▸"}</span>
+      </button>
+      {otevreno && <div className="pr-vl-obsah">{children}</div>}
+    </div>
+  );
+}
 const btn = (bg, fg = "#fff", extra = {}) => ({ background: bg, color: fg, border: "none", borderRadius: 10, padding: "9px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", ...extra });
 const btnGhost = { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 13px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
 const inp = { width: "100%", boxSizing: "border-box", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 10px", fontSize: 14, fontFamily: "inherit", color: "#0f172a", background: "#fff" };
@@ -196,7 +227,8 @@ export default function Prubeh({
 
   // Fotky zakázky (i z obhlídky, kdy ještě neexistuje zakázka — vazba přes prubeh_id).
   const [fotkyZ, setFotkyZ] = useState({});          // { [prubehId]: [...] }
-  const [fakturyZ, setFakturyZ] = useState({});      // { [prubehId]: [...] } — faktury zakázky pro kontroly vyúčtování
+  const [fakturyZ, setFakturyZ] = useState({});
+  const [rozbaleneVl, setRozbaleneVl] = useState({}); // otevřené řádky karty vlastností v detailu      // { [prubehId]: [...] } — faktury zakázky pro kontroly vyúčtování
   const [nahravam, setNahravam] = useState(null);     // kategorie, která se právě nahrává
   const [udajeForm, setUdajeForm] = useState(null);   // { id, ean, jistic_a, faze }
   const [generuji, setGeneruji] = useState(false);
@@ -3246,14 +3278,30 @@ export default function Prubeh({
       );
     }
     // Zobrazená jedna zakázka: vše pod seznamem, na celou šířku, zleva doprava.
+    // Vlevo „Teď“ (co udělat), vpravo karta vlastností (Outlook) — na mobilu
+    // pod sebou a vlastnosti jako sbalitelné sekce (Google).
+    const zk = zakaznik(z.customer_id);
+    const fotekZ = (fotkyZ[z.id] || []).length;
+    const fak = (fakturyZ[z.id] || []).filter((i) => i.status !== "Storno" && (i.invoice_type || "vydaná") === "vydaná");
+    const kc = (n) => `${Math.round(Number(n) || 0).toLocaleString("cs-CZ")} Kč`;
+    const vl = (id) => ({ otevreno: !!rozbaleneVl[id], onPrepnout: () => setRozbaleneVl((m) => ({ ...m, [id]: !m[id] })) });
     return (
-      <div className="pr-siroky" id="pr-panel">
+      <div className="pr-v4" id="pr-panel">
         <div className="pr-cela">{kKroky}</div>
         <div className="pr-cela">{kHlavicka}</div>
         {kOddeleni && <div className="pr-cela">{kOddeleni}</div>}
-        <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}{kMilniky}</div>
-        <div className="pr-sloupec">{kPlatby}{kFotky}{kProc}{kHistorie}</div>
-        <div className="pr-sloupec">{kMisto}{kPodklady}{kUkoly}{kZpravy}{kKdo}</div>
+        <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}{kProc}</div>
+        <div className="pr-vlastnosti" role="region" aria-label="Vlastnosti zakázky">
+          <Vlastnost label="Zákazník a místo" hodnota={[zk?.company || zk?.name, String(z.misto_adresa || zk?.address || "").split(",")[0]].filter(Boolean).join(" · ")} {...vl("misto")}>{kMisto}</Vlastnost>
+          <Vlastnost label="Platby" hodnota={fak.length ? `${fak.length} ${fak.length === 1 ? "faktura" : fak.length < 5 ? "faktury" : "faktur"} · ${kc(fak.reduce((a, i) => a + (Number(i.amount) || 0), 0))} bez DPH` : "zatím bez faktur"} {...vl("platby")}>{kPlatby}</Vlastnost>
+          <Vlastnost label="Kdo" hodnota={[z.vlastnik_obchod, z.vlastnik_bo, z.vlastnik_re].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", ")} {...vl("kdo")}>{kKdo}</Vlastnost>
+          <Vlastnost label="Podklady" hodnota={`${pv.hotovo} / ${pv.celkem} vyplněno`} upozorneni={pv.hotovo === 0} {...vl("podklady")}>{kPodklady}</Vlastnost>
+          <Vlastnost label="Fotky" hodnota={fotekZ ? `${fotekZ} ${fotekZ === 1 ? "soubor" : fotekZ < 5 ? "soubory" : "souborů"}` : "zatím žádné"} {...vl("fotky")}>{kFotky}</Vlastnost>
+          <Vlastnost label="Úkoly" hodnota="úkoly k zakázce" {...vl("ukoly")}>{kUkoly}</Vlastnost>
+          <Vlastnost label="Zprávy" hodnota="zprávy k zakázce" {...vl("zpravy")}>{kZpravy}</Vlastnost>
+          <Vlastnost label="Úřední milníky" hodnota="distributor, dotace, revize" {...vl("milniky")}>{kMilniky}</Vlastnost>
+          <Vlastnost label="Historie" hodnota="poznámky a změny" {...vl("historie")}>{kHistorie}</Vlastnost>
+        </div>
       </div>
     );
   }
