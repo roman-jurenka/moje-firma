@@ -228,7 +228,24 @@ export default function Prubeh({
   // Fotky zakázky (i z obhlídky, kdy ještě neexistuje zakázka — vazba přes prubeh_id).
   const [fotkyZ, setFotkyZ] = useState({});          // { [prubehId]: [...] }
   const [fakturyZ, setFakturyZ] = useState({});
-  const [rozbaleneVl, setRozbaleneVl] = useState({}); // otevřené řádky karty vlastností v detailu      // { [prubehId]: [...] } — faktury zakázky pro kontroly vyúčtování
+  const [rozbaleneVl, setRozbaleneVl] = useState({}); // otevřené řádky karty vlastností v detailu
+  // Rozlišení podle typu zakázky: skryté sekce karty vlastností { [typ]: [id] }
+  // a formuláře/schémata podle podmínek [{ id, nazev, popis, typy, podminka: { pole, op, hodnota }, povinne }].
+  const [sekceTypu, setSekceTypu] = useState({});
+  const [formularePravidla, setFormularePravidla] = useState([]);
+  useEffect(() => {
+    supabase.from("app_settings").select("key, value").in("key", ["prubeh_sekce_typy", "prubeh_formulare"]).then(({ data }) => {
+      for (const x of data || []) {
+        if (x.key === "prubeh_sekce_typy") setSekceTypu(x.value || {});
+        if (x.key === "prubeh_formulare") setFormularePravidla(Array.isArray(x.value) ? x.value : []);
+      }
+    });
+  }, []);
+  const ulozitSekceTypu = async (typ, skryte) => {
+    const nove = { ...sekceTypu, [typ]: skryte };
+    setSekceTypu(nove);
+    await supabase.from("app_settings").upsert({ key: "prubeh_sekce_typy", value: nove, updated_at: tedIso() });
+  };      // { [prubehId]: [...] } — faktury zakázky pro kontroly vyúčtování
   const [nahravam, setNahravam] = useState(null);     // kategorie, která se právě nahrává
   const [udajeForm, setUdajeForm] = useState(null);   // { id, ean, jistic_a, faze }
   const [generuji, setGeneruji] = useState(false);
@@ -3285,6 +3302,33 @@ export default function Prubeh({
     const fak = (fakturyZ[z.id] || []).filter((i) => i.status !== "Storno" && (i.invoice_type || "vydaná") === "vydaná");
     const kc = (n) => `${Math.round(Number(n) || 0).toLocaleString("cs-CZ")} Kč`;
     const vl = (id) => ({ otevreno: !!rozbaleneVl[id], onPrepnout: () => setRozbaleneVl((m) => ({ ...m, [id]: !m[id] })) });
+    const vlastnosti = [
+      { id: "misto", label: "Zákazník a místo", hodnota: [zk?.company || zk?.name, String(z.misto_adresa || zk?.address || "").split(",")[0]].filter(Boolean).join(" · "), karta: kMisto },
+      { id: "platby", label: "Platby", hodnota: fak.length ? `${fak.length} ${fak.length === 1 ? "faktura" : fak.length < 5 ? "faktury" : "faktur"} · ${kc(fak.reduce((a, i) => a + (Number(i.amount) || 0), 0))} bez DPH` : "zatím bez faktur", karta: kPlatby },
+      { id: "kdo", label: "Kdo", hodnota: [z.vlastnik_obchod, z.vlastnik_bo, z.vlastnik_re].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", "), karta: kKdo },
+      { id: "podklady", label: "Podklady", hodnota: `${pv.hotovo} / ${pv.celkem} vyplněno`, upozorneni: pv.hotovo === 0, karta: kPodklady },
+      { id: "fotky", label: "Fotky", hodnota: fotekZ ? `${fotekZ} ${fotekZ === 1 ? "soubor" : fotekZ < 5 ? "soubory" : "souborů"}` : "zatím žádné", karta: kFotky },
+      { id: "ukoly", label: "Úkoly", hodnota: "úkoly k zakázce", karta: kUkoly },
+      { id: "zpravy", label: "Zprávy", hodnota: "zprávy k zakázce", karta: kZpravy },
+      { id: "milniky", label: "Úřední milníky", hodnota: "distributor, dotace, revize", karta: kMilniky },
+      { id: "historie", label: "Historie", hodnota: "poznámky a změny", karta: kHistorie },
+    ];
+    const skryteSekce = sekceTypu[z.typ] || [];
+    const stavFormularu = z.dokumenty?.formulare || {};
+    // formuláře / schémata podle podmínek (typ, cena, technický údaj nebo podklad)
+    const splnuje = (f) => {
+      if (Array.isArray(f.typy) && f.typy.length && !f.typy.includes(z.typ)) return false;
+      const c = f.podminka;
+      if (!c?.pole) return true;
+      const hodnotaPole = c.pole === "cena" ? Number(z.hodnota) || 0 : (z.udaje || {})[c.pole] ?? (z.podklady || {})[c.pole];
+      const v = Number(hodnotaPole), h = Number(c.hodnota);
+      if (c.op === ">=") return v >= h;
+      if (c.op === ">") return v > h;
+      if (c.op === "<") return v < h;
+      if (c.op === "ano") return !!hodnotaPole && hodnotaPole !== "ne";
+      return String(hodnotaPole ?? "").toLowerCase() === String(c.hodnota ?? "").toLowerCase();
+    };
+    const formulareZ = formularePravidla.filter(splnuje);
     return (
       <div className="pr-v4" id="pr-panel">
         <div className="pr-cela">{kKroky}</div>
@@ -3292,15 +3336,49 @@ export default function Prubeh({
         {kOddeleni && <div className="pr-cela">{kOddeleni}</div>}
         <div className="pr-sloupec">{kDalsiKrok}{kUkolyFaze}{kBrana}{kProc}</div>
         <div className="pr-vlastnosti" role="region" aria-label="Vlastnosti zakázky">
-          <Vlastnost label="Zákazník a místo" hodnota={[zk?.company || zk?.name, String(z.misto_adresa || zk?.address || "").split(",")[0]].filter(Boolean).join(" · ")} {...vl("misto")}>{kMisto}</Vlastnost>
-          <Vlastnost label="Platby" hodnota={fak.length ? `${fak.length} ${fak.length === 1 ? "faktura" : fak.length < 5 ? "faktury" : "faktur"} · ${kc(fak.reduce((a, i) => a + (Number(i.amount) || 0), 0))} bez DPH` : "zatím bez faktur"} {...vl("platby")}>{kPlatby}</Vlastnost>
-          <Vlastnost label="Kdo" hodnota={[z.vlastnik_obchod, z.vlastnik_bo, z.vlastnik_re].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", ")} {...vl("kdo")}>{kKdo}</Vlastnost>
-          <Vlastnost label="Podklady" hodnota={`${pv.hotovo} / ${pv.celkem} vyplněno`} upozorneni={pv.hotovo === 0} {...vl("podklady")}>{kPodklady}</Vlastnost>
-          <Vlastnost label="Fotky" hodnota={fotekZ ? `${fotekZ} ${fotekZ === 1 ? "soubor" : fotekZ < 5 ? "soubory" : "souborů"}` : "zatím žádné"} {...vl("fotky")}>{kFotky}</Vlastnost>
-          <Vlastnost label="Úkoly" hodnota="úkoly k zakázce" {...vl("ukoly")}>{kUkoly}</Vlastnost>
-          <Vlastnost label="Zprávy" hodnota="zprávy k zakázce" {...vl("zpravy")}>{kZpravy}</Vlastnost>
-          <Vlastnost label="Úřední milníky" hodnota="distributor, dotace, revize" {...vl("milniky")}>{kMilniky}</Vlastnost>
-          <Vlastnost label="Historie" hodnota="poznámky a změny" {...vl("historie")}>{kHistorie}</Vlastnost>
+          {vlastnosti.filter((x) => !skryteSekce.includes(x.id)).map((x) => (
+            <Vlastnost key={x.id} label={x.label} hodnota={x.hodnota} upozorneni={x.upozorneni} {...vl(x.id)}>{x.karta}</Vlastnost>
+          ))}
+          {formulareZ.length > 0 && (
+            <Vlastnost label="Formuláře a schémata" hodnota={`${formulareZ.filter((f) => stavFormularu[f.id]?.hotovo).length} / ${formulareZ.length} hotovo`}
+              upozorneni={formulareZ.some((f) => f.povinne && !stavFormularu[f.id]?.hotovo)} {...vl("formulare")}>
+              <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 6, fontSize: 14 }}>
+                {formulareZ.map((f) => {
+                  const st = stavFormularu[f.id] || {};
+                  return (
+                    <label key={f.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <input type="checkbox" checked={!!st.hotovo} disabled={!otevrena}
+                        onChange={(e) => uloz(z, { dokumenty: { ...(z.dokumenty || {}), formulare: { ...stavFormularu, [f.id]: { hotovo: e.target.checked, kdo: ja, kdy: tedIso() } } } },
+                          `${e.target.checked ? "Hotovo" : "Vráceno"}: ${f.nazev}`)} style={{ marginTop: 3 }} />
+                      <span><b>{f.nazev}</b>{f.povinne ? <span style={{ color: "#B42318", fontWeight: 700 }}> · povinné</span> : null}
+                        {f.popis && <span style={{ display: "block", color: "#64748b", fontSize: 12.5 }}>{f.popis}</span>}
+                        {st.hotovo && st.kdo && <span style={{ display: "block", color: "#64748b", fontSize: 11.5 }}>✓ {st.kdo}{st.kdy ? `, ${new Date(st.kdy).toLocaleDateString("cs-CZ")}` : ""}</span>}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </Vlastnost>
+          )}
+          {smiNastavit && (
+            <Vlastnost label="⚙ Nastavení typu" hodnota={`co se zobrazuje u ${z.typ || "zakázky"}`} {...vl("nastaveniTypu")}>
+              <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
+                <div style={{ color: "#64748b" }}>Sekce zobrazené u zakázek typu <b>{z.typ || "—"}</b> (platí pro všechny zakázky tohoto typu):</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {vlastnosti.map((x) => {
+                    const vidi = !skryteSekce.includes(x.id);
+                    return (
+                      <button key={x.id} type="button" aria-pressed={vidi} disabled={!z.typ}
+                        onClick={() => ulozitSekceTypu(z.typ, vidi ? [...skryteSekce, x.id] : skryteSekce.filter((y) => y !== x.id))}
+                        style={{ border: `1px solid ${vidi ? "#0E3B5E" : "#CDD2D8"}`, background: vidi ? "#E8F0F8" : "#fff", color: vidi ? "#0E3B5E" : "#6B7280", borderRadius: 999, padding: "4px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textDecoration: vidi ? "none" : "line-through" }}>
+                        {vidi ? "✓ " : ""}{x.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ color: "#64748b", fontSize: 12 }}>Formuláře a schémata podle podmínek (např. FVE nad 10 kWp → schéma zapojení, revize) se nastavují v app_settings „prubeh_formulare“ — doplníme podle tvých podkladů.</div>
+              </div>
+            </Vlastnost>
+          )}
         </div>
       </div>
     );
