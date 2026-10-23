@@ -5,20 +5,22 @@
 // Stejné hodnoty jsou jako CSS proměnné v src/index.css.
 
 export const barvy = {
-  primarni: "#0369a1",        // hlavní tlačítka, odkazy, aktivní prvky
-  primarniTmava: "#0E3B5E",   // boční menu, horní lišta
+  primarni: "#0E3B5E",        // hlavní tlačítka, odkazy, aktivní prvky (firemní navy)
+  primarniTmava: "#0B2F4B",   // horní lišta, stisknutá tlačítka
   akcent: "#F5821F",          // oranžová z loga — zvýraznění, ne velké plochy
-  text: "#1A1A1A",
-  textMekky: "#475569",
-  textSlaby: "#64748b",
-  pozadi: "#f0f4f8",
+  // Klidná paleta na celodenní práci (inspirace Outlook / Google):
+  // tmavě šedý text místo černé, světle šedé pozadí, jemné linky.
+  text: "#1F2937",
+  textMekky: "#4B5563",
+  textSlaby: "#6B7280",
+  pozadi: "#F5F6F8",
   plocha: "#ffffff",
-  poleBg: "#f8fafc",
-  okraj: "#e2e8f0",
-  okrajJemny: "#f1f5f9",
-  uspech: "#16a34a",
-  varovani: "#d97706",
-  chyba: "#dc2626",
+  poleBg: "#ffffff",
+  okraj: "#E3E6EA",
+  okrajJemny: "#EEF0F3",
+  uspech: "#1E7A3C",
+  varovani: "#B45309",
+  chyba: "#B42318",
   fialova: "#7c3aed",
   neutralni: "#64748b",
 };
@@ -59,23 +61,23 @@ const VELIKOST = {
 // Plné tlačítko. Barva = význam: primarni (výchozí), uspech, chyba, varovani…
 export const tlacitko = (c = barvy.primarni, velikost = "normal") => {
   const bg = sjednot(c);
-  return { background: bg, color: textNa(bg), border: "none", borderRadius: 8, ...VELIKOST[velikost], fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
+  return { background: bg, color: textNa(bg), border: "none", borderRadius: 6, ...VELIKOST[velikost], fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 };
 
 // Obrysové (vedlejší) tlačítko.
 export const tlacitkoObrys = (velikost = "normal") => {
   const v = VELIKOST[velikost];
   const [py, px] = v.padding.split(" ").map(parseFloat);
-  return { background: "transparent", color: barvy.primarni, border: `1px solid ${barvy.primarni}`, borderRadius: 8, padding: `${py - 1}px ${px}px`, fontSize: v.fontSize, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
+  return { background: barvy.plocha, color: barvy.text, border: `1px solid #CDD2D8`, borderRadius: 6, padding: `${py - 1}px ${px}px`, fontSize: v.fontSize, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 };
 
-export const karta = { background: barvy.plocha, borderRadius: 12, padding: 22, border: `1px solid ${barvy.okraj}`, boxShadow: "0 1px 4px #0000000a" };
+export const karta = { background: barvy.plocha, borderRadius: 8, padding: 20, border: `1px solid ${barvy.okraj}` };
 
-export const pole = { background: barvy.poleBg, border: `1px solid ${barvy.okraj}`, borderRadius: 8, padding: "9px 12px", color: barvy.text, fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", fontFamily: "inherit" };
+export const pole = { background: barvy.poleBg, border: `1px solid #CDD2D8`, borderRadius: 6, padding: "9px 12px", color: barvy.text, fontSize: 13, width: "100%", outline: "none", boxSizing: "border-box", fontFamily: "inherit" };
 
 export const popisek = { fontSize: 11, color: barvy.textMekky, marginBottom: 3, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-export const nadpis = { fontSize: 24, fontWeight: 700, color: barvy.text, margin: 0 };
+export const nadpis = { fontSize: 22, fontWeight: 600, color: barvy.text, margin: 0, letterSpacing: "-0.01em" };
 
 // Barevný štítek (stav, typ…). Text o něco tmavší než podklad, ať je čitelný.
 export const stitek = (c) => {

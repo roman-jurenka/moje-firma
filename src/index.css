@@ -5,19 +5,19 @@
    světlé appky. */
 
 :root {
-  --primarni: #0369a1;
-  --primarni-tmava: #0E3B5E;
+  --primarni: #0E3B5E;
+  --primarni-tmava: #0B2F4B;
   --akcent: #F5821F;
-  --text: #1A1A1A;
-  --text-mekky: #475569;
-  --text-slaby: #64748b;
-  --pozadi: #f0f4f8;
+  --text: #1F2937;
+  --text-mekky: #4B5563;
+  --text-slaby: #6B7280;
+  --pozadi: #F5F6F8;
   --plocha: #ffffff;
-  --pole-bg: #f8fafc;
-  --okraj: #e2e8f0;
-  --uspech: #16a34a;
-  --varovani: #d97706;
-  --chyba: #dc2626;
+  --pole-bg: #ffffff;
+  --okraj: #E3E6EA;
+  --uspech: #1E7A3C;
+  --varovani: #B45309;
+  --chyba: #B42318;
 
   font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.45;

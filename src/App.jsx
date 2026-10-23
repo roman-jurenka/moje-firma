@@ -474,12 +474,13 @@ const NAV = [
 
 const S = {
   app: { fontFamily: ui.pismo, background: ui.barvy.pozadi, minHeight: "100dvh", color: ui.barvy.text, display: "flex" },
-  sidebar: (open) => ({ width: 220, background: "#0E3B5E", padding: "0", display: "flex", flexDirection: "column", position: "fixed", top: 0, bottom: 0, left: 0, overflowY: "auto", boxShadow: "2px 0 8px #0000001a", zIndex: 200, transition: "transform 0.25s ease" }),
-  logo: { padding: "22px 20px 16px", fontSize: 19, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px", borderBottom: "1px solid rgba(255,255,255,0.12)" },
-  logoA: { color: "#fff" },
+  // Světlé menu jako v Outlooku: šedý panel, aktivní položka bílá s navy proužkem.
+  sidebar: (open) => ({ width: 220, background: "#F0F1F3", borderRight: "1px solid #E1E3E6", padding: "0", display: "flex", flexDirection: "column", position: "fixed", top: 0, bottom: 0, left: 0, overflowY: "auto", zIndex: 200, transition: "transform 0.25s ease" }),
+  logo: { padding: "18px 18px 12px", fontSize: 18, fontWeight: 800, color: "#1F2937", letterSpacing: "-0.5px", borderBottom: "1px solid #E1E3E6" },
+  logoA: { color: "#0E3B5E" },
   logoB: { color: "#F5821F" },
-  groupLabel: { padding: "16px 20px 4px", fontSize: 10, color: "#7C97AC", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 },
-  navItem: (a) => ({ padding: "9px 16px", margin: "2px 10px", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 500, color: a ? "#fff" : "#B9CBDA", background: a ? "rgba(255,255,255,0.14)" : "transparent", transition: "all 0.12s" }),
+  groupLabel: { padding: "14px 18px 3px", fontSize: 10.5, color: "#6B7280", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 },
+  navItem: (a) => ({ padding: "7px 14px", margin: "1px 8px", borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: a ? 600 : 500, color: a ? "#0E3B5E" : "#374151", background: a ? "#fff" : "transparent", boxShadow: a ? "inset 3px 0 0 #0E3B5E" : "none", transition: "background 0.12s" }),
   main: { marginLeft: 0, padding: "28px 32px", flex: 1, minHeight: "100dvh" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 },
   h1: ui.nadpis,
@@ -1245,64 +1246,37 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
   return (
     <>
-      <button
-        className="pwa-top-btn" onClick={zpetNaPredchozi} disabled={!predchoziTab}
-        title={predchoziTab ? `Zpět na: ${NAV.find(n => n.id === predchoziTab)?.label || "předchozí obrazovku"}` : "Zpět (zatím není kam)"}
-        aria-label="Zpět na předchozí obrazovku"
-        style={{
-          position: "fixed", top: 14, right: 108, zIndex: 150,
-          width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
-          background: "#fff", color: "#0E3B5E", cursor: predchoziTab ? "pointer" : "default",
-          opacity: predchoziTab ? 1 : 0.4,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
-          boxShadow: "0 2px 8px #0002",
-        }}
-      >
-        <i className="ti ti-arrow-left" aria-hidden="true"></i>
-      </button>
-      <button
-        className="pwa-top-btn" onClick={obnovitAplikaci} disabled={obnovuji}
-        title="Obnovit celou aplikaci (nejnovější verze a data)" aria-label="Obnovit aplikaci"
-        style={{
-          position: "fixed", top: 14, right: 62, zIndex: 150,
-          width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
-          background: "#fff", color: "#0E3B5E", cursor: obnovuji ? "wait" : "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
-          boxShadow: "0 2px 8px #0002",
-        }}
-      >
-        <i className="ti ti-refresh" aria-hidden="true" style={obnovuji ? { animation: "app-spin 0.8s linear infinite" } : undefined}></i>
-      </button>
-      <button
-        className="pwa-top-btn" onClick={() => setGSearchOpen(o => !o)}
-        title="Hledat (Ctrl+K)" aria-label="Hledat napříč appkou"
-        style={{
-          position: "fixed", top: 14, right: 16, zIndex: 150,
-          width: 38, height: 38, borderRadius: "50%", border: "1px solid #cbd5e1",
-          background: "#fff", color: "#0E3B5E", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
-          boxShadow: "0 2px 8px #0002",
-        }}
-      >
-        <i className="ti ti-search" aria-hidden="true"></i>
-      </button>
-      {(!isOnline || offlineQueueItems.length > 0) && (
-        <button
-          className="pwa-top-btn" onClick={() => retryOfflineQueueNow()}
-          title={!isOnline ? "Appka je offline — zápisy se ukládají do zařízení a odešlou se samy po obnovení signálu" : "Klikni pro okamžité odeslání čekajících záznamů"}
-          style={{
-            position: "fixed", top: 14, right: 154, zIndex: 150,
-            display: "flex", alignItems: "center", gap: 6,
-            height: 38, borderRadius: 19, border: "1px solid #f59e0b",
-            background: "#fff7ed", color: "#b45309", cursor: "pointer",
-            padding: "0 14px", fontSize: 12, fontWeight: 700,
-            boxShadow: "0 2px 8px #0002",
-          }}
-        >
-          <i className={`ti ${isOnline ? "ti-cloud-upload" : "ti-cloud-off"}`} aria-hidden="true"></i>
-          {!isOnline ? "Offline" : `${offlineQueueItems.length} čeká na odeslání`}
+      {/* Horní lišta (Outlook): menu, logo, hledání přes celou šířku, zpět, obnovit, offline, oznámení, profil */}
+      <header className="app-lista" role="banner">
+        <button type="button" className="app-lista-ikona app-lista-menu" onClick={() => setSidebarOpen(true)} aria-label="Otevřít menu"><i className="ti ti-menu-2" aria-hidden="true"></i></button>
+        <button type="button" className="app-lista-logo" onClick={() => { setTab("dashboard"); setSidebarOpen(false); }} aria-label="ProudOS — Přehled">
+          <ProudOSMark size={22} /><span>Proud<span style={{ color: "#F5821F" }}>OS</span></span>
         </button>
-      )}
+        <button type="button" className="app-lista-hledat" onClick={() => setGSearchOpen(o => !o)} aria-label="Hledat napříč appkou (Ctrl+K)">
+          <i className="ti ti-search" aria-hidden="true"></i><span>Hledat zakázku, fakturu, zákazníka…</span><kbd>Ctrl K</kbd>
+        </button>
+        <button type="button" className="app-lista-ikona" onClick={zpetNaPredchozi} disabled={!predchoziTab}
+          title={predchoziTab ? `Zpět na: ${NAV.find(n => n.id === predchoziTab)?.label || "předchozí obrazovku"}` : "Zpět (zatím není kam)"} aria-label="Zpět na předchozí obrazovku">
+          <i className="ti ti-arrow-left" aria-hidden="true"></i>
+        </button>
+        <button type="button" className="app-lista-ikona" onClick={obnovitAplikaci} disabled={obnovuji} title="Obnovit aplikaci" aria-label="Obnovit aplikaci">
+          <i className="ti ti-refresh" aria-hidden="true" style={obnovuji ? { animation: "app-spin 0.8s linear infinite" } : undefined}></i>
+        </button>
+        {(!isOnline || offlineQueueItems.length > 0) && (
+          <button type="button" className="app-lista-offline" onClick={() => retryOfflineQueueNow()}
+            title={!isOnline ? "Appka je offline — zápisy se ukládají do zařízení a odešlou se samy po obnovení signálu" : "Klikni pro okamžité odeslání čekajících záznamů"}>
+            <i className={`ti ${isOnline ? "ti-cloud-upload" : "ti-cloud-off"}`} aria-hidden="true"></i>
+            <span>{!isOnline ? "Offline" : `${offlineQueueItems.length} čeká`}</span>
+          </button>
+        )}
+        <button type="button" className="app-lista-ikona" onClick={() => setTab("notifications")} aria-label="Oznámení" style={{ position: "relative" }}>
+          <i className="ti ti-bell" aria-hidden="true"></i>
+          {(notifications.filter(n => !n.read && n.user_name === currentUser?.name).length + bellCount) > 0 && (
+            <span className="app-lista-pocet">{notifications.filter(n => !n.read && n.user_name === currentUser?.name).length + bellCount}</span>
+          )}
+        </button>
+        <button type="button" className="app-lista-profil" onClick={() => setTab("profile")} title={`${currentUser.name} — můj profil`} aria-label="Můj profil">{getInitial(currentUser.name)}</button>
+      </header>
       <HledaniVsude open={gSearchOpen} setOpen={setGSearchOpen}
         customers={customers} contracts={contracts || []} invoices={invoices} products={products}
         allowedTabs={allowedTabs}
@@ -1350,7 +1324,37 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
            na mobilu schované a otevírá se hamburgerem nebo tlačítkem "Více". */
         /* Plovoucí tlačítka vpravo nahoře (zpět, obnovit, hledat) zabírají horních ~52 px —
            obsah i lepivé lišty začínají až pod nimi, aby je tlačítka nepřekrývala. */
-        :root { --horni-lista: 64px; }
+        :root { --horni-lista: 64px; --lista-h: 52px; }
+        /* Horní lišta (Outlook) */
+        .app-lista { position: fixed; top: 0; left: 0; right: 0; z-index: 160; height: calc(var(--lista-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0; box-sizing: border-box; background: #0E3B5E; color: #fff; display: flex; align-items: center; gap: 6px; }
+        .app-lista button { font-family: inherit; }
+        .app-lista-logo { display: flex; align-items: center; gap: 8px; background: none; border: none; color: #fff; font-size: 17px; font-weight: 800; letter-spacing: -0.4px; cursor: pointer; padding: 0 6px; min-width: 196px; }
+        .app-lista-hledat { flex: 1; max-width: 640px; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #DCE6EF; padding: 7px 12px; font-size: 13.5px; cursor: text; text-align: left; min-width: 0; margin-right: auto; }
+        .app-lista-hledat:hover { background: rgba(255,255,255,0.2); }
+        .app-lista-hledat span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .app-lista-hledat kbd { font-family: inherit; font-size: 10.5px; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 1px 5px; color: #DCE6EF; }
+        .app-lista-ikona { width: 36px; height: 36px; border-radius: 6px; border: none; background: transparent; color: #fff; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+        .app-lista-ikona:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
+        .app-lista-ikona:disabled { opacity: 0.4; cursor: default; }
+        .app-lista-menu { display: none; }
+        .app-lista-pocet { position: absolute; top: 3px; right: 2px; background: #F5821F; color: #fff; border-radius: 999px; font-size: 10px; font-weight: 800; padding: 0 5px; line-height: 15px; }
+        .app-lista-offline { display: flex; align-items: center; gap: 6px; background: #FFF7ED; color: #9A3412; border: none; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; cursor: pointer; flex: none; }
+        .app-lista-profil { width: 30px; height: 30px; border-radius: 50%; border: none; background: #F5821F; color: #fff; font-weight: 800; font-size: 12px; cursor: pointer; margin-left: 4px; flex: none; }
+        .app-lista :focus-visible { outline: 2px solid #F5821F; outline-offset: 2px; }
+        @media (min-width: 769px) {
+          .sidebar-nav { top: calc(var(--lista-h) + env(safe-area-inset-top)) !important; }
+          .sidebar-logo { display: none !important; }
+        }
+        @media (max-width: 768px) {
+          .app-lista { padding: env(safe-area-inset-top) 6px 0; gap: 2px; }
+          .app-lista-menu { display: flex; }
+          .app-lista-logo { min-width: 0; font-size: 0; padding: 0 4px; }
+          .app-lista-hledat kbd { display: none; }
+          .app-lista-hledat { margin: 0 4px; padding: 7px 10px; border-radius: 999px; }
+          .app-lista-profil, .app-lista-offline span { display: none; }
+          .app-lista-offline { padding: 6px 8px; }
+          .app-lista-ikona { width: 34px; }
+        }
         /* Tlačítka i plovoucí Příchod/Odchod jsou pod vrstvou oken (z-index 200+), ať nezakrývají jejich ✕ a tlačítka. */
         .sidebar-nav { transform: translateX(-100%); padding-top: env(safe-area-inset-top) !important; padding-bottom: env(safe-area-inset-bottom) !important; }
         @media (min-width: 769px) {
@@ -1364,6 +1368,12 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         @keyframes app-spin { to { transform: rotate(360deg); } }
         .pwa-top-left { top: calc(10px + env(safe-area-inset-top)) !important; }
         .safe-top-strip { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: #0E3B5E; z-index: 600; pointer-events: none; }
+        /* Spodní lišta na telefonu (Gmail): světlá, aktivní ikona v pilulce */
+        .mobile-tabbar { background: #F0F4F9 !important; border-top: 1px solid #E3E6EA; box-shadow: none !important; }
+        .mobile-tabbar-item { color: #444746 !important; font-weight: 600; }
+        .mobile-tabbar-item i { padding: 2px 16px; border-radius: 999px; font-size: 20px !important; }
+        .mobile-tabbar-item.active { color: #001D35 !important; }
+        .mobile-tabbar-item.active i { background: #C2E7FF; }
         /* Spodní navigační lišta jako v nativní appce (jen mobil) */
         .mobile-tabbar { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 140; background: #0E3B5E; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -2px 12px #0003; }
         .mobile-tabbar-item { flex: 1; min-width: 0; background: none; border: none; color: #B9CBDA; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px 6px; font-size: 10.5px; font-weight: 600; font-family: inherit; cursor: pointer; }
@@ -1437,11 +1447,11 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
         }
       `}</style>
-      <button className="hamburger-btn pwa-top-left" onClick={() => setSidebarOpen(true)} style={{ display: "none", position: "fixed", top: 10, left: 10, zIndex: 300, background: "#0E3B5E", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 22, color: "#fff", alignItems: "center", justifyContent: "center" }}><i className="ti ti-menu-2" aria-hidden="true"></i></button>
+      <button className="hamburger-btn pwa-top-left" hidden onClick={() => setSidebarOpen(true)} style={{ display: "none", position: "fixed", top: 10, left: 10, zIndex: 300, background: "#0E3B5E", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 22, color: "#fff", alignItems: "center", justifyContent: "center" }}><i className="ti ti-menu-2" aria-hidden="true"></i></button>
       <div className="safe-top-strip" aria-hidden="true" />
       {/* Spodní navigační lišta (jen mobil): 4 nejčastější sekce podle oprávnění + "Více" otevře celé menu */}
       <nav className="mobile-tabbar" aria-label="Hlavní navigace">
-        {["dashboard", "contracts", "tasks", "attendance", "servis", "fotoupload", "calendar", "customers", "invoices"]
+        {["dashboard", "prubeh", "calendar", "attendance", "knjiga", "uctenky", "contracts", "tasks", "servis"]
           .map(id => visibleNav.find(n => n.id === id)).filter(Boolean).slice(0, 4)
           .map(n => (
             <button key={n.id} className={`mobile-tabbar-item${tab === n.id ? " active" : ""}`}
@@ -1457,7 +1467,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
       {/* SIDEBAR */}
       <div className={`sidebar-nav${sidebarOpen ? " open" : ""}`} style={S.sidebar()}>
-        <div style={{ ...S.logo, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="sidebar-logo" style={{ ...S.logo, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <ProudOSMark size={26} />
             <span><span style={S.logoA}>Proud</span><span style={S.logoB}>OS</span></span>
