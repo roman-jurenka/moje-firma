@@ -10,6 +10,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase.js";
 import { shodaAdresy, slova } from "./gpsKontrola.js";
 import VyberZakazky from "./VyberZakazky.jsx";
+import MapaJizd from "./MapaJizd.jsx";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 
 // Přísnější shoda pro návrh zakázky: když mají obě adresy číslo domu, musí sedět;
@@ -51,6 +52,7 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
   const [vybrane, setVybrane] = useState(() => new Set()); // klíče zaškrtnutých jízd
   const [uprava, setUprava] = useState(null); // { k, ridic, km, poznamka, soukroma }
   const [hromadne, setHromadne] = useState({}); // datum → contract_id pro zaškrtnuté jízdy
+  const [mapa, setMapa] = useState(null); // { rezim, datum, auto } — otevřená mapa
 
   useEffect(() => {
     let zruseno = false;
@@ -208,6 +210,7 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
           <option value="">Všechna auta</option>
           {vozidla.map((v) => <option key={v.kod} value={v.kod}>{nazevAuta(v)} · {v.spz}</option>)}
         </select>
+        <button type="button" style={tlac("#fff", "#0E3B5E")} onClick={() => setMapa({ rezim: "kdo" })}>📍 Kdo tu byl (mapa)</button>
         <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={jenCekajici} onChange={(e) => setJenCekajici(e.target.checked)} /> Jen neschválené</label>
         <span style={{ marginLeft: "auto", fontSize: 13, color: "#334155" }}>
           <b>{vse.length}</b> jízd · služebně <b>{km(kmCelkem)}</b>{kmSoukrome > 0 ? <> · soukromě {km(kmSoukrome)}</> : null} · schváleno <b>{schvaleno}/{vse.length}</b> · se zakázkou <b>{sZakazkou}/{vse.length}</b>
@@ -228,7 +231,8 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
                 onChange={(e) => prepnoutVyber(klice, e.target.checked)} style={{ width: 16, height: 16 }} />
               <b>{new Date(datum + "T00:00:00").toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "numeric" })}</b>
               <span style={{ fontSize: 12, color: "#64748b" }}>{js.length} jízd · {km(js.filter((j) => !stavy[klic(j)]?.soukroma).reduce((s, j) => s + kmJ(j), 0))}</span>
-              {neschv.length > 0 && <button type="button" style={tlac("#15803d", "#fff", { marginLeft: "auto" })} onClick={async () => { for (const j of neschv) await schvalit(j); }}>✓ Schválit den ({neschv.length})</button>}
+              <button type="button" style={tlac("#fff", "#0E3B5E", { marginLeft: "auto" })} onClick={() => setMapa({ rezim: "trasa", datum, auto: auto || js[0]?.vozidlo_kod })}>🗺 Trasa dne</button>
+              {neschv.length > 0 && <button type="button" style={tlac("#15803d", "#fff")} onClick={async () => { for (const j of neschv) await schvalit(j); }}>✓ Schválit den ({neschv.length})</button>}
             </div>
             {vybraneDne.length > 0 && (
               <div role="toolbar" aria-label="Hromadná úprava vybraných jízd" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", background: "#fff7ed", borderBottom: "1px solid #fed7aa" }}>
@@ -321,6 +325,7 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
           </div>
         );
       })}
+      {mapa && <MapaJizd vozidla={vozidla} employees={employees} vychoziRezim={mapa.rezim} vychoziDatum={mapa.datum} vychoziAuto={mapa.auto} onZavrit={() => setMapa(null)} />}
       <div style={{ fontSize: 12, color: "#64748b" }}>Zakázka se navrhne podle adresy cíle jízdy (shoda s adresou zakázky). Schválením jízdy bez vybrané zakázky se převezme návrh, pokud existuje. Víc jízd k jedné zakázce: zaškrtni je a nahoře u dne vyber zakázku. ✏️ upraví km, řidiče, účel nebo označí soukromou jízdu.</div>
     </div>
   );
