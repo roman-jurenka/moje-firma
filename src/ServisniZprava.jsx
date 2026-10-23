@@ -101,7 +101,7 @@ export default function ServisniZprava({ t, zakazka, zakaznik, technik, naklady 
         setF((x) => ({ ...x, prijezd: x.prijezd || hm(data[0].checkin), odjezd: x.odjezd || hm(data[data.length - 1].checkout) }));
       });
     }
-    supabase.from("servisni_zpravy").select("id, cislo, odeslano_at, email_komu, chyba, pdf_path, created_at").eq("ticket_id", t.id).order("created_at", { ascending: false })
+    supabase.from("servisni_zpravy").select("id, cislo, odeslano_at, email_komu, chyba, pdf_path, podepsal, created_at").eq("ticket_id", t.id).order("created_at", { ascending: false })
       .then(({ data }) => { if (!zruseno) setPredchozi(data || []); });
     return () => { zruseno = true; };
   }, [t.id, t.technik_id]);
@@ -111,7 +111,7 @@ export default function ServisniZprava({ t, zakazka, zakaznik, technik, naklady 
   const odeslat = async () => {
     setStav(null);
     if (!podpisTechnik || !podpisZakaznik) { setStav({ chyba: true, text: "Chybí podpis technika nebo zákazníka — podepište a klepněte na Uložit podpis." }); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) { setStav({ chyba: true, text: "Zadej platný e-mail zákazníka." }); return; }
+    if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) { setStav({ chyba: true, text: "E-mail zákazníka nemá správný tvar (nebo ho nech prázdný)." }); return; }
     if (!f.podepsal.trim()) { setStav({ chyba: true, text: "Napiš jméno zákazníka, který podepisuje." }); return; }
     setPracuji(true);
     try {
@@ -138,14 +138,8 @@ export default function ServisniZprava({ t, zakazka, zakaznik, technik, naklady 
       }).select().single();
       if (iErr) throw new Error("Zprávu se nepodařilo uložit: " + iErr.message);
       const pdfUrl = URL.createObjectURL(blob);
-      const { data: odp, error: fErr } = await supabase.functions.invoke("servis-zprava-odeslat", { body: { id: row.id } });
-      if (fErr || !odp?.ok) {
-        let detail = fErr?.message || "";
-        try { const j = await fErr?.context?.json?.(); if (j?.error === "smtp_not_configured") detail = "odesílání e-mailů zatím není nastavené"; else if (j?.detail) detail = j.detail; } catch { /* bez detailu */ }
-        setStav({ chyba: true, text: `Zpráva je podepsaná a uložená, ale e-mail se neodeslal (${detail}). PDF si můžeš stáhnout a poslat ručně.`, pdfUrl, cislo });
-      } else {
-        setStav({ chyba: false, text: `✓ Servisní zpráva ${cislo} je podepsaná a odeslaná na ${f.email.trim()}.`, pdfUrl, cislo });
-      }
+      // Odeslání e-mailem je zatím vypnuté (edge funkce servis-zprava-odeslat je připravená, chybí SMTP).
+      setStav({ chyba: false, text: `✓ Servisní zpráva ${cislo} je podepsaná a uložená u ticketu. PDF si můžeš stáhnout nebo ukázat zákazníkovi.`, pdfUrl, cislo });
       setPredchozi((p) => [row, ...p]);
     } catch (e) {
       setStav({ chyba: true, text: e.message || String(e) });
@@ -204,7 +198,7 @@ export default function ServisniZprava({ t, zakazka, zakaznik, technik, naklady 
           </div>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-          <div><label style={lbl} htmlFor="sz-email">E-mail zákazníka (sem přijde zpráva)</label><input id="sz-email" type="email" inputMode="email" style={pole} value={f.email} onChange={(e) => set({ email: e.target.value })} /></div>
+          <div><label style={lbl} htmlFor="sz-email">E-mail zákazníka (nepovinné, uloží se ke zprávě)</label><input id="sz-email" type="email" inputMode="email" style={pole} value={f.email} onChange={(e) => set({ email: e.target.value })} /></div>
           <div><label style={lbl} htmlFor="sz-jmeno">Jméno zákazníka, který podepisuje</label><input id="sz-jmeno" style={pole} value={f.podepsal} onChange={(e) => set({ podepsal: e.target.value })} /></div>
         </div>
 
@@ -229,7 +223,7 @@ export default function ServisniZprava({ t, zakazka, zakaznik, technik, naklady 
         )}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
           <button type="button" style={ui.tlacitkoObrys()} onClick={onZavrit} disabled={pracuji}>Zavřít</button>
-          <button type="button" style={ui.tlacitko(ui.barvy.akcent, "velke")} onClick={odeslat} disabled={pracuji}>{pracuji ? "Vytvářím a odesílám…" : "✍️ Podepsáno — vytvořit PDF a odeslat"}</button>
+          <button type="button" style={ui.tlacitko(ui.barvy.akcent, "velke")} onClick={odeslat} disabled={pracuji}>{pracuji ? "Vytvářím PDF…" : "✍️ Podepsáno — vytvořit PDF"}</button>
         </div>
 
         {predchozi.length > 0 && (
@@ -237,7 +231,7 @@ export default function ServisniZprava({ t, zakazka, zakaznik, technik, naklady 
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Dřívější zprávy k ticketu</div>
             {predchozi.map((z) => (
               <div key={z.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "4px 0", flexWrap: "wrap" }}>
-                <span>{z.cislo} · {new Date(z.created_at).toLocaleDateString("cs-CZ")} · {z.odeslano_at ? `✓ odesláno na ${z.email_komu}` : `⚠ neodesláno${z.chyba ? ` (${z.chyba})` : ""}`}</span>
+                <span>{z.cislo} · {new Date(z.created_at).toLocaleDateString("cs-CZ")} · {z.odeslano_at ? `✓ odesláno na ${z.email_komu}` : `podepsal ${z.podepsal || "zákazník"}`}</span>
                 {z.pdf_path && <button type="button" style={ui.tlacitkoObrys("male")} onClick={() => otevritUlozenou(z)}>📄 PDF</button>}
               </div>
             ))}

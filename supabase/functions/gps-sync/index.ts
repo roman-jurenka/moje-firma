@@ -58,7 +58,10 @@ const apiCas = (d: Date) => d.toISOString().slice(0, 16);
 interface ApiJizda {
   Id: number; StartTime: string; FinishTime: string; StartAddress?: string; FinishAddress?: string;
   TotalDistance?: number; TripLength?: string; TripWaitingTime?: string; IsFinished?: boolean;
+  StartPosition?: { Latitude?: string; Longitude?: string }; FinishPosition?: { Latitude?: string; Longitude?: string };
 }
+// souřadnice začátku / konce jízdy (pro mapu a hledání „kdo tu byl“)
+const sour = (v?: string) => (v != null && v !== "" && Number.isFinite(Number(v)) && Number(v) !== 0 ? Number(v) : null);
 
 async function api<T>(path: string, auth: string): Promise<T> {
   const r = await fetch(API + path, { headers: { Authorization: auth, Accept: "application/json" } });
@@ -135,6 +138,8 @@ Deno.serve(async (req: Request) => {
             z_adresa: j.StartAddress ?? null, do_adresa: j.FinishAddress ?? null,
             km: Number.isFinite(Number(j.TotalDistance)) ? Math.round(Number(j.TotalDistance) * 10) / 10 : null,
             doba_min: minuty(j.TripLength), stani_min: minuty(j.TripWaitingTime),
+            z_lat: sour(j.StartPosition?.Latitude), z_lng: sour(j.StartPosition?.Longitude),
+            do_lat: sour(j.FinishPosition?.Latitude), do_lng: sour(j.FinishPosition?.Longitude),
           });
         }
       }
