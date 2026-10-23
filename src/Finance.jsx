@@ -3,6 +3,7 @@ import { supabase } from "./supabase.js";
 import { isConnected, uploadFileObject } from "./onedrive.js";
 import { StorageLink } from "./storageUrl.jsx";
 import * as ui from "./ui.js";
+import FotoDokladu from "./FotoDokladu.jsx";
 
 // ─── Modul Finanční tok ───────────────────────────────────────────────────
 // Počáteční stav bankovního účtu + průběžná evidence odeslaných/přijatých
@@ -324,7 +325,7 @@ export default function FinanceModule({ currentUser, employees = [], contracts =
 // Zaměstnanec smí přidávat pouze účtenky (ne faktury) a vidí jen svoje vlastní
 // se stavem proplacení. Admin/manažer vidí a schvaluje proplacení v plném
 // modulu FinanceModule výše.
-export function ReceiptsModule({ currentUser }) {
+export function ReceiptsModule({ currentUser, contracts = [], customers = [] }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -351,8 +352,14 @@ export function ReceiptsModule({ currentUser }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "#1A1A1A" }}>Účtenky</h1>
-        <button onClick={() => setModal(true)} style={btnPrimary}>+ Nahrát účtenku</button>
+        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: "#1A1A1A" }}>Účtenky a faktury z terénu</h1>
+      </div>
+
+      <FotoDokladu currentUser={currentUser} contracts={contracts} customers={customers} />
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ fontWeight: 800, fontSize: 15 }}>Účtenky k proplacení (ruční záznam)</div>
+        <button onClick={() => setModal(true)} style={btnGhost}>+ Ruční záznam účtenky</button>
       </div>
 
       <div style={{ ...card, padding: 0, overflow: "hidden" }}>

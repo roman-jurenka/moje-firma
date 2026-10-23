@@ -1653,7 +1653,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           );
         })()}
 
-        {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} />}
+        {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} contracts={contracts || []} customers={customers} />}
 
         {tab === "navrh3d" && allowedTabs.includes("navrh3d") && <Navrh3D currentUser={currentUser} />}
         {tab === "statika" && allowedTabs.includes("statika") && <StatikaFve contracts={contracts} customers={customers} currentUser={currentUser} />}

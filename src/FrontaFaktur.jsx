@@ -5,6 +5,10 @@
 //   • zakázka → náklad zakázky (contract_cost_entries, typ materiál/práce/doprava),
 //   • sklad   → příjem na sklad (warehouse_movements „in“ + navýšení stavu produktu;
 //               když produkt ve skladu není, založí se s nákupní cenou z faktury).
+//   • auto    → náklad auta (costs s vehicle_id, kategorie Pohonné hmoty / Opravy aut),
+//   • režie   → fungování firmy, nic se nezapisuje.
+// Doklady vyfocené v terénu (source „foto“) nesou návrh, kam patří (navrh_cil),
+// a fotky stránek; hlavičku a řádky z nich vyčte naplánovaný agent.
 // Řádka se nejdřív „zamkne“ (status navrh → schvaleno jen když byla ještě navrh),
 // takže ani dvojklik nebo dva lidé najednou nezapíšou náklad dvakrát.
 
@@ -15,6 +19,8 @@ import { nactiPrirazku, ulozitPrirazku, prodejniCena, sPrirazkou, prirazkaPolozk
 
 const BUCKET = "faktury-fronta";
 const TYPY_NAKLADU = [["materiál", "Materiál"], ["práce", "Práce"], ["doprava", "Doprava"]];
+const TYPY_AUTA = [["nafta", "Pohonné hmoty", "⛽ Nafta / palivo"], ["oprava", "Opravy aut", "🔧 Oprava / servis"], ["jine", "Auta – ostatní", "Jiné (myčka, dálnice…)"]];
+const kategorieAuta = (t) => (TYPY_AUTA.find((x) => x[0] === t) || TYPY_AUTA[2])[1];
 const fmtKc = (n) => (n == null || n === "" ? "—" : `${Number(n).toLocaleString("cs-CZ", { maximumFractionDigits: 2 })} Kč`);
 const fmtDatum = (d) => (d ? new Date(d + (String(d).length === 10 ? "T00:00:00" : "")).toLocaleDateString("cs-CZ") : "—");
 const dnes = () => new Date().toISOString().slice(0, 10);
@@ -33,8 +39,10 @@ const kandidati = (it) => {
   return c.map((x) => (typeof x === "object" && x ? Number(x.contract_id ?? x.id) : Number(x))).filter(Boolean);
 };
 // Výchozí volba řádky: „sklad“, „z:<id zakázky>“ nebo "" (nevybráno)
-const vychoziVolba = (it) => {
+const vychoziVolba = (it, f) => {
+  if (it.assigned_vehicle_id) return `auto:${it.assigned_vehicle_id}`;
   if (it.assigned_to_sklad) return "sklad";
+  if (!it.assigned_contract_id && f?.navrh_cil) return f.navrh_cil; // návrh z terénu má přednost
   if (it.assigned_contract_id) return `z:${it.assigned_contract_id}`;
   if (it.suggested_match_type === "sklad") return "sklad";
   if (it.suggested_contract_id) return `z:${it.suggested_contract_id}`;
@@ -95,6 +103,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
   const [filtrStitek, setFiltrStitek] = useState(""); // "" = všechny, "__bez" = bez štítku
   const [stitkovani, setStitkovani] = useState(null);  // id faktury s otevřeným výběrem štítků
   const [novyStitek, setNovyStitek] = useState("");
+  const [auta, setAuta] = useState([]);
 
   const nacist = async () => {
     const stavy = vyrizene ? ["nova", "castecne_prirazena", "schvalena", "zamitnuta"] : ["nova", "castecne_prirazena"];
@@ -102,6 +111,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
       vsechnyStranky((od, doo) => supabase.from("invoice_queue").select("*").in("status", stavy).order("issue_date", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).range(od, doo)),
       supabase.from("products").select("id, name, stock, unit, price, price_sell, prirazka_pct"),
     ]);
+    supabase.from("vehicles").select("id, name, spz").order("name").then(({ data }) => setAuta(data || []));
     if (error) { setZprava({ chyba: true, text: "Frontu se nepodařilo načíst: " + error.message }); setFaktury([]); return; }
     setProdukty(p || []);
     setPrirazka(await nactiPrirazku());
@@ -120,7 +130,8 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     setPolozky(podle);
     setVolby((v) => {
       const nove = { ...v };
-      (it || []).forEach((x) => { if (!nove[x.id]) nove[x.id] = { cil: vychoziVolba(x), typ: "materiál" }; });
+      const fById = Object.fromEntries((f || []).map((y) => [y.id, y]));
+      (it || []).forEach((x) => { if (!nove[x.id]) { const fx = fById[x.invoice_queue_id]; nove[x.id] = { cil: vychoziVolba(x, fx), typ: "materiál", autoTyp: fx?.navrh_typ || "nafta" }; } });
       return nove;
     });
     setFaktury(f || []);
@@ -143,6 +154,14 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     if (okno) okno.location.href = data.signedUrl; else window.open(data.signedUrl, "_blank");
   };
 
+  // Fotky dokladu z terénu (víc stránek)
+  const otevritStranku = async (cesta) => {
+    const okno = window.open("", "_blank");
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(cesta, 600);
+    if (error || !data?.signedUrl) { okno?.close(); setZprava({ chyba: true, text: "Fotku se nepodařilo otevřít: " + (error?.message || "soubor nenalezen") }); return; }
+    if (okno) okno.location.href = data.signedUrl; else window.open(data.signedUrl, "_blank");
+  };
+
   // Stav faktury podle jejích řádek
   const prepocitatFakturu = async (f) => {
     const { data: it } = await supabase.from("invoice_queue_items").select("status").eq("invoice_queue_id", f.id);
@@ -155,7 +174,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
   // Potvrzení jedné řádky. Vrací text chyby, nebo null.
   const potvrditRadek = async (f, it) => {
     const v = volby[it.id] || {};
-    if (!v.cil) return `Řádka ${it.line_no ?? ""}: vyber zakázku nebo sklad`;
+    if (!v.cil || v.cil === "auto:") return `Řádka ${it.line_no ?? ""}: vyber zakázku, sklad nebo auto`;
     // zamknout řádku (jen když je ještě „navrh“)
     const { data: zamek, error: zErr } = await supabase.from("invoice_queue_items").update({ status: "schvaleno" }).eq("id", it.id).eq("status", "navrh").select("id");
     if (zErr) return zErr.message;
@@ -198,7 +217,18 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
       return prod;
     };
     try {
-      if (v.cil === "rezie") {
+      if (v.cil.startsWith("auto:")) {
+        // náklad auta (nafta, oprava…) — do nákladů firmy s vazbou na auto
+        const vehicleId = Number(v.cil.slice(5));
+        const autoNazev = auta.find((a) => a.id === vehicleId)?.name || "auto";
+        const { data: naklad, error } = await supabase.from("costs").insert({
+          date: f.issue_date || dnes(), category: kategorieAuta(v.autoTyp), vehicle_id: vehicleId, recurring: false,
+          amount: Math.round(cenaRadku(it) * 100) / 100,
+          description: `${autoNazev}: ${String(it.description || "").trim()}${doklad ? ` (${doklad})` : ""}`,
+        }).select().single();
+        if (error) throw error;
+        await supabase.from("invoice_queue_items").update({ assigned_vehicle_id: vehicleId, costs_id: naklad.id, assigned_to_sklad: false, assigned_contract_id: null }).eq("id", it.id);
+      } else if (v.cil === "rezie") {
         // náklad firmy bez zakázky a skladu — řádka je vyřízená, nic se nezapisuje
         await supabase.from("invoice_queue_items").update({ assigned_to_sklad: false, assigned_contract_id: null }).eq("id", it.id);
       } else if (v.cil === "sklad") {
@@ -294,6 +324,11 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
           if (error) { await supabase.from("invoice_queue_items").update({ cost_entry_id: naklad.id }).eq("id", it.id); throw error; }
         }
       }
+      if (it.costs_id) {
+        await supabase.from("invoice_queue_items").update({ costs_id: null }).eq("id", it.id);
+        const { error } = await supabase.from("costs").delete().eq("id", it.costs_id);
+        if (error) { await supabase.from("invoice_queue_items").update({ costs_id: it.costs_id }).eq("id", it.id); throw error; }
+      }
       if (it.warehouse_movement_out_id) {
         // materiál do zakázky přes sklad: smazat příjem i výdej — stav skladu se nemění
         const ids = [it.warehouse_movement_id, it.warehouse_movement_out_id].filter(Boolean);
@@ -311,11 +346,11 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
         }
       }
       const { error } = await supabase.from("invoice_queue_items").update({
-        status: "navrh", assigned_contract_id: null, assigned_to_sklad: false, cost_entry_id: null, warehouse_movement_id: null, warehouse_movement_out_id: null,
+        status: "navrh", assigned_contract_id: null, assigned_to_sklad: false, assigned_vehicle_id: null, costs_id: null, cost_entry_id: null, warehouse_movement_id: null, warehouse_movement_out_id: null,
       }).eq("id", it.id);
       if (error) throw error;
       // výběr předvyplnit tím, co bylo přiřazené
-      setVolby((m) => ({ ...m, [it.id]: { ...(m[it.id] || { typ: "materiál" }), cil: it.assigned_to_sklad ? "sklad" : it.assigned_contract_id ? `z:${it.assigned_contract_id}` : (m[it.id]?.cil || "") } }));
+      setVolby((m) => ({ ...m, [it.id]: { ...(m[it.id] || { typ: "materiál" }), cil: it.assigned_vehicle_id ? `auto:${it.assigned_vehicle_id}` : it.assigned_to_sklad ? "sklad" : it.assigned_contract_id ? `z:${it.assigned_contract_id}` : (m[it.id]?.cil || "") } }));
       await prepocitatFakturu(f);
       setZprava({ chyba: false, text: `Řádka ${it.line_no ?? ""} je zpět k přiřazení — vyber nové přiřazení a potvrď.` });
     } catch (e) {
@@ -506,6 +541,8 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                   <span style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{f.supplier_name || "Neznámý dodavatel"}</span>
                   <span style={{ background: stavPozadi, color: stavBarva, borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 800 }}>{stavText}</span>
                   {f.direction === "vydana" && <span style={{ fontSize: 11, color: "#64748b" }}>vydaná</span>}
+                  {f.source === "foto" && <span style={{ background: "#fff7ed", color: "#c2410c", borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 800 }}>📷 z terénu{f.nahral ? ` · ${f.nahral}` : ""}{f.doc_type === "uctenka" ? " · účtenka" : ""}</span>}
+                  {f.uhradil_zamestnanec && <span style={{ background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 800 }}>💰 proplatit{f.nahral ? ` – ${f.nahral}` : ""}</span>}
                   {(f.stitky || []).map((t) => { const [bg, fg] = barvaStitku(t); return (
                     <button key={t} type="button" onClick={() => setFiltrStitek(t)} title={`Zobrazit jen „${t}“`}
                       style={{ background: bg, color: fg, border: "none", borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🏷 {t}</button>
@@ -549,6 +586,14 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                   {f.onedrive_status === "uploaded" ? " · ☁️ na OneDrivu" : f.onedrive_status === "failed" ? " · ⚠ OneDrive: nenahráno" : ""}
                   {f.note ? ` · ${f.note}` : ""}
                 </div>
+                {f.source === "foto" && f.navrh_cil && (() => {
+                  const c = f.navrh_cil;
+                  const text = c.startsWith("z:") ? `zakázka ${zakazkaById[Number(c.slice(2))] ? popisZakazky(zakazkaById[Number(c.slice(2))]) : c.slice(2)}`
+                    : c.startsWith("auto:") ? `auto ${auta.find((a) => a.id === Number(c.slice(5)))?.name || ""} – ${(TYPY_AUTA.find((x) => x[0] === f.navrh_typ) || TYPY_AUTA[2])[2]}`
+                    : c === "rezie" ? "fungování firmy" : c === "sklad" ? "sklad" : c;
+                  return <div style={{ fontSize: 12, color: "#c2410c", marginTop: 2 }}>Návrh z terénu: {text}</div>;
+                })()}
+                {f.source === "foto" && radky.length === 0 && <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>⏳ Čeká na přečtení agentem (běží každé 2 dny) — nebo přidej řádku ručně.</div>}
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                 {(() => {
@@ -570,7 +615,9 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                   );
                 })()}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  {f.pdf_storage_path && <button type="button" style={tlObrys()} onClick={() => otevritPdf(f)}>📄 PDF</button>}
+                  {Array.isArray(f.fotky) && f.fotky.length > 0
+                    ? f.fotky.map((c, i) => <button key={c} type="button" style={tlObrys()} onClick={() => otevritStranku(c)}>📷 {f.fotky.length > 1 ? `Str. ${i + 1}` : "Fotka"}</button>)
+                    : f.pdf_storage_path && <button type="button" style={tlObrys()} onClick={() => otevritPdf(f)}>📄 PDF</button>}
                   <button type="button" style={tlObrys()} onClick={() => setRozbaleno((r) => ({ ...r, [f.id]: !otevrena }))}>{otevrena ? "▲ Sbalit" : "▼ Řádky"}</button>
                 </div>
               </div>
@@ -619,7 +666,10 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                                   onChange={(e) => setV({ cil: e.target.value })}>
                                   <option value="">— vyber zakázku nebo sklad —</option>
                                   <option value="sklad">📦 Sklad (příjem materiálu)</option>
-                                  <option value="rezie">🏢 Režie firmy (telefon, software… — nic se nezapíše)</option>
+                                  <option value="rezie">🏢 Fungování firmy (telefon, software… — nic se nezapíše)</option>
+                                  <optgroup label="Auta (nafta, opravy)">
+                                    {auta.map((a) => <option key={`a${a.id}`} value={`auto:${a.id}`}>🚐 {a.name}{a.spz ? ` · ${a.spz}` : ""}</option>)}
+                                  </optgroup>
                                   {kand.length > 0 && (
                                     <optgroup label="Navržené zakázky">
                                       {kand.map((c) => <option key={`k${c.id}`} value={`z:${c.id}`}>{popisZakazky(c)}</option>)}
@@ -630,6 +680,11 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                                     {vybranaZ && !otevrene.includes(vybranaZ) && <option value={`z:${vybranaZ.id}`}>{popisZakazky(vybranaZ)} ({vybranaZ.status})</option>}
                                   </optgroup>
                                 </select>
+                                {v.cil.startsWith("auto:") && (
+                                  <select style={{ ...pole, marginTop: 4 }} value={v.autoTyp || "nafta"} aria-label="Druh nákladu auta" onChange={(e) => setV({ autoTyp: e.target.value })}>
+                                    {TYPY_AUTA.map(([id, , t]) => <option key={id} value={id}>{t}</option>)}
+                                  </select>
+                                )}
                                 {v.cil === "sklad" && (
                                   <div style={{ fontSize: 11, marginTop: 3, color: prod ? "#15803d" : "#0369a1" }}>
                                     {prod ? `✓ ${prod.name} — skladem ${prod.stock ?? 0} ${prod.unit || ""}, přibude ${Number(it.quantity ?? 0).toLocaleString("cs-CZ")}`
@@ -680,7 +735,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                               <span style={{ fontSize: 12, color: "#64748b" }}>Nepřiřazeno (zamítnuto)</span>
                             ) : (
                               <span style={{ fontSize: 12, color: "#15803d", fontWeight: 700 }}>
-                                ✓ {it.assigned_to_sklad ? "Příjem na sklad" : !it.assigned_contract_id ? "Režie firmy (nic se nezapsalo)" : `Náklad zakázky ${hotovoZ ? popisZakazky(hotovoZ) : ""}${it.warehouse_movement_out_id ? " · přes sklad (příjem + výdej)" : ""}`}
+                                ✓ {it.assigned_to_sklad ? "Příjem na sklad" : it.assigned_vehicle_id ? `Náklad auta ${auta.find((x) => x.id === it.assigned_vehicle_id)?.name || ""}` : !it.assigned_contract_id ? "Fungování firmy (nic se nezapsalo)" : `Náklad zakázky ${hotovoZ ? popisZakazky(hotovoZ) : ""}${it.warehouse_movement_out_id ? " · přes sklad (příjem + výdej)" : ""}`}
                               </span>
                             )}
                           </td>
