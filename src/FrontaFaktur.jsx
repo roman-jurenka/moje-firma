@@ -104,6 +104,14 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
   const [stitkovani, setStitkovani] = useState(null);  // id faktury s otevřeným výběrem štítků
   const [novyStitek, setNovyStitek] = useState("");
   const [auta, setAuta] = useState([]);
+  const [vybranaId, setVybranaId] = useState(null);
+  const [siroke, setSiroke] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1180px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1180px)");
+    const h = (e) => setSiroke(e.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  }, []);
 
   const nacist = async () => {
     const stavy = vyrizene ? ["nova", "castecne_prirazena", "schvalena", "zamitnuta"] : ["nova", "castecne_prirazena"];
@@ -443,98 +451,35 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     await nacist();
   };
 
-  return (
-    <div style={{ textAlign: "left" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-        <div style={{ fontSize: 13, color: "#475569", maxWidth: 640 }}>
-          Faktury od dodavatelů čekají na přiřazení. U každé řádky zkontroluj návrh (zakázka nebo sklad) a potvrď —
-          teprve potom se zapíše <b>náklad zakázky</b> nebo <b>příjem na sklad</b>.
-        </div>
-        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-          {prirazkaPole == null ? (
-            <button type="button" onClick={() => setPrirazkaPole(String(prirazka))} title="Prodejní cena materiálu = nákup + přirážka (když produkt nemá vlastní prodejní cenu)"
-              style={{ background: "#eff6ff", border: "1px solid #bfdbfe", color: "#0369a1", borderRadius: 999, padding: "4px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-              Přirážka na materiál: {String(prirazka).replace(".", ",")} % ✏️
-            </button>
-          ) : (
-            <span style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "#334155" }}>
-              Přirážka na materiál
-              <input style={{ ...pole, width: 60 }} inputMode="decimal" autoFocus value={prirazkaPole} aria-label="Výchozí přirážka na materiál v procentech"
-                onChange={(e) => setPrirazkaPole(e.target.value)} /> %
-              <button type="button" style={tl("#0369a1")} onClick={async () => {
-                const pct = cisloPole(prirazkaPole);
-                if (pct == null || Number.isNaN(pct) || pct < 0) { setZprava({ chyba: true, text: "Přirážka musí být číslo (např. 30)." }); return; }
-                const { error } = await ulozitPrirazku(pct);
-                if (error) { setZprava({ chyba: true, text: "Přirážku se nepodařilo uložit: " + error.message }); return; }
-                setPrirazka(pct); setPrirazkaPole(null);
-                setZprava({ chyba: false, text: `✓ Výchozí přirážka na materiál je ${String(pct).replace(".", ",")} % — platí pro celou firmu (fronta faktur i výdej ze skladu).` });
-              }}>Uložit</button>
-              <button type="button" style={tlObrys()} onClick={() => setPrirazkaPole(null)}>Zrušit</button>
-            </span>
-          )}
-          <label style={{ fontSize: 13, color: "#334155", display: "flex", gap: 6, alignItems: "center" }}>
-            <input type="checkbox" checked={vyrizene} onChange={(e) => setVyrizene(e.target.checked)} /> Zobrazit i vyřízené
-          </label>
-        </div>
-      </div>
-
-      {zprava && (
-        <div role={zprava.chyba ? "alert" : "status"} style={{ borderRadius: 10, padding: "9px 12px", marginBottom: 12, fontSize: 13, background: zprava.chyba ? "#fef2f2" : "#f0fdf4", color: zprava.chyba ? "#991b1b" : "#166534", border: `1px solid ${zprava.chyba ? "#fecaca" : "#bbf7d0"}` }}>{zprava.text}</div>
-      )}
-
-      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 14px", marginBottom: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3, minWidth: 220, flex: "1 1 220px" }}>
-          Dodavatel
-          <select style={{ ...pole, maxWidth: "none" }} value={filtrDodavatel} onChange={(e) => setFiltrDodavatel(e.target.value)}>
-            <option value="">Všichni dodavatelé ({faktury.length})</option>
-            {dodavatele.map(([d, c]) => <option key={d} value={d}>{d} ({c})</option>)}
-          </select>
-        </label>
-        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>
-          Období (vystavení)
-          <select style={pole} value={filtrObdobi} onChange={(e) => setFiltrObdobi(e.target.value)}>
-            {OBDOBI.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
-          </select>
-        </label>
-        {filtrObdobi === "vlastni" && (
-          <>
-            <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>Od<input type="date" style={pole} value={filtrOd} onChange={(e) => setFiltrOd(e.target.value)} /></label>
-            <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>Do<input type="date" style={pole} value={filtrDo} onChange={(e) => setFiltrDo(e.target.value)} /></label>
-          </>
-        )}
-        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>
-          Štítek
-          <select style={pole} value={filtrStitek} onChange={(e) => setFiltrStitek(e.target.value)}>
-            <option value="">Všechny štítky</option>
-            <option value="__bez">Bez štítku ({faktury.filter((x) => !(x.stitky || []).length).length})</option>
-            {vsechnyStitky.map((t) => <option key={t} value={t}>{t} ({pocetSeStitkem(t)})</option>)}
-          </select>
-        </label>
-        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3, flex: "1 1 160px" }}>
-          Hledat
-          <input type="search" style={{ ...pole, maxWidth: "none" }} value={hledat} placeholder="číslo faktury, VS, IČO…" onChange={(e) => setHledat(e.target.value)} />
-        </label>
-        {filtrovano && <button type="button" style={tlObrys()} onClick={() => { setFiltrDodavatel(""); setFiltrObdobi("vse"); setFiltrOd(""); setFiltrDo(""); setHledat(""); setFiltrStitek(""); }}>✕ Zrušit filtry</button>}
-        <div style={{ flexBasis: "100%", fontSize: 12, color: "#475569" }}>
-          Zobrazeno <b>{zobrazene.length}</b> z {faktury.length} faktur · celkem <b>{fmtKc(Math.round(soucetSDph))}</b> s DPH
-          {bezRadku > 0 && <span style={{ color: "#b45309" }}> · {bezRadku} bez vyčtených řádek (přidej řádek ručně)</span>}
-        </div>
-      </div>
-
-      {!zobrazene.length && (
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, textAlign: "center", color: "#64748b", fontSize: 14 }}>
-          {faktury.length ? "Filtrům neodpovídá žádná faktura." : vyrizene ? "Ve frontě nejsou žádné faktury." : "✓ Žádné faktury nečekají na přiřazení."}
-        </div>
-      )}
-
-      {zobrazene.map((f) => {
+  // ── Tři panely (Outlook): na širokém displeji seznam dokladů vlevo a detail
+  // vybraného dokladu vpravo; na užším se doklady skládají pod sebe jako dřív.
+  const vybrana = zobrazene.find((x) => x.id === vybranaId) || zobrazene[0] || null;
+  const radekSeznamu = (f, aktivni) => {
+    const radky = polozky[f.id] || [];
+    const cekajici = radky.filter((x) => x.status === "navrh").length;
+    const [stavText, stavBarva, stavPozadi] = STAV_FAKTURY[f.status] || [f.status, "#475569", "#f1f5f9"];
+    return (
+      <button key={f.id} type="button" role="listitem" aria-current={aktivni ? "true" : undefined} onClick={() => setVybranaId(f.id)}
+        className={`ff-radek${aktivni ? " on" : ""}`}>
+        <span className="ff-r1"><b>{f.supplier_name || "Neznámý dodavatel"}</b><span>{fmtDatum(f.issue_date)}</span></span>
+        <span className="ff-r2"><span>{[f.source === "foto" ? "📷 " + (f.doc_type === "uctenka" ? "účtenka" : "foto") : f.invoice_number && `Faktura ${f.invoice_number}`, radky.length ? `${radky.length} ř.${cekajici ? ` · čeká ${cekajici}` : ""}` : "bez řádků"].filter(Boolean).join(" · ")}</span>
+          <b>{f.total_amount != null ? fmtKc(f.total_amount) : "—"}</b></span>
+        <span className="ff-r3">
+          <span style={{ background: stavPozadi, color: stavBarva }}>{stavText}</span>
+          {f.uhradil_zamestnanec && <span style={{ background: "#fef3c7", color: "#92400e" }}>💰 proplatit</span>}
+          {(f.stitky || []).slice(0, 2).map((t) => { const [bg, fg] = barvaStitku(t); return <span key={t} style={{ background: bg, color: fg }}>{t}</span>; })}
+        </span>
+      </button>
+    );
+  };
+  const kartaFaktury = (f, vPanelu = false) => {
         const radky = polozky[f.id] || [];
         const cekajici = radky.filter((x) => x.status === "navrh");
         const pripravene = cekajici.filter((x) => volby[x.id]?.cil);
         const [stavText, stavBarva, stavPozadi] = STAV_FAKTURY[f.status] || [f.status, "#475569", "#f1f5f9"];
-        const otevrena = rozbaleno[f.id] ?? ["nova", "castecne_prirazena"].includes(f.status);
+        const otevrena = vPanelu || (rozbaleno[f.id] ?? ["nova", "castecne_prirazena"].includes(f.status));
         return (
-          <div key={f.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, marginBottom: 14, overflow: "hidden" }}>
+          <div key={f.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: vPanelu ? 8 : 14, marginBottom: vPanelu ? 0 : 14, overflow: "hidden" }}>
             <div style={{ display: "flex", gap: 12, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", padding: "12px 16px", background: "#f8fafc", borderBottom: otevrena ? "1px solid #e2e8f0" : "none" }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -618,7 +563,7 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                   {Array.isArray(f.fotky) && f.fotky.length > 0
                     ? f.fotky.map((c, i) => <button key={c} type="button" style={tlObrys()} onClick={() => otevritStranku(c)}>📷 {f.fotky.length > 1 ? `Str. ${i + 1}` : "Fotka"}</button>)
                     : f.pdf_storage_path && <button type="button" style={tlObrys()} onClick={() => otevritPdf(f)}>📄 PDF</button>}
-                  <button type="button" style={tlObrys()} onClick={() => setRozbaleno((r) => ({ ...r, [f.id]: !otevrena }))}>{otevrena ? "▲ Sbalit" : "▼ Řádky"}</button>
+                  {!vPanelu && <button type="button" style={tlObrys()} onClick={() => setRozbaleno((r) => ({ ...r, [f.id]: !otevrena }))}>{otevrena ? "▲ Sbalit" : "▼ Řádky"}</button>}
                 </div>
               </div>
             </div>
@@ -796,7 +741,117 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
             )}
           </div>
         );
-      })}
+  };
+
+  return (
+    <div style={{ textAlign: "left" }}>
+      <style>{`
+        .ff-panely { display: grid; grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.6fr); gap: 0; border: 1px solid #E3E6EA; border-radius: 8px; background: #fff; align-items: start; }
+        .ff-seznam { border-right: 1px solid #E3E6EA; max-height: calc(100dvh - var(--horni-lista) - 40px); overflow-y: auto; position: sticky; top: var(--horni-lista); }
+        .ff-detail { min-width: 0; max-height: calc(100dvh - var(--horni-lista) - 40px); overflow-y: auto; position: sticky; top: var(--horni-lista); }
+        .ff-detail > div { border: none !important; }
+        .ff-radek { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; background: #fff; border: none; border-bottom: 1px solid #EEF0F3; padding: 9px 12px; cursor: pointer; font-family: inherit; font-size: 12.5px; color: #1F2937; }
+        .ff-radek:hover { background: #F5F7FA; }
+        .ff-radek.on { background: #E8F0F8; box-shadow: inset 3px 0 0 #0E3B5E; }
+        .ff-radek:focus-visible { outline: 2px solid #0E3B5E; outline-offset: -2px; }
+        .ff-r1, .ff-r2 { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+        .ff-r1 b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ff-r1 > span { color: #6B7280; font-size: 11.5px; white-space: nowrap; }
+        .ff-r2 > span { color: #4B5563; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ff-r2 > b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .ff-r3 { display: flex; gap: 4px; flex-wrap: wrap; }
+        .ff-r3 > span { border-radius: 999px; padding: 0 7px; font-size: 10.5px; font-weight: 700; }
+      `}</style>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: "#475569", maxWidth: 640 }}>
+          Faktury od dodavatelů čekají na přiřazení. U každé řádky zkontroluj návrh (zakázka nebo sklad) a potvrď —
+          teprve potom se zapíše <b>náklad zakázky</b> nebo <b>příjem na sklad</b>.
+        </div>
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          {prirazkaPole == null ? (
+            <button type="button" onClick={() => setPrirazkaPole(String(prirazka))} title="Prodejní cena materiálu = nákup + přirážka (když produkt nemá vlastní prodejní cenu)"
+              style={{ background: "#eff6ff", border: "1px solid #bfdbfe", color: "#0369a1", borderRadius: 999, padding: "4px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+              Přirážka na materiál: {String(prirazka).replace(".", ",")} % ✏️
+            </button>
+          ) : (
+            <span style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "#334155" }}>
+              Přirážka na materiál
+              <input style={{ ...pole, width: 60 }} inputMode="decimal" autoFocus value={prirazkaPole} aria-label="Výchozí přirážka na materiál v procentech"
+                onChange={(e) => setPrirazkaPole(e.target.value)} /> %
+              <button type="button" style={tl("#0369a1")} onClick={async () => {
+                const pct = cisloPole(prirazkaPole);
+                if (pct == null || Number.isNaN(pct) || pct < 0) { setZprava({ chyba: true, text: "Přirážka musí být číslo (např. 30)." }); return; }
+                const { error } = await ulozitPrirazku(pct);
+                if (error) { setZprava({ chyba: true, text: "Přirážku se nepodařilo uložit: " + error.message }); return; }
+                setPrirazka(pct); setPrirazkaPole(null);
+                setZprava({ chyba: false, text: `✓ Výchozí přirážka na materiál je ${String(pct).replace(".", ",")} % — platí pro celou firmu (fronta faktur i výdej ze skladu).` });
+              }}>Uložit</button>
+              <button type="button" style={tlObrys()} onClick={() => setPrirazkaPole(null)}>Zrušit</button>
+            </span>
+          )}
+          <label style={{ fontSize: 13, color: "#334155", display: "flex", gap: 6, alignItems: "center" }}>
+            <input type="checkbox" checked={vyrizene} onChange={(e) => setVyrizene(e.target.checked)} /> Zobrazit i vyřízené
+          </label>
+        </div>
+      </div>
+
+      {zprava && (
+        <div role={zprava.chyba ? "alert" : "status"} style={{ borderRadius: 10, padding: "9px 12px", marginBottom: 12, fontSize: 13, background: zprava.chyba ? "#fef2f2" : "#f0fdf4", color: zprava.chyba ? "#991b1b" : "#166534", border: `1px solid ${zprava.chyba ? "#fecaca" : "#bbf7d0"}` }}>{zprava.text}</div>
+      )}
+
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 14px", marginBottom: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3, minWidth: 220, flex: "1 1 220px" }}>
+          Dodavatel
+          <select style={{ ...pole, maxWidth: "none" }} value={filtrDodavatel} onChange={(e) => setFiltrDodavatel(e.target.value)}>
+            <option value="">Všichni dodavatelé ({faktury.length})</option>
+            {dodavatele.map(([d, c]) => <option key={d} value={d}>{d} ({c})</option>)}
+          </select>
+        </label>
+        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>
+          Období (vystavení)
+          <select style={pole} value={filtrObdobi} onChange={(e) => setFiltrObdobi(e.target.value)}>
+            {OBDOBI.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+          </select>
+        </label>
+        {filtrObdobi === "vlastni" && (
+          <>
+            <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>Od<input type="date" style={pole} value={filtrOd} onChange={(e) => setFiltrOd(e.target.value)} /></label>
+            <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>Do<input type="date" style={pole} value={filtrDo} onChange={(e) => setFiltrDo(e.target.value)} /></label>
+          </>
+        )}
+        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3 }}>
+          Štítek
+          <select style={pole} value={filtrStitek} onChange={(e) => setFiltrStitek(e.target.value)}>
+            <option value="">Všechny štítky</option>
+            <option value="__bez">Bez štítku ({faktury.filter((x) => !(x.stitky || []).length).length})</option>
+            {vsechnyStitky.map((t) => <option key={t} value={t}>{t} ({pocetSeStitkem(t)})</option>)}
+          </select>
+        </label>
+        <label style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 3, flex: "1 1 160px" }}>
+          Hledat
+          <input type="search" style={{ ...pole, maxWidth: "none" }} value={hledat} placeholder="číslo faktury, VS, IČO…" onChange={(e) => setHledat(e.target.value)} />
+        </label>
+        {filtrovano && <button type="button" style={tlObrys()} onClick={() => { setFiltrDodavatel(""); setFiltrObdobi("vse"); setFiltrOd(""); setFiltrDo(""); setHledat(""); setFiltrStitek(""); }}>✕ Zrušit filtry</button>}
+        <div style={{ flexBasis: "100%", fontSize: 12, color: "#475569" }}>
+          Zobrazeno <b>{zobrazene.length}</b> z {faktury.length} faktur · celkem <b>{fmtKc(Math.round(soucetSDph))}</b> s DPH
+          {bezRadku > 0 && <span style={{ color: "#b45309" }}> · {bezRadku} bez vyčtených řádek (přidej řádek ručně)</span>}
+        </div>
+      </div>
+
+      {!zobrazene.length && (
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, textAlign: "center", color: "#64748b", fontSize: 14 }}>
+          {faktury.length ? "Filtrům neodpovídá žádná faktura." : vyrizene ? "Ve frontě nejsou žádné faktury." : "✓ Žádné faktury nečekají na přiřazení."}
+        </div>
+      )}
+
+      {siroke && zobrazene.length > 0 ? (
+        <div className="ff-panely">
+          <div className="ff-seznam" role="list" aria-label="Doklady ve frontě">
+            {zobrazene.map((f) => radekSeznamu(f, vybrana?.id === f.id))}
+          </div>
+          <div className="ff-detail">{vybrana && kartaFaktury(vybrana, true)}</div>
+        </div>
+      ) : zobrazene.map((f) => kartaFaktury(f, false))}
 
       {zmena && (
         <div role="dialog" aria-modal="true" aria-labelledby="fronta-zmena" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
