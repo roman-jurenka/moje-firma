@@ -22,6 +22,7 @@ import FrontaFaktur from "./FrontaFaktur.jsx";
 import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 import { seraditPodleShody } from "./hledani.js";
 import HledaniVsude from "./HledaniVsude.jsx";
+import MujDen from "./MujDen.jsx";
 import PenizeVisi from "./PenizeVisi.jsx";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
 import FirmaAres from "./FirmaAres.jsx";
@@ -1537,15 +1538,18 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       <div className="main-content" style={S.main}>
 
         {/* ── DASHBOARD ── */}
-        {tab === "dashboard" && myEmpId && todayRecord && !todayRecord.checkout && (
+        {tab === "dashboard" && myEmpId && todayRecord && !todayRecord.checkout && !(currentUser?.role === "employee" || currentUser?.role === "hr") && (
           <PracePruh todayRecord={todayRecord} onOtevrit={() => setRychle(true)} onFotky={() => setTab("fotoupload")} />
         )}
         {tab === "dashboard" && (currentUser?.role === "employee" || currentUser?.role === "hr"
-          ? <EmployeeDashboard
+          ? <>
+            {myEmpId && <MujDen currentUser={currentUser} employees={employees} attendance={attendance} setAttendance={setAttendance} todayRecord={todayRecord} onPrichod={checkin} setTab={setTab} />}
+            <EmployeeDashboard
               currentUser={currentUser} attendance={attendance} tasks={tasks} setTasks={setTasks}
               employees={employees} toggleTask={toggleTaskGlobal} setTab={setTab}
               setNotifications={setNotifications}
             />
+            </>
           : <Dashboard
               customers={customers} deals={deals} tasks={tasks} invoices={invoices}
               products={products} employees={employees} projects={projects}
