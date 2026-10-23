@@ -73,6 +73,14 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
   const [formular, setFormular] = useState(null);     // nový / upravovaný ticket
   const [detailId, setDetailId] = useState(null);
   const [ukladam, setUkladam] = useState(false);
+  // Tři panely (Outlook): na širokém displeji seznam ticketů vlevo, detail vpravo
+  const [siroke, setSiroke] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1180px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1180px)");
+    const h = (e) => setSiroke(e.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  }, []);
 
   useEffect(() => {
     let q = supabase.from("service_tickets").select("*").order("created_at", { ascending: false });
@@ -335,13 +343,15 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
             {tickety.length === 0 ? "Zatím žádné servisní tickety." : "Tady teď nic není."}
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={siroke && !vlozeny ? { display: "grid", gridTemplateColumns: "minmax(300px, 0.9fr) minmax(0, 1.4fr)", gap: 12, alignItems: "start" } : undefined}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, ...(siroke && !vlozeny ? { maxHeight: "calc(100dvh - var(--horni-lista) - 40px)", overflowY: "auto", position: "sticky", top: "var(--horni-lista)" } : {}) }}>
             {viditelne.map((t) => {
               const k = zakazka(t.contract_id);
               const poTerminu = t.termin && t.termin < dnes() && !UZAVRENE.includes(t.stav);
               return (
-                <button key={t.id} type="button" onClick={() => setDetailId(t.id)}
+                <button key={t.id} type="button" onClick={() => setDetailId(t.id)} aria-current={siroke && !vlozeny && (detail || viditelne[0])?.id === t.id ? "true" : undefined}
                   style={{ ...ui.karta, padding: "12px 16px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
+                    ...(siroke && !vlozeny && (detail || viditelne[0])?.id === t.id ? { background: "#E8F0F8", borderColor: "#0E3B5E66" } : {}),
                     borderLeft: `4px solid ${PRIORITY.find(([p]) => p === t.priorita)?.[1] || ui.barvy.okraj}` }}>
                   <div style={{ flex: "1 1 260px", minWidth: 0 }}>
                     <div style={{ fontSize: 12, color: ui.barvy.textSlaby, fontWeight: 700 }}>{t.cislo} · {t.placeny ? "Placený" : "Záruka"}{nakladyTicketu[t.id]?.naklad ? ` · náklad ${kc0(nakladyTicketu[t.id].naklad)}` : ""}{t.priorita === "Vysoká" ? " · spěchá" : ""}</div>
@@ -357,6 +367,18 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
               );
             })}
           </div>
+          {siroke && !vlozeny && (() => {
+            const d = detail && viditelne.some((x) => x.id === detail.id) ? detail : viditelne[0];
+            return d && !formular ? (
+              <div style={{ position: "sticky", top: "var(--horni-lista)", maxHeight: "calc(100dvh - var(--horni-lista) - 40px)", overflowY: "auto", border: `1px solid ${ui.barvy.okraj}`, borderRadius: 8, background: "#fff" }}>
+                <DetailTicketu key={d.id} vPanelu t={d} zakazka={zakazka(d.contract_id)} zakaznik={zakaznik(d.customer_id)} technik={technik(d.technik_id)}
+                  employees={employees} currentUser={currentUser} onZavrit={() => setDetailId(null)} onUpravit={() => otevritFormular(d)}
+                  onStav={(st) => zmenitStav(d, st)} onReseni={(rr) => ulozitReseni(d, rr)}
+                  onZmena={(nove) => setTickety((ts) => ts.map((x) => (x.id === nove.id ? nove : x)))} onFakturaVystavena={onFakturaVystavena} />
+              </div>
+            ) : null;
+          })()}
+          </div>
         )}
 
       {formular && (
@@ -365,7 +387,7 @@ export default function Servis({ contracts: zakazkyProps = [], customers: zakazn
           technici={technici} pevnaZakazka={vlozeny} ukladam={ukladam} onUlozit={ulozitTicket} />
       )}
 
-      {detail && !formular && (
+      {detail && !formular && !(siroke && !vlozeny) && (
         <DetailTicketu key={detail.id} t={detail} zakazka={zakazka(detail.contract_id)} zakaznik={zakaznik(detail.customer_id)} technik={technik(detail.technik_id)}
           employees={employees} currentUser={currentUser} onZavrit={() => setDetailId(null)} onUpravit={() => otevritFormular(detail)}
           onStav={(s) => zmenitStav(detail, s)} onReseni={(r) => ulozitReseni(detail, r)}
@@ -605,7 +627,7 @@ function FormularTicketu({ formular: f, setFormular, zakazky, zakaznici, zakazka
 }
 
 // ── Detail ticketu: stav, řešení, fotky, práce a materiál ──
-function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, onZavrit, onUpravit, onStav, onReseni, onZmena, onFakturaVystavena }) {
+function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, onZavrit, onUpravit, onStav, onReseni, onZmena, onFakturaVystavena, vPanelu = false }) {
   const [reseni, setReseni] = useState(t.reseni || "");
   const [fotky, setFotky] = useState([]);
   const [naklady, setNaklady] = useState([]);
@@ -674,8 +696,8 @@ function DetailTicketu({ t, zakazka, zakaznik, technik, employees, currentUser, 
   const nadpisSekce = { fontWeight: 800, fontSize: 14 };
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`Ticket ${t.cislo}`} style={ui.okno} onClick={(e) => { if (e.target === e.currentTarget) onZavrit(); }}>
-      <div style={{ ...ui.oknoObsah, width: 640, textAlign: "left", display: "flex", flexDirection: "column", gap: 12 }}>
+    <div role={vPanelu ? "region" : "dialog"} aria-modal={vPanelu ? undefined : "true"} aria-label={`Ticket ${t.cislo}`} style={vPanelu ? undefined : ui.okno} onClick={(e) => { if (!vPanelu && e.target === e.currentTarget) onZavrit(); }}>
+      <div style={vPanelu ? { padding: 16, textAlign: "left", display: "flex", flexDirection: "column", gap: 12 } : { ...ui.oknoObsah, width: 640, textAlign: "left", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
           <div>
             <div style={{ fontSize: 12, color: ui.barvy.textSlaby, fontWeight: 700 }}>{t.cislo} · {t.placeny ? "Placený servis" : "Záruka"} · priorita {t.priorita.toLowerCase()}</div>
