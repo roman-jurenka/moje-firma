@@ -226,6 +226,70 @@ export const FORMULARE = [
     },
   },
 
+  // ── EG.D – instalační dokument VM A1 (pole v PDF jsou jen čísla) ──────────
+  {
+    id: "egd_a1", nazev: "EG.D – Instalační dokument VM typu A1", ikona: "⚡", soubor: "Instalacni dokument VM A1 EGD",
+    sablona: "/formulare/egd-a1-nesynchro.pdf",
+    plati: (z) => ["FVE", "FVR", "FVO", "REA"].includes(z?.typ) && /EG\.?D/i.test(String(z?.podklady?.odberne?.distribuce || "")),
+    sekce: [
+      { nazev: "Subjekt provádějící instalaci", pole: [
+        { id: "i_jmeno", label: "Název", sirka: 2 }, { id: "i_ico", label: "IČO" }, { id: "i_adresa", label: "Adresa / sídlo", sirka: 2 },
+        { id: "i_zastoupena", label: "Zastoupen" }, { id: "i_mobil", label: "Telefon" }, { id: "i_email", label: "E-mail" }, { id: "i_datum", label: "Datum podpisu" },
+      ] },
+      { nazev: "Žadatel (vlastník smlouvy o připojení)", pole: [
+        { id: "z_jmeno", label: "Jméno (název)", sirka: 2 }, { id: "z_ico", label: "IČO / datum narození" }, { id: "z_adresa", label: "Adresa / sídlo", sirka: 2 },
+        { id: "z_or", label: "Zapsaná v OR / ŽR" }, { id: "z_zastoupena", label: "Zastoupen" }, { id: "z_mobil", label: "Telefon" }, { id: "z_email", label: "E-mail" }, { id: "z_datum", label: "Datum podpisu" },
+      ] },
+      { nazev: "Specifikace výrobny", pole: [
+        { id: "smlouva", label: "Číslo smlouvy o připojení" }, { id: "hladina", label: "Napěťová hladina" },
+        { id: "ean_odber", label: "EAN odběru" }, { id: "ean_dodavka", label: "EAN dodávky" }, { id: "v_adresa", label: "Adresa instalované výrobny", sirka: 2 },
+      ] },
+      { nazev: "Informace o VM", pole: [
+        { id: "zdroj", label: "Zdroj primární energie" }, { id: "vm_kw", label: "Instalovaný výkon VM [kW]" }, { id: "vm_kva", label: "[kVA]" },
+        { id: "s_kw", label: "Střídač – výkon [kW]" }, { id: "s_kva", label: "[kVA]" }, { id: "s_vyrobce", label: "Výrobce střídače" }, { id: "s_typ", label: "Typ" },
+        { id: "s_sn", label: "Výrobní číslo", sirka: 2 }, { id: "s_fw", label: "Verze FW", sirka: 2 }, { id: "s_nastaveni", label: "Nastavení / skupina" },
+        { id: "a_vyrobce", label: "Akumulace – výrobce" }, { id: "a_typ", label: "Typ" }, { id: "a_kw", label: "Výkon [kW]" }, { id: "a_kwh", label: "Kapacita [kWh]" },
+        { id: "p_kwp", label: "Panely – celkem [kWp]" }, { id: "p_pocet", label: "Počet" }, { id: "p_vyrobce", label: "Výrobce panelů" }, { id: "p_typ", label: "Typ" },
+        { id: "certifikaty", label: "Body 1–14 doloženy certifikátem", typ: "check" },
+      ] },
+      { nazev: "A) Certifikát zařízení", pole: [
+        { id: "c_vydal", label: "Vydán akreditovanou autoritou", sirka: 2 }, { id: "c_cislo", label: "Číslo certifikátu" },
+        { id: "c_platnost", label: "Platnost do" }, { id: "c_datum", label: "Datum vydání" },
+      ] },
+    ],
+    pamatovat: ["i_zastoupena", "hladina", "zdroj", "s_vyrobce", "s_fw", "s_nastaveni", "c_vydal", "c_cislo", "c_platnost", "c_datum"],
+    predvyplnit(ctx) {
+      // stejné podklady jako ČEZ, jen adresy jsou v jednom poli a EAN celý
+      const c = FORMULARE.find((f) => f.id === "cez_a1").predvyplnit(ctx);
+      const adr = (u, cp, psc, obec) => [[u, cp].filter(Boolean).join(" "), [psc, obec].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+      const zk = ctx.zakaznik || {};
+      return {
+        ...c,
+        i_adresa: adr(c.i_ulice, c.i_cp, c.i_psc, c.i_obec),
+        z_adresa: zk.sidlo || zk.address || adr(c.z_ulice, c.z_cp, c.z_psc, c.z_obec),
+        v_adresa: ctx.z?.misto_adresa || adr(c.v_ulice, c.v_cp, c.v_psc, c.v_obec),
+        ean_odber: String(ctx.z?.udaje?.ean || "").replace(/\s/g, ""), c_platnost: "",
+      };
+    },
+    doPdf(h) {
+      // jednotky (kW, kVA, kWh, kWp) jsou ve formuláři natištěné → jen číslo
+      const j = (v) => String(v ?? "").replace(/\s*(kWp|kWh|kVA|kW)\s*$/i, "").trim();
+      const text = {
+        1: h.i_jmeno, 2: h.i_ico, 3: h.i_adresa, 4: h.i_zastoupena, 5: h.i_mobil, 6: h.i_email, 7: h.i_datum,
+        8: h.z_jmeno, 9: h.z_ico, 10: h.z_adresa, 11: h.z_or, 12: h.z_zastoupena, 13: h.z_mobil, 14: h.z_email, 15: h.z_datum,
+        16: h.smlouva, 17: h.hladina, 18: h.ean_odber, 19: h.ean_dodavka, 20: h.v_adresa,
+        24: h.zdroj, 25: j(h.vm_kw), 26: j(h.vm_kva),
+        27: j(h.s_kw), 28: j(h.s_kva), 29: h.s_vyrobce, 30: h.s_typ, 31: h.s_sn, 32: h.s_fw, 33: h.s_nastaveni,
+        34: h.a_vyrobce, 35: h.a_typ, 36: j(h.a_kw), 37: j(h.a_kwh),
+        38: j(h.p_kwp), 39: h.p_pocet, 40: h.p_vyrobce, 41: h.p_typ,
+        50: h.c_vydal, 51: h.c_cislo, 52: h.c_platnost, 53: h.c_datum,
+      };
+      const certifikaty = ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a0", "b1", "b2", "b3", "b4"];
+      const zaskrtnout = { a: true, b: false, ...Object.fromEntries(certifikaty.map((k) => [k, !!h.certifikaty])) };
+      return { text: Object.fromEntries(Object.entries(text).map(([k, v]) => [String(k), v])), zaskrtnout, vybrat: {} };
+    },
+  },
+
   // ── Protokol o nastavení ochran ────────────────────────────────────────────
   {
     id: "ochrany", nazev: "Protokol o nastavení ochran", ikona: "🛡️", soubor: "Protokol o nastaveni ochran", html: true,

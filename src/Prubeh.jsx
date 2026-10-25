@@ -3397,7 +3397,7 @@ export default function Prubeh({
       { id: "dokumenty", label: "Dokumenty", hodnota: (() => { const n = (fotkyZ[z.id] || []).filter((f) => !/\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(String(f.storage_path || f.url || "").split("?")[0]) || ["Dokumenty", "Předávací protokol", "Smlouva", "Revize", "Formulář"].includes(f.category)).length; return n ? `${n} ${n === 1 ? "soubor" : n < 5 ? "soubory" : "souborů"} + vygenerované` : "smlouvy, protokoly, faktury…"; })(), karta: <div style={{ ...karta, padding: 12 }}><DokumentyZakazky soubory={fotkyZ[z.id] || []} slozka={nazevSlozky(z)} contractId={z.contract_id} prubehId={z.id} typ={z.typ} vygenerovane={vygenerovaneZ} /></div> },
       ...(FORMULARE.some((f) => f.plati(z, zk)) ? [{
         id: "formulare", label: "Formuláře",
-        hodnota: (() => { const p = FORMULARE.filter((f) => f.plati(z, zk)); const v = p.filter((f) => z.dokumenty?.vyplnene?.[f.id]).length; return `${v}/${p.length} vyplněno · ${p.map((f) => f.id === "nzu_c2" ? "NZÚ Light" : f.id === "cez_a1" ? "ČEZ A1" : "ochrany").join(", ")}`; })(),
+        hodnota: (() => { const p = FORMULARE.filter((f) => f.plati(z, zk)); const v = p.filter((f) => z.dokumenty?.vyplnene?.[f.id]).length; return `${v}/${p.length} vyplněno · ${p.map((f) => f.id === "nzu_c2" ? "NZÚ Light" : f.id === "cez_a1" ? "ČEZ A1" : f.id === "egd_a1" ? "EG.D A1" : "ochrany").join(", ")}`; })(),
         karta: <div style={{ ...karta, padding: 12 }}><FormulareZakazky key={z.id} z={z} zakaznik={zk} slozka={nazevSlozky(z)} currentUser={currentUser}
           onUlozeno={(dokumenty) => setRows((rs) => rs.map((r) => (r.id === z.id ? { ...r, dokumenty } : r)))}
           onNahrano={(row) => setFotkyZ((m) => ({ ...m, [z.id]: [row, ...(m[z.id] || [])] }))} /></div>,
