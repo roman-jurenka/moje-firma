@@ -1,32 +1,35 @@
-// ─── Dokumenty zakázky: miniatury + otevřený náhled jako podklad ─────────────
-// Mřížka miniatur dokumentů zakázky (smlouvy, protokoly, formuláře, PDF, Office,
-// fotky dokumentů). Klik otevře NÁHLED V PANELU, který zůstane otevřený vedle
-// práce (na počítači přichycený vpravo nebo vlevo, jde zvětšit/zmenšit) —
-// slouží jako podklad při doplňování formulářů nebo pro kontrolu. Na telefonu
-// přes celou obrazovku.
-// Soubory z OneDrivu: miniatura i prohlížeč (PDF, Word, Excel) přes Microsoft
-// Graph. Soubory v Supabase Storage: podepsaná adresa, PDF v prohlížeči
-// prohlížeče, obrázky se zoomem.
+// ─── Dokumenty zakázky: miniatury, náhled a stažení ──────────────────────────
+// Na jednom místě všechny dokumenty zakázky:
+//  • složka Dokumenty zakázky na OneDrivu — vygenerované smlouvy, předávací
+//    protokoly, dodatky, odeslané nabídky i ručně nahrané soubory,
+//  • dokumenty nahrané do appky mimo OneDrive (contract_photos — PDF, skeny),
+//  • servisní zprávy podepsané u zákazníka (PDF),
+//  • vydané faktury k zakázce (náhled a PDF se vyrobí na klik).
+// Klik na miniaturu otevře NÁHLED V PANELU přichyceném k okraji obrazovky —
+// zůstane otevřený jako podklad při doplňování nebo pro kontrolu. Každý
+// dokument jde i stáhnout. Na telefonu je náhled přes celou obrazovku.
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "./supabase.js";
-import { getThumbnailUrl, getPreviewUrl, getDirectDownloadUrl } from "./onedrive.js";
+import { getThumbnailUrl, getPreviewUrl, getDirectDownloadUrl, isConnected, connectSharedAccount } from "./onedrive.js";
+import { seznamDokumentu } from "./dokumentyOneDrive.js";
+import { buildInvoicePreview, downloadInvoicePDF, cisloFaktury } from "./invoicingUtils.js";
 
 const OBRAZKY = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "avif"];
-const IKONY = { pdf: "📄", doc: "📝", docx: "📝", xls: "📊", xlsx: "📊", csv: "📊", zip: "🗜️", dwg: "📐", txt: "📃" };
-const PUBLIC = "/storage/v1/object/public/";
+const IKONY = { pdf: "📄", doc: "📝", docx: "📝", xls: "📊", xlsx: "📊", csv: "📊", zip: "🗜️", dwg: "📐", txt: "📃", faktura: "🧾", servis: "🔧" };
 const DOKUMENTOVE_KATEGORIE = ["Dokumenty", "Předávací protokol", "Smlouva", "Revize", "Formulář"];
+const PUBLIC = "/storage/v1/object/public/";
+const pripona = (jmeno) => (String(jmeno || "").split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1] || "").toLowerCase();
+const fmtDatum = (iso) => (iso ? new Date(iso).toLocaleDateString("cs-CZ") : "");
+// druh podle názvu vygenerovaného souboru
+const druhPodleJmena = (n) => (/smlouv/i.test(n) ? "Smlouva" : /protokol/i.test(n) ? "Předávací protokol" : /dodatek/i.test(n) ? "Dodatek" : /nab[ií]dk/i.test(n) ? "Nabídka" : /revi/i.test(n) ? "Revize" : "Dokument");
 
-const pripona = (f) => {
-  const z = String(f.storage_path || String(f.url || "").split("?")[0]).split("/").pop();
-  return (z.match(/\.([a-z0-9]{2,5})$/i)?.[1] || "").toLowerCase();
-};
-const nazev = (f) => f.description || String(f.storage_path || f.url || "").replace(/^onedrive:/, "").split("/").pop() || "Dokument";
-// dokument = cokoli mimo obrázek, nebo obrázek v dokumentové kategorii (sken smlouvy…)
-const jeDokumentZakazky = (f) => !OBRAZKY.includes(pripona(f)) || DOKUMENTOVE_KATEGORIE.includes(f.category);
-
-async function podepsat(url) {
+async function podepsat(url, bucket) {
+  if (bucket) {
+    const { data } = await supabase.storage.from(bucket).createSignedUrl(url, 3600);
+    return data?.signedUrl || null;
+  }
   const i = String(url || "").indexOf(PUBLIC);
   if (i < 0) return url;
   const rest = url.slice(i + PUBLIC.length).split("?")[0];
@@ -35,39 +38,63 @@ async function podepsat(url) {
   return data?.signedUrl || url;
 }
 
-function Miniatura({ f, onClick, aktivni }) {
+// ── načtení obsahu pro náhled / stažení podle zdroje ──
+async function nacistNahled(d) {
+  if (d.zdroj === "od") {
+    if (OBRAZKY.includes(d.ext)) { const u = await getDirectDownloadUrl(d.itemId); return { druh: "img", url: u }; }
+    const pv = await getPreviewUrl(d.itemId);
+    return pv ? { druh: "iframe", url: pv } : { druh: "odkaz", url: d.webUrl };
+  }
+  if (d.zdroj === "faktura") return { druh: "html", html: await buildInvoicePreview(d.faktura, d.zakaznik) };
+  const u = await podepsat(d.url, d.bucket);
+  if (OBRAZKY.includes(d.ext)) return { druh: "img", url: u };
+  if (d.ext === "pdf") return { druh: "iframe", url: u };
+  return { druh: "odkaz", url: u };
+}
+async function stahnout(d) {
+  if (d.zdroj === "faktura") { await downloadInvoicePDF(d.faktura, d.zakaznik); return; }
+  const u = d.zdroj === "od" ? await getDirectDownloadUrl(d.itemId) : await podepsat(d.url, d.bucket);
+  if (!u) { alert("Soubor se nepodařilo stáhnout."); return; }
+  const a = document.createElement("a");
+  a.href = u; a.download = d.nazev; a.target = "_blank"; a.rel = "noreferrer";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function Miniatura({ d, onNahled, aktivni }) {
   const [src, setSrc] = useState(null);
-  const p = pripona(f);
-  const obrazek = OBRAZKY.includes(p);
+  const [stahuji, setStahuji] = useState(false);
   useEffect(() => {
     let zrus = false;
     (async () => {
       let u = null;
-      if (f.item_id) u = await getThumbnailUrl(f.item_id, "medium");
-      if (!u && obrazek) u = await podepsat(f.url);
+      if (d.zdroj === "od") u = await getThumbnailUrl(d.itemId, "medium");
+      else if (OBRAZKY.includes(d.ext)) u = await podepsat(d.url, d.bucket);
       if (!zrus) setSrc(u);
     })();
     return () => { zrus = true; };
-  }, [f.item_id, f.url, obrazek]);
+  }, [d.zdroj, d.itemId, d.url, d.bucket, d.ext]);
   return (
-    <button type="button" onClick={onClick} title={nazev(f)} aria-pressed={aktivni}
-      style={{ display: "flex", flexDirection: "column", gap: 4, padding: 0, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left", minWidth: 0 }}>
-      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", aspectRatio: "3 / 4", width: "100%", borderRadius: 8, overflow: "hidden", border: aktivni ? "2px solid #0E3B5E" : "1px solid #DDE2E8", background: "#F5F6F8" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+      <button type="button" onClick={onNahled} title={`Náhled: ${d.nazev}`} aria-pressed={aktivni}
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", aspectRatio: "3 / 4", width: "100%", borderRadius: 8, overflow: "hidden", border: aktivni ? "2px solid #0E3B5E" : "1px solid #DDE2E8", background: "#F5F6F8", cursor: "pointer", padding: 0 }}>
         {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
-          : <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: "#4B5563" }}><span style={{ fontSize: 28 }} aria-hidden="true">{IKONY[p] || "📎"}</span><b style={{ fontSize: 11, textTransform: "uppercase" }}>{p || "soubor"}</b></span>}
+          : <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: "#4B5563" }}><span style={{ fontSize: 28 }} aria-hidden="true">{IKONY[d.ikona || d.ext] || "📎"}</span><b style={{ fontSize: 11, textTransform: "uppercase" }}>{d.ikona === "faktura" ? "faktura" : d.ikona === "servis" ? "pdf" : d.ext || "soubor"}</b></span>}
+      </button>
+      <span title={d.nazev} style={{ fontSize: 11.5, color: "#1F2937", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.nazev}</span>
+      <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4, marginTop: -2 }}>
+        <span style={{ fontSize: 10.5, color: "#6B7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[d.kategorie, d.datum].filter(Boolean).join(" · ")}</span>
+        <button type="button" disabled={stahuji} onClick={async () => { setStahuji(true); try { await stahnout(d); } finally { setStahuji(false); } }} aria-label={`Stáhnout ${d.nazev}`} title="Stáhnout"
+          style={{ border: "1px solid #DDE2E8", background: "#fff", borderRadius: 6, padding: "1px 6px", cursor: "pointer", fontSize: 12 }}>{stahuji ? "…" : "⬇"}</button>
       </span>
-      <span style={{ fontSize: 11.5, color: "#1F2937", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nazev(f)}</span>
-      {f.category && <span style={{ fontSize: 10.5, color: "#6B7280", marginTop: -3 }}>{f.category}</span>}
-    </button>
+    </div>
   );
 }
 
-// Náhled v panelu (portál do <body>, zůstane otevřený nad vším)
 function NahledDokumentu({ soubory, index, onIndex, onZavrit }) {
-  const f = soubory[index];
-  const [obsah, setObsah] = useState(null); // { druh: "iframe"|"img"|"odkaz", url, stahnout }
+  const d = soubory[index];
+  const [obsah, setObsah] = useState(null);
   const [strana, setStrana] = useState("vpravo");
-  const [sirka, setSirka] = useState(46); // % šířky okna
+  const [sirka, setSirka] = useState(46);
   const [zoom, setZoom] = useState(1);
   const [mobil, setMobil] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   useEffect(() => {
@@ -77,46 +104,29 @@ function NahledDokumentu({ soubory, index, onIndex, onZavrit }) {
     return () => mq.removeEventListener("change", h);
   }, []);
   useEffect(() => {
-    if (!f) return undefined;
+    if (!d) return undefined;
     let zrus = false;
     Promise.resolve().then(() => { if (!zrus) { setObsah(null); setZoom(1); } });
-    (async () => {
-      const p = pripona(f);
-      if (OBRAZKY.includes(p)) {
-        const u = (f.item_id && await getDirectDownloadUrl(f.item_id)) || await podepsat(f.url);
-        if (!zrus) setObsah({ druh: "img", url: u, stahnout: u });
-        return;
-      }
-      if (f.item_id) {
-        const pv = await getPreviewUrl(f.item_id);
-        const dl = await getDirectDownloadUrl(f.item_id);
-        if (!zrus) setObsah(pv ? { druh: "iframe", url: pv, stahnout: dl || f.url } : { druh: "odkaz", url: f.url, stahnout: dl || f.url });
-        return;
-      }
-      const u = await podepsat(f.url);
-      if (!zrus) setObsah(p === "pdf" ? { druh: "iframe", url: u, stahnout: u } : { druh: "odkaz", url: u, stahnout: u });
-    })();
+    nacistNahled(d).then((o) => { if (!zrus) setObsah(o); }).catch(() => { if (!zrus) setObsah({ druh: "chyba" }); });
     return () => { zrus = true; };
-  }, [f]);
+  }, [d]);
   useEffect(() => {
     const k = (e) => {
       if (e.key === "Escape") onZavrit();
-      if (e.key === "ArrowRight" && e.altKey) onIndex((index + 1) % soubory.length);
-      if (e.key === "ArrowLeft" && e.altKey) onIndex((index - 1 + soubory.length) % soubory.length);
+      if (e.altKey && e.key === "ArrowRight") onIndex((index + 1) % soubory.length);
+      if (e.altKey && e.key === "ArrowLeft") onIndex((index - 1 + soubory.length) % soubory.length);
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [index, soubory.length, onIndex, onZavrit]);
-  if (!f) return null;
-
-  const tl = { background: "rgba(255,255,255,.14)", border: "none", color: "#fff", borderRadius: 6, padding: "5px 9px", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600 };
-  const okno = mobil
-    ? { position: "fixed", inset: 0, zIndex: 3000 }
+  if (!d) return null;
+  const tl = { background: "rgba(255,255,255,.14)", border: "none", color: "#fff", borderRadius: 6, padding: "5px 9px", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600, textDecoration: "none" };
+  const okno = mobil ? { position: "fixed", inset: 0, zIndex: 3000 }
     : { position: "fixed", top: "calc(var(--lista-h, 52px) + env(safe-area-inset-top))", bottom: 0, [strana === "vpravo" ? "right" : "left"]: 0, width: `${sirka}vw`, zIndex: 3000, boxShadow: "0 0 24px #0003" };
   return createPortal(
-    <div role="dialog" aria-label={`Náhled: ${nazev(f)}`} style={{ ...okno, background: "#1F2937", display: "flex", flexDirection: "column" }}>
+    <div role="dialog" aria-label={`Náhled: ${d.nazev}`} style={{ ...okno, background: "#1F2937", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#0E3B5E", color: "#fff", flexWrap: "wrap" }}>
-        <b style={{ flex: "1 1 160px", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 14 }} title={nazev(f)}>{nazev(f)}</b>
+        <b style={{ flex: "1 1 160px", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 14 }} title={d.nazev}>{d.nazev}</b>
         {soubory.length > 1 && <>
           <button type="button" style={tl} onClick={() => onIndex((index - 1 + soubory.length) % soubory.length)} aria-label="Předchozí dokument">‹</button>
           <span style={{ fontSize: 12, opacity: 0.8 }}>{index + 1} / {soubory.length}</span>
@@ -131,31 +141,87 @@ function NahledDokumentu({ soubory, index, onIndex, onZavrit }) {
           <button type="button" style={tl} onClick={() => setSirka((s) => (s >= 70 ? 34 : s + 12))} title="Širší / užší">{sirka >= 70 ? "⇥ užší" : "⇤ širší"}</button>
           <button type="button" style={tl} onClick={() => setStrana((s) => (s === "vpravo" ? "vlevo" : "vpravo"))} title="Přesunout na druhou stranu">⇄</button>
         </>}
-        {obsah?.stahnout && <a href={obsah.stahnout} target="_blank" rel="noreferrer" style={{ ...tl, textDecoration: "none" }}>↗ Otevřít</a>}
+        <button type="button" style={tl} onClick={() => stahnout(d)}>⬇ Stáhnout</button>
         <button type="button" style={{ ...tl, background: "rgba(255,255,255,.25)" }} onClick={onZavrit} aria-label="Zavřít náhled">✕</button>
       </div>
       <div style={{ flex: 1, overflow: "auto", background: "#F5F6F8", display: "flex", justifyContent: "center", alignItems: obsah?.druh === "img" ? "flex-start" : "stretch" }}>
         {!obsah ? <div style={{ margin: "auto", color: "#6B7280" }}>Načítám náhled…</div>
-          : obsah.druh === "img" ? <img src={obsah.url} alt={nazev(f)} style={{ width: `${zoom * 100}%`, maxWidth: "none", height: "auto", display: "block" }} />
-          : obsah.druh === "iframe" ? <iframe title={nazev(f)} src={obsah.url} style={{ flex: 1, width: "100%", border: "none", background: "#fff" }} />
-          : <div style={{ margin: "auto", textAlign: "center", color: "#374151", padding: 20 }}>Tento soubor nejde zobrazit přímo v aplikaci.<br /><a href={obsah.url} target="_blank" rel="noreferrer" style={{ color: "#0E3B5E", fontWeight: 700 }}>Otevřít v novém okně</a></div>}
+          : obsah.druh === "img" ? <img src={obsah.url} alt={d.nazev} style={{ width: `${zoom * 100}%`, maxWidth: "none", height: "auto", display: "block" }} />
+          : obsah.druh === "iframe" ? <iframe title={d.nazev} src={obsah.url} style={{ flex: 1, width: "100%", border: "none", background: "#fff" }} />
+          : obsah.druh === "html" ? <iframe title={d.nazev} srcDoc={`<!doctype html><meta charset="utf-8"><body style="margin:0;background:#fff">${obsah.html}</body>`} style={{ flex: 1, width: "100%", border: "none", background: "#fff" }} />
+          : <div style={{ margin: "auto", textAlign: "center", color: "#374151", padding: 20 }}>{obsah.druh === "chyba" ? "Náhled se nepodařilo načíst." : "Tento soubor nejde zobrazit přímo v aplikaci."}<br />
+            {obsah.url && <a href={obsah.url} target="_blank" rel="noreferrer" style={{ color: "#0E3B5E", fontWeight: 700 }}>Otevřít v novém okně</a>}{" "}
+            <button type="button" onClick={() => stahnout(d)} style={{ border: "none", background: "none", color: "#0E3B5E", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Stáhnout</button></div>}
       </div>
     </div>,
     document.body,
   );
 }
 
-// Mřížka miniatur; klik otevře náhled v panelu.
-export default function DokumentyZakazky({ soubory = [], prazdne = "Zatím žádné dokumenty — nahraj je přes Fotky / Nahrát do: Dokumenty." }) {
-  const docs = soubory.filter(jeDokumentZakazky);
+// slozka = název složky zakázky na OneDrivu (jako u fotek), contractId = zakázka
+export default function DokumentyZakazky({ soubory = [], slozka, contractId }) {
+  const [od, setOd] = useState(null);           // soubory ze složky Dokumenty na OneDrivu (null = načítám)
+  const [ostatni, setOstatni] = useState({ servis: [], faktury: [], zakaznik: null });
   const [otevreny, setOtevreny] = useState(null);
-  if (!docs.length) return <div style={{ fontSize: 13, color: "#6B7280" }}>{prazdne}</div>;
+
+  useEffect(() => {
+    let zrus = false;
+    (async () => {
+      let seznam = [];
+      try {
+        if (slozka && (isConnected() || await connectSharedAccount())) seznam = (await seznamDokumentu(slozka))?.soubory || [];
+      } catch { seznam = []; }
+      if (!zrus) setOd(seznam.filter((x) => x.file));
+    })();
+    return () => { zrus = true; };
+  }, [slozka]);
+
+  useEffect(() => {
+    if (!contractId) return undefined;
+    let zrus = false;
+    (async () => {
+      const [{ data: tickety }, { data: faktury }, { data: k }] = await Promise.all([
+        supabase.from("service_tickets").select("id").eq("contract_id", contractId),
+        supabase.from("invoices").select("*").eq("contract_id", contractId).neq("status", "Storno").order("issued", { ascending: false }),
+        supabase.from("contracts").select("customer_id").eq("id", contractId).maybeSingle(),
+      ]);
+      const ids = (tickety || []).map((t) => t.id);
+      const { data: zpravy } = ids.length ? await supabase.from("servisni_zpravy").select("id, cislo, pdf_path, created_at").in("ticket_id", ids).not("pdf_path", "is", null) : { data: [] };
+      const { data: zk } = k?.customer_id ? await supabase.from("customers").select("*").eq("id", k.customer_id).maybeSingle() : { data: null };
+      if (!zrus) setOstatni({ servis: zpravy || [], faktury: (faktury || []).filter((f) => (f.invoice_type || "vydaná") === "vydaná"), zakaznik: zk });
+    })();
+    return () => { zrus = true; };
+  }, [contractId]);
+
+  // sjednocený seznam: OneDrive Dokumenty → nahrané v appce (mimo OneDrive) → servisní zprávy → faktury
+  const jmenaOD = new Set((od || []).map((x) => x.name));
+  const docs = [
+    ...(od || []).map((x) => ({ klic: `od-${x.id}`, zdroj: "od", itemId: x.id, webUrl: x.webUrl, nazev: x.name, ext: pripona(x.name), kategorie: druhPodleJmena(x.name), datum: fmtDatum(x.lastModifiedDateTime) })),
+    ...soubory.filter((f) => {
+      const ext = pripona(f.storage_path || f.url);
+      const dokument = !OBRAZKY.includes(ext) || DOKUMENTOVE_KATEGORIE.includes(f.category);
+      const jmeno = String(f.storage_path || "").replace(/^onedrive:/, "").split("/").pop();
+      return dokument && !jmenaOD.has(jmeno);
+    }).map((f) => {
+      const jmeno = f.description || String(f.storage_path || f.url || "").replace(/^onedrive:/, "").split("/").pop();
+      return f.item_id
+        ? { klic: `cp-${f.id}`, zdroj: "od", itemId: f.item_id, webUrl: f.url, nazev: jmeno, ext: pripona(f.storage_path || f.url), kategorie: f.category, datum: fmtDatum(f.created_at) }
+        : { klic: `cp-${f.id}`, zdroj: "st", url: f.url, nazev: jmeno, ext: pripona(f.storage_path || f.url), kategorie: f.category, datum: fmtDatum(f.created_at) };
+    }),
+    ...ostatni.servis.map((z) => ({ klic: `sz-${z.id}`, zdroj: "st", bucket: "servisni-zpravy", url: z.pdf_path, nazev: `Servisní zpráva ${z.cislo || ""}.pdf`.replace(" .pdf", ".pdf"), ext: "pdf", ikona: "servis", kategorie: "Servisní zpráva", datum: fmtDatum(z.created_at) })),
+    ...ostatni.faktury.map((f) => ({ klic: `fa-${f.id}`, zdroj: "faktura", faktura: f, zakaznik: ostatni.zakaznik, nazev: `${f.is_deposit ? "Záloha" : "Faktura"} ${cisloFaktury(f)}`, ext: "pdf", ikona: "faktura", kategorie: f.is_deposit ? "Zálohová faktura" : "Faktura", datum: fmtDatum(f.issued) })),
+  ];
+
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(92px, 1fr))", gap: 10 }}>
-        {docs.map((f, i) => <Miniatura key={f.id || i} f={f} aktivni={otevreny === i} onClick={() => setOtevreny(i)} />)}
-      </div>
-      {otevreny != null && <NahledDokumentu soubory={docs} index={otevreny} onIndex={setOtevreny} onZavrit={() => setOtevreny(null)} />}
+      {od === null && <div style={{ fontSize: 12.5, color: "#6B7280", marginBottom: 6 }}>Načítám dokumenty…</div>}
+      {od !== null && !docs.length && <div style={{ fontSize: 13, color: "#6B7280" }}>Zatím žádné dokumenty. Vygenerované smlouvy a protokoly, nahrané dokumenty (Fotky → Nahrát do: Dokumenty), servisní zprávy a faktury se ukážou tady.</div>}
+      {docs.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: 12 }}>
+          {docs.map((d, i) => <Miniatura key={d.klic} d={d} aktivni={otevreny === i} onNahled={() => setOtevreny(i)} />)}
+        </div>
+      )}
+      {otevreny != null && docs[otevreny] && <NahledDokumentu soubory={docs} index={otevreny} onIndex={setOtevreny} onZavrit={() => setOtevreny(null)} />}
     </>
   );
 }
