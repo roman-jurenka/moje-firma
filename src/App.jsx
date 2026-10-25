@@ -1305,6 +1305,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           else if (druh === "faktura") setTab("invoices");
           else if (druh === "servis") setTab("servis");
           else if (druh === "produkt") setTab("warehouse");
+          else if (druh === "sn") {
+            if (x.prubeh_id && allowedTabs.includes("prubeh")) { setPrubehInitialId(x.prubeh_id); setTab("prubeh"); }
+            else if (x.contract_id) { setContractInitialId(x.contract_id); setTab("contracts"); }
+          }
           setSidebarOpen(false);
         }} />
       <DbChybaHlaska />

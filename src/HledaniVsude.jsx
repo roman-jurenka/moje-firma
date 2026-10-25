@@ -17,6 +17,7 @@ const SKUPINY = [
   { id: "faktura", nazev: "Faktury", ikona: "ti-file-invoice", barva: "#15803d", tab: "invoices" },
   { id: "servis", nazev: "Servis", ikona: "ti-tool", barva: "#0f766e", tab: "servis" },
   { id: "produkt", nazev: "Sklad", ikona: "ti-package", barva: "#b45309", tab: "warehouse" },
+  { id: "sn", nazev: "Výrobní čísla", ikona: "ti-barcode", barva: "#334155", tab: "prubeh" },
 ];
 const fmtKc = (n) => `${Math.round(Number(n) || 0).toLocaleString("cs-CZ")} Kč`;
 
@@ -25,7 +26,7 @@ const nactiNedavne = () => { try { return JSON.parse(localStorage.getItem(NEDAVN
 export default function HledaniVsude({ open, setOpen, customers = [], contracts = [], invoices = [], products = [], allowedTabs = [], onOtevrit }) {
   const [q, setQ] = useState("");
   const [aktivni, setAktivni] = useState(0);
-  const [dalsi, setDalsi] = useState({ prubeh: [], servis: [] }); // načte se při prvním otevření
+  const [dalsi, setDalsi] = useState({ prubeh: [], servis: [], sn: [] }); // načte se při prvním otevření
   const [nedavne, setNedavne] = useState(nactiNedavne);
   const nacteno = useRef(false);
   const seznam = useRef(null);
@@ -45,7 +46,8 @@ export default function HledaniVsude({ open, setOpen, customers = [], contracts 
     Promise.all([
       allowedTabs.includes("prubeh") ? supabase.from("zakazky_prubeh").select("id, nazev, typ, faze, stav, customer_id, contract_id, misto_adresa, misto_telefon").neq("stav", "prohrana") : Promise.resolve({ data: [] }),
       allowedTabs.includes("servis") ? supabase.from("service_tickets").select("id, cislo, nazev, stav, customer_id, contract_id, adresa, telefon, placeny") : Promise.resolve({ data: [] }),
-    ]).then(([p, s]) => setDalsi({ prubeh: p.data || [], servis: s.data || [] }));
+      allowedTabs.includes("prubeh") || allowedTabs.includes("contracts") ? supabase.from("vyrobni_cisla").select("id, sn, nazev, druh, contract_id, prubeh_id, dodavatel, faktura_cislo, zaruka_do") : Promise.resolve({ data: [] }),
+    ]).then(([p, s, sn]) => setDalsi({ prubeh: p.data || [], servis: s.data || [], sn: sn.data || [] }));
   }, [open, allowedTabs]);
 
   const zak = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers]);
@@ -64,6 +66,12 @@ export default function HledaniVsude({ open, setOpen, customers = [], contracts 
     }
     if (smi("servis")) for (const t of dalsi.servis) out.push({ druh: "servis", id: t.id, nazev: `${t.cislo || ""} ${t.nazev || ""}`.trim(), popis: [jmenoZak(t.customer_id), t.stav, t.placeny ? "placený" : "záruka"].filter(Boolean).join(" · "), hledat: [t.adresa, t.telefon].filter(Boolean).join(" "), data: t });
     if (smi("warehouse")) for (const p of products) out.push({ druh: "produkt", id: p.id, nazev: p.name || "Produkt", popis: [p.sku, p.stock != null ? `${p.stock} ${p.unit || ""}`.trim() : null].filter(Boolean).join(" · "), hledat: [p.category, p.supplier].filter(Boolean).join(" "), data: p });
+    // výrobní čísla → zakázka (Průběh, jinak Ekonomika zakázek)
+    for (const v of dalsi.sn || []) {
+      const pr = dalsi.prubeh.find((x) => x.id === v.prubeh_id || (v.contract_id && x.contract_id === v.contract_id));
+      const k = contracts.find((c) => c.id === v.contract_id);
+      out.push({ druh: "sn", id: v.id, nazev: `SN ${v.sn}`, popis: [v.nazev, pr?.nazev || k?.name, v.zaruka_do ? `záruka do ${new Date(v.zaruka_do + "T00:00:00").toLocaleDateString("cs-CZ")}` : null].filter(Boolean).join(" · "), hledat: [v.dodavatel, v.faktura_cislo].filter(Boolean).join(" "), data: { ...v, prubeh_id: pr?.id || v.prubeh_id } });
+    }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dalsi, contracts, customers, invoices, products, allowedTabs, zak]);

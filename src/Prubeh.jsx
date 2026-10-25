@@ -24,6 +24,7 @@ import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import { NA_STAROSTI, naStarosti, umi, dovednost, seraditPodleDovednosti } from "./dovednosti.js";
 import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import DokumentyZakazky from "./DokumentyZakazky.jsx";
+import VyrobniCisla from "./VyrobniCisla.jsx";
 import { PodkladyNahled, PodkladyFormular } from "./PodkladyZakazky.jsx";
 import PoleSNabidkou from "./PoleSNabidkou.jsx";
 import NaceneniRealizace from "./NaceneniRealizace.jsx";
@@ -3385,6 +3386,7 @@ export default function Prubeh({
       { id: "misto", label: "Zákazník a místo", hodnota: [zk?.company || zk?.name, String(z.misto_adresa || zk?.address || "").split(",")[0]].filter(Boolean).join(" · "), karta: kMisto },
       { id: "platby", label: "Platby", hodnota: fak.length ? `${fak.length} ${fak.length === 1 ? "faktura" : fak.length < 5 ? "faktury" : "faktur"} · ${kc(fak.reduce((a, i) => a + (Number(i.amount) || 0), 0))} bez DPH` : "zatím bez faktur", karta: kPlatby },
       { id: "dokumenty", label: "Dokumenty", hodnota: (() => { const n = (fotkyZ[z.id] || []).filter((f) => !/\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(String(f.storage_path || f.url || "").split("?")[0]) || ["Dokumenty", "Předávací protokol", "Smlouva", "Revize", "Formulář"].includes(f.category)).length; return n ? `${n} ${n === 1 ? "soubor" : n < 5 ? "soubory" : "souborů"} + vygenerované` : "smlouvy, protokoly, faktury…"; })(), karta: <div style={{ ...karta, padding: 12 }}><DokumentyZakazky soubory={fotkyZ[z.id] || []} slozka={nazevSlozky(z)} contractId={z.contract_id} vygenerovane={vygenerovaneZ} /></div> },
+      { id: "sn", label: "Výrobní čísla", hodnota: "SN zařízení, faktura, záruka, dokumenty", karta: <div style={{ ...karta, padding: 12 }}><VyrobniCisla key={z.id} contractId={z.contract_id || null} prubehId={z.id} currentUser={currentUser} /></div> },
       { id: "kdo", label: "Kdo", hodnota: [z.vlastnik_obchod, z.vlastnik_bo, z.vlastnik_re].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", "), karta: kKdo },
       (() => {
         const akce = akceZakazky(z).sort((a, b) => String(a.date).localeCompare(String(b.date)));
