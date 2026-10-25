@@ -23,6 +23,7 @@ import { zakazkaVeVyberu } from "./zakazkyVyber.js";
 import { seraditPodleShody } from "./hledani.js";
 import HledaniVsude from "./HledaniVsude.jsx";
 import MujDen from "./MujDen.jsx";
+import UkolyFazi from "./UkolyFazi.jsx";
 import PenizeVisi from "./PenizeVisi.jsx";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
 import FirmaAres from "./FirmaAres.jsx";
@@ -1552,14 +1553,16 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           </div>
         )}
         {tab === "dashboard" && myEmpId && !prehledFirmy && !(currentUser?.role === "employee" || currentUser?.role === "hr") && (
-          <MujDen currentUser={currentUser} employees={employees} attendance={attendance} setAttendance={setAttendance} todayRecord={todayRecord} onPrichod={checkin} setTab={setTab} />
+          <MujDen currentUser={currentUser} employees={employees} attendance={attendance} setAttendance={setAttendance} todayRecord={todayRecord} onPrichod={checkin} setTab={setTab}
+            tasks={tasks} onToggleTask={toggleTaskGlobal} onOtevritPrubeh={allowedTabs.includes("prubeh") ? (id) => { setPrubehInitialId(id); setTab("prubeh"); } : null} />
         )}
         {tab === "dashboard" && myEmpId && prehledFirmy && todayRecord && !todayRecord.checkout && !(currentUser?.role === "employee" || currentUser?.role === "hr") && (
           <PracePruh todayRecord={todayRecord} onOtevrit={() => setRychle(true)} onFotky={() => setTab("fotoupload")} />
         )}
         {tab === "dashboard" && (currentUser?.role === "employee" || currentUser?.role === "hr"
           ? <>
-            {myEmpId && <MujDen currentUser={currentUser} employees={employees} attendance={attendance} setAttendance={setAttendance} todayRecord={todayRecord} onPrichod={checkin} setTab={setTab} />}
+            {myEmpId && <MujDen currentUser={currentUser} employees={employees} attendance={attendance} setAttendance={setAttendance} todayRecord={todayRecord} onPrichod={checkin} setTab={setTab}
+              onOtevritPrubeh={allowedTabs.includes("prubeh") ? (id) => { setPrubehInitialId(id); setTab("prubeh"); } : null} />}
             <EmployeeDashboard
               currentUser={currentUser} attendance={attendance} tasks={tasks} setTasks={setTasks}
               employees={employees} toggleTask={toggleTaskGlobal} setTab={setTab}
@@ -1618,6 +1621,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
         {/* ── ÚKOLY ── */}
         {tab === "tasks" && <Tasks
+          onOtevritPrubeh={allowedTabs.includes("prubeh") ? (id) => { setPrubehInitialId(id); setTab("prubeh"); } : null}
           tasks={tasks} setTasks={setTasks} customers={customers}
           employees={employees} deals={deals} contracts={contracts}
           currentUser={currentUser}
@@ -3639,7 +3643,7 @@ function Communication({ communication, setCommunication, customers, deals, cont
 
 // ─── ÚKOLY ───────────────────────────────────────────────────────────────────
 
-function Tasks({ tasks, setTasks, customers, employees, deals, contracts, currentUser, notifications, setNotifications, modal, setModal, closeModal }) {
+function Tasks({ tasks, setTasks, customers, employees, deals, contracts, currentUser, notifications, setNotifications, modal, setModal, closeModal, onOtevritPrubeh }) {
   const [newT, setNewT] = useState({ title: "", due: "", priority: "Střední", customerId: "", contractId: "", dealId: "", assignedTo: "", visibleTo: [], photo_url: "", created_by: "", recurrence: "", recurrenceUntil: "" });
   const [showTaskPhotoPicker, setShowTaskPhotoPicker] = useState(false);
   const [taskUploading, setTaskUploading] = useState(false);
@@ -3828,7 +3832,7 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
   });
 
   const filteredUnsorted = filter === "mine"
-    ? visibleTasks.filter(t => t.created_by === myName || (t.visible_to || []).includes(myName))
+    ? visibleTasks.filter(t => t.created_by === myName || t.assigned_to === myName || (t.visible_to || []).includes(myName))
     : filter === "done" ? visibleTasks.filter(t => t.done)
     : filter === "open" ? visibleTasks.filter(t => !t.done)
     : visibleTasks;
@@ -3857,6 +3861,9 @@ function Tasks({ tasks, setTasks, customers, employees, deals, contracts, curren
         </div>
         {quickTaskToast && <div style={{ marginTop: 6, fontSize: 12, color: "#15803d", fontWeight: 600 }}>{quickTaskToast}</div>}
       </div>
+
+      {/* Jeden seznam: úkoly fází z Průběhu, kde jsem na řadě, + úkoly níže */}
+      <UkolyFazi ja={myName} onOtevrit={onOtevritPrubeh} />
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
         {[["all", "Vše"], ["open", "Otevřené"], ["mine", "Moje"], ["done", "Hotové"]].map(([k, l]) => (

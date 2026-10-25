@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabase.js";
 import { fazeById, ukolyPro, ukolHotovy } from "./prubehFaze.js";
+import UkolyFazi from "./UkolyFazi.jsx";
 import { PodkladyNahled } from "./PodkladyZakazky.jsx";
 import { nahratFotkuZakazky } from "./fotkyZakazky.js";
 import { dovednost, naStarosti } from "./dovednosti.js";
@@ -20,7 +21,7 @@ const inicialy = (j) => String(j || "?").trim().split(/\s+/).map((w) => w[0]).jo
 const POCASI = (k) => (k === 0 ? "☀️" : k <= 2 ? "🌤" : k === 3 ? "☁️" : k <= 48 ? "🌫" : k <= 67 ? "🌧" : k <= 77 ? "🌨" : k <= 82 ? "🌧" : k <= 86 ? "🌨" : "⛈");
 const obecZAdresy = (a) => String(a || "").split(",").map((x) => x.replace(/\d{3}\s?\d{2}/g, "").replace(/\d+[/\d]*/g, "").trim()).filter(Boolean).pop() || "";
 
-export default function MujDen({ currentUser, employees = [], attendance = [], setAttendance, todayRecord, onPrichod, setTab }) {
+export default function MujDen({ currentUser, employees = [], attendance = [], setAttendance, todayRecord, onPrichod, setTab, tasks = [], onToggleTask, onOtevritPrubeh }) {
   const mojeId = currentUser?.employeeId;
   const [akce, setAkce] = useState(null);       // dnešní akce z kalendáře s načtenou zakázkou
   const [otevrena, setOtevrena] = useState(null);
@@ -268,6 +269,37 @@ export default function MujDen({ currentUser, employees = [], attendance = [], s
           </div>
         );
       })}
+
+      {/* Moje úkoly z modulu Úkoly (i mimo zakázky): dnes a po termínu, pak bez termínu */}
+      {(() => {
+        const dnesIso = new Date().toLocaleDateString("sv-SE");
+        const moje = tasks.filter((t) => !t.done && t.assigned_to && t.assigned_to === currentUser?.name);
+        const naDnes = moje.filter((t) => t.due && t.due <= dnesIso).sort((a, b) => String(a.due).localeCompare(String(b.due)));
+        const bezTerminu = moje.filter((t) => !t.due);
+        const ukaz = [...naDnes, ...bezTerminu].slice(0, 6);
+        if (!ukaz.length) return null;
+        return (
+          <div style={{ ...st.karta, padding: "10px 12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+              <b style={{ fontSize: 14 }}>✓ Moje úkoly</b>
+              <button type="button" onClick={() => setTab?.("tasks")} style={{ background: "none", border: "none", color: "#0369a1", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Všechny ({moje.length}) →</button>
+            </div>
+            {ukaz.map((t) => {
+              const po = t.due && t.due < dnesIso;
+              return (
+                <label key={t.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "6px 0", borderTop: "1px solid #F1F3F6", fontSize: 14, cursor: "pointer" }}>
+                  <input type="checkbox" checked={false} onChange={() => onToggleTask?.(t.id)} style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0 }} />
+                  <span style={{ flex: 1 }}>{t.title}
+                    {(t.due || t.created_by) && <span style={{ display: "block", fontSize: 12, color: po ? "#b91c1c" : "#6B7280", fontWeight: po ? 700 : 400 }}>{t.due ? (t.due === dnesIso ? "dnes" : `termín ${new Date(t.due + "T00:00:00").toLocaleDateString("cs-CZ")}${po ? " — po termínu" : ""}`) : "bez termínu"}{t.created_by && t.created_by !== currentUser?.name ? ` · zadal ${t.created_by}` : ""}</span>}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      <UkolyFazi ja={currentUser?.name} onOtevrit={onOtevritPrubeh} kompakt />
 
       {pocasi && (pocasi.zitra.dest >= 50 || pocasi.zitra.vitr >= 40) && (
         <div style={{ ...st.karta, padding: "11px 12px", background: "#FFF7ED", borderColor: "#F8DDC2", color: "#9A5B13", fontSize: 13.5 }}>
