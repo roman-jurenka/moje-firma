@@ -349,6 +349,28 @@ export async function getDirectDownloadUrl(itemId) {
   }
 }
 
+// ─── NÁHLEDY DOKUMENTŮ (PDF, Word, Excel…) ───────────────────────────────────
+// Miniatura první stránky (OneDrive ji vyrobí i z PDF a Office souborů).
+export async function getThumbnailUrl(itemId, velikost = "large") {
+  if (!itemId) return null;
+  try {
+    const t = await graphGet(`/me/drive/items/${itemId}/thumbnails/0/${velikost}`);
+    return t?.url || null;
+  } catch {
+    return null;
+  }
+}
+// Adresa pro vložený prohlížeč (iframe) — listování, zoom, PDF i Office.
+export async function getPreviewUrl(itemId) {
+  if (!itemId) return null;
+  try {
+    const p = await graphPost(`/me/drive/items/${itemId}/preview`, {});
+    return p?.getUrl || null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── CESTA KE SLOŽCE ZAKÁZKY ──────────────────────────────────────────────────
 // zakazkaFolderPath("Novák Jan", "Fotky") → "FirmaCRM/Zakázky/Novák Jan/Fotky"
 export function zakazkaFolderPath(nazevZakazky, podslozka) {

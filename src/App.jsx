@@ -930,6 +930,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Přehled vedení: „Můj den“ (příchod/odchod, moje zakázky) ↔ „Přehled firmy“
+  const [prehledFirmy, setPrehledFirmy] = useState(() => { try { return localStorage.getItem("proudos_prehled_firmy") === "1"; } catch { return false; } });
+  const prepnoutPrehled = (v) => { setPrehledFirmy(v); try { localStorage.setItem("proudos_prehled_firmy", v ? "1" : "0"); } catch { /* bez paměti */ } };
   const [financePod, setFinancePod] = useState("tok");
   // Obnovit celou aplikaci: stáhne nejnovější verzi (service worker) a znovu
   // načte všechna data. Neuložené změny na obrazovce by se ztratily → potvrzení.
@@ -1538,7 +1541,20 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
       <div className="main-content" style={S.main}>
 
         {/* ── DASHBOARD ── */}
-        {tab === "dashboard" && myEmpId && todayRecord && !todayRecord.checkout && !(currentUser?.role === "employee" || currentUser?.role === "hr") && (
+        {tab === "dashboard" && myEmpId && !(currentUser?.role === "employee" || currentUser?.role === "hr") && (
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+            <div role="radiogroup" aria-label="Zobrazení přehledu" style={{ display: "inline-flex", background: "#E9EEF6", borderRadius: 999, padding: 3 }}>
+              {[[false, "🙋 Můj den"], [true, "🏢 Přehled firmy"]].map(([v, t]) => (
+                <button key={t} type="button" role="radio" aria-checked={prehledFirmy === v} onClick={() => prepnoutPrehled(v)}
+                  style={{ border: "none", borderRadius: 999, padding: "7px 16px", fontFamily: "inherit", fontWeight: 700, fontSize: 13.5, cursor: "pointer", background: prehledFirmy === v ? "#fff" : "transparent", color: prehledFirmy === v ? "#0E3B5E" : "#5F6368", boxShadow: prehledFirmy === v ? "0 1px 3px #0002" : "none", transition: "all .15s" }}>{t}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {tab === "dashboard" && myEmpId && !prehledFirmy && !(currentUser?.role === "employee" || currentUser?.role === "hr") && (
+          <MujDen currentUser={currentUser} employees={employees} attendance={attendance} setAttendance={setAttendance} todayRecord={todayRecord} onPrichod={checkin} setTab={setTab} />
+        )}
+        {tab === "dashboard" && myEmpId && prehledFirmy && todayRecord && !todayRecord.checkout && !(currentUser?.role === "employee" || currentUser?.role === "hr") && (
           <PracePruh todayRecord={todayRecord} onOtevrit={() => setRychle(true)} onFotky={() => setTab("fotoupload")} />
         )}
         {tab === "dashboard" && (currentUser?.role === "employee" || currentUser?.role === "hr"
@@ -1550,7 +1566,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
               setNotifications={setNotifications}
             />
             </>
-          : <Dashboard
+          : (!myEmpId || prehledFirmy) && <Dashboard
               customers={customers} deals={deals} tasks={tasks} invoices={invoices}
               products={products} employees={employees} projects={projects}
               totalRevenue={totalRevenue} pendingRevenue={pendingRevenue}
