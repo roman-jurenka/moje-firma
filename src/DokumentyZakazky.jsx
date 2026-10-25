@@ -1,7 +1,11 @@
 // ─── Dokumenty zakázky: miniatury, náhled a stažení ──────────────────────────
 // Na jednom místě všechny dokumenty zakázky:
-//  • složka Dokumenty zakázky na OneDrivu — vygenerované smlouvy, předávací
-//    protokoly, dodatky, odeslané nabídky i ručně nahrané soubory,
+//  • VYGENEROVANÉ (smlouva, předávací protokol, dodatky, nabídka) se berou
+//    přímo z aplikace z aktuálních údajů — náhled z HTML, stažení = Word
+//    ze šablony (prop vygenerovane, sestavuje Průběh),
+//  • z OneDrivu jen PODEPSANÉ / nahrané soubory ve složce Dokumenty (skeny,
+//    PDF) — vygenerované kopie (Smlouva o dílo…, Předávací protokol…,
+//    Dodatek…, Nabídka… .docx/.html) se přeskočí,
 //  • dokumenty nahrané do appky mimo OneDrive (contract_photos — PDF, skeny),
 //  • servisní zprávy podepsané u zákazníka (PDF),
 //  • vydané faktury k zakázce (náhled a PDF se vyrobí na klik).
@@ -17,7 +21,7 @@ import { seznamDokumentu } from "./dokumentyOneDrive.js";
 import { buildInvoicePreview, downloadInvoicePDF, cisloFaktury } from "./invoicingUtils.js";
 
 const OBRAZKY = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "avif"];
-const IKONY = { pdf: "📄", doc: "📝", docx: "📝", xls: "📊", xlsx: "📊", csv: "📊", zip: "🗜️", dwg: "📐", txt: "📃", faktura: "🧾", servis: "🔧" };
+const IKONY = { smlouva: "📜", protokol: "🤝", dodatek: "📎", nabidka: "💼", pdf: "📄", doc: "📝", docx: "📝", xls: "📊", xlsx: "📊", csv: "📊", zip: "🗜️", dwg: "📐", txt: "📃", faktura: "🧾", servis: "🔧" };
 const DOKUMENTOVE_KATEGORIE = ["Dokumenty", "Předávací protokol", "Smlouva", "Revize", "Formulář"];
 const PUBLIC = "/storage/v1/object/public/";
 const pripona = (jmeno) => (String(jmeno || "").split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1] || "").toLowerCase();
@@ -40,6 +44,7 @@ async function podepsat(url, bucket) {
 
 // ── načtení obsahu pro náhled / stažení podle zdroje ──
 async function nacistNahled(d) {
+  if (d.zdroj === "gen") return { druh: "html", html: await d.html() };
   if (d.zdroj === "od") {
     if (OBRAZKY.includes(d.ext)) { const u = await getDirectDownloadUrl(d.itemId); return { druh: "img", url: u }; }
     const pv = await getPreviewUrl(d.itemId);
@@ -52,6 +57,7 @@ async function nacistNahled(d) {
   return { druh: "odkaz", url: u };
 }
 async function stahnout(d) {
+  if (d.zdroj === "gen") { await d.stahnout(); return; }
   if (d.zdroj === "faktura") { await downloadInvoicePDF(d.faktura, d.zakaznik); return; }
   const u = d.zdroj === "od" ? await getDirectDownloadUrl(d.itemId) : await podepsat(d.url, d.bucket);
   if (!u) { alert("Soubor se nepodařilo stáhnout."); return; }
@@ -63,10 +69,12 @@ async function stahnout(d) {
 function Miniatura({ d, onNahled, aktivni }) {
   const [src, setSrc] = useState(null);
   const [stahuji, setStahuji] = useState(false);
+  const jenOdkaz = !!d.otevrit;
   useEffect(() => {
     let zrus = false;
     (async () => {
       let u = null;
+      if (d.zdroj === "gen" || d.zdroj === "odkaz") { if (!zrus) setSrc(null); return; }
       if (d.zdroj === "od") u = await getThumbnailUrl(d.itemId, "medium");
       else if (OBRAZKY.includes(d.ext)) u = await podepsat(d.url, d.bucket);
       if (!zrus) setSrc(u);
@@ -78,13 +86,13 @@ function Miniatura({ d, onNahled, aktivni }) {
       <button type="button" onClick={onNahled} title={`Náhled: ${d.nazev}`} aria-pressed={aktivni}
         style={{ display: "flex", alignItems: "center", justifyContent: "center", aspectRatio: "3 / 4", width: "100%", borderRadius: 8, overflow: "hidden", border: aktivni ? "2px solid #0E3B5E" : "1px solid #DDE2E8", background: "#F5F6F8", cursor: "pointer", padding: 0 }}>
         {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
-          : <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: "#4B5563" }}><span style={{ fontSize: 28 }} aria-hidden="true">{IKONY[d.ikona || d.ext] || "📎"}</span><b style={{ fontSize: 11, textTransform: "uppercase" }}>{d.ikona === "faktura" ? "faktura" : d.ikona === "servis" ? "pdf" : d.ext || "soubor"}</b></span>}
+          : <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: "#4B5563" }}><span style={{ fontSize: 28 }} aria-hidden="true">{IKONY[d.ikona || d.ext] || "📎"}</span><b style={{ fontSize: 11, textTransform: "uppercase" }}>{d.stitek || (d.ikona === "faktura" ? "faktura" : d.ikona === "servis" ? "pdf" : d.ext || "soubor")}</b></span>}
       </button>
       <span title={d.nazev} style={{ fontSize: 11.5, color: "#1F2937", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.nazev}</span>
       <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4, marginTop: -2 }}>
         <span style={{ fontSize: 10.5, color: "#6B7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[d.kategorie, d.datum].filter(Boolean).join(" · ")}</span>
-        <button type="button" disabled={stahuji} onClick={async () => { setStahuji(true); try { await stahnout(d); } finally { setStahuji(false); } }} aria-label={`Stáhnout ${d.nazev}`} title="Stáhnout"
-          style={{ border: "1px solid #DDE2E8", background: "#fff", borderRadius: 6, padding: "1px 6px", cursor: "pointer", fontSize: 12 }}>{stahuji ? "…" : "⬇"}</button>
+        {!jenOdkaz && <button type="button" disabled={stahuji} onClick={async () => { setStahuji(true); try { await stahnout(d); } finally { setStahuji(false); } }} aria-label={`Stáhnout ${d.nazev}`} title={d.zdroj === "gen" ? "Stáhnout Word ze šablony" : "Stáhnout"}
+          style={{ border: "1px solid #DDE2E8", background: "#fff", borderRadius: 6, padding: "1px 6px", cursor: "pointer", fontSize: 12 }}>{stahuji ? "…" : "⬇"}</button>}
       </span>
     </div>
   );
@@ -159,7 +167,9 @@ function NahledDokumentu({ soubory, index, onIndex, onZavrit }) {
 }
 
 // slozka = název složky zakázky na OneDrivu (jako u fotek), contractId = zakázka
-export default function DokumentyZakazky({ soubory = [], slozka, contractId }) {
+const VYGENEROVANY = /^(Smlouva o d[ií]lo|P[řr]ed[aá]vac[ií] protokol|Dodatek|Nab[ií]dka)\b.*\.(docx?|html?)$/i;
+
+export default function DokumentyZakazky({ soubory = [], slozka, contractId, vygenerovane = [] }) {
   const [od, setOd] = useState(null);           // soubory ze složky Dokumenty na OneDrivu (null = načítám)
   const [ostatni, setOstatni] = useState({ servis: [], faktury: [], zakaznik: null });
   const [otevreny, setOtevreny] = useState(null);
@@ -171,7 +181,7 @@ export default function DokumentyZakazky({ soubory = [], slozka, contractId }) {
       try {
         if (slozka && (isConnected() || await connectSharedAccount())) seznam = (await seznamDokumentu(slozka))?.soubory || [];
       } catch { seznam = []; }
-      if (!zrus) setOd(seznam.filter((x) => x.file));
+      if (!zrus) setOd(seznam.filter((x) => x.file && !VYGENEROVANY.test(x.name)));
     })();
     return () => { zrus = true; };
   }, [slozka]);
@@ -196,6 +206,7 @@ export default function DokumentyZakazky({ soubory = [], slozka, contractId }) {
   // sjednocený seznam: OneDrive Dokumenty → nahrané v appce (mimo OneDrive) → servisní zprávy → faktury
   const jmenaOD = new Set((od || []).map((x) => x.name));
   const docs = [
+    ...vygenerovane.map((g) => ({ ...g, zdroj: g.otevrit ? "odkaz" : "gen", ext: "docx", ikona: g.ikona || "docx" })),
     ...(od || []).map((x) => ({ klic: `od-${x.id}`, zdroj: "od", itemId: x.id, webUrl: x.webUrl, nazev: x.name, ext: pripona(x.name), kategorie: druhPodleJmena(x.name), datum: fmtDatum(x.lastModifiedDateTime) })),
     ...soubory.filter((f) => {
       const ext = pripona(f.storage_path || f.url);
@@ -215,10 +226,10 @@ export default function DokumentyZakazky({ soubory = [], slozka, contractId }) {
   return (
     <>
       {od === null && <div style={{ fontSize: 12.5, color: "#6B7280", marginBottom: 6 }}>Načítám dokumenty…</div>}
-      {od !== null && !docs.length && <div style={{ fontSize: 13, color: "#6B7280" }}>Zatím žádné dokumenty. Vygenerované smlouvy a protokoly, nahrané dokumenty (Fotky → Nahrát do: Dokumenty), servisní zprávy a faktury se ukážou tady.</div>}
+      {od !== null && !docs.length && <div style={{ fontSize: 13, color: "#6B7280" }}>Zatím žádné dokumenty. Vygenerované smlouvy, protokoly a dodatky, podepsané skeny (Fotky → Nahrát do: Dokumenty), servisní zprávy a faktury se ukážou tady.</div>}
       {docs.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: 12 }}>
-          {docs.map((d, i) => <Miniatura key={d.klic} d={d} aktivni={otevreny === i} onNahled={() => setOtevreny(i)} />)}
+          {docs.map((d, i) => <Miniatura key={d.klic} d={d} aktivni={otevreny === i} onNahled={() => (d.otevrit ? d.otevrit() : setOtevreny(i))} />)}
         </div>
       )}
       {otevreny != null && docs[otevreny] && <NahledDokumentu soubory={docs} index={otevreny} onIndex={setOtevreny} onZavrit={() => setOtevreny(null)} />}

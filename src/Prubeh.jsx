@@ -3303,10 +3303,20 @@ export default function Prubeh({
     const fak = (fakturyZ[z.id] || []).filter((i) => i.status !== "Storno" && (i.invoice_type || "vydaná") === "vydaná");
     const kc = (n) => `${Math.round(Number(n) || 0).toLocaleString("cs-CZ")} Kč`;
     const vl = (id) => ({ otevreno: !!rozbaleneVl[id], onPrepnout: () => setRozbaleneVl((m) => ({ ...m, [id]: !m[id] })) });
+    // vygenerované dokumenty — vždy z aktuálních údajů zakázky (náhled HTML, stažení Word ze šablony)
+    const dokZ = z.dokumenty || {};
+    const datumZ = (x) => (x?.at ? new Date(x.at).toLocaleDateString("cs-CZ") : "");
+    const qZ = z.quote_id ? quoteById(z.quote_id) : null;
+    const vygenerovaneZ = [
+      ...(dokZ.smlouva ? [{ klic: "g-smlouva", nazev: "Smlouva o dílo", ikona: "smlouva", stitek: "smlouva", kategorie: "vygenerovaná", datum: datumZ(dokZ.smlouva), html: async () => htmlSmlouvy(podkladyDokumentu(z)), stahnout: () => souborDokumentu(z, "smlouva") }] : []),
+      ...(dokZ.protokol ? [{ klic: "g-protokol", nazev: "Předávací protokol", ikona: "protokol", stitek: "protokol", kategorie: "vygenerovaný", datum: datumZ(dokZ.protokol), html: async () => htmlProtokolu({ ...podkladyDokumentu(z), protokol: nastaveniProtokolu(z) }), stahnout: () => souborDokumentu(z, "protokol") }] : []),
+      ...(dokZ.dodatky || []).map((dod) => ({ klic: `g-dodatek-${dod.cislo}`, nazev: `Dodatek č. ${dod.cislo}`, ikona: "dodatek", stitek: "dodatek", kategorie: dod.popis || "vygenerovaný", datum: datumZ(dod), html: async () => htmlDodatku(podkladyDokumentu(z), dod), stahnout: () => souborDokumentu(z, "dodatek", dod) })),
+      ...(qZ && onOtevritNaceneni ? [{ klic: "g-nabidka", nazev: `Nabídka ${qZ.cislo || qZ.name || ""}`.trim(), ikona: "nabidka", stitek: "nabídka", kategorie: qZ.status || "v Nacenění", otevrit: () => onOtevritNaceneni(z.quote_id) }] : []),
+    ];
     const vlastnosti = [
       { id: "misto", label: "Zákazník a místo", hodnota: [zk?.company || zk?.name, String(z.misto_adresa || zk?.address || "").split(",")[0]].filter(Boolean).join(" · "), karta: kMisto },
       { id: "platby", label: "Platby", hodnota: fak.length ? `${fak.length} ${fak.length === 1 ? "faktura" : fak.length < 5 ? "faktury" : "faktur"} · ${kc(fak.reduce((a, i) => a + (Number(i.amount) || 0), 0))} bez DPH` : "zatím bez faktur", karta: kPlatby },
-      { id: "dokumenty", label: "Dokumenty", hodnota: (() => { const n = (fotkyZ[z.id] || []).filter((f) => !/\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(String(f.storage_path || f.url || "").split("?")[0]) || ["Dokumenty", "Předávací protokol", "Smlouva", "Revize", "Formulář"].includes(f.category)).length; return n ? `${n} ${n === 1 ? "soubor" : n < 5 ? "soubory" : "souborů"} + vygenerované` : "smlouvy, protokoly, faktury…"; })(), karta: <div style={{ ...karta, padding: 12 }}><DokumentyZakazky soubory={fotkyZ[z.id] || []} slozka={nazevSlozky(z)} contractId={z.contract_id} /></div> },
+      { id: "dokumenty", label: "Dokumenty", hodnota: (() => { const n = (fotkyZ[z.id] || []).filter((f) => !/\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(String(f.storage_path || f.url || "").split("?")[0]) || ["Dokumenty", "Předávací protokol", "Smlouva", "Revize", "Formulář"].includes(f.category)).length; return n ? `${n} ${n === 1 ? "soubor" : n < 5 ? "soubory" : "souborů"} + vygenerované` : "smlouvy, protokoly, faktury…"; })(), karta: <div style={{ ...karta, padding: 12 }}><DokumentyZakazky soubory={fotkyZ[z.id] || []} slozka={nazevSlozky(z)} contractId={z.contract_id} vygenerovane={vygenerovaneZ} /></div> },
       { id: "kdo", label: "Kdo", hodnota: [z.vlastnik_obchod, z.vlastnik_bo, z.vlastnik_re].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", "), karta: kKdo },
       { id: "podklady", label: "Podklady", hodnota: `${pv.hotovo} / ${pv.celkem} vyplněno`, upozorneni: pv.hotovo === 0, karta: kPodklady },
       { id: "fotky", label: "Fotky", hodnota: fotekZ ? `${fotekZ} ${fotekZ === 1 ? "soubor" : fotekZ < 5 ? "soubory" : "souborů"}` : "zatím žádné", karta: kFotky },
