@@ -201,7 +201,7 @@ const S = {
   label:    ui.popisek,
   btn:      (c) => ui.tlacitko(c),
   btnGhost: ui.tlacitkoObrys(),
-  modal:    { position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 },
+  modal:    { position: "fixed", inset: 0, background: "#0007", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
   modalBox: { background: "#ffffff", borderRadius: 16, padding: 28, width: 500, maxWidth: "92vw", boxSizing: "border-box", border: "1px solid #e2e8f0", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #0000001a" },
   th:       { textAlign: "left", padding: "8px 10px", fontSize: 11, color: "#475569", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.06em" },
   td:       { padding: "10px 10px", fontSize: 13, borderBottom: "1px solid #e2e8f0", color: "#475569" },
@@ -362,6 +362,14 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
+  // Detail zakázky přes celou stránku (tlačítko ⛶), zavře se ✕ nebo Esc
+  const [celaId, setCelaId] = useState(null);
+  useEffect(() => {
+    if (!celaId) return undefined;
+    const h = (e) => { if (e.key === "Escape" && !document.querySelector("[role=dialog]")) setCelaId(null); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [celaId]);
   const [siroke, setSiroke] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1180px)").matches);
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1180px)");
@@ -932,6 +940,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 📑
               </button>
               <button
+                onClick={() => setCelaId(celaId === contract.id ? null : contract.id)}
+                title={celaId === contract.id ? "Zpět (Esc)" : "Zobrazit na celou stránku"}
+                aria-label={celaId === contract.id ? "Zmenšit zobrazení" : "Zobrazit na celou stránku"}
+                style={{ background: celaId === contract.id ? "#0E3B5E" : "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", color: celaId === contract.id ? "#fff" : "#334155", cursor: "pointer", fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
+                {celaId === contract.id ? "✕" : "⛶"}
+              </button>
+              <button
                 onClick={() => deleteContract(contract.id)}
                 title="Smazat zakázku"
                 style={{ background: "#f8717111", border: "1px solid #f8717133", borderRadius: 8, padding: "6px 10px", color: "#f87171", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
@@ -1454,6 +1469,21 @@ export default function Contracts({ customers, employees, currentUser, initialDe
           </div>
         );
       })() : pageContracts.map(contract => kartaZakazky(contract, false))}
+
+      {celaId && contracts.some(c => c.id === celaId) && (
+        <div role="region" aria-label="Zakázka na celou stránku"
+          style={{ position: "fixed", inset: 0, zIndex: 900, background: "#F5F6F8", overflowY: "auto", padding: "16px clamp(12px, 3vw, 40px) 40px" }}>
+          <div style={{ maxWidth: 1500, margin: "0 auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <button onClick={() => setCelaId(null)} style={{ ...S.btnGhost, padding: "6px 14px" }}>← Zpět na seznam</button>
+              <span style={{ fontSize: 12, color: "#64748b" }}>Esc = zavřít</span>
+            </div>
+            <div style={{ background: "#fff", border: "1px solid #E3E6EA", borderRadius: 10 }}>
+              {kartaZakazky(contracts.find(c => c.id === celaId), true)}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* STRÁNKOVÁNÍ */}
       {totalPages > 1 && (
