@@ -53,6 +53,8 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
   const [uprava, setUprava] = useState(null); // { k, ridic, km, poznamka, soukroma }
   const [hromadne, setHromadne] = useState({}); // datum → contract_id pro zaškrtnuté jízdy
   const [mapa, setMapa] = useState(null); // { rezim, datum, auto } — otevřená mapa
+  const [akceMesice, setAkceMesice] = useState(null); // kalendář: kdo kde byl naplánovaný
+  const [autoInfo, setAutoInfo] = useState(0); // kolik jízd se přiřadilo podle kalendáře
 
   useEffect(() => {
     let zruseno = false;
@@ -64,7 +66,9 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
       supabase.from("gps_jizdy").select("*").gte("datum", od).lte("datum", doo).order("datum", { ascending: false }).order("zacatek"),
       supabase.from("gps_jizdy_stav").select("*").gte("datum", od).lte("datum", doo),
       supabase.from("app_settings").select("value").eq("key", "gps_sync_stav").maybeSingle(),
-    ]).then(([v, j, s, info]) => {
+      supabase.from("calendar_events").select("date, employee_id, contract_id, prubeh_id, address").gte("date", od).lte("date", doo),
+      supabase.from("zakazky_prubeh").select("id, contract_id, misto_adresa"),
+    ]).then(([v, j, s, info, ak, pr]) => {
       if (zruseno) return;
       const e = [v, j, s].find((x) => x.error)?.error;
       if (e) setChyba(e.message);
@@ -72,6 +76,9 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
       setJizdy(j.data || []);
       setStavy(Object.fromEntries((s.data || []).map((x) => [klic(x), x])));
       setSyncInfo(info.data?.value || null);
+      // akce z kalendáře doplněné o zakázku (u novějších je jen prubeh_id)
+      const prubeh = Object.fromEntries((pr.data || []).map((x) => [x.id, x]));
+      setAkceMesice((ak.data || []).map((e) => ({ ...e, contract_id: e.contract_id || prubeh[e.prubeh_id]?.contract_id || null, misto: prubeh[e.prubeh_id]?.misto_adresa || null })).filter((e) => e.contract_id));
     });
     return () => { zruseno = true; };
   }, [mesic]);
@@ -126,7 +133,7 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
     const k = klic(j);
     const puvodni = { ...(stavy[k] || {}) };
     delete puvodni.updated_at;
-    const radek = { ...puvodni, vozidlo_kod: j.vozidlo_kod, datum: j.datum, zacatek: hm(j.zacatek), ...zmena, updated_at: new Date().toISOString() };
+    const radek = { ...puvodni, vozidlo_kod: j.vozidlo_kod, datum: j.datum, zacatek: hm(j.zacatek), ...zmena, ...("contract_id" in zmena ? { auto_zdroj: null } : {}), updated_at: new Date().toISOString() };
     const { data, error } = await supabase.from("gps_jizdy_stav").upsert(radek, { onConflict: "vozidlo_kod,datum,zacatek" }).select().single();
     if (error) { setChyba("Nepodařilo se uložit: " + error.message); return; }
     setStavy((s) => ({ ...s, [k]: data }));
@@ -162,6 +169,39 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
     if (error) { setChyba("Řidiče se nepodařilo uložit: " + error.message); return; }
     setVozidla((vs) => vs.map((v) => (v.kod === kod ? { ...v, ridic_employee_id: empId ? Number(empId) : null } : v)));
   };
+
+  // Automatické přiřazení podle kalendáře: řidič měl ten den naplánovanou
+  // zakázku a jízda končí na její adrese → zakázka se přiřadí sama. Jen u jízd,
+  // na které ještě nikdo nesáhl (bez řádku stavu) — ruční odebrání tedy platí.
+  const kalendarNavrh = (j, st) => {
+    if (!akceMesice) return null;
+    const ridicId = st?.ridic_employee_id ?? vozidlo(j.vozidlo_kod)?.ridic_employee_id;
+    if (!ridicId || !j.do_adresa) return null;
+    let nej = null;
+    for (const e of akceMesice) {
+      if (e.date !== j.datum || String(e.employee_id) !== String(ridicId)) continue;
+      const c = zakazka(e.contract_id);
+      for (const a of [c?.address, e.misto, e.address].filter(Boolean)) {
+        const sh = shodaJizdy(j.do_adresa, a);
+        if (sh >= 0.6 && (!nej || sh > nej.s)) nej = { id: Number(e.contract_id), s: sh };
+      }
+    }
+    return nej;
+  };
+  useEffect(() => {
+    if (!jizdy || !akceMesice || !vozidla.length) return;
+    const radky = jizdy.filter((j) => !stavy[klic(j)]).map((j) => ({ j, n: kalendarNavrh(j, null) })).filter((x) => x.n)
+      .map(({ j, n }) => ({ vozidlo_kod: j.vozidlo_kod, datum: j.datum, zacatek: hm(j.zacatek), contract_id: n.id, auto_zdroj: "kalendar", updated_at: new Date().toISOString() }));
+    if (!radky.length) return;
+    let zruseno = false;
+    supabase.from("gps_jizdy_stav").upsert(radky, { onConflict: "vozidlo_kod,datum,zacatek", ignoreDuplicates: true }).select().then(({ data, error }) => {
+      if (zruseno || error) return;
+      setStavy((s) => { const n = { ...s }; for (const x of data || []) if (!n[klic(x)]) n[klic(x)] = x; return n; });
+      setAutoInfo((data || []).length);
+    });
+    return () => { zruseno = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jizdy, akceMesice, vozidla]);
 
   const zobrazene = useMemo(() => (jizdy || [])
     .filter((j) => !auto || j.vozidlo_kod === auto)
@@ -218,6 +258,7 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
       </div>
       {syncInfo && <div style={{ fontSize: 12, color: syncInfo.ok ? "#64748b" : "#b91c1c" }}>{syncInfo.ok ? "✓" : "⚠"} Poslední stažení z GPS Dozoru: {new Date(syncInfo.cas).toLocaleString("cs-CZ")}{syncInfo.ok ? "" : ` — chyba: ${syncInfo.chyba}`} · stahuje se samo 2× denně</div>}
       {chyba && <div role="alert" style={{ color: "#b91c1c", fontSize: 13 }}>{chyba}</div>}
+      {autoInfo > 0 && <div role="status" style={{ background: "#e0f2fe", color: "#075985", borderRadius: 8, padding: "6px 10px", fontSize: 13 }}>📅 {autoInfo} {autoInfo === 1 ? "jízda se přiřadila" : autoInfo < 5 ? "jízdy se přiřadily" : "jízd se přiřadilo"} k zakázce automaticky podle kalendáře (řidič tam měl naplánovanou práci). Zkontroluj je a případně změň.</div>}
 
       {jizdy === null ? <div style={{ color: "#64748b" }}>Načítám jízdy…</div> : !dny.length ? <div style={{ color: "#64748b" }}>V tomto měsíci nejsou žádné jízdy{jenCekajici ? " ke schválení" : ""}.</div> : dny.map(([datum, js]) => {
         const neschv = js.filter((j) => !stavy[klic(j)]?.schvaleno);
@@ -281,6 +322,7 @@ export default function JizdyGps({ currentUser, employees = [], contracts = [] }
                             {infoKlic === `n${klic(j)}` && <div id={`info-${klic(j)}`}>{infoZakazky(nv, j, nvs.s)}</div>}</div>}
                           {prirazena && <div style={{ fontSize: 11, color: "#15803d", position: "relative" }}>
                             <span tabIndex={0} {...hoverProps(`p${klic(j)}`)} style={{ cursor: "help", textDecoration: "underline dotted" }}>✓ přiřazeno{prirazena.code ? ` · ${prirazena.code}` : ""}</span>
+                            {st?.auto_zdroj === "kalendar" && <span title="Řidič měl ten den tuhle zakázku v kalendáři a jízda končí na její adrese" style={{ marginLeft: 6, background: "#e0f2fe", color: "#0369a1", borderRadius: 999, padding: "0 7px", fontWeight: 700 }}>📅 automaticky z kalendáře</span>}
                             {infoKlic === `p${klic(j)}` && infoZakazky(prirazena, j, prirazena.address ? shodaJizdy(j.do_adresa, prirazena.address) : null)}</div>}
                         </td>
                         <td style={{ ...td, whiteSpace: "nowrap" }}>

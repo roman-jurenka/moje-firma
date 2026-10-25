@@ -1119,40 +1119,68 @@ export default function Prubeh({
 
   // ── Plánování lidí do kalendáře (kdo dělá střechu / elektro / uzemnění) ──
   // Akce v kalendáři patří k zakázce přes prubeh_id (nebo contract_id u starších).
-  const [planForm, setPlanForm] = useState(null); // { zakId, na_starosti, date, employee_id, poznamka }
+  const [planForm, setPlanForm] = useState(null); // { zakId, na_starosti, date, date_to, vikendy, lide: [id], poznamka }
   const akceZakazky = (zak) => calendarEvents.filter((e) => e.prubeh_id === zak.id || (zak.contract_id && e.contract_id === zak.contract_id));
   const otevritPlan = (zak, naStarostiId) => {
     const aktivni = employees.filter((e) => !e.archived);
     const prvni = seraditPodleDovednosti(aktivni, naStarostiId)[0];
     const zitra = new Date(Date.now() + 86400000).toLocaleDateString("sv-SE");
-    setPlanForm({ zakId: zak.id, na_starosti: naStarostiId || "cela", date: zitra, employee_id: prvni ? String(prvni.id) : "", poznamka: "" });
+    setPlanForm({ zakId: zak.id, na_starosti: naStarostiId || "cela", date: zitra, date_to: "", vikendy: false, lide: prvni ? [String(prvni.id)] : [], poznamka: "" });
+  };
+  // Dny rozsahu od–do (víkendy jen když jsou zaškrtnuté; jednodenní akce platí vždy)
+  const dnyPlanu = (od, doDne, vikendy) => {
+    if (!od) return [];
+    const konec = doDne && doDne > od ? doDne : od;
+    if (konec === od) return [od];
+    const [y, m, d] = od.split("-").map(Number);
+    const dny = [];
+    for (let dt = new Date(y, m - 1, d); dt.toLocaleDateString("sv-SE") <= konec && dny.length < 120; dt.setDate(dt.getDate() + 1)) {
+      const den = dt.getDay();
+      if (vikendy || (den !== 0 && den !== 6)) dny.push(dt.toLocaleDateString("sv-SE"));
+    }
+    return dny;
   };
   const ulozitPlan = async (zak) => {
     const p = planForm;
-    const emp = employees.find((e) => String(e.id) === String(p.employee_id));
-    if (!emp || !p.date) { alert("Vyber zaměstnance a datum."); return; }
+    const lide = (p.lide || []).map((id) => employees.find((e) => String(e.id) === String(id))).filter(Boolean);
+    const dny = dnyPlanu(p.date, p.date_to, p.vikendy);
+    if (!lide.length || !dny.length) { alert(!lide.length ? "Vyber aspoň jednoho člověka." : "V rozsahu není žádný pracovní den — zaškrtni víkendy nebo uprav datum."); return; }
+    // kdo už ten den na zakázce je (stejná část), nezakládat znovu
+    const uz = new Set(akceZakazky(zak).filter((e) => (e.na_starosti || null) === (p.na_starosti || null)).map((e) => `${e.employee_id}|${e.date}`));
     const ns = naStarosti(p.na_starosti);
     const zk = zakaznik(zak.customer_id) || {};
-    const payload = {
-      date: p.date, work_type: "Zakázka", title: `${ns ? ns.label + " – " : ""}${zak.nazev}`,
-      customer_name: zk.name || "", customer_company: zk.company || "", address: zak.misto_adresa || zk.address || "",
-      contact_name: zak.misto_kontakt || zk.name || "", contact_phone: zak.misto_telefon || zk.phone || "",
-      work_description: p.poznamka.trim() || null, contract_id: zak.contract_id || null, prubeh_id: zak.id,
-      employee_id: emp.id, employee_name: emp.name, na_starosti: p.na_starosti || null,
-    };
+    const radky = [];
+    for (const emp of lide) for (const den of dny) {
+      if (uz.has(`${emp.id}|${den}`)) continue;
+      radky.push({
+        date: den, work_type: "Zakázka", title: `${ns ? ns.label + " – " : ""}${zak.nazev}`,
+        customer_name: zk.name || "", customer_company: zk.company || "", address: zak.misto_adresa || zk.address || "",
+        contact_name: zak.misto_kontakt || zk.name || "", contact_phone: zak.misto_telefon || zk.phone || "",
+        work_description: p.poznamka.trim() || null, contract_id: zak.contract_id || null, prubeh_id: zak.id,
+        employee_id: emp.id, employee_name: emp.name, na_starosti: p.na_starosti || null,
+      });
+    }
+    if (!radky.length) { alert("Všichni vybraní už jsou na tyhle dny naplánovaní."); return; }
+    if (radky.length > 1 && !window.confirm(`Založí se ${radky.length} akcí v kalendáři (${dny.length} ${dny.length === 1 ? "den" : dny.length < 5 ? "dny" : "dní"} × ${lide.length} ${lide.length === 1 ? "člověk" : lide.length < 5 ? "lidé" : "lidí"}). Pokračovat?`)) return;
     setPracuji(true);
-    const { data, error } = await supabase.from("calendar_events").insert(payload).select().single();
+    const { data, error } = await supabase.from("calendar_events").insert(radky).select();
     setPracuji(false);
     if (error) { alert("Do kalendáře se nepodařilo uložit: " + error.message); return; }
-    if (setCalendarEvents) setCalendarEvents((prev) => [...prev, data]);
-    const kdy = new Date(p.date + "T00:00:00").toLocaleDateString("cs-CZ");
-    await pridatPoznamku(zak, `Naplánováno do kalendáře: ${ns ? `${ns.ikona} ${ns.label}` : "práce"} — ${emp.name}, ${kdy}.`, true);
-    // zaměstnanec dostane upozornění, co má na starosti
-    if (emp.name !== ja) {
-      await supabase.from("notifications").insert({ user_name: emp.name, title: "Práce v kalendáři", message: `${ja || "?"} ti naplánoval ${kdy}: ${ns ? ns.label : "práce"} – ${zak.nazev}`, link_type: "calendar", link_id: data.id });
-    }
+    if (setCalendarEvents) setCalendarEvents((prev) => [...prev, ...(data || [])]);
+    const d1 = (d) => new Date(d + "T00:00:00").toLocaleDateString("cs-CZ");
+    const kdy = dny.length === 1 ? d1(dny[0]) : `${d1(dny[0])} – ${d1(dny[dny.length - 1])} (${dny.length} dní)`;
+    const jmena = lide.map((e) => e.name).join(", ");
+    await pridatPoznamku(zak, `Naplánováno do kalendáře: ${ns ? `${ns.ikona} ${ns.label}` : "práce"} — ${jmena}, ${kdy}.`, true);
+    // každý naplánovaný dostane jedno upozornění (ne za každý den)
+    const kolegove = (emp) => lide.filter((x) => x.id !== emp.id).map((x) => x.name.split(" ")[0]);
+    const upozorneni = lide.filter((emp) => emp.name !== ja).map((emp) => {
+      const prvni = (data || []).find((e) => e.employee_id === emp.id);
+      const s = kolegove(emp);
+      return { user_name: emp.name, title: "Práce v kalendáři", message: `${ja || "?"} ti naplánoval ${kdy}: ${ns ? ns.label : "práce"} – ${zak.nazev}${s.length ? ` (s: ${s.join(", ")})` : ""}`, link_type: "calendar", link_id: prvni?.id || null };
+    });
+    if (upozorneni.length) await supabase.from("notifications").insert(upozorneni);
     setPlanForm(null);
-    ukazHlasku(`✓ ${emp.name} naplánován na ${kdy}${ns ? ` (${ns.label})` : ""}`);
+    ukazHlasku(`✓ Naplánováno: ${jmena} · ${kdy}${ns ? ` (${ns.label})` : ""}`);
   };
 
   // ── Checklist materiálu (úkol „Materiál objednaný“) ──
@@ -1773,9 +1801,13 @@ export default function Prubeh({
     const set = (patch) => setPlanForm({ ...p, ...patch });
     const aktivni = employees.filter((e) => !e.archived);
     const serazeni = seraditPodleDovednosti(aktivni, p.na_starosti);
-    const vybrany = employees.find((e) => String(e.id) === String(p.employee_id));
+    const vybrani = (p.lide || []).map((id) => employees.find((e) => String(e.id) === String(id))).filter(Boolean);
     const potreba = naStarosti(p.na_starosti)?.dovednost;
     const uzMaj = akceZakazky(z).filter((e) => e.na_starosti === p.na_starosti);
+    const dny = dnyPlanu(p.date, p.date_to, p.vikendy);
+    const prepnout = (id) => set({ lide: (p.lide || []).includes(String(id)) ? p.lide.filter((x) => x !== String(id)) : [...(p.lide || []), String(id)] });
+    // kdo má ve vybraných dnech už jinou akci (jiná zakázka)
+    const obsazeno = (empId) => calendarEvents.filter((e) => String(e.employee_id) === String(empId) && dny.includes(e.date) && e.prubeh_id !== z.id && !(z.contract_id && e.contract_id === z.contract_id));
     return (
       <div role="dialog" aria-modal="true" aria-label="Naplánovat do kalendáře" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
         onClick={(e) => { if (e.target === e.currentTarget) setPlanForm(null); }}>
@@ -1787,16 +1819,36 @@ export default function Prubeh({
               {NA_STAROSTI.map((x) => <option key={x.id} value={x.id}>{x.ikona} {x.label}</option>)}
             </select></div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div><label style={lbl} htmlFor="pr-plan-kdo">Kdo</label>
-              <select id="pr-plan-kdo" style={inp} value={p.employee_id} onChange={(e) => set({ employee_id: e.target.value })}>
-                <option value="">— vyber —</option>
-                {serazeni.map((e) => <option key={e.id} value={e.id}>{umi(e, p.na_starosti) === true ? "✓ " : ""}{e.name}</option>)}
-              </select></div>
-            <div><label style={lbl} htmlFor="pr-plan-den">Kdy</label>
-              <input id="pr-plan-den" type="date" style={inp} value={p.date} onChange={(e) => set({ date: e.target.value })} /></div>
+            <div><label style={lbl} htmlFor="pr-plan-den">Od</label>
+              <input id="pr-plan-den" type="date" style={inp} value={p.date} onChange={(e) => set({ date: e.target.value, date_to: p.date_to && p.date_to < e.target.value ? "" : p.date_to })} /></div>
+            <div><label style={lbl} htmlFor="pr-plan-do">Do (vícedenní práce)</label>
+              <input id="pr-plan-do" type="date" style={inp} min={p.date} value={p.date_to || ""} onChange={(e) => set({ date_to: e.target.value })} /></div>
           </div>
-          {vybrany && umi(vybrany, p.na_starosti) === false && (
-            <div style={{ fontSize: 12, color: "#b45309" }}>⚠️ {vybrany.name} nemá v profilu dovednost „{dovednost(potreba).label}“.{serazeni.some((e) => umi(e, p.na_starosti)) ? " Lidé s ✓ ji mají." : " Nikdo ji zatím v profilu nemá — doplň ji v Zaměstnancích."}</div>
+          {p.date_to && p.date_to > p.date && (
+            <div style={{ fontSize: 12, color: "#475569", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: -4 }}>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={!!p.vikendy} onChange={(e) => set({ vikendy: e.target.checked })} /> včetně víkendů</label>
+              <span>→ {dny.length} {dny.length === 1 ? "den" : dny.length < 5 ? "dny" : "dní"}</span>
+            </div>
+          )}
+          <div>
+            <div style={lbl}>Kdo (může jich být víc)</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {serazeni.map((e) => {
+                const zap = (p.lide || []).includes(String(e.id));
+                const jinde = obsazeno(e.id);
+                return (
+                  <button key={e.id} type="button" onClick={() => prepnout(e.id)} aria-pressed={zap}
+                    title={jinde.length ? `Ve vybraných dnech už má: ${jinde.map((x) => `${x.customer_name || x.title} (${new Date(x.date + "T00:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" })})`).join(", ")}` : "Ve vybraných dnech volno"}
+                    style={{ border: `1px solid ${zap ? "#0369a1" : "#cbd5e1"}`, background: zap ? "#0369a1" : "#fff", color: zap ? "#fff" : "#1A1A1A", borderRadius: 999, padding: "4px 10px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    {zap ? "✓ " : ""}{e.name}{umi(e, p.na_starosti) === true ? " ★" : ""}{jinde.length ? <span style={{ color: zap ? "#fde68a" : "#b45309" }}> · obsazen {jinde.length}×</span> : ""}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>★ = má dovednost „{potreba ? dovednost(potreba).label : "—"}“ · „obsazen“ = ve vybraných dnech má jinou akci</div>
+          </div>
+          {vybrani.filter((v) => umi(v, p.na_starosti) === false).length > 0 && (
+            <div style={{ fontSize: 12, color: "#b45309" }}>⚠️ {vybrani.filter((v) => umi(v, p.na_starosti) === false).map((v) => v.name).join(", ")} nemá v profilu dovednost „{dovednost(potreba).label}“.{serazeni.some((e) => umi(e, p.na_starosti)) ? " Lidé s ★ ji mají." : " Nikdo ji zatím v profilu nemá — doplň ji v Zaměstnancích."}</div>
           )}
           {uzMaj.length > 0 && <div style={{ fontSize: 12, color: "#475569" }}>Už naplánováno: {uzMaj.map((e) => `${e.employee_name} (${new Date(e.date + "T00:00:00").toLocaleDateString("cs-CZ")})`).join(", ")}</div>}
           <div><label style={lbl} htmlFor="pr-plan-pozn">Poznámka pro zaměstnance</label>
@@ -1804,7 +1856,7 @@ export default function Prubeh({
           <div style={{ fontSize: 12, color: "#64748b" }}>Zaměstnanec akci uvidí ve svém kalendáři (i v Outlooku) s tím, co má na starosti, a dostane upozornění.</div>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" style={btnGhost} onClick={() => setPlanForm(null)}>Zrušit</button>
-            <button type="button" style={btn("#0369a1")} disabled={pracuji || !p.employee_id || !p.date} onClick={() => ulozitPlan(z)}>Naplánovat</button>
+            <button type="button" style={btn("#0369a1")} disabled={pracuji || !(p.lide || []).length || !dny.length} onClick={() => ulozitPlan(z)}>Naplánovat{(p.lide || []).length * dny.length > 1 ? ` (${(p.lide || []).length * dny.length})` : ""}</button>
           </div>
         </div>
       </div>
@@ -3318,6 +3370,39 @@ export default function Prubeh({
       { id: "platby", label: "Platby", hodnota: fak.length ? `${fak.length} ${fak.length === 1 ? "faktura" : fak.length < 5 ? "faktury" : "faktur"} · ${kc(fak.reduce((a, i) => a + (Number(i.amount) || 0), 0))} bez DPH` : "zatím bez faktur", karta: kPlatby },
       { id: "dokumenty", label: "Dokumenty", hodnota: (() => { const n = (fotkyZ[z.id] || []).filter((f) => !/\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(String(f.storage_path || f.url || "").split("?")[0]) || ["Dokumenty", "Předávací protokol", "Smlouva", "Revize", "Formulář"].includes(f.category)).length; return n ? `${n} ${n === 1 ? "soubor" : n < 5 ? "soubory" : "souborů"} + vygenerované` : "smlouvy, protokoly, faktury…"; })(), karta: <div style={{ ...karta, padding: 12 }}><DokumentyZakazky soubory={fotkyZ[z.id] || []} slozka={nazevSlozky(z)} contractId={z.contract_id} vygenerovane={vygenerovaneZ} /></div> },
       { id: "kdo", label: "Kdo", hodnota: [z.vlastnik_obchod, z.vlastnik_bo, z.vlastnik_re].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", "), karta: kKdo },
+      (() => {
+        const akce = akceZakazky(z).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const dnes = new Date().toLocaleDateString("sv-SE");
+        const budouci = akce.filter((e) => e.date >= dnes);
+        const jmena = [...new Set(akce.map((e) => String(e.employee_name || "").split(" ")[0]).filter(Boolean))];
+        const dm = (d) => new Date(d + "T00:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" });
+        const vychozi = z.typ === "ELK" ? "elektroinstalace" : z.typ === "SRV" ? "servis" : "cela";
+        const poDnech = akce.reduce((m, e) => { (m[e.date] = m[e.date] || []).push(e); return m; }, {});
+        return {
+          id: "plan", label: "Plán práce",
+          hodnota: budouci.length ? `${new Set(budouci.map((e) => e.date)).size} dní · ${jmena.join(", ")} · od ${dm(budouci[0].date)}` : akce.length ? `proběhlo ${new Set(akce.map((e) => e.date)).size} dní · ${jmena.join(", ")}` : "nikdo naplánovaný",
+          karta: (
+            <div style={{ ...karta, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <b>📅 Plán práce v kalendáři</b>
+                <button type="button" style={btn("#0369a1")} onClick={() => otevritPlan(z, vychozi)}>📅 Naplánovat</button>
+              </div>
+              {akce.length === 0 ? <div style={{ fontSize: 13, color: "#94a3b8" }}>Zatím nikdo naplánovaný. Naplánuj lidi a dny — akce se objeví v Kalendáři i v Můj den.</div> : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {Object.entries(poDnech).map(([d, ev]) => (
+                    <div key={d} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 13, opacity: d < dnes ? 0.55 : 1 }}>
+                      <span style={{ minWidth: 70, fontWeight: 700, color: d === dnes ? "#0369a1" : "#334155" }}>{new Date(d + "T00:00:00").toLocaleDateString("cs-CZ", { weekday: "short" })} {dm(d)}</span>
+                      <span style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {ev.map((e) => <span key={e.id} style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 999, padding: "0 8px", fontSize: 12, fontWeight: 600 }}>{naStarosti(e.na_starosti)?.ikona || "👷"} {e.employee_name}</span>)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ),
+        };
+      })(),
       { id: "podklady", label: "Podklady", hodnota: `${pv.hotovo} / ${pv.celkem} vyplněno`, upozorneni: pv.hotovo === 0, karta: kPodklady },
       { id: "fotky", label: "Fotky", hodnota: fotekZ ? `${fotekZ} ${fotekZ === 1 ? "soubor" : fotekZ < 5 ? "soubory" : "souborů"}` : "zatím žádné", karta: kFotky },
       { id: "ukoly", label: "Úkoly", hodnota: "úkoly k zakázce", karta: kUkoly },

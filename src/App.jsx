@@ -7445,8 +7445,20 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
   const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
   const firstDayOfMonth = (y, m) => { const d = new Date(y, m, 1).getDay(); return (d + 6) % 7; };
 
-  const prevMonth = () => { if (viewMonth === 0) { setViewYear(y => y-1); setViewMonth(11); } else setViewMonth(m => m-1); };
-  const nextMonth = () => { if (viewMonth === 11) { setViewYear(y => y+1); setViewMonth(0); } else setViewMonth(m => m+1); };
+  // Týdenní zobrazení: řádky = zaměstnanci, sloupce = Po–Ne (plánovací tabule)
+  const pondeli = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  const [zobrazeni, setZobrazeni] = useState(() => { try { return localStorage.getItem("proudos_kalendar_zobrazeni") || "mesic"; } catch { return "mesic"; } });
+  const [tydenOd, setTydenOd] = useState(() => pondeli(today));
+  const zmenZobrazeni = (z) => {
+    setZobrazeni(z);
+    try { localStorage.setItem("proudos_kalendar_zobrazeni", z); } catch { /* bez úložiště */ }
+    if (z === "tyden") setTydenOd(viewYear === today.getFullYear() && viewMonth === today.getMonth() ? pondeli(today) : new Date(viewYear, viewMonth, 1 - ((new Date(viewYear, viewMonth, 1).getDay() + 6) % 7)));
+    else { setViewYear(tydenOd.getFullYear()); setViewMonth(tydenOd.getMonth()); }
+  };
+  const posunTyden = (o) => setTydenOd(d => { const x = new Date(d); x.setDate(x.getDate() + 7 * o); setViewYear(x.getFullYear()); setViewMonth(x.getMonth()); return x; });
+
+  const prevMonth = () => { if (zobrazeni === "tyden") return posunTyden(-1); if (viewMonth === 0) { setViewYear(y => y-1); setViewMonth(11); } else setViewMonth(m => m-1); };
+  const nextMonth = () => { if (zobrazeni === "tyden") return posunTyden(1); if (viewMonth === 11) { setViewYear(y => y+1); setViewMonth(0); } else setViewMonth(m => m+1); };
 
   const visibleEvents = calendarEvents.filter(e => {
     if (filterEmp === "all") return true;
@@ -7496,6 +7508,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
   // Vlastní akce se rovnou pošlou do Outlooku, cizí si dotáhne majitel.
   const saveEvent = async () => {
     const { date_to, vikendy, dalsi_zamestnanci, ...zaklad } = form;
+    if (form.work_type === "Zakázka" && !form.contract_id && !form.prubeh_id) { alert("U typu „Zakázka“ vyber zakázku — jinak se akce nepropojí s Průběhem, docházkou ani jízdami. Pro obecnou akci zvol jiný typ práce."); return; }
     const dny = dnyRozsahu(form.date, date_to, vikendy);
     if (dny.length === 0) { alert("V zadaném rozsahu není žádný pracovní den — zaškrtni „včetně víkendů“ nebo uprav datum."); return; }
     const hlavni = Number(isAdmin ? (form.employee_id || currentUser.id) : currentUser.id);
@@ -7572,6 +7585,93 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
   const startOffset = firstDayOfMonth(viewYear, viewMonth);
   const totalCells = Math.ceil((startOffset + numDays) / 7) * 7;
 
+  // Týden jako plánovací tabule: kdo je kde který den, prázdné políčko = volno
+  // (klik do něj založí akci pro toho člověka a ten den).
+  const vykresliTyden = () => {
+    const dny = Array.from({ length: 7 }, (_, i) => { const d = new Date(tydenOd); d.setDate(d.getDate() + i); return d; });
+    const dnyStr = dny.map(fmt2);
+    const todayStr = fmt2(today);
+    const vTydnu = visibleEvents.filter(e => e.date >= dnyStr[0] && e.date <= dnyStr[6]);
+    const aktivni = employees.filter(e => !e.archived && (!e.status || e.status !== "Neaktivní"));
+    let lide = filterEmp === "all" ? aktivni : employees.filter(e => String(e.id) === filterEmp);
+    const sAkci = new Set(vTydnu.map(e => String(e.employee_id)));
+    for (const e of employees) if (sAkci.has(String(e.id)) && !lide.some(l => l.id === e.id)) lide = [...lide, e];
+    const bezCloveka = vTydnu.filter(e => !employees.some(x => String(x.id) === String(e.employee_id)));
+    const ostatni = dnyStr.map(d => [...tasksOnDay(d).map(t => ({ typ: "t", t })), ...overdueInvoicesOnDay(d).map(inv => ({ typ: "i", inv }))]);
+    const novaAkce = (datum, empId) => {
+      if (!isAdmin && String(empId) !== String(currentUser.id)) return;
+      setEditEventId(null);
+      setForm({ ...prazdnyForm(), date: datum, employee_id: empId || currentUser?.id || "" });
+      setShowAdd(true);
+    };
+    const sloupce = "150px repeat(7, minmax(110px, 1fr))";
+    const bunka = { borderRight: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9", padding: 5, minHeight: 64 };
+    const karta = (ev) => {
+      const wt = WORK_TYPES[ev.work_type] || WORK_TYPES["Zakázka"];
+      const ns = naStarosti(ev.na_starosti);
+      return (
+        <div key={ev.id} onClick={(e) => { e.stopPropagation(); setDetailEvent(ev); }}
+          title={[ev.work_type, ev.title, ev.customer_name, ev.address].filter(Boolean).join(" · ")}
+          style={{ background: wt.bg, color: wt.color, borderLeft: `3px solid ${wt.color}`, borderRadius: 5, padding: "3px 6px", fontSize: 11, marginBottom: 3, cursor: "pointer", lineHeight: 1.3 }}>
+          <div style={{ fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ns ? `${ns.ikona} ` : ""}{ev.customer_name || ev.title || ev.work_type}</div>
+          {(ev.customer_name && ev.title) && <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.85 }}>{ev.title}</div>}
+          {ev.address && <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#64748b", fontSize: 10 }}>📍 {ev.address}</div>}
+        </div>
+      );
+    };
+    const radek = (klic, popisek, podnadpis, akceDne, empId) => (
+      <div key={klic} style={{ display: "grid", gridTemplateColumns: sloupce }}>
+        <div style={{ ...bunka, background: "#f8fafc", fontSize: 13, fontWeight: 600, color: "#1A1A1A", position: "sticky", left: 0, zIndex: 1 }}>
+          {popisek}
+          {podnadpis && <div style={{ fontSize: 11, fontWeight: 400, color: "#64748b" }}>{podnadpis}</div>}
+        </div>
+        {dnyStr.map((d, i) => {
+          const vikend = i >= 5;
+          const akce = akceDne(d);
+          return (
+            <div key={d} onClick={() => empId !== undefined && novaAkce(d, empId)}
+              style={{ ...bunka, background: d === todayStr ? "#eff6ff" : vikend ? "#fafbfc" : "#fff", cursor: empId !== undefined && (isAdmin || String(empId) === String(currentUser.id)) ? "copy" : "default" }}>
+              {akce}
+            </div>
+          );
+        })}
+      </div>
+    );
+    const pocetDni = (emp) => new Set(vTydnu.filter(e => String(e.employee_id) === String(emp.id)).map(e => e.date)).size;
+    return (
+      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflowX: "auto" }}>
+        <div style={{ minWidth: 920 }}>
+          <div style={{ display: "grid", gridTemplateColumns: sloupce, background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+            <div style={{ padding: "8px 10px", fontSize: 12, fontWeight: 700, color: "#475569", position: "sticky", left: 0, background: "#f8fafc" }}>Kdo</div>
+            {dny.map((d, i) => {
+              const dnes = dnyStr[i] === todayStr;
+              return (
+                <div key={i} style={{ padding: "6px 0", textAlign: "center", fontSize: 12, fontWeight: 700, color: dnes ? "#0369a1" : "#475569" }}>
+                  <div style={{ textTransform: "uppercase", letterSpacing: "0.04em" }}>{CZ_DAYS[i]}</div>
+                  <div style={{ fontSize: 15, color: dnes ? "#fff" : "#1A1A1A", background: dnes ? "#0369a1" : "transparent", borderRadius: 12, display: "inline-block", padding: "0 8px", marginTop: 2 }}>{d.getDate()}. {d.getMonth() + 1}.</div>
+                </div>
+              );
+            })}
+          </div>
+          {ostatni.some(o => o.length) && radek("ostatni", "Úkoly a faktury", null, (d) => ostatni[dnyStr.indexOf(d)].map(o => o.typ === "t" ? (
+            <div key={"t" + o.t.id} onClick={(e) => { e.stopPropagation(); setTab && setTab("tasks"); }} title={o.t.title}
+              style={{ background: "#f59e0b18", color: "#b45309", borderLeft: "3px solid #f59e0b", borderRadius: 4, padding: "2px 5px", fontSize: 11, fontWeight: 600, marginBottom: 2, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>✓ {o.t.title}</div>
+          ) : (
+            <div key={"i" + o.inv.id} onClick={(e) => { e.stopPropagation(); setTab && setTab("invoices"); }}
+              style={{ background: "#ef444418", color: "#b91c1c", borderLeft: "3px solid #ef4444", borderRadius: 4, padding: "2px 5px", fontSize: 11, fontWeight: 600, marginBottom: 2, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>⚠️ {cisloFaktury(o.inv)}</div>
+          )))}
+          {lide.map(emp => {
+            const n = pocetDni(emp);
+            return radek(emp.id, emp.name, n ? `${n} ${n === 1 ? "den" : n < 5 ? "dny" : "dní"} naplánováno` : "volno celý týden",
+              (d) => vTydnu.filter(e => e.date === d && String(e.employee_id) === String(emp.id)).map(karta), emp.id);
+          })}
+          {bezCloveka.length > 0 && radek("bez", "Bez přiřazení", null, (d) => bezCloveka.filter(e => e.date === d).map(karta))}
+          {lide.length === 0 && bezCloveka.length === 0 && <div style={{ padding: 20 }}><Empty /></div>}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{ padding: 24 }}>
       {/* Rychlé zadání — pro rychlé psaní z mobilu, zkratkovitě; před uložením ukáže náhled rozpoznaného záznamu */}
@@ -7623,14 +7723,23 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
               {employees.map(e => <option key={e.id} value={String(e.id)}>{e.name}</option>)}
             </select>
           )}
+          <div style={{ display: "inline-flex", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+            {[["tyden", "Týden"], ["mesic", "Měsíc"]].map(([k, l]) => (
+              <button key={k} onClick={() => zobrazeni !== k && zmenZobrazeni(k)}
+                style={{ border: "none", padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", background: zobrazeni === k ? "#0369a1" : "#fff", color: zobrazeni === k ? "#fff" : "#475569" }}>{l}</button>
+            ))}
+          </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <button onClick={prevMonth} style={{ ...S.btnGhost, padding: "6px 12px" }}>‹</button>
             <span style={{ fontWeight: 700, fontSize: 16, color: "#1A1A1A", minWidth: 160, textAlign: "center" }}>
-              {CZ_MONTHS[viewMonth]} {viewYear}
+              {zobrazeni === "tyden" ? (() => {
+                const konec = new Date(tydenOd); konec.setDate(konec.getDate() + 6);
+                return `${tydenOd.getDate()}. ${tydenOd.getMonth() !== konec.getMonth() ? (tydenOd.getMonth() + 1) + ". " : ""}– ${konec.getDate()}. ${konec.getMonth() + 1}. ${konec.getFullYear()}`;
+              })() : `${CZ_MONTHS[viewMonth]} ${viewYear}`}
             </span>
             <button onClick={nextMonth} style={{ ...S.btnGhost, padding: "6px 12px" }}>›</button>
-            {(viewYear !== today.getFullYear() || viewMonth !== today.getMonth()) && (
-              <button onClick={() => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); }} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>Dnes</button>
+            {(zobrazeni === "tyden" ? fmt2(tydenOd) !== fmt2(pondeli(today)) : (viewYear !== today.getFullYear() || viewMonth !== today.getMonth())) && (
+              <button onClick={() => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); setTydenOd(pondeli(today)); }} style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }}>Dnes</button>
             )}
           </div>
           <button onClick={() => { setEditEventId(null); setForm(prazdnyForm()); setShowAdd(true); }} style={S.btn()}>+ Přidat událost</button>
@@ -7651,7 +7760,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
             {matches.length === 0 ? <Empty /> : matches.map(e => (
               <div key={e.id} onClick={() => {
                 const d = new Date(e.date);
-                setViewYear(d.getFullYear()); setViewMonth(d.getMonth());
+                setViewYear(d.getFullYear()); setViewMonth(d.getMonth()); setTydenOd(pondeli(d));
                 setDetailEvent(e); setEventSearch("");
               }} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #e2e8f0", cursor: "pointer" }}>
                 <span style={{ fontSize: 13, color: "#1A1A1A" }}>{e.title}{e.customer_name ? " — " + e.customer_name : ""}</span>
@@ -7703,8 +7812,10 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
         <span style={{ background: "#ef444418", color: "#b91c1c", border: "1px solid #ef444444", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>⚠️ Faktury po splatnosti</span>
       </div>
 
+      {zobrazeni === "tyden" && vykresliTyden()}
+
       {/* Grid */}
-      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+      {zobrazeni === "mesic" && <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", overflow: "hidden" }}>
         {/* Header */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
           {CZ_DAYS.map(d => (
@@ -7756,7 +7867,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
             );
           })}
         </div>
-      </div>
+      </div>}
 
       {/* ADD MODAL */}
       {showAdd && (
@@ -7858,7 +7969,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
               </div>
             </div>
 
-            <label style={S.label}>Zakázka</label>
+            <label style={S.label}>Zakázka{form.work_type === "Zakázka" ? <span style={{ color: "#b91c1c" }}> * povinné</span> : ""}</label>
             <SearchSelect
               placeholder="— napiš název, zákazníka nebo kód —"
               options={contracts.filter(c => zakazkaVeVyberu(c, form.contract_id)).map(c => {
