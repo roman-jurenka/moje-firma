@@ -39,10 +39,12 @@ const kandidati = (it) => {
   return c.map((x) => (typeof x === "object" && x ? Number(x.contract_id ?? x.id) : Number(x))).filter(Boolean);
 };
 // Výchozí volba řádky: „sklad“, „z:<id zakázky>“ nebo "" (nevybráno)
-const vychoziVolba = (it, f) => {
+// cilPravidla = cíl z pravidla dodavatele (O2 → fungování firmy, Shell → auto…)
+const vychoziVolba = (it, f, cilPravidla) => {
   if (it.assigned_vehicle_id) return `auto:${it.assigned_vehicle_id}`;
   if (it.assigned_to_sklad) return "sklad";
   if (!it.assigned_contract_id && f?.navrh_cil) return f.navrh_cil; // návrh z terénu má přednost
+  if (!it.assigned_contract_id && cilPravidla) return cilPravidla;
   if (it.assigned_contract_id) return `z:${it.assigned_contract_id}`;
   if (it.suggested_match_type === "sklad") return "sklad";
   if (it.suggested_contract_id) return `z:${it.suggested_contract_id}`;
@@ -78,6 +80,28 @@ const nazevDodavatele = (f) => String(f.supplier_name || "").trim() || "Neznám�
 const STITKY_KEY = "fronta_stitky";
 const VYCHOZI_STITKY = ["Fixní náklady", "Opravy aut", "Pohonné hmoty", "Materiál", "Režie", "Nářadí", "Telefon a internet"];
 const BARVY_STITKU = [["#e0f2fe", "#0369a1"], ["#fef3c7", "#b45309"], ["#dcfce7", "#15803d"], ["#fce7f3", "#be185d"], ["#ede9fe", "#6d28d9"], ["#fee2e2", "#b91c1c"], ["#f1f5f9", "#334155"], ["#ccfbf1", "#0f766e"]];
+// Pravidla podle dodavatele: faktura od daného dodavatele (IČO, jinak název)
+// přijde rovnou s předvybraným přiřazením a kancelář ji jen potvrdí.
+const PRAVIDLA_KEY = "fronta_pravidla_dodavatelu";
+const klicDodavatele = (f) => bezDiakritiky(nazevDodavatele(f)).replace(/[^a-z0-9]+/g, " ").replace(/\b(s r o|a s|spol|group)\b/g, "").trim();
+const pravidloPro = (pravidla, f) => pravidla.find((x) => (x.ico && f.supplier_ico && String(x.ico) === String(f.supplier_ico)) || (x.klic && x.klic === klicDodavatele(f))) || null;
+const spz = (t) => String(t || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+// „auto:spz“ = auto podle SPZ uvedené na faktuře (tankovací karty), jinak pevné auto
+const cilZPravidla = (pr, f, radky, auta) => {
+  if (!pr) return "";
+  if (pr.cil !== "auto:spz") return pr.cil;
+  const text = spz([f.note, f.invoice_number, ...(radky || []).flatMap((x) => [x.description, x.order_reference])].join(" "));
+  const a = auta.find((x) => spz(x.spz).length >= 5 && text.includes(spz(x.spz)));
+  return a ? `auto:${a.id}` : "";
+};
+const popisCilePravidla = (pr, auta) => {
+  const c = pr?.cil || "";
+  if (c === "rezie") return "🏢 fungování firmy";
+  if (c === "sklad") return "📦 sklad";
+  if (c === "auto:spz") return `🚐 auto podle SPZ na faktuře – ${(TYPY_AUTA.find((x) => x[0] === pr.autoTyp) || TYPY_AUTA[0])[2]}`;
+  if (c.startsWith("auto:")) return `🚐 ${auta.find((a) => a.id === Number(c.slice(5)))?.name || "auto"} – ${(TYPY_AUTA.find((x) => x[0] === pr.autoTyp) || TYPY_AUTA[0])[2]}`;
+  return c;
+};
 const barvaStitku = (t) => BARVY_STITKU[[...String(t)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7) % BARVY_STITKU.length];
 
 export default function FrontaFaktur({ contracts = [], customers = [], currentUser, onZmenaPoctu }) {
@@ -104,6 +128,9 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
   const [stitkovani, setStitkovani] = useState(null);  // id faktury s otevřeným výběrem štítků
   const [novyStitek, setNovyStitek] = useState("");
   const [auta, setAuta] = useState([]);
+  const [pravidla, setPravidla] = useState([]);
+  const [upravaPravidla, setUpravaPravidla] = useState(null); // { fId, cil, autoTyp }
+  const [ukazPravidla, setUkazPravidla] = useState(false);
   const [vybranaId, setVybranaId] = useState(null);
   const [siroke, setSiroke] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1180px)").matches);
   useEffect(() => {
@@ -119,7 +146,14 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
       vsechnyStranky((od, doo) => supabase.from("invoice_queue").select("*").in("status", stavy).order("issue_date", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).range(od, doo)),
       supabase.from("products").select("id, name, stock, unit, price, price_sell, prirazka_pct"),
     ]);
-    supabase.from("vehicles").select("id, name, spz").order("name").then(({ data }) => setAuta(data || []));
+    const [{ data: autaData }, { data: prNast }] = await Promise.all([
+      supabase.from("vehicles").select("id, name, spz").order("name"),
+      supabase.from("app_settings").select("value").eq("key", PRAVIDLA_KEY).maybeSingle(),
+    ]);
+    const autaL = autaData || [];
+    const pravidlaL = Array.isArray(prNast?.value?.pravidla) ? prNast.value.pravidla : [];
+    setAuta(autaL);
+    setPravidla(pravidlaL);
     if (error) { setZprava({ chyba: true, text: "Frontu se nepodařilo načíst: " + error.message }); setFaktury([]); return; }
     setProdukty(p || []);
     setPrirazka(await nactiPrirazku());
@@ -139,7 +173,15 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
     setVolby((v) => {
       const nove = { ...v };
       const fById = Object.fromEntries((f || []).map((y) => [y.id, y]));
-      (it || []).forEach((x) => { if (!nove[x.id]) { const fx = fById[x.invoice_queue_id]; nove[x.id] = { cil: vychoziVolba(x, fx), typ: "materiál", autoTyp: fx?.navrh_typ || "nafta" }; } });
+      const radkyF = {};
+      (it || []).forEach((x) => { (radkyF[x.invoice_queue_id] = radkyF[x.invoice_queue_id] || []).push(x); });
+      (it || []).forEach((x) => {
+        if (nove[x.id]) return;
+        const fx = fById[x.invoice_queue_id];
+        const pr = fx ? pravidloPro(pravidlaL, fx) : null;
+        const cp = pr && fx ? cilZPravidla(pr, fx, radkyF[fx.id], autaL) : "";
+        nove[x.id] = { cil: vychoziVolba(x, fx, cp), typ: "materiál", autoTyp: fx?.navrh_typ || pr?.autoTyp || "nafta", zPravidla: !!cp && !fx?.navrh_cil && !x.assigned_contract_id };
+      });
       return nove;
     });
     setFaktury(f || []);
@@ -399,6 +441,63 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
   const pocetSeStitkem = (t) => faktury.filter((x) => (x.stitky || []).includes(t)).length;
   const vsechnyStitky = [...new Set([...nabidkaStitku, ...faktury.flatMap((x) => x.stitky || [])])];
 
+  // ── Pravidla dodavatelů ──
+  const ulozitPravidla = async (nova) => {
+    const { error } = await supabase.from("app_settings").upsert({ key: PRAVIDLA_KEY, value: { pravidla: nova }, updated_at: new Date().toISOString() });
+    if (error) { setZprava({ chyba: true, text: "Pravidlo se nepodařilo uložit: " + error.message }); return false; }
+    setPravidla(nova);
+    return true;
+  };
+  const ulozitPravidlo = async (fa) => {
+    const u = upravaPravidla;
+    if (!u?.cil) return;
+    const nove = { ico: fa.supplier_ico || null, klic: klicDodavatele(fa), nazev: nazevDodavatele(fa), cil: u.cil, autoTyp: u.cil.startsWith("auto:") ? (u.autoTyp || "nafta") : null, zalozil: ja, zalozeno: new Date().toISOString() };
+    const puvodni = pravidloPro(pravidla, fa);
+    if (!(await ulozitPravidla([...pravidla.filter((x) => x !== puvodni), nove]))) return;
+    // rovnou předvybrat u čekajících řádek tohoto dodavatele (kromě návrhů z terénu)
+    let n = 0;
+    const zmeny = {};
+    for (const fx of faktury.filter((x) => pravidloPro([nove], x) && !x.navrh_cil)) {
+      const cil = cilZPravidla(nove, fx, polozky[fx.id], auta);
+      if (!cil) continue;
+      for (const it of (polozky[fx.id] || []).filter((x) => x.status === "navrh")) { zmeny[it.id] = { cil, autoTyp: nove.autoTyp || "nafta", zPravidla: true }; n++; }
+    }
+    setVolby((m) => { const x = { ...m }; for (const [id, z] of Object.entries(zmeny)) x[id] = { ...(x[id] || { typ: "materiál" }), ...z }; return x; });
+    setUpravaPravidla(null);
+    setZprava({ chyba: false, text: `✓ Pravidlo uloženo: ${nove.nazev} → ${popisCilePravidla(nove, auta)}. Předvybráno u ${n} čekajících řádek — stačí potvrdit.` });
+  };
+  const smazatPravidlo = async (pr) => {
+    if (!window.confirm(`Smazat pravidlo pro ${pr.nazev}?`)) return;
+    if (await ulozitPravidla(pravidla.filter((x) => x !== pr))) setZprava({ chyba: false, text: `Pravidlo pro ${pr.nazev} je smazané.` });
+  };
+  const editorPravidla = (fa) => {
+    const u = upravaPravidla;
+    return (
+      <div style={{ marginTop: 6, background: "#fff", border: "1px solid #c7d2fe", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6, maxWidth: 560 }}>
+        <div style={{ fontSize: 12, color: "#334155" }}>Faktury od <b>{nazevDodavatele(fa)}</b>{fa.supplier_ico ? ` (IČO ${fa.supplier_ico})` : ""} vždy předvybrat jako:</div>
+        <select style={pole} value={u.cil} aria-label="Cíl pravidla" onChange={(e) => setUpravaPravidla({ ...u, cil: e.target.value })}>
+          <option value="">— vyber —</option>
+          <option value="rezie">🏢 Fungování firmy (telefon, software, internet…)</option>
+          <option value="sklad">📦 Sklad (příjem materiálu)</option>
+          <option value="auto:spz">🚐 Auto podle SPZ na faktuře (tankovací karta)</option>
+          <optgroup label="Vždy toto auto">
+            {auta.map((a) => <option key={a.id} value={`auto:${a.id}`}>🚐 {a.name}{a.spz ? ` · ${a.spz}` : ""}</option>)}
+          </optgroup>
+        </select>
+        {u.cil.startsWith("auto:") && (
+          <select style={pole} value={u.autoTyp || "nafta"} aria-label="Druh nákladu auta" onChange={(e) => setUpravaPravidla({ ...u, autoTyp: e.target.value })}>
+            {TYPY_AUTA.map(([id, , t]) => <option key={id} value={id}>{t}</option>)}
+          </select>
+        )}
+        <div style={{ fontSize: 11, color: "#64748b" }}>Řádky se jen předvyberou — zapíše se to až po ✓ Potvrdit. Návrh z terénu má vždy přednost.</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button type="button" style={tl("#4338ca")} disabled={!u.cil} onClick={() => ulozitPravidlo(fa)}>Uložit pravidlo</button>
+          <button type="button" style={tlObrys()} onClick={() => setUpravaPravidla(null)}>Zrušit</button>
+        </div>
+      </div>
+    );
+  };
+
   // ── Štítky ──
   const ulozitStitky = async (ids, upravit) => {
     const zmeny = faktury.filter((x) => ids.includes(x.id)).map((x) => ({ id: x.id, stitky: upravit(x.stitky || []) }));
@@ -492,11 +591,22 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                     <button key={t} type="button" onClick={() => setFiltrStitek(t)} title={`Zobrazit jen „${t}“`}
                       style={{ background: bg, color: fg, border: "none", borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🏷 {t}</button>
                   ); })}
+                  {(() => {
+                    const pr = pravidloPro(pravidla, f);
+                    return (
+                      <button type="button" onClick={() => setUpravaPravidla(upravaPravidla?.fId === f.id ? null : { fId: f.id, cil: pr?.cil || "", autoTyp: pr?.autoTyp || "nafta" })}
+                        title={pr ? "Pravidlo dodavatele — klikni pro úpravu" : "Nastavit, kam se faktury od tohoto dodavatele mají vždy předvybrat"}
+                        style={{ background: pr ? "#eef2ff" : "#fff", color: pr ? "#4338ca" : "#475569", border: pr ? "none" : "1px dashed #cbd5e1", borderRadius: 999, padding: "1px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                        {pr ? `⚙ pravidlo: ${popisCilePravidla(pr, auta)}` : "⚙ pravidlo dodavatele"}
+                      </button>
+                    );
+                  })()}
                   <button type="button" onClick={() => { setStitkovani(stitkovani === f.id ? null : f.id); setNovyStitek(""); }}
                     style={{ background: "#fff", color: "#475569", border: "1px dashed #cbd5e1", borderRadius: 999, padding: "1px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                     {stitkovani === f.id ? "✕ zavřít" : "+ štítek"}
                   </button>
                 </div>
+                {upravaPravidla?.fId === f.id && editorPravidla(f)}
                 {stitkovani === f.id && (() => {
                   const dalsi = faktury.filter((x) => x.id !== f.id && nazevDodavatele(x) === nazevDodavatele(f)).length;
                   return (
@@ -605,10 +715,10 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
                             {navrh ? (
                               <>
                                 <div style={{ fontSize: 11, color: it.suggested_match_type === "ambiguous" ? "#b45309" : "#64748b", marginBottom: 3 }}>
-                                  {POPIS_NAVRHU[it.suggested_match_type] || "bez návrhu"}
+                                  {v.zPravidla && v.cil ? <span style={{ color: "#4338ca", fontWeight: 700 }}>⚙ podle pravidla dodavatele</span> : (POPIS_NAVRHU[it.suggested_match_type] || "bez návrhu")}
                                 </div>
                                 <select style={{ ...pole, width: "100%", borderColor: v.cil ? "#cbd5e1" : "#fbbf24" }} value={v.cil} aria-label={`Přiřazení řádky ${it.line_no ?? ""}`}
-                                  onChange={(e) => setV({ cil: e.target.value })}>
+                                  onChange={(e) => setV({ cil: e.target.value, zPravidla: false })}>
                                   <option value="">— vyber zakázku nebo sklad —</option>
                                   <option value="sklad">📦 Sklad (příjem materiálu)</option>
                                   <option value="rezie">🏢 Fungování firmy (telefon, software… — nic se nezapíše)</option>
@@ -768,6 +878,11 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
           teprve potom se zapíše <b>náklad zakázky</b> nebo <b>příjem na sklad</b>.
         </div>
         <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" onClick={() => setUkazPravidla((x) => !x)} aria-expanded={ukazPravidla}
+            title="Kam se faktury od jednotlivých dodavatelů samy předvyberou"
+            style={{ background: "#eef2ff", border: "1px solid #c7d2fe", color: "#4338ca", borderRadius: 999, padding: "4px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+            ⚙ Pravidla dodavatelů ({pravidla.length})
+          </button>
           {prirazkaPole == null ? (
             <button type="button" onClick={() => setPrirazkaPole(String(prirazka))} title="Prodejní cena materiálu = nákup + přirážka (když produkt nemá vlastní prodejní cenu)"
               style={{ background: "#eff6ff", border: "1px solid #bfdbfe", color: "#0369a1", borderRadius: 999, padding: "4px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
@@ -795,6 +910,27 @@ export default function FrontaFaktur({ contracts = [], customers = [], currentUs
         </div>
       </div>
 
+      {ukazPravidla && (
+        <div style={{ background: "#fff", border: "1px solid #c7d2fe", borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 13 }}>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>⚙ Pravidla dodavatelů</div>
+          {pravidla.length === 0 ? <div style={{ color: "#64748b" }}>Zatím žádná. U faktury klikni na „⚙ pravidlo dodavatele“ a zvol, kam faktury od něj patří (např. O2 → fungování firmy, čerpací stanice → auto podle SPZ).</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {pravidla.map((pr) => {
+                const n = faktury.filter((x) => ["nova", "castecne_prirazena"].includes(x.status) && pravidloPro([pr], x)).length;
+                return (
+                  <div key={(pr.ico || "") + pr.klic} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid #f1f5f9", paddingTop: 4 }}>
+                    <b style={{ minWidth: 180 }}>{pr.nazev}</b>
+                    <span style={{ color: "#4338ca" }}>→ {popisCilePravidla(pr, auta)}</span>
+                    <span style={{ color: "#64748b", fontSize: 12 }}>{n ? `čeká ${n} ${n === 1 ? "faktura" : n < 5 ? "faktury" : "faktur"}` : "nic nečeká"}{pr.zalozil ? ` · nastavil ${pr.zalozil}` : ""}</span>
+                    {n > 0 && <button type="button" style={tlObrys("#4338ca")} onClick={() => { setFiltrDodavatel(pr.nazev); setUkazPravidla(false); }}>Zobrazit</button>}
+                    <button type="button" style={tlObrys("#b91c1c")} onClick={() => smazatPravidlo(pr)}>Smazat</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
       {zprava && (
         <div role={zprava.chyba ? "alert" : "status"} style={{ borderRadius: 10, padding: "9px 12px", marginBottom: 12, fontSize: 13, background: zprava.chyba ? "#fef2f2" : "#f0fdf4", color: zprava.chyba ? "#991b1b" : "#166534", border: `1px solid ${zprava.chyba ? "#fecaca" : "#bbf7d0"}` }}>{zprava.text}</div>
       )}
