@@ -346,6 +346,23 @@ async function dochazkaTick(nast: { dochazka_zapnuto?: boolean; dochazka_interva
     }
     if (elapsed < 0) continue
 
+    // Večerní připomínka: dnes po 18:00 je pořád otevřený příchod -> jednou upozornit
+    if (r.date === date && toMin(hm) >= 18 * 60 && elapsed < 720 && !ex?.vecer_at) {
+      let ok = false
+      if (!ex) {
+        const { error } = await db.from('dochazka_push').insert({ attendance_id: r.id, employee_id: r.employee_id, vecer_at: new Date().toISOString() })
+        ok = !error
+      } else {
+        const { data: claimed } = await db.from('dochazka_push').update({ vecer_at: new Date().toISOString() }).eq('attendance_id', r.id).is('vecer_at', null).select('attendance_id')
+        ok = !!claimed?.length
+      }
+      if (ok) {
+        await webPushProfil(profil, { title: 'Je 18:00 a nemáš zapsaný odchod', body: `V práci od ${r.checkin.slice(0, 5)} (${trvaniText(elapsed)}). Klepni a zapiš odchod.`, tag: 'dochazka-vecer', trvale: true, url: cesta + 'odchod', actions: akceTl })
+        odeslano++
+      }
+      if (!ex) continue
+    }
+
     if (elapsed >= 720) {
       // 12 h a víc bez odchodu – jednou upozornit a přestat
       if (ex?.stav === 'zapomenuto' || ex?.stav === 'konec') continue
