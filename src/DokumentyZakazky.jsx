@@ -89,8 +89,8 @@ function Miniatura({ d, onNahled, aktivni }) {
   }, [d.zdroj, d.itemId, d.url, d.bucket, d.ext]);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-      <button type="button" onClick={onNahled} title={`Náhled: ${d.nazev}`} aria-pressed={aktivni}
-        style={{ display: "flex", alignItems: "center", justifyContent: "center", aspectRatio: "3 / 4", width: "100%", borderRadius: 8, overflow: "hidden", border: aktivni ? "2px solid #0E3B5E" : "1px solid #DDE2E8", background: "#F5F6F8", cursor: "pointer", padding: 0 }}>
+      <button type="button" onClick={onNahled} title={d.novy ? `Vygenerovat: ${d.nazev}` : `Náhled: ${d.nazev}`} aria-pressed={aktivni}
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", aspectRatio: "3 / 4", width: "100%", borderRadius: 8, overflow: "hidden", border: aktivni ? "2px solid #0E3B5E" : d.novy ? "1.5px dashed #94A3B8" : "1px solid #DDE2E8", background: d.novy ? "#fff" : "#F5F6F8", cursor: "pointer", padding: 0, opacity: d.novy ? 0.85 : 1 }}>
         {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
           : <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: "#4B5563" }}><span style={{ fontSize: 28 }} aria-hidden="true">{IKONY[d.ikona || d.ext] || "📎"}</span><b style={{ fontSize: 11, textTransform: "uppercase" }}>{d.stitek || (d.ikona === "faktura" ? "faktura" : d.ikona === "servis" ? "pdf" : d.ext || "soubor")}</b></span>}
       </button>

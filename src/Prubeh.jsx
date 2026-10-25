@@ -3383,6 +3383,9 @@ export default function Prubeh({
     const datumZ = (x) => (x?.at ? new Date(x.at).toLocaleDateString("cs-CZ") : "");
     const qZ = z.quote_id ? quoteById(z.quote_id) : null;
     const vygenerovaneZ = [
+      // ještě nevygenerované: dlaždice „vygenerovat“ (smlouva jen u typů, které fázi Smlouva mají)
+      ...(!dokZ.smlouva && fazePlati(fazeById.smlouva, z) ? [{ klic: "g-smlouva-nova", nazev: "Smlouva o dílo", ikona: "smlouva", stitek: "+ vygenerovat", kategorie: "zatím nevygenerovaná", novy: true, otevrit: () => (zk ? vygenerovatSmlouvu(z) : alert("Nejdřív doplň zákazníka (Zákazník a místo → Upravit) — smlouva se z něj vyplňuje.")) }] : []),
+      ...(!dokZ.protokol ? [{ klic: "g-protokol-novy", nazev: "Předávací protokol", ikona: "protokol", stitek: "+ vygenerovat", kategorie: "zatím nevygenerovaný", novy: true, otevrit: () => (zk ? otevritProtokol(z) : alert("Nejdřív doplň zákazníka (Zákazník a místo → Upravit) — protokol se z něj vyplňuje.")) }] : []),
       ...(dokZ.smlouva ? [{ klic: "g-smlouva", nazev: "Smlouva o dílo", ikona: "smlouva", stitek: "smlouva", kategorie: "vygenerovaná", datum: datumZ(dokZ.smlouva), soubor: () => souborDokumentu(z, "smlouva", undefined, false), stahnout: () => souborDokumentu(z, "smlouva") }] : []),
       ...(dokZ.protokol ? [{ klic: "g-protokol", nazev: "Předávací protokol", ikona: "protokol", stitek: "protokol", kategorie: "vygenerovaný", datum: datumZ(dokZ.protokol), soubor: () => souborDokumentu(z, "protokol", undefined, false), stahnout: () => souborDokumentu(z, "protokol") }] : []),
       ...(dokZ.dodatky || []).map((dod) => ({ klic: `g-dodatek-${dod.cislo}`, nazev: `Dodatek č. ${dod.cislo}`, ikona: "dodatek", stitek: "dodatek", kategorie: dod.popis || "vygenerovaný", datum: datumZ(dod), soubor: () => souborDokumentu(z, "dodatek", dod, false), stahnout: () => souborDokumentu(z, "dodatek", dod) })),
