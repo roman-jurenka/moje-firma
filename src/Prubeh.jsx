@@ -25,6 +25,7 @@ import { NA_STAROSTI, naStarosti, umi, dovednost, seraditPodleDovednosti } from 
 import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import DokumentyZakazky from "./DokumentyZakazky.jsx";
 import VyrobniCisla from "./VyrobniCisla.jsx";
+import KnihovnaTypu from "./KnihovnaTypu.jsx";
 import { PodkladyNahled, PodkladyFormular } from "./PodkladyZakazky.jsx";
 import PoleSNabidkou from "./PoleSNabidkou.jsx";
 import NaceneniRealizace from "./NaceneniRealizace.jsx";
@@ -235,6 +236,7 @@ export default function Prubeh({
   // a formuláře/schémata podle podmínek [{ id, nazev, popis, typy, podminka: { pole, op, hodnota }, povinne }].
   const [sekceTypu, setSekceTypu] = useState({});
   const [formularePravidla, setFormularePravidla] = useState([]);
+  const [knihovna, setKnihovna] = useState(false); // 📚 dokumenty podle typu zakázky
   useEffect(() => {
     supabase.from("app_settings").select("key, value").in("key", ["prubeh_sekce_typy", "prubeh_formulare"]).then(({ data }) => {
       for (const x of data || []) {
@@ -2290,6 +2292,8 @@ export default function Prubeh({
           </div>
           {smiNastavit && <button type="button" style={btnGhost} onClick={() => setNastaveniForm(Object.fromEntries(FAZE.map((f) => [f.id, { dny: f.dny, typy: Object.fromEntries(TYPY.map((t) => [t.id, pravidlo(f, t.id)])), ukoly: f.ukoly.map((u) => ({ ...u })) }])))}>⚙️ Nastavení fází</button>}
           {smiNastavit && <button type="button" style={btnGhost} onClick={otevritRozpad} title="Šablony rozpadu materiálu (konstrukce na 1 panel)">🧩 Rozpad materiálu</button>}
+          {smiNastavit && <button type="button" style={btnGhost} onClick={() => setKnihovna(true)} title="Certifikáty, návody, prohlášení — automaticky v Dokumentech každé zakázky daného typu">📚 Dokumenty dle typu</button>}
+          {knihovna && <KnihovnaTypu currentUser={currentUser} onZavrit={() => setKnihovna(false)} />}
           <button type="button" style={tabule ? btn("#0f172a") : btnGhost} aria-pressed={tabule} onClick={() => { setTabule((t) => !t); setJednaId(null); }}
             title="Všechny zakázky po odděleních — obchod, kancelář, realizace — ve sloupcích podle fází">{tabule ? "☰ Seznam zakázek" : "📊 Tabule oddělení"}</button>
           <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "", zakRezim: null, zakHledat: "", novyZak: { name: "", phone: "", email: "", adresa: "" }, telefonZak: null, kontakt: { jmeno: "", telefon: "", vztah: "" } })}>+ Nová poptávka</button>
@@ -3385,7 +3389,7 @@ export default function Prubeh({
     const vlastnosti = [
       { id: "misto", label: "Zákazník a místo", hodnota: [zk?.company || zk?.name, String(z.misto_adresa || zk?.address || "").split(",")[0]].filter(Boolean).join(" · "), karta: kMisto },
       { id: "platby", label: "Platby", hodnota: fak.length ? `${fak.length} ${fak.length === 1 ? "faktura" : fak.length < 5 ? "faktury" : "faktur"} · ${kc(fak.reduce((a, i) => a + (Number(i.amount) || 0), 0))} bez DPH` : "zatím bez faktur", karta: kPlatby },
-      { id: "dokumenty", label: "Dokumenty", hodnota: (() => { const n = (fotkyZ[z.id] || []).filter((f) => !/\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(String(f.storage_path || f.url || "").split("?")[0]) || ["Dokumenty", "Předávací protokol", "Smlouva", "Revize", "Formulář"].includes(f.category)).length; return n ? `${n} ${n === 1 ? "soubor" : n < 5 ? "soubory" : "souborů"} + vygenerované` : "smlouvy, protokoly, faktury…"; })(), karta: <div style={{ ...karta, padding: 12 }}><DokumentyZakazky soubory={fotkyZ[z.id] || []} slozka={nazevSlozky(z)} contractId={z.contract_id} vygenerovane={vygenerovaneZ} /></div> },
+      { id: "dokumenty", label: "Dokumenty", hodnota: (() => { const n = (fotkyZ[z.id] || []).filter((f) => !/\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(String(f.storage_path || f.url || "").split("?")[0]) || ["Dokumenty", "Předávací protokol", "Smlouva", "Revize", "Formulář"].includes(f.category)).length; return n ? `${n} ${n === 1 ? "soubor" : n < 5 ? "soubory" : "souborů"} + vygenerované` : "smlouvy, protokoly, faktury…"; })(), karta: <div style={{ ...karta, padding: 12 }}><DokumentyZakazky soubory={fotkyZ[z.id] || []} slozka={nazevSlozky(z)} contractId={z.contract_id} prubehId={z.id} typ={z.typ} vygenerovane={vygenerovaneZ} /></div> },
       { id: "sn", label: "Výrobní čísla", hodnota: "SN zařízení, faktura, záruka, dokumenty", karta: <div style={{ ...karta, padding: 12 }}><VyrobniCisla key={z.id} contractId={z.contract_id || null} prubehId={z.id} currentUser={currentUser} /></div> },
       { id: "kdo", label: "Kdo", hodnota: [z.vlastnik_obchod, z.vlastnik_bo, z.vlastnik_re].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", "), karta: kKdo },
       (() => {

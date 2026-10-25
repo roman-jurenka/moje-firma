@@ -196,7 +196,7 @@ function NahledDokumentu({ soubory, index, onIndex, onZavrit }) {
 // slozka = název složky zakázky na OneDrivu (jako u fotek), contractId = zakázka
 const VYGENEROVANY = /^(Smlouva o d[ií]lo|P[řr]ed[aá]vac[ií] protokol|Dodatek|Nab[ií]dka)\b.*\.(docx?|html?)$/i;
 
-export default function DokumentyZakazky({ soubory = [], slozka, contractId, vygenerovane = [] }) {
+export default function DokumentyZakazky({ soubory = [], slozka, contractId, vygenerovane = [], typ, prubehId }) {
   const [od, setOd] = useState(null);           // soubory ze složky Dokumenty na OneDrivu (null = načítám)
   const [ostatni, setOstatni] = useState({ servis: [], faktury: [], zakaznik: null });
   const [otevreny, setOtevreny] = useState(null);
@@ -230,6 +230,29 @@ export default function DokumentyZakazky({ soubory = [], slozka, contractId, vyg
     return () => { zrus = true; };
   }, [contractId]);
 
+  // Automaticky: knihovna dokumentů podle typu zakázky (+ pro všechny typy)
+  // a dokumenty k výrobním číslům (záruční listy, datasheety)
+  const [automaticke, setAutomaticke] = useState({ typ: [], sn: [] });
+  useEffect(() => {
+    let zrus = false;
+    (async () => {
+      const typy = ["*", ...(typ ? [typ] : [])];
+      const podminka = [contractId && `contract_id.eq.${contractId}`, prubehId && `prubeh_id.eq.${prubehId}`].filter(Boolean).join(",");
+      const [{ data: kt }, { data: sn }] = await Promise.all([
+        supabase.from("dokumenty_typu").select("id, typ, nazev, cesta, popis, poradi, created_at").in("typ", typy).order("poradi"),
+        podminka ? supabase.from("vyrobni_cisla").select("id, sn, nazev, dokumenty").or(podminka) : Promise.resolve({ data: [] }),
+      ]);
+      if (!zrus) setAutomaticke({ typ: (kt || []).sort((a, b) => (a.typ === "*") - (b.typ === "*") || (a.poradi || 0) - (b.poradi || 0)), sn: sn || [] });
+    })();
+    return () => { zrus = true; };
+  }, [typ, contractId, prubehId]);
+  // dokument sdílený víc SN (nahraný najednou) jen jednou
+  const snDokumenty = [];
+  for (const v of automaticke.sn) for (const d of v.dokumenty || []) {
+    const ex = snDokumenty.find((x) => x.url === d.cesta);
+    if (ex) ex.sn.push(v.sn); else snDokumenty.push({ url: d.cesta, nazev: d.nazev, sn: [v.sn], produkt: v.nazev });
+  }
+
   // sjednocený seznam: OneDrive Dokumenty → nahrané v appce (mimo OneDrive) → servisní zprávy → faktury
   const jmenaOD = new Set((od || []).map((x) => x.name));
   const docs = [
@@ -247,6 +270,8 @@ export default function DokumentyZakazky({ soubory = [], slozka, contractId, vyg
         : { klic: `cp-${f.id}`, zdroj: "st", url: f.url, nazev: jmeno, ext: pripona(f.storage_path || f.url), kategorie: f.category, datum: fmtDatum(f.created_at) };
     }),
     ...ostatni.servis.map((z) => ({ klic: `sz-${z.id}`, zdroj: "st", bucket: "servisni-zpravy", url: z.pdf_path, nazev: `Servisní zpráva ${z.cislo || ""}.pdf`.replace(" .pdf", ".pdf"), ext: "pdf", ikona: "servis", kategorie: "Servisní zpráva", datum: fmtDatum(z.created_at) })),
+    ...automaticke.typ.map((d) => ({ klic: `kt-${d.id}`, zdroj: "st", bucket: "dokumenty-typu", url: d.cesta, nazev: d.nazev, ext: pripona(d.nazev || d.cesta), kategorie: d.typ === "*" ? "📚 Pro všechny zakázky" : `📚 Podklady ${d.typ}`, datum: d.popis || "" })),
+    ...snDokumenty.map((d) => ({ klic: `sn-${d.url}`, zdroj: "st", bucket: "vyrobni-cisla", url: d.url, nazev: d.nazev, ext: pripona(d.nazev || d.url), kategorie: `🔢 ${d.produkt || "SN"} ${d.sn.length > 1 ? `(${d.sn.length} SN)` : d.sn[0]}`, datum: "" })),
     ...ostatni.faktury.map((f) => ({ klic: `fa-${f.id}`, zdroj: "faktura", faktura: f, zakaznik: ostatni.zakaznik, nazev: `${f.is_deposit ? "Záloha" : "Faktura"} ${cisloFaktury(f)}`, ext: "pdf", ikona: "faktura", kategorie: f.is_deposit ? "Zálohová faktura" : "Faktura", datum: fmtDatum(f.issued) })),
   ];
 
