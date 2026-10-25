@@ -350,7 +350,7 @@ function ContractKalendarWidget({ attendance, employees }) {
   );
 }
 
-export default function Contracts({ customers, employees, currentUser, initialDeal, initialContractId, onClearInitialContract }) {
+export default function Contracts({ customers, employees, currentUser, initialDeal, initialContractId, onClearInitialContract, onOtevritPrubeh }) {
   const [contracts, setContracts] = useState([]);
   const [entries, setEntries] = useState([]);       // contract_cost_entries
   const [billingSummaries, setBillingSummaries] = useState([]);
@@ -1363,9 +1363,17 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         .zk-r2 > span:last-child { white-space: nowrap; font-size: 11.5px; }
       `}</style>
       {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1A1A1A", margin: 0 }}>Zakázky</h1>
-        <button style={S.btn()} onClick={() => setModal({ type: "newContract" })}>+ Nová zakázka</button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1A1A1A", margin: 0 }}>Ekonomika zakázek</h1>
+          <div style={{ fontSize: 13, color: "#475569", marginTop: 4, maxWidth: 620 }}>
+            Rozpočet, náklady, odpracované hodiny, fakturace a archiv. Postup práce na zakázce — fáze, úkoly, plánování lidí, dokumenty — je v <b>Průběhu zakázek</b>.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {onOtevritPrubeh && <button style={S.btnGhost} onClick={onOtevritPrubeh}>→ Průběh zakázek</button>}
+          <button style={S.btn()} onClick={() => setModal({ type: "newContract" })}>+ Nová zakázka</button>
+        </div>
       </div>
 
       {/* STATS */}

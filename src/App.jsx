@@ -452,18 +452,20 @@ const NAV = [
   { id: "pricing", label: "Nacenění", icon: "ti-calculator", group: "Obchod" },
   { id: "navrh3d", label: "3D návrh FVE", icon: "ti-3d-cube-sphere", group: "Obchod" },
   { id: "statika", label: "Statika FVE", icon: "ti-building-bridge", group: "Obchod" },
-  { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "Obchod" },
-  { id: "contracts", label: "Zakázky", icon: "ti-file-invoice", group: "Realizace" },
-  { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Realizace" },
-  { id: "servis", label: "Servis", icon: "ti-tool", group: "Realizace" },
-  { id: "tasks", label: "Úkoly", icon: "ti-checkbox", group: "Realizace" },
-  { id: "warehouse", label: "Sklad", icon: "ti-package", group: "Realizace" },
+  // Zakázky: práce na zakázce od poptávky po předání je v Průběhu; modul
+  // „contracts“ je ekonomika a archiv (rozpočet, náklady, fakturace).
+  { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "Zakázky" },
+  { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Zakázky" },
+  { id: "tasks", label: "Úkoly", icon: "ti-checkbox", group: "Zakázky" },
+  { id: "servis", label: "Servis", icon: "ti-tool", group: "Zakázky" },
+  { id: "warehouse", label: "Sklad", icon: "ti-package", group: "Zakázky" },
   { id: "attendance", label: "Docházka", icon: "ti-clock", group: "Terén" },
   { id: "fotoupload", label: "Fotky", icon: "ti-camera", group: "Terén" },
   { id: "knjiga", label: "Kniha jízd", icon: "ti-car", group: "Terén" },
   { id: "uctenky", label: "Účtenky", icon: "ti-receipt-2", group: "Terén" },
   { id: "podpisy", label: "Podpisy", icon: "ti-signature", group: "Terén" },
   { id: "invoices", label: "Fakturace", icon: "ti-receipt", group: "Finance" },
+  { id: "contracts", label: "Ekonomika zakázek", icon: "ti-file-invoice", group: "Finance" },
   { id: "finance", label: "Finanční tok", icon: "ti-cash", group: "Finance" },
   { id: "reports", label: "Reporty", icon: "ti-chart-line", group: "Finance" },
   { id: "hr", label: "Zaměstnanci", icon: "ti-user", group: "Správa" },
@@ -1834,6 +1836,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           initialDeal={contractInitialDeal}
           initialContractId={contractInitialId}
           onClearInitialContract={() => setContractInitialId(null)}
+          onOtevritPrubeh={allowedTabs.includes("prubeh") ? () => setTab("prubeh") : null}
         />}
         {tab === "sheets" && <ZakazkaSheet
           customers={customers}
