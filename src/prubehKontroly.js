@@ -93,12 +93,12 @@ export function kontrolyZakazky(z, ctx) {
   // Montáž: fotky každé části (FVE střecha + elektro, hromosvod střecha +
   // uzemnění) — kategorie podle úkolů s fotkami, které pro typ zakázky platí.
   const fMontaz = FAZE.find((x) => x.id === "montaz");
-  const katMontaze = [...new Set(ukolyPro(fMontaz, z.typ).filter((u) => u.fotky && u.fotky !== "Po montáži").map((u) => u.fotky))];
+  const katMontaze = [...new Set(ukolyPro(fMontaz, z).filter((u) => u.fotky && u.fotky !== "Po montáži").map((u) => u.fotky))];
   katMontaze.forEach((k) => {
     const n = kat(k);
     pridat("montaz", n >= 1, `Nemáš nahrané fotky: ${k.toLowerCase()}.`, `${pocetFotek(n)} — ${k.toLowerCase()}`, `fotky:${k}`);
   });
-  const sFotkamiDila = ukolyPro(fMontaz, z.typ).some((u) => u.fotky === "Po montáži");
+  const sFotkamiDila = ukolyPro(fMontaz, z).some((u) => u.fotky === "Po montáži");
   const nMont = kat("Po montáži");
   if (sFotkamiDila) pridat("montaz", nMont >= 1, "Nemáš nahrané fotky hotového díla.", `${pocetFotek(nMont)} po montáži`, "fotky:Po montáži");
   if (sFotkamiDila && nMont >= 1 && nMont < MIN_FOTEK["Po montáži"] && iTed >= poradi("montaz")) {

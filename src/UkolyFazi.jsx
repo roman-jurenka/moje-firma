@@ -42,7 +42,7 @@ export default function UkolyFazi({ ja, onOtevrit, kompakt = false }) {
       const f = fazeById[t.faze];
       if (!f) continue;
       // automaticky splnitelné úkoly (faktura zaplacená apod.) tady neukazujeme — stav zná jen Průběh
-      const ukoly = ukolyPro(f, z.typ).filter((u) => !u.auto && !ukolHotovy(z, f, u));
+      const ukoly = ukolyPro(f, z).filter((u) => !u.auto && !ukolHotovy(z, f, u));
       moje.push({ z, odd, f, ukoly, termin: t.termin || (odd.id === "ob" ? z.dalsi_krok_termin : null), od: t.od || z.faze_od });
     }
   }

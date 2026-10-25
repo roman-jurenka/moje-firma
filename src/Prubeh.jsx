@@ -503,7 +503,7 @@ export default function Prubeh({
   // Když je v aktuální fázi úkol s fotkami té kategorie, po nahrání se odškrtne.
   const vybratFotkyKategorie = (zak, kategorie) => {
     const f = fazeById[zak.faze];
-    const ukol = (f ? ukolyPro(f, zak.typ) : []).find((u) => u.fotky === kategorie && !ukolHotovy(zak, f, u, autoZ(zak))) || (f ? ukolyPro(f, zak.typ) : []).find((u) => u.fotky === kategorie) || null;
+    const ukol = (f ? ukolyPro(f, zak) : []).find((u) => u.fotky === kategorie && !ukolHotovy(zak, f, u, autoZ(zak))) || (f ? ukolyPro(f, zak) : []).find((u) => u.fotky === kategorie) || null;
     fotoCil.current = { zak, faze: ukol ? f : null, ukol, kategorie };
     fotoInput.current?.click();
   };
@@ -930,7 +930,7 @@ export default function Prubeh({
   const posunDal = async (zak) => {
     const f = fazeById[zak.faze];
     if (!fazeHotova(zak, f, autoZ(zak))) {
-      const zbyva = ukolyPro(f, zak.typ).filter((u) => !ukolHotovy(zak, f, u, autoZ(zak))).map((u) => "• " + u.text).join("\n");
+      const zbyva = ukolyPro(f, zak).filter((u) => !ukolHotovy(zak, f, u, autoZ(zak))).map((u) => "• " + u.text).join("\n");
       await zeptat({ titulek: "Nejdřív dokonči úkoly kroku", text: `Ještě zbývá:\n${zbyva}\n\nKdyž je potřeba jít dál i tak, použij „⏭ Přeskočit krok“.`, jenOk: true, potvrdit: "Rozumím" });
       return;
     }
@@ -1008,7 +1008,7 @@ export default function Prubeh({
     const f = fazeById[zak.faze];
     const auto = autoZ(zak);
     const nedodelane = [
-      ...ukolyPro(f, zak.typ).filter((u) => !ukolHotovy(zak, f, u, auto)).map((u) => u.text),
+      ...ukolyPro(f, zak).filter((u) => !ukolHotovy(zak, f, u, auto)).map((u) => u.text),
       ...kontrolyZ(zak).filter((x) => x.blokuje).map((x) => x.text),
     ];
     const nz = { ...zak, preskocene: [...new Set([...(zak.preskocene || []), f.id])] };
@@ -1067,7 +1067,7 @@ export default function Prubeh({
   const krokHotovo = async (zak) => {
     const f = fazeById[zak.faze];
     const auto = autoZ(zak);
-    const ukol = ukolyPro(f, zak.typ).find((u) => u.text === zak.dalsi_krok && !ukolHotovy(zak, f, u, auto));
+    const ukol = ukolyPro(f, zak).find((u) => u.text === zak.dalsi_krok && !ukolHotovy(zak, f, u, auto));
     let nz = zak;
     const patch = {};
     if (ukol) {
@@ -2912,7 +2912,7 @@ export default function Prubeh({
             ) : (
               <div style={{ display: "flex", flexDirection: "column", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
                 {/* Montáž bez částí (elektroinstalace, servis…): kdo je naplánovaný + Naplánovat */}
-                {f.id === "montaz" && !ukolyPro(f, z.typ).some((u) => u.cast) && (() => {
+                {f.id === "montaz" && !ukolyPro(f, z).some((u) => u.cast) && (() => {
                   const vychozi = z.typ === "ELK" ? "elektroinstalace" : z.typ === "SRV" ? "servis" : "cela";
                   const lide = akceZakazky(z).sort((a, b) => String(a.date).localeCompare(String(b.date)));
                   return (
@@ -2929,7 +2929,7 @@ export default function Prubeh({
                     </div>
                   );
                 })()}
-                {ukolyPro(f, z.typ).map((u, i, vsechny) => {
+                {ukolyPro(f, z).map((u, i, vsechny) => {
                   const hot = ukolHotovy(z, f, u, auto);
                   // Nadpis části montáže (Střecha / Elektro / Uzemnění) před jejím prvním úkolem
                   const castUkoly = u.cast ? vsechny.filter((x) => x.cast === u.cast) : [];
@@ -3296,7 +3296,7 @@ export default function Prubeh({
                 setFotkyZ((m) => ({ ...m, [z.id]: [...nove, ...(m[z.id] || [])] }));
                 // úkol „fotky uložené“ té kategorie se po nahrání sám odškrtne (jako u tlačítek u úkolů)
                 const f = fazeById[z.faze];
-                const ukol = (f ? ukolyPro(f, z.typ) : []).find((u) => u.fotky === kat && !ukolHotovy(z, f, u, autoZ(z)));
+                const ukol = (f ? ukolyPro(f, z) : []).find((u) => u.fotky === kat && !ukolHotovy(z, f, u, autoZ(z)));
                 if (ukol) await toggleUkol(z, f, ukol);
               }} />
           )}

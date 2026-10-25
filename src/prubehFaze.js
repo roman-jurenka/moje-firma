@@ -48,8 +48,14 @@ const ZAKLAD_FAZI = [
   ] },
   { id: "distributor", sekce: "bo", nazev: "Distributor", typy: { FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "o", REA: "-" }, ukoly: [
     // auto "m_…" = úkol se odškrtne sám, když je vyplněný úřední milník (milnikyZakazky.js)
-    { id: "zadost", text: "Žádost u distributora podaná", auto: "m_zadost_pripojeni" },
-    { id: "souhlas", text: "Souhlas distributora", brana: true, auto: "m_sop_prijata" },
+    { id: "zadost", text: "Žádost u distributora podaná", auto: "m_zadost_pripojeni", pripojeniKrome: ["egd_s", "egd_bez"] },
+    { id: "souhlas", text: "Souhlas distributora", brana: true, auto: "m_sop_prijata", pripojeniKrome: ["egd_s", "egd_bez"] },
+    // EG.D s přetoky (výrobna do 100 kW na NN): žádost a smlouva o připojení PŘED instalací
+    { id: "egd_zadost", text: "EG.D: žádost o připojení výrobny podaná (sop.distribuce24.cz – jednopólové schéma, souhlas vlastníka D34)", auto: "m_zadost_pripojeni", pripojeni: ["egd_s"] },
+    { id: "egd_sop", text: "EG.D: smlouva o připojení podepsaná a vrácená (návrh do 15 prac. dnů, vrátit do 30 dnů)", brana: true, auto: "m_sop_prijata", pripojeni: ["egd_s"] },
+    // EG.D bez přetoků (zjednodušené připojení mikrozdroje): žádost až PO instalaci, před ní jen ověření
+    { id: "egd_impedance", text: "EG.D bez přetoků: impedance smyčky změřená revizním technikem před instalací (do 0,47 Ω; zdroj do 10 A do 0,75 Ω)", brana: true, pripojeni: ["egd_bez"] },
+    { id: "egd_podminky", text: "EG.D bez přetoků: ověřeno – výkon do 10,8 kW, do 16 A na fázi, střídač max. 11 kW, technicky zamezen přetok do sítě", brana: true, pripojeni: ["egd_bez"] },
   ] },
   { id: "dotace", sekce: "bo", nazev: "Dotace", typy: { FVE: "o", FVR: "o", FVO: "o", SRV: "-", HRM: "-", ELK: "-", REA: "-" }, ukoly: [
     { id: "zadost", text: "Žádost o dotaci podaná", auto: "m_dotace_podana" },
@@ -95,7 +101,17 @@ const ZAKLAD_FAZI = [
   ] },
 
   { id: "pripojeni", sekce: "uz", nazev: "Připojení", typy: { FVR: "o", SRV: "-", HRM: "-", ELK: "o", REA: "-" }, ukoly: [
-    { id: "ppp", text: "Uvedeno do provozu u distributora", auto: "m_pretoky" },
+    { id: "ppp", text: "Uvedeno do provozu u distributora", auto: "m_pretoky", pripojeniKrome: ["egd_s", "egd_bez"] },
+    // EG.D bez přetoků: žádost po instalaci → smlouva → subjekt zúčtování → elektroměr (bez UTP a KPO)
+    { id: "egd_bez_zadost", text: "EG.D: žádost o zjednodušené připojení podaná po instalaci (Distribuce24) – technická zpráva s nastavením ochran a jednopólové schéma, výchozí revize s impedancí, Instalační dokument A1, protokol PPDS P4 střídače", auto: "m_zadost_pripojeni", pripojeni: ["egd_bez"] },
+    { id: "egd_bez_sop", text: "EG.D: smlouva o připojení podepsaná a vrácená (přijde do 10 prac. dnů, vrátit do 30 dnů)", brana: true, auto: "m_sop_prijata", pripojeni: ["egd_bez"] },
+    { id: "egd_bez_sz", text: "Subjekt zúčtování pro dodávkový EAN zajištěný (i při nulovém rezervovaném výkonu)", pripojeni: ["egd_bez"] },
+    { id: "egd_bez_elm", text: "Elektroměr vyměněný EG.D", brana: true, auto: "m_pretoky", pripojeni: ["egd_bez"] },
+    // EG.D s přetoky: subjekt zúčtování → žádost o UTP → KPO → elektroměr
+    { id: "egd_sz", text: "Subjekt zúčtování / výkup přetoků sjednaný (do té doby zamezit dodávce do sítě)", pripojeni: ["egd_s"] },
+    { id: "egd_utp", text: "EG.D: žádost o umožnění trvalého provozu (UTP) podaná – ppp.distribuce24.cz nebo D50, do 12 měsíců od termínu v SoP (revize, Instalační dokument A1, protokol o nastavení ochran)", pripojeni: ["egd_s"] },
+    { id: "egd_kpo", text: "EG.D: Konečné provozní oznámení (KPO) přijaté", brana: true, pripojeni: ["egd_s"] },
+    { id: "egd_elm", text: "Elektroměr vyměněný – výrobna v trvalém provozu", brana: true, auto: "m_pretoky", pripojeni: ["egd_s"] },
   ] },
   // Jen u realizace na objednávku (REA): objednatel dostane fotky, předávací
   // protokol a uzavírací e-mail (tlačítko Připravit uzavírací e-mail).
@@ -132,7 +148,7 @@ export function pouzijNastaveni(nastaveni) {
     const ukoly = Array.isArray(u.ukoly) && u.ukoly.length
       ? u.ukoly.filter((x) => String(x.text || "").trim()).map((x) => {
         const z = f.ukoly.find((b) => b.id === x.id);
-        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, naceneniRea: z.naceneniRea, zalohovaFaktura: z.zalohovaFaktura, dofakturace: z.dofakturace, cast: z.cast, jenTypy: z.jenTypy, krome: z.krome, ...x, auto: x.auto || z.auto } : x;
+        return z ? { fotky: z.fotky, udaje: z.udaje, smlouva: z.smlouva, email: z.email, material: z.material, naceneniRea: z.naceneniRea, zalohovaFaktura: z.zalohovaFaktura, dofakturace: z.dofakturace, cast: z.cast, jenTypy: z.jenTypy, krome: z.krome, pripojeni: z.pripojeni, pripojeniKrome: z.pripojeniKrome, ...x, auto: x.auto || z.auto } : x;
       })
       : f.ukoly;
     return {
@@ -237,7 +253,22 @@ export function predchoziFaze(z) {
 }
 
 // Úkoly fáze, které platí pro daný typ zakázky (jenTypy / krome).
-export const ukolyPro = (faze, typ) => (faze?.ukoly || []).filter((u) => (!u.jenTypy || u.jenTypy.includes(typ)) && !(u.krome || []).includes(typ));
+// Režim připojení výrobny (Podklady → Odběrné místo): „egd_s“ / „egd_bez“, jinak null.
+// Podle něj se ve fázích Distributor a Připojení ukážou kroky EG.D s přetoky / bez přetoků.
+export function rezimPripojeni(z) {
+  const o = z?.podklady?.odberne || {};
+  if (!/EG\.?D/i.test(String(o.distribuce || ""))) return null;
+  if (/^Bez/i.test(String(o.pretoky || ""))) return "egd_bez";
+  if (/^S /i.test(String(o.pretoky || ""))) return "egd_s";
+  return null;
+}
+// druhý parametr: zakázka (typ + režim připojení), u starších volání jen typ
+export const ukolyPro = (faze, zNeboTyp) => {
+  const typ = typeof zNeboTyp === "object" ? zNeboTyp?.typ : zNeboTyp;
+  const rezim = typeof zNeboTyp === "object" ? rezimPripojeni(zNeboTyp) : null;
+  return (faze?.ukoly || []).filter((u) => (!u.jenTypy || u.jenTypy.includes(typ)) && !(u.krome || []).includes(typ)
+    && (!u.pripojeni || u.pripojeni.includes(rezim)) && !(u.pripojeniKrome || []).includes(rezim));
+};
 
 // Části montáže (úkoly s „cast“) — dělají je různé party v libovolném pořadí.
 export const CASTI_MONTAZE = {
@@ -252,19 +283,19 @@ export function ukolHotovy(z, faze, ukol, auto = {}) {
   if (ukol.auto && auto[ukol.auto]) return true;
   return !!(z.hotove_ukoly || {})[`${faze.id}.${ukol.id}`];
 }
-export const fazeHotova = (z, faze, auto) => ukolyPro(faze, z.typ).every((u) => ukolHotovy(z, faze, u, auto));
+export const fazeHotova = (z, faze, auto) => ukolyPro(faze, z).every((u) => ukolHotovy(z, faze, u, auto));
 // Termín podle běžné doby fáze (od vstupu do fáze).
 export function terminFaze(faze, odIso) {
   const d = odIso ? new Date(odIso) : new Date();
   d.setDate(d.getDate() + (Number(faze?.dny) || 7));
   return d.toLocaleDateString("sv-SE");
 }
-export const prvniNehotovy = (z, faze, auto) => ukolyPro(faze, z.typ).find((u) => !ukolHotovy(z, faze, u, auto)) || null;
+export const prvniNehotovy = (z, faze, auto) => ukolyPro(faze, z).find((u) => !ukolHotovy(z, faze, u, auto)) || null;
 
 // Brána = úkoly označené "brana" ve fázích sekce, kde zakázka právě je.
 export function branaSekce(z, auto) {
   const sekce = fazeById[z.faze]?.sekce;
-  return fazeSekce(z, sekce).flatMap((f) => ukolyPro(f, z.typ).filter((u) => u.brana)
+  return fazeSekce(z, sekce).flatMap((f) => ukolyPro(f, z).filter((u) => u.brana)
     .map((u) => ({ text: u.text, hotovo: ukolHotovy(z, f, u, auto) })));
 }
 export const NAZEV_BRANY = { ob: "Brána do back office", bo: "Brána do realizace", re: "Brána k uzavření", uz: "Uzavření zakázky" };

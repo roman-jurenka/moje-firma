@@ -105,7 +105,7 @@ export default function MujDen({ currentUser, employees = [], attendance = [], s
   const ukolyAkce = (a) => {
     const z = a.zak, f = z ? fazeById[z.faze] : null;
     if (!z || !f || z.stav !== "otevrena") return [];
-    return ukolyPro(f, z.typ).map((u) => ({ u, f, hotovo: ukolHotovy(z, f, u) }));
+    return ukolyPro(f, z).map((u) => ({ u, f, hotovo: ukolHotovy(z, f, u) }));
   };
   const souhrn = (akce || []).reduce((s, a) => { const u = ukolyAkce(a); return { celk: s.celk + u.length, hot: s.hot + u.filter((x) => x.hotovo).length }; }, { celk: 0, hot: 0 });
 

@@ -64,6 +64,8 @@ export const SEKCE_PODKLADU = [
   ] },
   { id: "odberne", nazev: "Odběrné místo", ikona: "🔌", typy: [...FV, "ELK", "REA", "HRM"], pole: [
     { id: "distribuce", label: "Distribuce", moznosti: ["ČEZ", "EG.D", "PRE"] },
+    // u EG.D určuje postup připojení v Průběhu (fáze Distributor a Připojení)
+    { id: "pretoky", label: "Připojení výrobny", moznosti: ["S přetoky (dodávka do sítě)", "Bez přetoků (zjednodušené – mikrozdroj do 10,8 kW)"], typy: [...FV, "REA"] },
     { id: "umisteni_elmr", label: "Umístění ELMR", moznosti: ["Na fasádě domu", "Na fasádě do dvora", "V pilíři na hranici pozemku", "Na sloupu", "V domě"] },
     { id: "jistic_novy", typy: [...FV, "ELK", "REA"], label: "Výměna hl. jističe na", moznosti: ["Bez výměny", "B25/3", "B32/3", "B40/3", "B50/3", "B63/3"] },
     { id: "uprava_elmr", label: "Úprava ELMR", z: "cenik:elmr", typy: [...FV, "ELK", "REA"] },
