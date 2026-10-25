@@ -33,6 +33,7 @@ import PoleSNabidkou from "./PoleSNabidkou.jsx";
 import NaceneniRealizace from "./NaceneniRealizace.jsx";
 import SlozkaZakazky from "./SlozkaZakazky.jsx";
 import { ulozitDoDokumentu, odkazNaDokumenty, zalozitSlozkuDokumenty } from "./dokumentyOneDrive.js";
+import { bezDiakritiky } from "./hledani.js";
 import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu,
   nazevFaze, ukolyPro, nazevCasti, CASTI_MONTAZE, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
@@ -1408,8 +1409,31 @@ export default function Prubeh({
 
   const ulozMisto = async () => {
     const m = { misto_adresa: editMisto.adresa.trim() || null, misto_kontakt: editMisto.kontakt.trim() || null, misto_telefon: editMisto.telefon.trim() || null, misto_vztah: (editMisto.vztah || "").trim() || null };
-    const ok = await uloz(z, m);
+    // změna / doplnění zákazníka (stávající nebo nový)
+    let noveZakId = editMisto.customer_id ? Number(editMisto.customer_id) : null;
+    if (editMisto.zakRezim === "novy") {
+      const nz = editMisto.novyZak;
+      if (!nz.name.trim()) { alert("Zadej jméno nového zákazníka."); return; }
+      const { data: c, error: cErr } = await supabase.from("customers").insert({
+        name: nz.name.trim(), company: nz.company.trim() || null, phone: nz.phone.trim() || null, email: nz.email.trim() || null,
+        address: nz.adresa.trim() || m.misto_adresa || "", tag: "Nový",
+      }).select().single();
+      if (cErr) { alert("Zákazníka se nepodařilo založit: " + cErr.message); return; }
+      noveZakId = c.id;
+      if (onZakaznikZalozen) onZakaznikZalozen(c);
+    }
+    const zmenaZak = noveZakId && noveZakId !== z.customer_id;
+    if (zmenaZak) m.customer_id = noveZakId;
+    const novyZakaznik = zmenaZak ? (customers.find((c) => c.id === noveZakId) || { name: editMisto.novyZak?.name }) : null;
+    const ok = await uloz(z, m, zmenaZak ? `Zákazník ${z.customer_id ? "změněn" : "doplněn"}: ${novyZakaznik?.company || novyZakaznik?.name || ""}.` : undefined);
     if (!ok) return;
+    if (zmenaZak) {
+      if (z.deal_id) await supabase.from("deals").update({ customer_id: noveZakId }).eq("id", z.deal_id);
+      if (z.contract_id) {
+        await supabase.from("contracts").update({ customer_id: noveZakId }).eq("id", z.contract_id);
+        setContracts((ks) => ks.map((k) => (k.id === z.contract_id ? { ...k, customer_id: noveZakId } : k)));
+      }
+    }
     // ať sedí i obchodní případ a zakázka (adresa pro technika, docházku…)
     if (z.deal_id) await supabase.from("deals").update({ site_address: m.misto_adresa, site_contact_name: m.misto_kontakt, site_contact_phone: m.misto_telefon }).eq("id", z.deal_id);
     if (z.contract_id && m.misto_adresa) {
@@ -3171,9 +3195,62 @@ export default function Prubeh({
               {zakZ.phone && <> · <a href={`tel:${zakZ.phone}`} style={{ color: "#0369a1" }}>{zakZ.phone}</a></>}
               {zakZ.email && <> · <a href={`mailto:${zakZ.email}`} style={{ color: "#0369a1" }}>{zakZ.email}</a></>}
             </div>
-          ) : <div style={{ color: "#94a3b8" }}>Bez zákazníka</div>}
+          ) : <div style={{ color: "#b45309" }}>Bez zákazníka — doplň ho tlačítkem Upravit (stávající nebo nový).</div>}
           {editMisto ? (
             <>
+              {/* Zákazník: ponechat / vybrat stávajícího / založit nového */}
+              {(() => {
+                const rezim = editMisto.zakRezim || null;
+                const set = (patch) => setEditMisto({ ...editMisto, ...patch });
+                const vybrany = editMisto.customer_id ? zakaznik(Number(editMisto.customer_id)) : null;
+                const nz = editMisto.novyZak || { name: "", company: "", phone: "", email: "", adresa: "" };
+                if (!rezim) return (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 10px" }}>
+                    <span style={{ flex: 1, minWidth: 160 }}>{vybrany || zakZ ? <><b>{(vybrany || zakZ).name}</b>{(vybrany || zakZ).company ? ` · ${(vybrany || zakZ).company}` : ""}</> : <span style={{ color: "#b45309" }}>Zakázka nemá zákazníka</span>}</span>
+                    <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => set({ zakRezim: "stavajici", zakHledat: "" })}>{zakZ ? "Změnit zákazníka" : "Vybrat zákazníka"}</button>
+                    <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => set({ zakRezim: "novy", customer_id: null, novyZak: nz })}>+ Nový zákazník</button>
+                  </div>
+                );
+                if (rezim === "novy") return (
+                  <div style={{ border: "1px solid #bae6fd", background: "#f0f9ff", borderRadius: 10, padding: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", alignItems: "center" }}><b>Nový zákazník</b>
+                      <button type="button" style={{ ...btnGhost, padding: "2px 8px", fontSize: 12 }} onClick={() => set({ zakRezim: null, customer_id: null })}>Zrušit</button></div>
+                    {[["name", "Jméno a příjmení *"], ["company", "Firma (nepovinné)"], ["phone", "Telefon"], ["email", "E-mail"], ["adresa", "Adresa (trvalé bydliště / sídlo)"]].map(([k, l]) => (
+                      <div key={k} style={k === "adresa" ? { gridColumn: "1 / -1" } : undefined}><label style={lbl} htmlFor={`pr-mz-${k}`}>{l}</label>
+                        <input id={`pr-mz-${k}`} style={inp} type={k === "email" ? "email" : k === "phone" ? "tel" : "text"} value={nz[k] || ""} onChange={(e) => set({ novyZak: { ...nz, [k]: e.target.value } })} /></div>
+                    ))}
+                  </div>
+                );
+                const q = bezDiakritiky(editMisto.zakHledat || "");
+                const nalezeni = customers.filter((c) => !c.archived)
+                  .filter((c) => !q || bezDiakritiky([c.name, c.company, c.phone, c.email, c.address].filter(Boolean).join(" ")).includes(q)).slice(0, 8);
+                return (
+                  <div style={{ border: "1px solid #bae6fd", background: "#f0f9ff", borderRadius: 10, padding: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}><b>Vybrat zákazníka</b>
+                      <button type="button" style={{ ...btnGhost, padding: "2px 8px", fontSize: 12 }} onClick={() => set({ zakRezim: null, customer_id: null })}>Zrušit</button></div>
+                    {vybrany ? (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ flex: 1 }}>✓ <b>{vybrany.name}</b>{vybrany.company ? ` · ${vybrany.company}` : ""}<span style={{ color: "#64748b", fontSize: 12 }}>{vybrany.phone ? ` · ${vybrany.phone}` : ""}</span></span>
+                        <button type="button" style={{ ...btnGhost, padding: "2px 8px", fontSize: 12 }} onClick={() => set({ customer_id: null })}>Jiný</button>
+                      </div>
+                    ) : (
+                      <>
+                        <input style={inp} autoFocus aria-label="Hledat zákazníka" value={editMisto.zakHledat || ""} placeholder="Hledat podle jména, firmy, telefonu…" onChange={(e) => set({ zakHledat: e.target.value })} />
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6, maxHeight: 220, overflowY: "auto" }}>
+                          {nalezeni.length === 0 && <div style={{ fontSize: 13, color: "#64748b" }}>Nikdo nenalezen — použij „+ Nový zákazník“.</div>}
+                          {nalezeni.map((c) => (
+                            <button key={c.id} type="button" onClick={() => set({ customer_id: String(c.id), adresa: editMisto.adresa || c.address || "" })}
+                              style={{ textAlign: "left", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "inherit" }}>
+                              <div style={{ fontWeight: 600, fontSize: 13.5 }}>{c.name}</div>
+                              <div style={{ fontSize: 12, color: "#64748b" }}>{[c.company, c.phone, c.address].filter(Boolean).join(" · ")}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
               <div><label style={lbl} htmlFor="pr-madr">Adresa realizace</label><input id="pr-madr" style={inp} value={editMisto.adresa} onChange={(e) => setEditMisto({ ...editMisto, adresa: e.target.value })} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <div><label style={lbl} htmlFor="pr-mkon">Kontaktní osoba na místě</label><input id="pr-mkon" style={inp} value={editMisto.kontakt} onChange={(e) => setEditMisto({ ...editMisto, kontakt: e.target.value })} /></div>
