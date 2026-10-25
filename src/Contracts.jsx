@@ -981,11 +981,11 @@ export default function Contracts({ customers, employees, currentUser, initialDe
 
                 {/* VIEW: PŘEHLED — existing tabs */}
                 {view === "prehled" && (<>
-                {/* TABS */}
-                <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2e8f0", marginBottom: 20 }}>
+                {/* TABS — když se nevejdou do řádku, zalomí se do dalších řádků (každá celá) */}
+                <div role="tablist" style={{ display: "flex", flexWrap: "wrap", gap: 6, borderBottom: "1px solid #e2e8f0", paddingBottom: 10, marginBottom: 20 }}>
                   {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["faktury",`📄 Faktury (${contInvoices.length})`], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["servis","🔧 Servis"], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["vypis","📝 Výpis prací"], ["soupis","📋 Soupis práce"]].map(([t, label]) => (
-                    <button key={t} onClick={() => setTab(contract.id, t)}
-                      style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #0369a1" : "2px solid transparent", color: tab === t ? "#0369a1" : "#475569", padding: "8px 16px", fontSize: 13, cursor: "pointer", fontWeight: tab === t ? 600 : 400 }}>
+                    <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(contract.id, t)}
+                      style={{ background: tab === t ? "#e0f2fe" : "#fff", border: `1px solid ${tab === t ? "#7dd3fc" : "#e2e8f0"}`, borderRadius: 999, color: tab === t ? "#0369a1" : "#475569", padding: "6px 12px", fontSize: 13, cursor: "pointer", fontWeight: tab === t ? 700 : 500, whiteSpace: "nowrap", fontFamily: "inherit" }}>
                       {label}
                     </button>
                   ))}
