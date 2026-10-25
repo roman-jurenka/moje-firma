@@ -11,7 +11,7 @@ import { KartaMilniky, KartaPlatby } from "./KartyMilnikyPlatby.jsx";
 import { autoMilniku, stitkyZakazky } from "./milnikyZakazky.js";
 import StavZakazkyGraf from "./StavZakazkyGraf.jsx";
 import TabuleOddeleni from "./TabuleOddeleni.jsx";
-import { soubezne, stavOddeleni, hlavniFaze, pohledOdd, stavFazeOdd, postupOdd, oddPoTerminu, posunOdd, oddFaze, aktivni, HOTOVO, CEKA } from "./oddeleniZakazky.js";
+import { soubezne, stavOddeleni, hlavniFaze, pohledOdd, stavFazeOdd, postupOdd, oddPoTerminu, posunOdd, oddFaze, aktivni, HOTOVO, CEKA, naRadeOdd, oddeleniById } from "./oddeleniZakazky.js";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { aktualniFirma, aktualizujOdkazy, upozorneniFirmy } from "./firmaDokumenty.js";
@@ -456,6 +456,22 @@ export default function Prubeh({
     if (error) { alert("Změnu se nepodařilo uložit: " + error.message); return false; }
     setRows((rs) => rs.map((r) => (r.id === zak.id ? { ...r, ...plny } : r)));
     if (poznamka) await pridatPoznamku(zak, poznamka, true);
+    // Posun zakázky: kdo je nově na řadě (jiná fáze nebo jiný člověk), dostane upozornění
+    if (["faze", "oddeleni", "dalsi_krok_kdo", "vlastnik_obchod", "vlastnik_bo", "vlastnik_re", "stav"].some((k) => k in patch)) {
+      try {
+        const pred = zak.stav === "otevrena" ? naRadeOdd(zak) : {};
+        const nova = { ...zak, ...plny };
+        const po = nova.stav === "otevrena" ? naRadeOdd(nova) : {};
+        const upozorneni = Object.entries(po)
+          .filter(([odd, t]) => t.kdo && t.kdo !== ja && (pred[odd]?.faze !== t.faze || pred[odd]?.kdo !== t.kdo))
+          .map(([odd, t]) => ({
+            user_name: t.kdo, title: "Zakázka je u tebe",
+            message: `${nova.nazev} — ${oddeleniById[odd]?.nazev || odd}: ${nazevFaze(fazeById[t.faze], nova.typ) || t.faze}${t.termin ? `, termín ${new Date(t.termin + "T00:00:00").toLocaleDateString("cs-CZ")}` : ""}${ja ? ` (posunul ${ja})` : ""}`,
+            link_type: "prubeh", link_id: nova.id,
+          }));
+        if (upozorneni.length) await supabase.from("notifications").insert(upozorneni);
+      } catch (e) { console.error("Upozornění na posun zakázky:", e); }
+    }
     return true;
   };
   const pridatPoznamku = async (zak, text, system = false) => {

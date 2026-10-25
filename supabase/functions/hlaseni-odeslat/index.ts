@@ -8,6 +8,8 @@
 //     -> ranní souhrn v nastavených časech + okamžitá upozornění (mimo klidné hodiny)
 //   - ranní připomínky úkolů zaměstnancům (akce "ukoly" + tick): úkoly s dnešním termínem, jednou za den
 //   - servisní ticket (akce "ticket", id): push přiřazenému technikovi (trigger service_tickets_push)
+//   - oznámení z aplikace (akce "notifikace", id): push adresátovi (trigger notifikace_push)
+//   - večer 17–21 h (tick): „Zítra jedeš na…“ každému s akcí v kalendáři na zítřek
 //   - docházka na pozadí: akce "dochazka" (trigger na attendance + tick) posílá zaměstnancům notifikaci s odpracovaným časem
 //   - aplikace (jen přihlášený admin, JWT): akce "test" (volitelně kanal: pushover|webpush), "nahled", "souhrn_ted"
 //
@@ -148,7 +150,7 @@ async function webPushProfil(profileId: string, payload: PushPayload) {
   return odesliOdberum((odb || []) as Odber[], payload, 0)
 }
 
-type Nastaveni = { pushover: boolean; webpush: boolean; dochazka_zapnuto?: boolean; dochazka_interval_min?: number; ukoly_zapnuto?: boolean; [k: string]: unknown }
+type Nastaveni = { pushover: boolean; webpush: boolean; dochazka_zapnuto?: boolean; dochazka_interval_min?: number; ukoly_zapnuto?: boolean; zitra_zapnuto?: boolean; notifikace_push?: boolean; [k: string]: unknown }
 
 // Pošle zprávu všemi zapnutými kanály; úspěch = aspoň jeden kanál doručil.
 async function posli(nast: Nastaveni, title: string, message: string, priorita: number) {
@@ -459,8 +461,65 @@ async function ticketPush(id: number) {
   const body = [t.nazev, t.termin ? `termín ${csDate(t.termin)}` : null, t.adresa].filter(Boolean).join(' · ')
   let odeslano = 0
   for (const p of profily as { id: string }[]) {
-    const r = await webPushProfil(p.id, { title: `🔧 Servis ${t.cislo}${t.priorita === 'Vysoká' ? ' — spěchá' : ''}`, body, tag: `ticket-${t.id}`, url: APP_URL })
+    const r = await webPushProfil(p.id, { title: `🔧 Servis ${t.cislo}${t.priorita === 'Vysoká' ? ' — spěchá' : ''}`, body, tag: `ticket-${t.id}`, url: `${APP_URL}/?otevrit=servis` })
     if (r.ok) odeslano++
+  }
+  return { stav: 'ok', odeslano }
+}
+
+// ── Oznámení z aplikace jako push ─────────────────────────────────────────────
+// Trigger notifikace_push na tabulce notifications (nový úkol, naplánovaná práce,
+// „zakázka je u tebe“…). Klepnutí otevře v appce správné místo (?otevrit=…).
+const ODKAZ_OZNAMENI: Record<string, string> = { prubeh: 'prubeh', task: 'tasks', calendar: 'calendar' }
+async function notifikacePush(id: number, nast: { notifikace_push?: boolean }) {
+  if (nast.notifikace_push === false) return { stav: 'vypnuto' }
+  const { data: n } = await db.from('notifications').select('id, user_name, title, message, link_type, link_id').eq('id', id).maybeSingle()
+  if (!n?.user_name) return { stav: 'nic' }
+  const { data: profily } = await db.from('profiles').select('id').eq('name', n.user_name)
+  if (!profily?.length) return { stav: 'bez_uctu' }
+  const cil = ODKAZ_OZNAMENI[n.link_type || '']
+  const url = cil ? `${APP_URL}/?otevrit=${cil}${cil === 'prubeh' && n.link_id ? ':' + n.link_id : ''}` : APP_URL
+  let odeslano = 0
+  for (const p of profily as { id: string }[]) {
+    const r = await webPushProfil(p.id, { title: n.title || 'Oznámení', body: n.message || '', tag: `oznameni-${n.id}`, url })
+    if (r.ok) odeslano++
+  }
+  return { stav: 'ok', odeslano }
+}
+
+// ── Večer: „Zítra jedeš na…“ ──────────────────────────────────────────────────
+// Mezi 17:00 a 21:00 (Praha) dostane každý, kdo má zítra akci v kalendáři,
+// jednu notifikaci: kam, adresa a s kým. Jednou za den (tabulka zitra_push).
+async function zitraTick(nast: { zitra_zapnuto?: boolean }) {
+  if (nast.zitra_zapnuto === false) return { stav: 'vypnuto' }
+  const { date, hm } = pragueNow()
+  const min = toMin(hm)
+  if (min < 17 * 60 || min >= 21 * 60) return { stav: 'mimo_okno' }
+  const zitra = new Date(dnesMs(date) + 86400_000).toISOString().slice(0, 10)
+  const { data: akce } = await db.from('calendar_events').select('employee_id, employee_name, title, customer_name, address, work_type, prubeh_id, contract_id').eq('date', zitra)
+  type Akce = { employee_id: number | null; employee_name: string | null; title: string | null; customer_name: string | null; address: string | null; work_type: string | null; prubeh_id: number | null; contract_id: number | null }
+  const vse = ((akce || []) as Akce[]).filter((a) => a.employee_id != null)
+  if (!vse.length) return { stav: 'zadne', odeslano: 0 }
+  const klicAkce = (a: Akce) => a.prubeh_id ? `p${a.prubeh_id}` : a.contract_id ? `c${a.contract_id}` : `t${a.title || ''}|${a.customer_name || ''}`
+  const podle = new Map<number, Akce[]>()
+  for (const a of vse) podle.set(Number(a.employee_id), [...(podle.get(Number(a.employee_id)) || []), a])
+  let odeslano = 0
+  for (const [empId, moje] of podle) {
+    const { data: profily } = await db.from('profiles').select('id').eq('employee_id', empId)
+    if (!profily?.length) continue
+    const { data: claimed } = await db.from('zitra_push').upsert({ employee_id: empId, den: zitra }, { onConflict: 'employee_id,den', ignoreDuplicates: true }).select('employee_id')
+    if (!claimed?.length) continue
+    const radky = moje.map((a) => {
+      const kolegove = vse.filter((b) => Number(b.employee_id) !== empId && klicAkce(b) === klicAkce(a)).map((b) => String(b.employee_name || '').split(' ')[0]).filter(Boolean)
+      const kam = a.customer_name || a.title || a.work_type || 'práce'
+      const adresa = String(a.address || '').split(',').slice(0, 2).join(',').trim()
+      return `${kam}${adresa ? ` · ${adresa}` : ''}${kolegove.length ? ` (s: ${[...new Set(kolegove)].join(', ')})` : ' (sám)'}`
+    })
+    const title = moje.length === 1 ? `Zítra jedeš: ${moje[0].customer_name || moje[0].title || moje[0].work_type || 'práce'}` : `Zítra máš ${moje.length} akce`
+    for (const p of profily as { id: string }[]) {
+      const r = await webPushProfil(p.id, { title, body: radky.join('\n'), tag: 'zitra', url: `${APP_URL}/?otevrit=calendar` })
+      if (r.ok) odeslano++
+    }
   }
   return { stav: 'ok', odeslano }
 }
@@ -498,6 +557,7 @@ Deno.serve(async (req) => {
     if (akce === 'dochazka') return json({ status: 'ok', dochazka: await dochazkaTick(nast) })
     if (akce === 'ukoly') return json({ status: 'ok', ukoly: await ukolyTick(nast) })
     if (akce === 'ticket') return json({ status: 'ok', ticket: await ticketPush(Number(body.id)) })
+    if (akce === 'notifikace') return json({ status: 'ok', notifikace: await notifikacePush(Number(body.id), nast) })
 
     if (akce === 'nahled') {
       const rules = await nactiPravidla()
@@ -520,6 +580,7 @@ Deno.serve(async (req) => {
       const vysledek: Record<string, unknown> = {}
       vysledek.dochazka = await dochazkaTick(nast).catch((e) => ({ chyba: (e as Error).message }))
       vysledek.ukoly = await ukolyTick(nast).catch((e) => ({ chyba: (e as Error).message }))
+      vysledek.zitra = await zitraTick(nast).catch((e) => ({ chyba: (e as Error).message }))
       if (!nast.zapnuto) return json({ status: 'vypnuto', ...vysledek })
       const rules = await nactiPravidla()
 

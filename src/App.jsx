@@ -837,12 +837,20 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     if (window.history.state?.appTab) window.history.back();
     else krokZpet();
   };
+  const [prubehInitialId, setPrubehInitialId] = useState(null); // otevřít konkrétní zakázku v Průběhu (z Nacenění)
   // Rychlá obrazovka (Odchod / Fotky) – otevírá ji klepnutí na notifikaci o odpracovaném čase (?rychle=…)
   const [rychle, setRychle] = useState(false);
   useEffect(() => {
     const zpracuj = (v) => { if (v === "fotky") setTab("fotoupload"); else if (v) setRychle(true); };
-    const p = new URLSearchParams(window.location.search).get("rychle");
-    if (p) { zpracuj(p); window.history.replaceState(null, "", window.location.pathname); }
+    // ?otevrit=prubeh:123 / tasks / calendar — klepnutí na oznámení (zakázka je u tebe, nový úkol…)
+    const otevrit = (o) => {
+      const [t, id] = String(o || "").split(":");
+      if (t === "prubeh") { setPrubehInitialId(id ? Number(id) : null); setTab("prubeh"); }
+      else if (["tasks", "calendar", "notifications", "servis"].includes(t)) setTab(t);
+    };
+    const hledat = new URLSearchParams(window.location.search);
+    const p = hledat.get("rychle"), o = hledat.get("otevrit");
+    if (p || o) { if (p) zpracuj(p); else otevrit(o); window.history.replaceState(null, "", window.location.pathname); }
     // Klepnutí na notifikaci: service worker uloží signál do cache (spolehlivější než zpráva/URL na iOS).
     const signal = async () => {
       try {
@@ -869,7 +877,11 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     window.addEventListener("pageshow", spust);
     const h = (e) => {
       if (e.data?.type !== "otevri") return;
-      try { zpracuj(new URL(e.data.url, window.location.origin).searchParams.get("rychle") || "odchod"); } catch { /* neplatná adresa */ }
+      try {
+        const sp = new URL(e.data.url, window.location.origin).searchParams;
+        if (sp.get("otevrit")) otevrit(sp.get("otevrit"));
+        else if (sp.get("rychle")) zpracuj(sp.get("rychle"));
+      } catch { /* neplatná adresa */ }
       spust();
     };
     navigator.serviceWorker?.addEventListener("message", h);
@@ -922,7 +934,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const [contracts, setContracts] = useState([]);
   const [contractInitialDeal, setContractInitialDeal] = useState(null);
   const [contractInitialId, setContractInitialId] = useState(null); // otevřít konkrétní zakázku (z Průběhu zakázek)
-  const [prubehInitialId, setPrubehInitialId] = useState(null); // otevřít konkrétní zakázku v Průběhu (z Nacenění)
   const [costEntries, setCostEntries] = useState([]);
   const [deliveryNotes, setDeliveryNotes] = useState([]); // dodací listy (materiál s vlastní marží) — pro KPI zisku
   const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
@@ -1802,10 +1813,18 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {notifications.filter(n => !n.user_name || n.user_name === currentUser?.name).map(n => (
-                <div key={n.id} style={{ ...S.card, borderLeft: `3px solid ${n.read ? "#cbd5e1" : "#0369a1"}`, padding: "14px 18px" }}>
+                <div key={n.id} role={n.link_type ? "button" : undefined} tabIndex={n.link_type ? 0 : undefined}
+                  onClick={async () => {
+                    const cil = { prubeh: "prubeh", task: "tasks", calendar: "calendar" }[n.link_type];
+                    if (!cil) return;
+                    if (!n.read) { await supabase.from("notifications").update({ read: true }).eq("id", n.id); setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x)); }
+                    if (cil === "prubeh") setPrubehInitialId(n.link_id);
+                    setTab(cil);
+                  }}
+                  style={{ ...S.card, borderLeft: `3px solid ${n.read ? "#cbd5e1" : "#0369a1"}`, padding: "14px 18px", cursor: n.link_type ? "pointer" : "default" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
-                      <div style={{ fontWeight: 700, color: n.read ? "#475569" : "#fff", marginBottom: 4 }}>{n.title}</div>
+                      <div style={{ fontWeight: 700, color: n.read ? "#475569" : "#0f172a", marginBottom: 4 }}>{n.title}</div>
                       <div style={{ color: "#475569", fontSize: 13 }}>{n.message}</div>
                     </div>
                     <div style={{ fontSize: 11, color: "#475569", whiteSpace: "nowrap", marginLeft: 12 }}>{new Date(n.created_at).toLocaleString("cs")}</div>

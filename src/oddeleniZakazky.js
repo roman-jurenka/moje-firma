@@ -108,3 +108,18 @@ export function posunOdd(z, st, odd, cil, { ted, termin, kdo }) {
   }
   return nove;
 }
+
+// Kdo je u zakázky na řadě v jednotlivých odděleních: { ob|bo|re: { faze, kdo, termin } }
+// (jen aktivní oddělení). Podle rozdílu před/po změně se posílá upozornění.
+export function naRadeOdd(z) {
+  const st = stavOddeleni(z);
+  const out = {};
+  for (const odd of ODDELENI) {
+    if (odd.id === "ob" && soubezne(z)) continue;
+    const t = st[odd.id];
+    if (!aktivni(t)) continue;
+    const kdo = odd.id === "ob" ? (z.dalsi_krok_kdo || z.vlastnik_obchod) : (t.kdo || z[odd.vlastnik]);
+    out[odd.id] = { faze: t.faze, kdo: kdo || null, termin: t.termin || (odd.id === "ob" ? z.dalsi_krok_termin : null) || null };
+  }
+  return out;
+}
