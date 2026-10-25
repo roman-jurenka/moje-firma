@@ -3303,14 +3303,14 @@ export default function Prubeh({
     const fak = (fakturyZ[z.id] || []).filter((i) => i.status !== "Storno" && (i.invoice_type || "vydaná") === "vydaná");
     const kc = (n) => `${Math.round(Number(n) || 0).toLocaleString("cs-CZ")} Kč`;
     const vl = (id) => ({ otevreno: !!rozbaleneVl[id], onPrepnout: () => setRozbaleneVl((m) => ({ ...m, [id]: !m[id] })) });
-    // vygenerované dokumenty — vždy z aktuálních údajů zakázky (náhled HTML, stažení Word ze šablony)
+    // vygenerované dokumenty — vždy z aktuálních údajů zakázky; náhled = přesně ten soubor, který se stáhne
     const dokZ = z.dokumenty || {};
     const datumZ = (x) => (x?.at ? new Date(x.at).toLocaleDateString("cs-CZ") : "");
     const qZ = z.quote_id ? quoteById(z.quote_id) : null;
     const vygenerovaneZ = [
-      ...(dokZ.smlouva ? [{ klic: "g-smlouva", nazev: "Smlouva o dílo", ikona: "smlouva", stitek: "smlouva", kategorie: "vygenerovaná", datum: datumZ(dokZ.smlouva), html: async () => htmlSmlouvy(podkladyDokumentu(z)), stahnout: () => souborDokumentu(z, "smlouva") }] : []),
-      ...(dokZ.protokol ? [{ klic: "g-protokol", nazev: "Předávací protokol", ikona: "protokol", stitek: "protokol", kategorie: "vygenerovaný", datum: datumZ(dokZ.protokol), html: async () => htmlProtokolu({ ...podkladyDokumentu(z), protokol: nastaveniProtokolu(z) }), stahnout: () => souborDokumentu(z, "protokol") }] : []),
-      ...(dokZ.dodatky || []).map((dod) => ({ klic: `g-dodatek-${dod.cislo}`, nazev: `Dodatek č. ${dod.cislo}`, ikona: "dodatek", stitek: "dodatek", kategorie: dod.popis || "vygenerovaný", datum: datumZ(dod), html: async () => htmlDodatku(podkladyDokumentu(z), dod), stahnout: () => souborDokumentu(z, "dodatek", dod) })),
+      ...(dokZ.smlouva ? [{ klic: "g-smlouva", nazev: "Smlouva o dílo", ikona: "smlouva", stitek: "smlouva", kategorie: "vygenerovaná", datum: datumZ(dokZ.smlouva), soubor: () => souborDokumentu(z, "smlouva", undefined, false), stahnout: () => souborDokumentu(z, "smlouva") }] : []),
+      ...(dokZ.protokol ? [{ klic: "g-protokol", nazev: "Předávací protokol", ikona: "protokol", stitek: "protokol", kategorie: "vygenerovaný", datum: datumZ(dokZ.protokol), soubor: () => souborDokumentu(z, "protokol", undefined, false), stahnout: () => souborDokumentu(z, "protokol") }] : []),
+      ...(dokZ.dodatky || []).map((dod) => ({ klic: `g-dodatek-${dod.cislo}`, nazev: `Dodatek č. ${dod.cislo}`, ikona: "dodatek", stitek: "dodatek", kategorie: dod.popis || "vygenerovaný", datum: datumZ(dod), soubor: () => souborDokumentu(z, "dodatek", dod, false), stahnout: () => souborDokumentu(z, "dodatek", dod) })),
       ...(qZ && onOtevritNaceneni ? [{ klic: "g-nabidka", nazev: `Nabídka ${qZ.cislo || qZ.name || ""}`.trim(), ikona: "nabidka", stitek: "nabídka", kategorie: qZ.status || "v Nacenění", otevrit: () => onOtevritNaceneni(z.quote_id) }] : []),
     ];
     const vlastnosti = [

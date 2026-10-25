@@ -13,7 +13,7 @@
 // zůstane otevřený jako podklad při doplňování nebo pro kontrolu. Každý
 // dokument jde i stáhnout. Na telefonu je náhled přes celou obrazovku.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "./supabase.js";
 import { getThumbnailUrl, getPreviewUrl, getDirectDownloadUrl, isConnected, connectSharedAccount } from "./onedrive.js";
@@ -44,7 +44,13 @@ async function podepsat(url, bucket) {
 
 // ── načtení obsahu pro náhled / stažení podle zdroje ──
 async function nacistNahled(d) {
-  if (d.zdroj === "gen") return { druh: "html", html: await d.html() };
+  if (d.zdroj === "gen") {
+    // stejný soubor jako při stažení (vlastní šablona Word, jinak záložní HTML)
+    const s = await d.soubor();
+    if (!s?.blob) return { druh: "chyba" };
+    if (/\.docx$/i.test(s.soubor)) return { druh: "docx", blob: s.blob };
+    return { druh: "html", html: await s.blob.text() };
+  }
   if (d.zdroj === "od") {
     if (OBRAZKY.includes(d.ext)) { const u = await getDirectDownloadUrl(d.itemId); return { druh: "img", url: u }; }
     const pv = await getPreviewUrl(d.itemId);
@@ -96,6 +102,26 @@ function Miniatura({ d, onNahled, aktivni }) {
       </span>
     </div>
   );
+}
+
+// Word (.docx) vykreslený v prohlížeči — stejný soubor, jaký se stáhne
+function NahledDocx({ blob }) {
+  const el = useRef(null);
+  const [chyba, setChyba] = useState(false);
+  useEffect(() => {
+    let zrus = false;
+    (async () => {
+      try {
+        const { renderAsync } = await import("docx-preview");
+        if (zrus || !el.current) return;
+        el.current.innerHTML = "";
+        await renderAsync(blob, el.current, undefined, { inWrapper: true, ignoreWidth: false, breakPages: true, className: "docx" });
+      } catch { if (!zrus) setChyba(true); }
+    })();
+    return () => { zrus = true; };
+  }, [blob]);
+  if (chyba) return <div style={{ margin: "auto", color: "#374151" }}>Word se nepodařilo zobrazit — stáhni ho tlačítkem ⬇ Stáhnout.</div>;
+  return <div ref={el} style={{ width: "100%", minHeight: "100%" }} />;
 }
 
 function NahledDokumentu({ soubory, index, onIndex, onZavrit }) {
@@ -156,6 +182,7 @@ function NahledDokumentu({ soubory, index, onIndex, onZavrit }) {
         {!obsah ? <div style={{ margin: "auto", color: "#6B7280" }}>Načítám náhled…</div>
           : obsah.druh === "img" ? <img src={obsah.url} alt={d.nazev} style={{ width: `${zoom * 100}%`, maxWidth: "none", height: "auto", display: "block" }} />
           : obsah.druh === "iframe" ? <iframe title={d.nazev} src={obsah.url} style={{ flex: 1, width: "100%", border: "none", background: "#fff" }} />
+          : obsah.druh === "docx" ? <NahledDocx blob={obsah.blob} />
           : obsah.druh === "html" ? <iframe title={d.nazev} srcDoc={`<!doctype html><meta charset="utf-8"><body style="margin:0;background:#fff">${obsah.html}</body>`} style={{ flex: 1, width: "100%", border: "none", background: "#fff" }} />
           : <div style={{ margin: "auto", textAlign: "center", color: "#374151", padding: 20 }}>{obsah.druh === "chyba" ? "Náhled se nepodařilo načíst." : "Tento soubor nejde zobrazit přímo v aplikaci."}<br />
             {obsah.url && <a href={obsah.url} target="_blank" rel="noreferrer" style={{ color: "#0E3B5E", fontWeight: 700 }}>Otevřít v novém okně</a>}{" "}

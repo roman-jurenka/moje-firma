@@ -17,6 +17,7 @@
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
     "@supabase/supabase-js": "^2.105.1",
+    "docx-preview": "^0.3.3",
     "docxtemplater": "^3.69.3",
     "html2canvas": "^1.4.1",
     "jsbarcode": "^3.12.3",
