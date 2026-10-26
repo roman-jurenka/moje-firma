@@ -157,7 +157,10 @@ function DatePicker({ value, onChange, placeholder = "Vyberte datum", style = {}
 
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-const fmtKc = (v) => `${Number(v || 0).toLocaleString("cs-CZ")} Kč`;
+// Max. 2 desetinná místa — dřív toLocaleString bral až 3 (zisk „941 115,232 Kč“).
+const fmtKc = (v) => `${Number(v || 0).toLocaleString("cs-CZ", { maximumFractionDigits: 2 })} Kč`;
+// Souhrny (dlaždice, přehled, zisk) — zaokrouhleno na celé koruny.
+const fmtKc0 = (v) => `${Math.round(Number(v || 0)).toLocaleString("cs-CZ")} Kč`;
 const pad = (n) => String(n).padStart(2, "0");
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("cs-CZ") : "—";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -386,6 +389,10 @@ export default function Contracts({ customers, employees, currentUser, initialDe
   // rozpracovaná práce — přes filtr "Vše" jdou samozřejmě zobrazit i ty.
   const [filterStatus, setFilterStatus] = useState("aktivní");
   const [sortBy, setSortBy] = useState("newest");
+  // Přehled = kontrolní tabulka všech zakázek, Detail = seznam + karta zakázky.
+  const [zobrazeni, setZobrazeni] = useState("prehled");
+  // Rychlé filtry nad stavem: bez nákladů / přečerpaný rozpočet / k fakturaci.
+  const [rychlyFiltr, setRychlyFiltr] = useState(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
   const closeModal = () => setModal(null);
@@ -435,7 +442,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       // Přicházíme z Průběhu zakázek — rovnou najít a rozbalit tu zakázku.
       if (initialContractId) {
         const hledana = (c.data || []).find(row => row.id === initialContractId);
-        if (hledana) { setFilterStatus("vše"); setSearchQ(hledana.code || hledana.name || ""); setExpandedId(hledana.id); }
+        if (hledana) { setFilterStatus("vše"); setSearchQ(hledana.code || hledana.name || ""); setExpandedId(hledana.id); setZobrazeni("detail"); }
         if (onClearInitialContract) onClearInitialContract();
       }
       // Pokud přicházíme z Dealu — rovnou otevřeme modal pro novou zakázku,
@@ -506,6 +513,25 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     // listů, protože náklad se počítal, ale odpovídající výnos ne.
     const totalRevenue = Number(contract.price || 0) + s.viceClient + s.dnMaterialClient;
     return { totalCost, totalRevenue, profit: totalRevenue - totalCost };
+  }
+
+  // Ekonomický stav zakázky pro přehled — rozpočet, čerpání, fakturace a co chybí.
+  // Zisk se bere jako ověřený, jen když jsou k zakázce zapsané nějaké náklady;
+  // bez nich by „zisk“ byl celá cena (dřív se ukazovalo zavádějících 100 %).
+  function stavZakazky(contract) {
+    const { totalCost, totalRevenue, profit } = contractProfit(contract);
+    const rozpocet = soucetRozpoctu(contract);
+    const cerpani = rozpocet > 0 ? totalCost / rozpocet : null;
+    const faktury = invoices.filter(i => i.contract_id === contract.id && i.status !== "Storno");
+    const vyfakturovano = faktury.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const overeno = totalCost > 0;
+    const upozorneni = [];
+    if (!(Number(contract.price) > 0)) upozorneni.push("Chybí cena");
+    if (!overeno && contract.status !== "Nová") upozorneni.push("Bez nákladů");
+    if (rozpocet <= 0 && Number(contract.price) > 0) upozorneni.push("Bez rozpočtu");
+    if (cerpani != null && cerpani > 1) upozorneni.push(`Přečerpáno o ${fmtKc0(totalCost - rozpocet)}`);
+    if (contract.status === "Dokončena" && faktury.length === 0) upozorneni.push("K fakturaci");
+    return { totalCost, totalRevenue, profit, rozpocet, cerpani, vyfakturovano, pocetFaktur: faktury.length, overeno, upozorneni };
   }
 
   // ── Nová zakázka ──
@@ -859,7 +885,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
     const matchStatus = filterStatus === "vše" ? true
       : filterStatus === "aktivní" ? (c.status !== "Dokončena" && c.status !== "Fakturována")
       : c.status === filterStatus;
-    return matchSearch && matchStatus;
+    if (!(matchSearch && matchStatus)) return false;
+    if (!rychlyFiltr) return true;
+    const st = stavZakazky(c);
+    if (rychlyFiltr === "bezNakladu") return !st.overeno && c.status !== "Nová";
+    if (rychlyFiltr === "precerpano") return st.cerpani != null && st.cerpani > 1;
+    if (rychlyFiltr === "kFakturaci") return c.status === "Dokončena" && st.pocetFaktur === 0;
+    return true;
   }).sort((a, b) => {
     if (sortBy === "newest") return b.id - a.id;
     if (sortBy === "oldest") return a.id - b.id;
@@ -917,10 +949,16 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 {["Nová","Probíhá","Dokončena","Fakturována"].map(s => <option key={s}>{s}</option>)}
               </select>
               <div style={{ textAlign: "right", minWidth: 110 }}>
-                <div style={{ fontSize: 13, color: "#1A1A1A", fontWeight: 700 }}>{fmtKc(totalRevenue)}</div>
-                <div style={{ fontSize: 12, color: profit >= 0 ? "#34d399" : "#f87171", fontWeight: 700 }}>
-                  Zisk: {fmtKc(profit)} ({profitPct}%)
-                </div>
+                <div style={{ fontSize: 13, color: "#1A1A1A", fontWeight: 700 }}>{fmtKc0(totalRevenue)}</div>
+                {totalCost > 0 ? (
+                  <div style={{ fontSize: 12, color: profit >= 0 ? "#15803d" : "#b91c1c", fontWeight: 700 }}>
+                    Zisk: {fmtKc0(profit)} ({profitPct}%)
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "#9a3412", fontWeight: 700 }} title="K zakázce nejsou zapsané žádné náklady">
+                    Zisk: neověřeno
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setModal({ type: "editContract", contract })}
@@ -982,6 +1020,13 @@ export default function Contracts({ customers, employees, currentUser, initialDe
 
                 {/* VIEW: PŘEHLED — existing tabs */}
                 {view === "prehled" && (<>
+                {/* PLÁN VS. SKUTEČNOST — ekonomika zakázky na první pohled */}
+                <PlanSkutecnost
+                  contract={contract} sums={sums} totalCost={totalCost} totalRevenue={totalRevenue} profit={profit}
+                  pocetDochazky={contAttendance.length} faktury={contInvoices}
+                  onPridat={(costType) => setModal({ type: "addEntry", contractId: contract.id, costType, isExtra: false })}
+                  onZalozka={(t) => setTab(contract.id, t)}
+                />
                 {/* TABS — když se nevejdou do řádku, zalomí se do dalších řádků (každá celá) */}
                 <div role="tablist" style={{ display: "flex", flexWrap: "wrap", gap: 6, borderBottom: "1px solid #e2e8f0", paddingBottom: 10, marginBottom: 20 }}>
                   {[["naklady","💰 Náklady"], ["financni","📊 Finance"], ["fakturace","🧾 K fakturaci"], ["faktury",`📄 Faktury (${contInvoices.length})`], ["zamestnanci",`👷 Zaměstnanci (${contAttendance.length})`], ...(contProject || contDayPlan.length ? [["plan","📐 Plán vs. skutečnost"]] : []), ["ukoly",`✅ Úkoly (${contTasks.length})`], ["fotky",`📷 Fotky (${contPhotos.length})`], ["servis","🔧 Servis"], ["komunikace","💬 Komunikace"], ["priprava","📋 Příprava"], ["dokumenty","📁 Dokumenty"], ["vypis","📝 Výpis prací"], ["soupis","📋 Soupis práce"], ["sn","🔢 Výrobní čísla"]].map(([t, label]) => (
@@ -1395,19 +1440,32 @@ export default function Contracts({ customers, employees, currentUser, initialDe
       </div>
 
       {/* STATS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
-        {[
-          { label: "Celkem zakázek", value: contracts.length, color: "#0369a1" },
-          { label: "Probíhá", value: contracts.filter(c => c.status === "Probíhá").length, color: "#0369a1" },
-          { label: "Celkový obrat", value: fmtKc(contracts.reduce((s, c) => s + Number(c.price || 0), 0)), color: "#34d399" },
-          { label: "Celkový zisk", value: fmtKc(contracts.reduce((s, c) => s + contractProfit(c).profit, 0)), color: "#f59e0b" },
-        ].map(st => (
-          <div key={st.label} style={S.statCard(st.color)}>
-            <div style={S.statLabel}>{st.label}</div>
-            <div style={S.statValue(st.color)}>{st.value}</div>
+      {(() => {
+        const stavy = contracts.map(c => ({ c, st: stavZakazky(c) }));
+        const overene = stavy.filter(x => x.st.overeno);
+        const bezNakladu = stavy.filter(x => !x.st.overeno && x.c.status !== "Nová" && Number(x.c.price) > 0).length;
+        const dlazdice = [
+          { label: "Celkem zakázek", value: contracts.length, sub: `${contracts.filter(c => c.status === "Probíhá").length} probíhá · ${contracts.filter(c => c.status === "Nová").length} nových`, color: "#0369a1" },
+          { label: "Celkový obrat", value: fmtKc0(contracts.reduce((s, c) => s + Number(c.price || 0), 0)), sub: "cena zakázek bez DPH", color: "#15803d" },
+          { label: "Zisk (ověřený)", value: fmtKc0(overene.reduce((s, x) => s + x.st.profit, 0)), sub: `jen ${overene.length} zakázek se zapsanými náklady`, color: "#b45309" },
+          { label: "Bez nákladů", value: bezNakladu, sub: "zakázek – zisk u nich nelze ověřit", color: bezNakladu ? "#9a3412" : "#475569",
+            onClick: () => { setRychlyFiltr("bezNakladu"); setFilterStatus("vše"); setZobrazeni("prehled"); setPage(1); } },
+        ];
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 20 }}>
+            {dlazdice.map(st => {
+              const obsah = (<>
+                <div style={S.statLabel}>{st.label}</div>
+                <div style={{ ...S.statValue(st.color), fontVariantNumeric: "tabular-nums" }}>{st.value}</div>
+                <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{st.sub}</div>
+              </>);
+              return st.onClick
+                ? <button key={st.label} type="button" onClick={st.onClick} style={{ ...S.statCard(st.color), textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>{obsah}</button>
+                : <div key={st.label} style={S.statCard(st.color)}>{obsah}</div>;
+            })}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* FILTR */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
@@ -1435,6 +1493,24 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         </select>
       </div>
 
+      {/* PŘEPÍNAČ ZOBRAZENÍ + RYCHLÉ FILTRY */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 16 }}>
+        <div role="group" aria-label="Zobrazení" style={{ display: "flex", border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
+          {[["prehled", "Přehled (tabulka)"], ["detail", "Detail zakázky"]].map(([v, l]) => (
+            <button key={v} type="button" aria-pressed={zobrazeni === v} onClick={() => setZobrazeni(v)}
+              style={{ padding: "7px 14px", border: "none", fontSize: 13, cursor: "pointer", fontFamily: "inherit", fontWeight: zobrazeni === v ? 700 : 500,
+                background: zobrazeni === v ? "#0E3B5E" : "#fff", color: zobrazeni === v ? "#fff" : "#334155" }}>{l}</button>
+          ))}
+        </div>
+        {[["bezNakladu", "Bez nákladů", "#9a3412", "#FFF7ED", "#F3C98B"], ["precerpano", "Přečerpaný rozpočet", "#b91c1c", "#FEF2F1", "#F1B4AE"], ["kFakturaci", "K fakturaci", "#0369a1", "#E6F0F7", "#9cc3de"]].map(([k, l, fg, bg, br]) => (
+          <button key={k} type="button" aria-pressed={rychlyFiltr === k} onClick={() => { const nove = rychlyFiltr === k ? null : k; setRychlyFiltr(nove); if (nove === "kFakturaci") setFilterStatus("vše"); setPage(1); }}
+            style={{ padding: "6px 12px", borderRadius: 999, fontSize: 12.5, cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
+              border: `1px solid ${rychlyFiltr === k ? fg : br}`, background: rychlyFiltr === k ? fg : bg, color: rychlyFiltr === k ? "#fff" : fg }}>
+            {l}{rychlyFiltr === k ? " ✕" : ""}
+          </button>
+        ))}
+      </div>
+
       {/* SEZNAM ZAKÁZEK */}
       {contracts.length === 0 && (
         <div style={{ ...S.card, color: "#475569", textAlign: "center", padding: 40 }}>
@@ -1449,7 +1525,80 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         </div>
       )}
 
-      {siroke && pageContracts.length > 0 ? (() => {
+      {zobrazeni === "prehled" && pageContracts.length > 0 ? (() => {
+        // PŘEHLED — kontrolní tabulka: cena, rozpočet, náklady, čerpání, zisk, fakturace, upozornění.
+        const radky = pageContracts.map(c => ({ c, st: stavZakazky(c), cust: customers.find(x => x.id === c.customer_id) }));
+        const celkem = visibleContracts.map(stavZakazky).reduce((a, st) => ({
+          cena: a.cena + st.totalRevenue, rozpocet: a.rozpocet + st.rozpocet, naklady: a.naklady + st.totalCost,
+          zisk: a.zisk + (st.overeno ? st.profit : 0), faktury: a.faktury + st.vyfakturovano, bez: a.bez + (st.overeno ? 0 : 1),
+        }), { cena: 0, rozpocet: 0, naklady: 0, zisk: 0, faktury: 0, bez: 0 });
+        const th = { ...S.th, background: "#F8FAFB", whiteSpace: "nowrap" };
+        const td = { ...S.td, color: "#1F2937", fontVariantNumeric: "tabular-nums", verticalAlign: "top" };
+        const otevrit = (id) => { setExpandedId(id); setZobrazeni("detail"); };
+        return (
+          <div style={{ background: "#fff", border: "1px solid #E3E6EA", borderRadius: 8, overflowX: "auto", marginBottom: 14 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1040 }}>
+              <thead>
+                <tr>
+                  <th scope="col" style={th}>Zakázka</th>
+                  <th scope="col" style={th}>Stav</th>
+                  <th scope="col" style={{ ...th, textAlign: "right" }}>Cena</th>
+                  <th scope="col" style={{ ...th, textAlign: "right" }}>Rozpočet nákl.</th>
+                  <th scope="col" style={{ ...th, textAlign: "right" }}>Skut. náklady</th>
+                  <th scope="col" style={{ ...th, width: 130 }}>Čerpání</th>
+                  <th scope="col" style={{ ...th, textAlign: "right" }}>Zisk</th>
+                  <th scope="col" style={{ ...th, textAlign: "right" }}>Vyfakturováno</th>
+                  <th scope="col" style={th}>Upozornění</th>
+                </tr>
+              </thead>
+              <tbody>
+                {radky.map(({ c, st, cust }) => {
+                  const sc = STATUS_COLORS[c.status] || STATUS_COLORS["Nová"];
+                  const cerpaniPct = st.cerpani == null ? null : Math.round(st.cerpani * 100);
+                  return (
+                    <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => otevrit(c.id)}>
+                      <td style={td}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); otevrit(c.id); }}
+                          style={{ background: "none", border: "none", padding: 0, font: "inherit", fontWeight: 700, color: "#0E3B5E", cursor: "pointer", textAlign: "left" }}>{c.name}</button>
+                        <div style={{ fontSize: 11.5, color: "#64748b" }}>{[c.code, cust?.company || cust?.name].filter(Boolean).join(" · ") || "—"}</div>
+                      </td>
+                      <td style={td}><span style={{ ...S.badge(sc.color), whiteSpace: "nowrap" }}>{c.status}</span></td>
+                      <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>{fmtKc0(st.totalRevenue)}</td>
+                      <td style={{ ...td, textAlign: "right" }}>{st.rozpocet > 0 ? fmtKc0(st.rozpocet) : "—"}</td>
+                      <td style={{ ...td, textAlign: "right" }}>{fmtKc0(st.totalCost)}</td>
+                      <td style={td}>
+                        {cerpaniPct == null ? <span style={{ color: "#94a3b8" }}>—</span> : (<>
+                          <div style={{ height: 8, background: "#EEF2F5", borderRadius: 4, overflow: "hidden" }}>
+                            <div style={{ height: 8, width: `${Math.min(100, cerpaniPct)}%`, background: cerpaniPct > 100 ? "#b91c1c" : cerpaniPct > 90 ? "#b45309" : "#0E3B5E" }} />
+                          </div>
+                          <div style={{ fontSize: 11, color: cerpaniPct > 100 ? "#b91c1c" : "#64748b", marginTop: 2 }}>{cerpaniPct} %</div>
+                        </>)}
+                      </td>
+                      <td style={{ ...td, textAlign: "right", fontWeight: 700, color: st.overeno ? (st.profit >= 0 ? "#15803d" : "#b91c1c") : "#9a3412" }}>
+                        {st.overeno ? fmtKc0(st.profit) : (Number(c.price) > 0 ? "neověřeno" : "—")}
+                      </td>
+                      <td style={{ ...td, textAlign: "right" }}>{st.pocetFaktur ? fmtKc0(st.vyfakturovano) : "—"}</td>
+                      <td style={{ ...td, fontSize: 12, color: "#9a3412" }}>{st.upozorneni.join(" · ")}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: "#F8FAFB" }}>
+                  <td style={{ ...td, fontWeight: 700 }} colSpan={2}>Celkem ({visibleContracts.length} zakázek)</td>
+                  <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>{fmtKc0(celkem.cena)}</td>
+                  <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>{fmtKc0(celkem.rozpocet)}</td>
+                  <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>{fmtKc0(celkem.naklady)}</td>
+                  <td style={td}></td>
+                  <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "#15803d" }}>{fmtKc0(celkem.zisk)}</td>
+                  <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>{fmtKc0(celkem.faktury)}</td>
+                  <td style={{ ...td, fontSize: 12, color: "#9a3412" }}>{celkem.bez ? `${celkem.bez} bez nákladů – zisk nezapočten` : ""}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        );
+      })() : siroke && pageContracts.length > 0 ? (() => {
         const vybrana = pageContracts.find(c => c.id === expandedId) || pageContracts[0];
         return (
           <div className="zk-panely">
@@ -1461,7 +1610,7 @@ export default function Contracts({ customers, employees, currentUser, initialDe
                 const on = c.id === vybrana.id;
                 return (
                   <button key={c.id} type="button" role="listitem" aria-current={on ? "true" : undefined} className={`zk-radek${on ? " on" : ""}`} onClick={() => setExpandedId(c.id)}>
-                    <span className="zk-r1"><b>{c.name}</b><span>{fmtKc(totalRevenue)}</span></span>
+                    <span className="zk-r1"><b>{c.name}</b><span>{fmtKc0(totalRevenue)}</span></span>
                     <span className="zk-r2"><span>{[c.code, cust?.company || cust?.name].filter(Boolean).join(" · ") || "—"}</span>
                       <span style={{ color: sc.color, fontWeight: 700 }}>{c.status}</span></span>
                   </button>
@@ -1548,6 +1697,132 @@ export default function Contracts({ customers, employees, currentUser, initialDe
         />
       )}
     </>
+  );
+}
+
+// ─── PLÁN VS. SKUTEČNOST (detail zakázky) ────────────────────────────────────
+// Cena, plánované a skutečné náklady, zisk, rozpad ceny a co chybí doplnit.
+const BARVY_KATEGORII = { prace: "#0E3B5E", material: "#2F7DAF", doprava: "#7FB3D5", vice: "#8E6BB8", zisk: "#15803d" };
+
+function PlanSkutecnost({ contract, sums, totalCost, totalRevenue, profit, pocetDochazky, faktury, onPridat, onZalozka }) {
+  const b = (k) => Number(contract?.[k]) || 0;
+  const radky = [
+    { id: "prace", nazev: "Práce", plan: b("budget_prace"), skut: sums.prace, zdroj: "Docházka a záznamy práce", typ: "práce" },
+    { id: "material", nazev: "Materiál", plan: b("budget_material"), skut: sums.material, zdroj: "Výdej ze skladu, dodací listy", typ: "materiál" },
+    { id: "doprava", nazev: "Doprava", plan: b("budget_doprava"), skut: sums.doprava, zdroj: "Kniha jízd", typ: "doprava" },
+    { id: "vice", nazev: "Vícepráce (práce, materiál, doprava)", plan: b("budget_vice_prace") + b("budget_vice_material") + b("budget_vice_doprava"),
+      skut: sums.vicePrace + sums.viceMaterial + sums.viceDoprava, zdroj: "Záznamy označené jako vícepráce", typ: null },
+  ];
+  const planNaklady = radky.reduce((s, r) => s + r.plan, 0);
+  const planZisk = totalRevenue - planNaklady;
+  const overeno = totalCost > 0;
+  const vyfakturovano = (faktury || []).filter(f => f.status !== "Storno").reduce((s, f) => s + Number(f.amount || 0), 0);
+  const pct = (v) => (totalRevenue > 0 ? Math.max(0, (v / totalRevenue) * 100) : 0);
+
+  const chybi = [];
+  if (!(Number(contract.price) > 0)) chybi.push({ text: "Doplnit cenu zakázky" });
+  if (planNaklady <= 0) chybi.push({ text: "Doplnit rozpočet nákladů (práce, materiál, doprava)", zalozka: "naklady" });
+  if (pocetDochazky === 0 && contract.status !== "Nová") chybi.push({ text: "Na zakázku není zapsaná žádná docházka", zalozka: "zamestnanci" });
+  if (sums.material <= 0 && contract.status !== "Nová") chybi.push({ text: "Vydat materiál ze skladu na zakázku", pridat: "materiál" });
+  if (sums.doprava <= 0 && contract.status !== "Nová") chybi.push({ text: "Přiřadit jízdy z knihy jízd", pridat: "doprava" });
+  if (contract.status === "Dokončena" && (faktury || []).length === 0) chybi.push({ text: "Vystavit fakturu", zalozka: "fakturace" });
+
+  const cislo = { fontSize: 20, fontWeight: 800, color: "#1A1A1A", fontVariantNumeric: "tabular-nums" };
+  const popisek = { fontSize: 11.5, color: "#475569", marginBottom: 2 };
+  const th = { textAlign: "left", padding: "8px 8px", fontSize: 11, color: "#475569", borderBottom: "1px solid #e2e8f0", textTransform: "uppercase", letterSpacing: "0.05em" };
+  const td = { padding: "9px 8px", fontSize: 13, borderBottom: "1px solid #eef2f5", fontVariantNumeric: "tabular-nums" };
+
+  return (
+    <section aria-label="Plán vs. skutečnost" style={{ marginBottom: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+      {!overeno && totalRevenue > 0 && (
+        <div role="status" style={{ background: "#FFF7ED", border: "1px solid #F3C98B", color: "#8A4B05", borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
+          <b>Zisk nelze ověřit.</b> K zakázce nejsou zapsané žádné náklady — bez docházky, materiálu a jízd by zisk vycházel jako celá cena.
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+        <div><div style={popisek}>Cena zakázky</div><div style={cislo}>{fmtKc0(totalRevenue)}</div></div>
+        <div><div style={popisek}>Plánované náklady</div><div style={cislo}>{planNaklady > 0 ? fmtKc0(planNaklady) : "—"}</div></div>
+        <div><div style={popisek}>Skutečné náklady</div><div style={cislo}>{fmtKc0(totalCost)}</div></div>
+        <div>
+          <div style={popisek}>{overeno ? "Skutečný zisk" : "Plánovaný zisk"}</div>
+          <div style={{ ...cislo, color: overeno ? (profit >= 0 ? "#15803d" : "#b91c1c") : "#1A1A1A" }}>
+            {overeno
+              ? `${fmtKc0(profit)} · ${totalRevenue > 0 ? Math.round((profit / totalRevenue) * 100) : 0} %`
+              : planNaklady > 0 ? `${fmtKc0(planZisk)} · ${totalRevenue > 0 ? Math.round((planZisk / totalRevenue) * 100) : 0} %` : "—"}
+          </div>
+        </div>
+        <div><div style={popisek}>Vyfakturováno</div><div style={cislo}>{fmtKc0(vyfakturovano)}</div></div>
+      </div>
+
+      {totalRevenue > 0 && planNaklady > 0 && (
+        <div>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>Rozpad ceny zakázky podle rozpočtu</div>
+          <div role="img" aria-label="Rozpad ceny podle rozpočtu" style={{ display: "flex", height: 26, borderRadius: 6, overflow: "hidden", background: "#eef2f5" }}>
+            {radky.filter(r => r.plan > 0).map(r => (
+              <div key={r.id} title={`${r.nazev}: ${fmtKc0(r.plan)}`} style={{ width: `${pct(r.plan)}%`, background: BARVY_KATEGORII[r.id] }} />
+            ))}
+            {planZisk > 0 && <div title={`Zisk: ${fmtKc0(planZisk)}`} style={{ width: `${pct(planZisk)}%`, background: BARVY_KATEGORII.zisk }} />}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 6, fontSize: 12, color: "#334155" }}>
+            {radky.filter(r => r.plan > 0).map(r => (
+              <span key={r.id}><span aria-hidden="true" style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: BARVY_KATEGORII[r.id], marginRight: 5 }} />{r.nazev} {fmtKc0(r.plan)}</span>
+            ))}
+            {planZisk > 0 && <span><span aria-hidden="true" style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: BARVY_KATEGORII.zisk, marginRight: 5 }} />Zisk {fmtKc0(planZisk)}</span>}
+            {planZisk < 0 && <span style={{ color: "#b91c1c", fontWeight: 700 }}>Rozpočet nákladů převyšuje cenu o {fmtKc0(-planZisk)}</span>}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
+        <div style={{ flex: "999 1 460px", minWidth: 0, overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 460 }}>
+            <thead>
+              <tr>
+                <th scope="col" style={th}>Kategorie</th>
+                <th scope="col" style={{ ...th, textAlign: "right" }}>Plán</th>
+                <th scope="col" style={{ ...th, textAlign: "right" }}>Skutečnost</th>
+                <th scope="col" style={{ ...th, textAlign: "right" }}>Rozdíl</th>
+                <th scope="col" style={th}>Odkud se bere</th>
+              </tr>
+            </thead>
+            <tbody>
+              {radky.map(r => {
+                const rozdil = r.plan - r.skut;
+                return (
+                  <tr key={r.id}>
+                    <td style={{ ...td, fontWeight: 600, color: "#1A1A1A" }}>{r.nazev}</td>
+                    <td style={{ ...td, textAlign: "right" }}>{r.plan > 0 ? fmtKc0(r.plan) : "—"}</td>
+                    <td style={{ ...td, textAlign: "right" }}>{fmtKc0(r.skut)}</td>
+                    <td style={{ ...td, textAlign: "right", fontWeight: 600, color: r.plan > 0 ? (rozdil >= 0 ? "#15803d" : "#b91c1c") : "#64748b" }}>
+                      {r.plan > 0 ? `${rozdil >= 0 ? "+" : "−"}${fmtKc0(Math.abs(rozdil))}` : "—"}
+                    </td>
+                    <td style={{ ...td, fontSize: 12, color: "#475569" }}>{r.zdroj}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {chybi.length > 0 && (
+          <div style={{ flex: "1 1 240px", minWidth: 0, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1A1A1A", marginBottom: 6 }}>Co chybí doplnit</div>
+            <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: "#334155" }}>
+              {chybi.map(c => (
+                <li key={c.text}>
+                  {c.pridat ? (
+                    <button type="button" onClick={() => onPridat(c.pridat)} style={{ background: "none", border: "none", padding: 0, color: "#0369a1", cursor: "pointer", font: "inherit", textAlign: "left" }}>{c.text}</button>
+                  ) : c.zalozka ? (
+                    <button type="button" onClick={() => onZalozka(c.zalozka)} style={{ background: "none", border: "none", padding: 0, color: "#0369a1", cursor: "pointer", font: "inherit", textAlign: "left" }}>{c.text}</button>
+                  ) : c.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
