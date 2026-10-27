@@ -89,7 +89,7 @@ const fmtCislo = (n) => (Math.round((Number(n) || 0) * 10) / 10).toString().repl
 // konkurence nemůže jen opsat)
 export const DUVERA = [
   { nadpis: "Návrh pro Váš dům", text: "Sestavu navrhujeme podle Vaší střechy a spotřeby, ne z katalogu." },
-  { nadpis: "Jeden partner od návrhu po předání", text: "Vlastní technici bez subdodavatelů — jasná odpovědnost, víte, s kým jednáte." },
+  { nadpis: "Jeden partner od návrhu po předání", text: "Montáž zajišťuje náš vlastní tým — za dílo a jeho předání odpovídáme my." },
   { nadpis: "Papíry vyřídíme my", text: "Revizi, protokoly i komunikaci s distributorem připravujeme sami." },
 ];
 const DUVERA_DUM = DUVERA.map((d) => (d.nadpis === "Návrh pro Váš dům"
@@ -296,6 +296,9 @@ function textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, 
     metaNavic: cisloOP ? `Obchodní případ: ${cisloOP}` : "",
     uvod: `na základě Vašeho zájmu Vám posíláme nabídku ${co}${velikost} — ${prinos}.${
       sDotaci ? " Sestava je navržená tak, aby splňovala podmínky dotačního programu Nová zelená úsporám." : ""}`,
+    // když obchodník vyplní „co klient řeší“, úvod na něj navazuje (bez opakování „na základě Vašeho zájmu…“)
+    uvodNavazujici: `Proto jsme pro Vás navrhli ${ohrevVody ? "fotovoltaický ohřev vody" : "fotovoltaickou elektrárnu"}${velikost}. O montáž, revizi${ohrevVody ? "" : ", připojení"} i zprovoznění se postaráme my.${
+      sDotaci ? " Sestava je navržená tak, aby splňovala podmínky programu Nová zelená úsporám." : ""}`,
     cenaNadpis: `Cena ${co}`,
     maUkony: false,
     ukony: [],
@@ -309,8 +312,12 @@ function textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, 
     ].join(", ")} i spuštění s nastavením aplikace a zaškolením. Předáme Vám funkční ${ohrevVody ? "systém" : "elektrárnu"} s kompletní dokumentací — ne jen namontované panely.`,
     nadpisSpecifikace: `Návrh řešení ${co}`,
     specRadky,
-    terminPred: "Instalaci provedeme do",
-    terminOd: "od podpisu smlouvy a zaplacení zálohy",
+    terminPred: "Montáž předpokládáme dokončit do",
+    terminOd: "od podpisu smlouvy a připsání zálohy",
+    terminPozn: ohrevVody
+      ? "Konkrétní harmonogram uvedeme ve smlouvě."
+      : "Konkrétní harmonogram uvedeme ve smlouvě; úkony distributora (povolení provozu, výměna elektroměru) mají vlastní lhůty.",
+    zarukyPozn: "Záruční doby zařízení se řídí podmínkami jejich výrobců a konkrétních modelů. Vaše zákonná práva z vadného plnění tím nejsou dotčena.",
     doplatekKdy: "po podpisu předávacího protokolu",
     zarukaMaterialLabel: "Ostatní komponenty (elektroinstalace apod.)",
     zarukyNavic: [
