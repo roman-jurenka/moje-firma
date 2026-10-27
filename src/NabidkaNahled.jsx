@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase.js";
-import { cenaUkonu, ukonBezCeny, ukonyMajiMaterial, DUVERA } from "./nabidkaTexty.js";
+import { cenaUkonu, ukonBezCeny, ukonyMajiMaterial, DUVERA, prinosPolozky } from "./nabidkaTexty.js";
 
 // ─── Náhled nabídky pro zákazníka (FVE, servis, rozšíření, hromosvody, elektro) ─
 // Nabídka se skládá přímo v appce: texty jsou předvyplněné podle typu
@@ -35,7 +35,7 @@ const VYCHOZI_EMAIL = {
     "",
     "Rozsah prací, platební podmínky a záruky najdete v přiložené nabídce. Pokud byste chtěli cokoliv upravit nebo se na něco zeptat, zavolejte mi prosím na {telefon} nebo odpovězte na tento e-mail. Rád Vám vše vysvětlím.",
     "",
-    "Těším se na Vaši odpověď.",
+    "Napište mi prosím, jestli chcete nabídku projít spolu po telefonu, nebo Vám rovnou připravím smlouvu.",
     "",
     "S pozdravem",
     "{obchodnik}",
@@ -81,6 +81,20 @@ const CSS = `
 .nb-paticka { position: relative; height: 22mm; background: url("/nabidka/paticka.png") center / cover no-repeat, linear-gradient(90deg, #0a5aa6, #22a0dc); color: #fff; font-family: Arial, sans-serif; font-size: 8pt; line-height: 1.35; padding: 4mm 15mm; box-sizing: border-box; display: flex; justify-content: space-between; }
 .nb-paticka b { font-size: 8.5pt; }
 .nb-nadpis { font-size: 20pt; font-weight: 700; color: #16324F; margin: 0 0 1mm; }
+.nb-nadpis-maly { font-size: 9pt; font-weight: 700; letter-spacing: 0.12em; color: #B9690F; margin: 0 0 1mm; }
+.nb-titul { font-size: 19pt; font-weight: 700; line-height: 1.15; color: #16324F; margin: 0 0 1.5mm; }
+.nb-coresi { margin: 0 0 3mm; text-align: justify; }
+.nb-prinos { display: flex; gap: 3mm; margin: 0 0 4mm; break-inside: avoid; page-break-inside: avoid; }
+.nb-prinos > div { flex: 1; background: #F4F8FC; border-radius: 2mm; padding: 2mm 3mm; }
+.nb-prinos span { display: block; font-size: 7.5pt; color: #5B6472; letter-spacing: 0.04em; }
+.nb-prinos b { display: block; font-size: 13pt; color: #16324F; }
+.nb-prinos-pozn { font-size: 7.5pt; color: #94a3b8; margin: -3mm 0 4mm; }
+.nb-specB-tab td.nb-specB-prinos { color: #2F6B47; font-size: 9pt; }
+.nb-jistoty { margin: 2.5mm 0 0; padding: 2.5mm 4mm; background: #F4F8FC; border-radius: 2mm; break-inside: avoid; page-break-inside: avoid; }
+.nb-jistoty b { display: block; color: #16324F; font-size: 10.5pt; margin-bottom: 1mm; }
+.nb-jistoty ul { margin: 0; padding-left: 5mm; }
+.nb-jistoty li { margin: 0.6mm 0; }
+.nb-krok-hotovo { display: inline-block; margin-top: 1mm; font-size: 7pt; font-weight: 700; color: #fff; background: #2F8F5B; border-radius: 2mm; padding: 0.3mm 1.8mm; }
 .nb-podnadpis { font-size: 11pt; color: #5B6472; padding-bottom: 2mm; border-bottom: 2px solid #E08A1E; margin-bottom: 1.5mm; }
 .nb-meta { font-size: 9pt; color: #5B6472; margin-bottom: 4mm; }
 .nb-p { margin: 0 0 3mm; text-align: justify; }
@@ -399,11 +413,14 @@ export default function NabidkaNahled({
   const doplatekKdy = texty.doplatekKdy || "po dokončení prací a otestování funkčnosti";
   const zarukyNavic = texty.zarukyNavic || [];
   // výzva k přijetí nabídky (bod 6) — předvyplněná z kontaktu OZ a čísla nabídky
+  // (podle Mistra Nabídek: jeden jasný krok, hotová věta pro zákazníka a poctivý důvod, proč do data)
   const vyzvaVychozi = [
-    "Nabídku přijmete jednoduše:",
-    [ozEmail && `odpovězte na e-mail ${ozEmail}`, ozTelefon && `zavolejte na ${ozTelefon}`].filter(Boolean).join(" nebo "),
-    cisloNabidky ? `a uveďte číslo nabídky ${cisloNabidky}.` : "a uveďte číslo nabídky.",
-    "Obratem se Vám ozveme a domluvíme termín. Nabídku můžete také podepsat níže a poslat nám ji zpět.",
+    "Pokud Vám navržené řešení vyhovuje, stačí jeden krok —",
+    [ozEmail && `odpovězte na e-mail ${ozEmail}`, ozTelefon && `zavolejte na ${ozTelefon}`].filter(Boolean).join(" nebo ") + ",",
+    `třeba takto: „Máme zájem pokračovat s nabídkou${cisloNabidky ? ` ${cisloNabidky}` : ""}, prosíme o zaslání smlouvy.“`,
+    "Smlouvu Vám pošleme k prostudování a domluvíme termín.",
+    platiDo ? `Uvedenou cenu držíme do ${fmtDatum(platiDo)}; potom může být potřeba znovu ověřit ceny komponent a volný termín.` : "",
+    "Nabídku můžete také podepsat níže a poslat nám ji zpět.",
   ].filter(Boolean).join(" ");
   const zarukaPrace = String(hodnota("zarukaPrace") ?? "").trim();
   const zalohaKc = zalohaPct != null ? Math.round((cenaSDph * zalohaPct) / 100) : 0;
@@ -543,6 +560,7 @@ export default function NabidkaNahled({
   // (výkon, roční výnos) jsou v jednom proužku, delší seznam je hustší.
   const specInfo = specRadky.filter((r) => String(r.ks ?? "").trim() === "" && !/^Cena/.test(r.label) && r.hodnota !== "[doplnit]");
   const specTabulka = specRadky.filter((r) => !specInfo.includes(r));
+  const specMaPrinos = specMaPopis && specTabulka.some((r) => prinosPolozky(r.label, r.hodnota));
   const blokSpecifikace = specRadky.length > 0 && (
     <div className={`nb-sekce nb-specB nb-drzet${specTabulka.length > 5 ? " nb-specB-husty" : ""}`}>
       <div className="nb-h"><span>{texty.nadpisSpecifikace}</span>{specPolozky.length > 0 && <span className="nb-specB-pocet">{pocetPolozek(specPolozky.length)} v ceně</span>}</div>
@@ -550,13 +568,14 @@ export default function NabidkaNahled({
         <div className="nb-specB-info">{specInfo.map((r, i) => <span key={i}>{r.label}: <b>{r.hodnota}</b></span>)}</div>
       )}
       <table className="nb-tab nb-specB-tab">
-        <thead><tr><th className="nb-specB-ks">MNOŽSTVÍ</th><th>{specMaPopis ? "DRUH" : "POLOŽKA"}</th>{specMaPopis && <th>VÝROBEK / TYP</th>}</tr></thead>
+        <thead><tr><th className="nb-specB-ks">MNOŽSTVÍ</th><th>{specMaPopis ? "DRUH" : "POLOŽKA"}</th>{specMaPopis && <th>VÝROBEK / TYP</th>}{specMaPrinos && <th>CO VÁM TO PŘINESE</th>}</tr></thead>
         <tbody>
           {specTabulka.map((r, i) => (
             <tr key={i}>
               <td className="nb-specB-ks">{String(r.ks ?? "").trim() !== "" ? <>{r.ks} <small>ks</small></> : ""}</td>
               <td className="nb-specB-kat">{r.label}</td>
               {specMaPopis && <td className="nb-specB-nazev">{r.hodnota === "[doplnit]" ? <Chybi co="zadej v kalkulaci výše" /> : r.hodnota}</td>}
+              {specMaPrinos && <td className="nb-specB-prinos">{prinosPolozky(r.label, r.hodnota)}</td>}
             </tr>
           ))}
         </tbody>
@@ -566,6 +585,15 @@ export default function NabidkaNahled({
   );
 
   const inp = { ...S.input, marginBottom: 0 };
+  // úvod navazuje na „Dobrý den,“ malým písmenem; po odstavci „co klient řeší“ je to nová věta
+  const uvodVychozi = String(u.coResi ?? "").trim() && texty.uvod ? texty.uvod.charAt(0).toUpperCase() + texty.uvod.slice(1) : texty.uvod;
+  // Očekávaný přínos (jen když ho obchodník vyplní — nevymýšlet bez podkladů)
+  const maPrinos = ["FVE", "FVO", "FVR"].includes(typ);
+  const prinosy = maPrinos ? [
+    ["ODHAD ROČNÍ ÚSPORY", String(u.prinosUspora ?? "").trim()],
+    ["VLASTNÍ SPOTŘEBA VYROBENÉ ENERGIE", String(u.prinosVlastni ?? "").trim()],
+    ["ODHAD NÁVRATNOSTI", String(u.prinosNavratnost ?? "").trim()],
+  ].filter(([, v]) => v) : [];
 
   return (
     <div style={{ marginTop: 16 }}>
@@ -651,6 +679,21 @@ export default function NabidkaNahled({
             </div>
           ))}
         </div>
+        {maPrinos && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4, margin: "12px 0 6px" }}>
+              Očekávaný přínos <span style={{ textTransform: "none", fontWeight: 400 }}>(vyplň jen s podkladem z výpočtu — prázdné se v nabídce neukáže)</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 10 }}>
+              {[["prinosUspora", "Odhad roční úspory", "např. 28 000 Kč / rok"], ["prinosVlastni", "Vlastní spotřeba vyrobené energie", "např. 65 %"], ["prinosNavratnost", "Odhad návratnosti", "např. 9 let"]].map(([k, label, ph]) => (
+                <div key={k}>
+                  <label style={S.label}>{label}</label>
+                  <input style={inp} value={u[k] ?? ""} placeholder={ph} onChange={(e) => nastav({ [k]: e.target.value === "" ? undefined : e.target.value })} />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
         <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4, margin: "12px 0 6px" }}>
           Kontakt obchodníka v této nabídce <span style={{ textTransform: "none", fontWeight: 400 }}>(prázdné = {emailNastaveni.email ? "e-mail z výchozích hodnot, telefon z karty zaměstnance" : "z karty zaměstnance, jinak firemní"})</span>
         </div>
@@ -718,7 +761,12 @@ export default function NabidkaNahled({
       <div ref={stranka} className="nb-page nb-edit">
         <div className="nb-hlavicka"><img src="/nabidka/hlavicka.png" alt="Jurenka Elektro" /></div>
         <div className="nb-obsah">
-          <div className="nb-nadpis">{texty.nadpis}</div>
+          {texty.nadpisVysledek ? (
+            <>
+              <div className="nb-nadpis-maly">{String(texty.nadpis || "").toUpperCase()}</div>
+              <Upravitelne className="nb-titul" hodnota={u.titul} vychozi={texty.nadpisVysledek} zaklad={u.titul_zaklad} onZmena={upravText("titul", texty.nadpisVysledek)} />
+            </>
+          ) : <div className="nb-nadpis">{texty.nadpis}</div>}
           <Upravitelne className="nb-podnadpis" hodnota={u.podnadpis} vychozi={texty.podnadpis} zaklad={u.podnadpis_zaklad} onZmena={upravText("podnadpis", texty.podnadpis)} />
           <div className="nb-meta">
             <div>
@@ -734,11 +782,19 @@ export default function NabidkaNahled({
           </div>
 
           <p className="nb-p">Dobrý den,</p>
-          <Upravitelne className="nb-p" hodnota={u.uvod} vychozi={texty.uvod} zaklad={u.uvod_zaklad} onZmena={upravText("uvod", texty.uvod)} />
+          <Upravitelne className="nb-coresi" hodnota={u.coResi} vychozi="" placeholder="＋ Klikni a napiš, co klient řeší (1–3 věty z prohlídky, např. „Při prohlídce jsme řešili rostoucí účty za elektřinu…“) — prázdné se netiskne"
+            onZmena={(v) => nastav({ coResi: v || undefined })} />
+          <Upravitelne className="nb-p" hodnota={u.uvod} vychozi={uvodVychozi} zaklad={u.uvod_zaklad} onZmena={upravText("uvod", uvodVychozi)} />
           <Upravitelne className="nb-poznamka" hodnota={u.poznamka} vychozi={poznamkaVychozi || ""} placeholder="＋ Klikni a doplň vlastní poznámku (např. zjištěná závada, stav soustavy…) — prázdné se netiskne"
             onZmena={(v) => nastav({ poznamka: v || undefined })} />
           <div className="nb-oz-jmeno">{ozJmeno}</div>
           <div className="nb-oz-kontakt">{[ozEmail, ozTelefon].filter(Boolean).join("   ·   ")}</div>
+          {prinosy.length > 0 && (
+            <>
+              <div className="nb-prinos">{prinosy.map(([l, v]) => <div key={l}><span>{l}</span><b>{v}</b></div>)}</div>
+              <div className="nb-prinos-pozn">Orientační výpočet podle předpokladů z návrhu, nikoli garantovaný výsledek — skutečnost závisí na počasí a spotřebě domácnosti.</div>
+            </>
+          )}
 
           <div className="nb-cenabox">
             <div className="nb-cenabox-l">
@@ -809,14 +865,14 @@ export default function NabidkaNahled({
           )}
 
           <div className="nb-sekce">
-            <div className="nb-h">Zpracování nabídky</div>
+            <div className="nb-h">{texty.zpracovaniNadpis || "Zpracování nabídky"}</div>
             <Upravitelne className="nb-p" hodnota={u.zpracovani} vychozi={texty.zpracovani} zaklad={u.zpracovani_zaklad} onZmena={upravText("zpracovani", texty.zpracovani)} />
           </div>
 
           {!specPodCenou && blokSpecifikace}
 
           <div className="nb-sekce nb-drzet">
-            <div className="nb-h">Platební podmínky</div>
+            <div className="nb-h">Platby a termín</div>
             <table className="nb-tab">
               <tbody>
                 {zalohaPct == null && (
@@ -831,6 +887,7 @@ export default function NabidkaNahled({
                     <tr><td className="nb-l">2. Konečná platba</td><td className="nb-v">{fmtKc(doplatekKc)} ({100 - zalohaPct} % z celkové ceny vč. DPH) — {doplatekKdy}</td></tr>
                   </>
                 )}
+                <tr><td className="nb-l">Termín provedení</td><td className="nb-v">{texty.terminPred || "Práce provedeme do"} {termin || <Chybi co="termín" />} {texty.terminOd || "od odsouhlasení nabídky"}.</td></tr>
               </tbody>
             </table>
             {dotaceKc > 0 && (
@@ -845,13 +902,9 @@ export default function NabidkaNahled({
                 <div className="nb-zahr"><b>Cena ZAHRNUJE</b><ul>{zahrnuto.map((t, i) => <li key={i}>{t}</li>)}</ul></div>
                 <div className="nb-nezahr"><b>Cena NEZAHRNUJE</b><ul>{nezahrnuto.map((t, i) => <li key={i}>{t}</li>)}</ul></div>
               </div>
+              <p className="nb-drobne">Případné práce mimo tento rozsah Vám vždy předem naceníme a bez Vašeho souhlasu je neprovedeme.</p>
             </div>
           )}
-
-          <div className="nb-sekce nb-drzet">
-            <div className="nb-h">Termín provedení</div>
-            <p className="nb-p">{texty.terminPred || "Práce provedeme do"} {termin || <Chybi co="termín" />} {texty.terminOd || "od odsouhlasení nabídky"}.</p>
-          </div>
 
           <div className="nb-sekce nb-drzet">
             <div className="nb-h">Záruční podmínky</div>
@@ -866,6 +919,14 @@ export default function NabidkaNahled({
                 <tr><td className="nb-l">Provedená práce</td><td className="nb-v">{zarukaPrace || <Chybi co="záruka" />}</td></tr>
               </tbody>
             </table>
+            {(texty.jistoty || []).length > 0 && (
+              <div className="nb-jistoty">
+                <b>Na co se můžete spolehnout</b>
+                <ul>{texty.jistoty.map((j, i) => (
+                  <li key={i}><Upravitelne hodnota={u[`jistota${i}`]} vychozi={j} onZmena={(v) => nastav({ [`jistota${i}`]: v })} /></li>
+                ))}</ul>
+              </div>
+            )}
           </div>
 
           <div className="nb-sekce">
@@ -877,8 +938,9 @@ export default function NabidkaNahled({
                     <img src={`/nabidka/krok${n}.png`} alt="" />
                     <div className="nb-krok-cislo">KROK {n}</div>
                     <div>{texty[`krok${n}`]}</div>
-                    {n === 3 && <div className="nb-krok-ted">JSTE ZDE</div>}
-                    {n === 4 && <div className="nb-krok-dalsi">DALŠÍ KROK</div>}
+                    {n === (texty.krokHotovo || 0) && <div className="nb-krok-hotovo">HOTOVO</div>}
+                    {n === (texty.krokTed || 3) && <div className="nb-krok-ted">JSTE ZDE</div>}
+                    {n === (texty.krokTed || 3) + 1 && <div className="nb-krok-dalsi">DALŠÍ KROK</div>}
                   </div>
                   {n < 5 && <img className="nb-sipka" src="/nabidka/sipka.png" alt="→" />}
                 </div>

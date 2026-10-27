@@ -85,14 +85,63 @@ const fmtCislo = (n) => (Math.round((Number(n) || 0) * 10) / 10).toString().repl
 
 // Tři důvody důvěry — v nabídce jako pruh pod cenou (úvod mluví o zákazníkovi).
 // U hromosvodů a elektroinstalací se místo elektrárny mluví o domě.
+// (podle Mistra Nabídek: místo obecných tvrzení konkrétní důvody, které
+// konkurence nemůže jen opsat)
 export const DUVERA = [
-  { nadpis: "Zkušenost", text: "Elektroinstalacím a fotovoltaice se věnujeme dlouhodobě — víme, na co si dát pozor." },
-  { nadpis: "Individuální přístup", text: "Řešení i nabídku připravujeme na míru Vaší elektrárně a Vašim potřebám." },
-  { nadpis: "Vlastní tým", text: "Vše provedou naši technici, bez subdodavatelů — víte, s kým jednáte." },
+  { nadpis: "Návrh pro Váš dům", text: "Sestavu navrhujeme podle Vaší střechy a spotřeby, ne z katalogu." },
+  { nadpis: "Jeden partner od návrhu po předání", text: "Vlastní technici bez subdodavatelů — jasná odpovědnost, víte, s kým jednáte." },
+  { nadpis: "Papíry vyřídíme my", text: "Revizi, protokoly i komunikaci s distributorem připravujeme sami." },
 ];
-const DUVERA_DUM = DUVERA.map((d) => (d.nadpis === "Individuální přístup"
-  ? { ...d, text: "Řešení i nabídku připravujeme na míru Vašemu domu a Vašim potřebám." }
+const DUVERA_DUM = DUVERA.map((d) => (d.nadpis === "Návrh pro Váš dům"
+  ? { ...d, text: "Řešení navrhujeme podle Vašeho domu a Vašich potřeb, ne z katalogu." }
   : d));
+
+// „Co Vám to přinese“ — krátký přínos k řádku technické sestavy (podle názvu
+// druhu komponenty). Neznámý druh = prázdné (sloupec se jen nevyplní).
+const PRINOSY = [
+  [/konstrukc/i, "Bezpečné ukotvení panelů na Vaší střeše"],
+  [/panel/i, "Výroba vlastní elektřiny ze slunce"],
+  [/stř[ií]da/i, "Řídí tok energie mezi panely, domem, baterií a sítí"],
+  [/bms/i, "Hlídá baterii a prodlužuje její životnost"],
+  [/bater|úložiš|ulozis/i, "Uloží přebytky ze dne na večer a noc"],
+  [/back.?up|zálo/i, "Napájí sjednané okruhy i při výpadku proudu"],
+  [/regulac|azrouter|router|ohřev|ohrev|bojler/i, "Přebytky pošle nejdřív do ohřevu vody"],
+  [/wallbox|nabíj|charger/i, "Nabíjení auta z vlastní elektřiny"],
+  [/rozvad|jišt|jist/i, "Bezpečné jištění a ochrana instalace"],
+  [/výkon|vykon/i, "Velikost elektrárny podle Vaší spotřeby"],
+  [/výnos|vynos|výrob/i, "Odhad vyrobené energie za rok"],
+];
+export const prinosPolozky = (label = "", hodnota = "") => {
+  if (/^bez /i.test(String(hodnota).trim())) return "";
+  // nejdřív podle druhu (Baterie … + BMS je pořád baterie), až pak podle výrobku
+  const nalez = PRINOSY.find(([re]) => re.test(label)) || PRINOSY.find(([re]) => re.test(hodnota));
+  return nalez ? nalez[1] : "";
+};
+
+// Hlavní nadpis nabídky podle výsledku (CENOVÁ NABÍDKA je jen malé označení).
+function nadpisVysledku(jobType, bateriKwh) {
+  if (jobType === "FVE") return bateriKwh > 0 ? "Vlastní elektřina pro Váš dům — přes den ze slunce, večer z baterie" : "Vlastní elektřina pro Váš dům — nižší účty z Vaší střechy";
+  if (jobType === "FVO") return "Teplá voda ze slunce pro Váš dům";
+  if (jobType === "FVR") return "Víc vlastní energie z Vaší elektrárny";
+  if (jobType === "SRV") return "Vaše elektrárna zase spolehlivě a naplno";
+  if (jobType === "HRM") return "Ochrana Vašeho domu před bleskem — podle norem a s revizí";
+  if (jobType === "ELK") return "Bezpečná a spolehlivá elektroinstalace pro Váš dům";
+  return "";
+}
+
+// „Na co se můžete spolehnout“ pod zárukami — každý bod jde v nabídce upravit.
+const JISTOTY = {
+  FVE: [
+    "Termín montáže sjednáme ve smlouvě a dopředu Vám ho potvrdíme.",
+    "Když distributor vrátí žádost kvůli chybě v podkladech, které jsme připravili, opravíme je zdarma.",
+    "Závadu nahlásíte telefonicky nebo e-mailem — ozveme se a domluvíme řešení.",
+  ],
+  OSTATNI: [
+    "Termín prací s Vámi předem domluvíme a potvrdíme.",
+    "Práce mimo rozsah nabídky vždy předem naceníme — bez Vašeho souhlasu je neprovedeme.",
+    "Závadu nahlásíte telefonicky nebo e-mailem — ozveme se a domluvíme řešení.",
+  ],
+};
 
 // Změna připojení u distributora u rozšíření — někdy je potřeba a je v ceně,
 // někdy ne. Volí se u každé nabídky v kalkulaci a propíše se do "co je / není v ceně".
@@ -125,7 +174,16 @@ export const odhadVynosu = (vykonKwp) => (vykonKwp > 0 ? `${fmtCislo(vykonKwp * 
  * @param {boolean} [p.prodlouzenaZarukaStridace] (FVE) je zaškrtnutá záruka 10 let na střídač
  * @param {string} [p.cisloOP]   (FVE) číslo obchodního případu
  */
-export function textyNabidky({ jobType, ukony = [], radky = [], vykonKwp = 0, bateriKwh = 0, sDotaci = false, rocniVynos = "", maBaterii = false, prodlouzenaZarukaStridace = false, cisloOP = "" }) {
+export function textyNabidky(p) {
+  const t = textyPodleTypu(p);
+  return {
+    nadpisVysledek: nadpisVysledku(p.jobType, p.bateriKwh || 0),
+    jistoty: p.jobType === "FVE" || p.jobType === "FVO" ? JISTOTY.FVE : JISTOTY.OSTATNI,
+    ...t,
+  };
+}
+
+function textyPodleTypu({ jobType, ukony = [], radky = [], vykonKwp = 0, bateriKwh = 0, sDotaci = false, rocniVynos = "", maBaterii = false, prodlouzenaZarukaStridace = false, cisloOP = "" }) {
   if (jobType === "FVE" || jobType === "FVO") return textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, prodlouzenaZarukaStridace, cisloOP, ohrevVody: jobType === "FVO" });
   if (jobType === "HRM" || jobType === "ELK") return textyElektro({ jobType, ukony, radky });
 
@@ -241,8 +299,14 @@ function textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, 
     cenaNadpis: `Cena ${co}`,
     maUkony: false,
     ukony: [],
-    zpracovani: `Nabídku jsme připravili na míru podle Vaší poptávky, spotřeby a možností Vaší střechy. Postaráme se o vše od návrhu${ohrevVody ? (sDotaci ? " přes vyřízení dotace" : "") : ` přes vyřízení připojení k distribuční síti${
-      sDotaci ? " a dotace" : ""}`} až po instalaci, spuštění a předání ${ohrevVody ? "systému" : "elektrárny"}.`,
+    // „Co pro Vás zajistíme“ (dřív „Zpracování nabídky“, které opakovalo úvod)
+    zpracovaniNadpis: "Co pro Vás zajistíme",
+    zpracovani: `Připravíme návrh sestavy podle Vaší střechy a spotřeby a zajistíme ${[
+      "dodávku a montáž vlastním týmem",
+      "výchozí revizi a protokoly",
+      ...(ohrevVody ? [] : ["vyřízení připojení k distribuční síti"]),
+      ...(sDotaci ? ["podklady a podání žádosti o dotaci"] : []),
+    ].join(", ")} i spuštění s nastavením aplikace a zaškolením. Předáme Vám funkční ${ohrevVody ? "systém" : "elektrárnu"} s kompletní dokumentací — ne jen namontované panely.`,
     nadpisSpecifikace: `Návrh řešení ${co}`,
     specRadky,
     terminPred: "Instalaci provedeme do",
@@ -255,12 +319,15 @@ function textyFve({ radky, vykonKwp, bateriKwh, sDotaci, rocniVynos, maBaterii, 
       { k: "zarukaStridac", label: "Střídač", hodnota: prodlouzenaZarukaStridace ? "10 let (prodloužená záruka)" : "10 let" },
       ...(maBaterii ? [{ k: "zarukaBaterie", label: "Baterie", hodnota: "10 let" }] : []),
     ],
-    nadpisPostup: "Získat vlastní FVE s Jurenka Elektro je snadné",
-    krok1: "Nezávazná poptávka",
-    krok2: "Prohlídka a návrh sestavy",
-    krok3: "Nabídka na míru (tento dokument)",
-    krok4: ohrevVody ? `Podpis smlouvy${sDotaci ? ", vyřízení dotace" : ""}` : `Podpis smlouvy, vyřízení připojení${sDotaci ? " a dotace" : ""}`,
-    krok5: `Instalace, spuštění a předání${sDotaci ? ", vyplacení dotace" : ""}`,
+    // Klient už prohlídkou prošel — postup začíná tam, kde skutečně je.
+    nadpisPostup: "Jak bude realizace probíhat",
+    krokHotovo: 1,
+    krokTed: 2,
+    krok1: "Prohlídka a konzultace",
+    krok2: "Osobní cenová nabídka (tento dokument)",
+    krok3: ohrevVody ? `Podpis smlouvy${sDotaci ? ", vyřízení dotace" : ""}` : `Podpis smlouvy, vyřízení připojení${sDotaci ? " a dotace" : ""}`,
+    krok4: "Montáž a revize",
+    krok5: `Spuštění, zaškolení a předání${sDotaci ? ", vyplacení dotace" : ""}`,
   };
 }
 
