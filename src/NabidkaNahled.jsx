@@ -172,10 +172,8 @@ const CSS = `
 .nb-krok-dalsi { display: inline-block; margin-top: 1mm; font-size: 7pt; font-weight: 700; color: #16324F; border: 1px solid #16324F; border-radius: 2mm; padding: 0.2mm 1.8mm; }
 .nb-vyzva { background: #FFF7EC; border: 1.5px solid #E08A1E; border-radius: 2mm; padding: 2.5mm 5mm; margin-top: 2.5mm; break-inside: avoid; page-break-inside: avoid; }
 .nb-vyzva-h { font-size: 12pt; font-weight: 700; color: #16324F; margin-bottom: 1.5mm; }
-.nb-podpis { display: flex; gap: 8mm; margin-top: 2mm; font-size: 8.5pt; color: #5B6472; }
+.nb-vyzva-veta { margin: 1mm 0; padding: 1.3mm 3.5mm; background: #fff; border-left: 3px solid #E08A1E; border-radius: 1mm; font-weight: 700; color: #16324F; font-style: italic; }
 .nb-vyzva .nb-p { margin-bottom: 0; line-height: 1.35; }
-.nb-podpis > div { flex: 1; }
-.nb-podpis-cara { border-bottom: 1px solid #1A1A1A; height: 7mm; margin-bottom: 1mm; width: 60%; }
 .nb-duvera { display: flex; gap: 4mm; margin: 0 0 4mm; break-inside: avoid; page-break-inside: avoid; }
 .nb-duvera > div { flex: 1; border-top: 2px solid #E08A1E; padding-top: 1.8mm; font-size: 8.5pt; color: #5B6472; line-height: 1.4; }
 .nb-duvera b { display: block; font-size: 10pt; color: #16324F; margin-bottom: 0.5mm; }
@@ -420,11 +418,16 @@ export default function NabidkaNahled({
   const zarukyNavic = texty.zarukyNavic || [];
   // výzva k přijetí nabídky (bod 6) — předvyplněná z kontaktu OZ a čísla nabídky
   // (podle Mistra Nabídek: jeden jasný krok, hotová věta pro zákazníka a poctivý důvod, proč do data)
-  const vyzvaVychozi = [
+  // Výzva ve třech částech (Mistr Nabídek): úvod → hotová věta pro zákazníka
+  // na samostatném řádku → telefon, co bude dál a do kdy platí cena. Bez podpisu
+  // — zákazník odpoví e-mailem, smlouvu dostane k prostudování.
+  const vyzvaUvodVychozi = [
     String(u.hovor ?? "").trim() ? `Nabídku si v klidu projděte — ${String(u.hovor).trim()} Vám zavolám a projdeme spolu případné dotazy.` : "",
-    "Pokud Vám navržené řešení vyhovuje,",
-    [ozEmail && `odpovězte na e-mail ${ozEmail}`, ozTelefon && `zavolejte na ${ozTelefon}`].filter(Boolean).join(" nebo ") + ",",
-    `třeba takto: „Máme zájem pokračovat s nabídkou${cisloNabidky ? ` ${cisloNabidky}` : ""}, prosíme o zaslání smlouvy k prostudování.“`,
+    `Pokud Vám navržené řešení vyhovuje, stačí odpovědět na e-mail${ozEmail ? ` ${ozEmail}` : ""}, třeba takto:`,
+  ].filter(Boolean).join(" ");
+  const vyzvaVeta = `„Dobrý den, máme zájem pokračovat s nabídkou${cisloNabidky ? ` č. ${cisloNabidky}` : ""}. Prosíme o zaslání smlouvy k prostudování.“`;
+  const vyzvaZaverVychozi = [
+    ozTelefon ? `Nebo nám zavolejte na ${ozTelefon}.` : "",
     "Smlouvu Vám pošleme a domluvíme termín.",
     platiDo ? `Cenu ${fmtKc(cenaSDph)} vč. DPH držíme do ${fmtDatum(platiDo)}, potom je potřeba znovu ověřit ceny komponent a volný termín.` : "",
   ].filter(Boolean).join(" ");
@@ -977,13 +980,9 @@ export default function NabidkaNahled({
 
           <div className="nb-vyzva">
             <div className="nb-vyzva-h">Jak pokračovat?</div>
-            <Upravitelne className="nb-p" hodnota={u.vyzva} vychozi={vyzvaVychozi} zaklad={u.vyzva_zaklad} onZmena={upravText("vyzva", vyzvaVychozi)} />
-            <div className="nb-podpis">
-              <div>
-                <div className="nb-podpis-cara"></div>
-                <b style={{ color: "#16324F" }}>Potvrzuji zájem o přípravu smlouvy</b> — datum a podpis zákazníka (potvrzení samo o sobě nenahrazuje smlouvu o dílo)
-              </div>
-            </div>
+            <Upravitelne className="nb-p" hodnota={u.vyzvaUvod} vychozi={vyzvaUvodVychozi} zaklad={u.vyzvaUvod_zaklad} onZmena={upravText("vyzvaUvod", vyzvaUvodVychozi)} />
+            <div className="nb-vyzva-veta">{vyzvaVeta}</div>
+            <Upravitelne className="nb-p" hodnota={u.vyzvaZaver} vychozi={vyzvaZaverVychozi} zaklad={u.vyzvaZaver_zaklad} onZmena={upravText("vyzvaZaver", vyzvaZaverVychozi)} />
           </div>
         </div>
         <div className="nb-paticka">
