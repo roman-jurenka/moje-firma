@@ -17,23 +17,35 @@ export default function DofakturaceFaktura({ zak, contract, zakaznik, cenaBezDph
   const [prenesena, setPrenesena] = useState(false);
   const [splatnost, setSplatnost] = useState(String(zakaznik?.payment_terms_days || 14));
   const [predchozi, setPredchozi] = useState(null);
+  // zálohy zákazníka nepřipojené k žádné zakázce (vystavené dřív, než zakázka měla smlouvu)
+  const [volne, setVolne] = useState([]);
+  const [vybraneVolne, setVybraneVolne] = useState({});
   const [pracuji, setPracuji] = useState(false);
   const [chyba, setChyba] = useState("");
 
   useEffect(() => {
     let zruseno = false;
-    if (!zak.contract_id) { Promise.resolve().then(() => { if (!zruseno) setPredchozi([]); }); return () => { zruseno = true; }; }
-    supabase.from("invoices").select("id, number, cislo_ucetni, amount, tax, items, status, is_deposit, invoice_type, prenesena_dph")
-      .eq("contract_id", zak.contract_id).order("issued")
-      .then(({ data }) => { if (!zruseno) setPredchozi((data || []).filter((i) => i.status !== "Storno" && (i.invoice_type || "vydaná") === "vydaná")); });
+    const sloupce = "id, number, cislo_ucetni, issued, amount, tax, items, status, is_deposit, invoice_type, prenesena_dph, contract_id";
+    const platne = (i) => i.status !== "Storno" && (i.invoice_type || "vydaná") === "vydaná";
+    Promise.all([
+      zak.contract_id ? supabase.from("invoices").select(sloupce).eq("contract_id", zak.contract_id).order("issued") : Promise.resolve({ data: [] }),
+      zak.customer_id ? supabase.from("invoices").select(sloupce).eq("customer_id", zak.customer_id).is("contract_id", null).eq("is_deposit", true).order("issued") : Promise.resolve({ data: [] }),
+    ]).then(([a, b]) => {
+      if (zruseno) return;
+      const nevolne = (b.data || []).filter(platne);
+      setPredchozi((a.data || []).filter(platne));
+      setVolne(nevolne);
+      setVybraneVolne(Object.fromEntries(nevolne.map((i) => [i.id, true])));
+    });
     return () => { zruseno = true; };
-  }, [zak.contract_id]);
+  }, [zak.contract_id, zak.customer_id]);
 
   const c = cislo(cena);
   const nazev = contract?.name || zak.nazev || "";
   // odečty po sazbách DPH z dřívějších faktur
   const odecty = [];
-  for (const inv of predchozi || []) {
+  const odecitane = [...(predchozi || []), ...volne.filter((i) => vybraneVolne[i.id])];
+  for (const inv of odecitane) {
     const { byRate } = computeInvoiceTotals(inv.items || [], inv.prenesena_dph);
     for (const [sazba, v] of Object.entries(byRate)) {
       if (Math.abs(v.zaklad) < 0.005) continue;
@@ -43,6 +55,9 @@ export default function DofakturaceFaktura({ zak, contract, zakaznik, cenaBezDph
   const polozky = [{ desc: `Konečná faktura — ${nazev}`.trim(), qty: 1, unit: "kpl.", price: Number.isFinite(c) ? c : 0, vatRate: dph }, ...odecty];
   const { total, totalTax } = computeInvoiceTotals(polozky, prenesena);
   const uzVyfakturovano = -odecty.reduce((s, o) => s + o.price, 0);
+  // vše už je vyfakturované (a cena je zadaná) — konečná faktura na 0 Kč nedává smysl
+  const nicNezbyva = predchozi !== null && odecitane.length > 0 && c > 0 && total - totalTax <= 0.5;
+  const stavPlatby = (i) => (i.status === "Zaplacena" ? "zaplaceno" : "nezaplaceno");
 
   const vystavit = async () => {
     setChyba("");
@@ -66,6 +81,9 @@ export default function DofakturaceFaktura({ zak, contract, zakaznik, cenaBezDph
     }
     if (!row) { setPracuji(false); setChyba("Číslo faktury se opakovaně srazilo, zkus to znovu."); return; }
     await supabase.from("invoice_events").insert({ invoice_id: row.id, type: "vystavena" });
+    // odečtené zálohy, které nebyly u zakázky, k ní připojit
+    const pripojit = volne.filter((i) => vybraneVolne[i.id]).map((i) => i.id);
+    if (pripojit.length && zak.contract_id) await supabase.from("invoices").update({ contract_id: zak.contract_id }).in("id", pripojit);
     setPracuji(false);
     onVystaveno?.(row, total);
   };
@@ -91,12 +109,23 @@ export default function DofakturaceFaktura({ zak, contract, zakaznik, cenaBezDph
       {predchozi === null ? <div style={{ fontSize: 13, color: "#64748b" }}>Načítám faktury zakázky…</div> : (
         <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 2 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}><span>Cena zakázky</span><b>{fmtKc2(Number.isFinite(c) ? c : 0)} Kč</b></div>
-          {predchozi.length === 0 && <div style={{ color: "#64748b" }}>K zakázce zatím není žádná faktura — vyfakturuje se celá cena.</div>}
+          {odecitane.length === 0 && volne.length === 0 && <div style={{ color: "#64748b" }}>K zakázce zatím není žádná faktura ani záloha — vyfakturuje se celá cena.</div>}
           {predchozi.map((i) => (
             <div key={i.id} style={{ display: "flex", justifyContent: "space-between", color: "#475569" }}>
-              <span>− {i.is_deposit ? "záloha" : "faktura"} {cisloFaktury(i)}</span><span>{fmtKc2(i.amount)} Kč</span>
+              <span>− {i.is_deposit ? "záloha" : "faktura"} {cisloFaktury(i)} <span style={{ fontSize: 11, color: i.status === "Zaplacena" ? "#15803d" : "#b45309" }}>({stavPlatby(i)})</span></span><span>{fmtKc2(i.amount)} Kč</span>
             </div>
           ))}
+          {volne.length > 0 && (
+            <div style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "4px 8px", margin: "2px 0" }}>
+              Zálohy zákazníka, které nejsou připojené k zakázce — zaškrtnuté se odečtou a po vystavení se k zakázce připojí:
+              {volne.map((i) => (
+                <label key={i.id} style={{ display: "flex", justifyContent: "space-between", gap: 6, color: "#475569", fontSize: 13, marginTop: 2 }}>
+                  <span><input type="checkbox" checked={!!vybraneVolne[i.id]} onChange={(e) => setVybraneVolne((v) => ({ ...v, [i.id]: e.target.checked }))} /> − záloha {cisloFaktury(i)}{i.issued ? ` z ${new Date(i.issued).toLocaleDateString("cs-CZ")}` : ""} <span style={{ fontSize: 11, color: i.status === "Zaplacena" ? "#15803d" : "#b45309" }}>({stavPlatby(i)})</span></span>
+                  <span>{fmtKc2(i.amount)} Kč</span>
+                </label>
+              ))}
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #bbf7d0", paddingTop: 4, marginTop: 2 }}>
             <span>Zbývá dofakturovat bez DPH</span><b>{fmtKc2(total - totalTax)} Kč</b>
           </div>
@@ -105,12 +134,18 @@ export default function DofakturaceFaktura({ zak, contract, zakaznik, cenaBezDph
           {uzVyfakturovano > 0 && <div style={{ fontSize: 11, color: "#64748b" }}>Na faktuře bude celá cena a pod ní odečty dřívějších faktur ({fmtKc2(uzVyfakturovano)} Kč bez DPH).</div>}
         </div>
       )}
+      {nicNezbyva && (
+        <div role="status" style={{ fontSize: 13, color: "#166534", background: "#dcfce7", borderRadius: 8, padding: "8px 10px" }}>
+          ✓ Zakázka je celá vyfakturovaná{odecitane.length === 1 ? ` fakturou ${cisloFaktury(odecitane[0])}` : ""} — konečnou fakturu už není potřeba vystavovat.
+          {total - totalTax < -0.5 && <> Pozor: vyfakturováno je o {fmtKc2(-(total - totalTax))} Kč bez DPH víc, než je cena zakázky.</>}
+        </div>
+      )}
       {chyba && <div role="alert" style={{ color: "#b91c1c", fontSize: 13 }}>{chyba}</div>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-        <button type="button" onClick={onZavrit} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Zrušit</button>
-        <button type="button" disabled={pracuji || predchozi === null} onClick={vystavit} style={{ background: "#15803d", color: "#fff", border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
+        <button type="button" onClick={onZavrit} style={{ background: "#fff", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{nicNezbyva ? "Zavřít" : "Zrušit"}</button>
+        {!nicNezbyva && <button type="button" disabled={pracuji || predchozi === null} onClick={vystavit} style={{ background: "#15803d", color: "#fff", border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
           {pracuji ? "Vystavuji…" : "🧾 Vystavit konečnou fakturu"}
-        </button>
+        </button>}
       </div>
     </div>
   );
