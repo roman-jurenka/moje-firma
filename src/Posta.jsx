@@ -5,10 +5,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabase.js";
 import { barvy, pismo } from "./ui.js";
+import { COMPANY } from "./invoicingUtils.js";
 
 const SLOZKY = [
   { id: "prijate", nazev: "Doručená pošta", ikona: "ti-inbox" },
   { id: "odeslane", nazev: "Odeslaná pošta", ikona: "ti-send" },
+  { id: "rozepsane", nazev: "Rozepsané", ikona: "ti-file-pencil" },
+];
+const NASTAVENI = [
+  { id: "sablony", nazev: "Šablony", ikona: "ti-template" },
+  { id: "podpisy", nazev: "Podpisy", ikona: "ti-signature" },
 ];
 
 async function volej(akce, extra = {}) {
@@ -92,18 +98,67 @@ function Prilohy({ prilohy }) {
   );
 }
 
-function Psani({ predloha, onZavrit, onOdeslano }) {
+// Šablony: zástupné texty {jmeno} (jméno příjemce) a {datum} (dnešek).
+const vyplnSablonu = (t, jmeno) => String(t || "")
+  .replace(/\{jmeno\}/g, jmeno || "")
+  .replace(/\{datum\}/g, new Date().toLocaleDateString("cs-CZ"));
+const jmenoZAdresy = (a) => { const m = String(a || "").split(",")[0].match(/^\s*"?([^"<]+?)"?\s*</); return m ? m[1].trim() : ""; };
+const sPodpisem = (telo, podpis, citace) => [telo.replace(/\s+$/, ""), podpis ? `\n\n-- \n${podpis.text}` : "", citace || ""].join("");
+
+function Psani({ predloha, sablony, podpisy, onZavrit, onOdeslano, onKoncept }) {
+  const vychozi = podpisy.find((p) => p.vychozi) || podpisy[0] || null;
   const [komu, setKomu] = useState(predloha.komu || "");
   const [kopie, setKopie] = useState(predloha.kopie || "");
   const [predmet, setPredmet] = useState(predloha.predmet || "");
-  const [text, setText] = useState(predloha.text || "");
+  const [telo, setTelo] = useState(predloha.telo || "");
+  const [citace] = useState(predloha.citace || "");
+  const [podpisId, setPodpisId] = useState(predloha.konceptId ? (predloha.podpisId ?? "") : (vychozi?.id ?? ""));
   const [prilohy, setPrilohy] = useState(predloha.prilohy || []); // [{nazev, typ, velikost, cesta}]
   const [nahravam, setNahravam] = useState(false);
   const [odesilam, setOdesilam] = useState(false);
   const [chyba, setChyba] = useState(null);
+  const [ulozeno, setUlozeno] = useState(predloha.konceptId ? "Koncept" : null);
+  const [ukazCitaci, setUkazCitaci] = useState(false);
   const souborRef = useRef(null);
   const textRef = useRef(null);
-  useEffect(() => { (predloha.komu ? textRef.current : null)?.setSelectionRange?.(0, 0); }, [predloha]);
+  const konceptRef = useRef(predloha.konceptId || null);
+  const zmenenoRef = useRef(false);
+  const ukladaniRef = useRef(Promise.resolve());
+  const podpis = podpisy.find((p) => String(p.id) === String(podpisId)) || null;
+
+  // Rozepsaný e-mail se sám ukládá do konceptů (1,5 s po poslední změně).
+  const ulozKoncept = useCallback(() => {
+    if (!zmenenoRef.current) return ukladaniRef.current;
+    zmenenoRef.current = false;
+    const radek = { komu, kopie, predmet, telo, citace, podpis_id: podpisId || null, prilohy, odpoved_na_id: predloha.odpovedNaId || null, updated_at: new Date().toISOString() };
+    ukladaniRef.current = ukladaniRef.current.then(async () => {
+      const dotaz = konceptRef.current
+        ? supabase.from("posta_koncepty").update(radek).eq("id", konceptRef.current).select("id").single()
+        : supabase.from("posta_koncepty").insert(radek).select("id").single();
+      const { data, error } = await dotaz;
+      if (error) { setUlozeno("Koncept se nepodařilo uložit"); return; }
+      konceptRef.current = data.id;
+      setUlozeno(`Koncept uložen ${new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}`);
+      onKoncept?.();
+    });
+    return ukladaniRef.current;
+  }, [komu, kopie, predmet, telo, citace, podpisId, prilohy, predloha.odpovedNaId, onKoncept]);
+  useEffect(() => {
+    if (!zmenenoRef.current || odesilam) return;
+    const t = setTimeout(ulozKoncept, 1500);
+    return () => clearTimeout(t);
+  }, [ulozKoncept, odesilam]);
+  const zmen = (set) => (v) => { zmenenoRef.current = true; set(v); };
+
+  const vlozSablonu = (id) => {
+    const s = sablony.find((x) => String(x.id) === String(id));
+    if (!s) return;
+    const jmeno = jmenoZAdresy(komu);
+    zmenenoRef.current = true;
+    if (!predmet.trim() && s.predmet) setPredmet(vyplnSablonu(s.predmet, jmeno));
+    setTelo((t) => vyplnSablonu(s.text, jmeno) + (t.trim() ? "\n" + t : ""));
+    textRef.current?.focus();
+  };
 
   const pridej = async (files) => {
     setNahravam(true); setChyba(null);
@@ -113,6 +168,7 @@ function Psani({ predloha, onZavrit, onOdeslano }) {
         const cesta = `odchozi/${crypto.randomUUID()}/${f.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.-]+/g, "_")}`;
         const { error } = await supabase.storage.from("posta").upload(cesta, f, { contentType: f.type || "application/octet-stream" });
         if (error) { setChyba(`Přílohu ${f.name} se nepodařilo nahrát: ${error.message}`); continue; }
+        zmenenoRef.current = true;
         setPrilohy((p) => [...p, { nazev: f.name, typ: f.type, velikost: f.size, cesta }]);
       }
     } finally { setNahravam(false); }
@@ -123,38 +179,73 @@ function Psani({ predloha, onZavrit, onOdeslano }) {
     if (!predmet.trim() && !window.confirm("Odeslat e-mail bez předmětu?")) return;
     setOdesilam(true); setChyba(null);
     try {
-      const r = await volej("odeslat", { komu, kopie, predmet, text, odpovedNaId: predloha.odpovedNaId || null, prilohy });
+      await ukladaniRef.current;
+      const r = await volej("odeslat", { komu, kopie, predmet, text: sPodpisem(telo, podpis, citace), odpovedNaId: predloha.odpovedNaId || null, prilohy });
+      if (konceptRef.current) await supabase.from("posta_koncepty").delete().eq("id", konceptRef.current);
       onOdeslano(r);
     } catch (e) { setChyba(e.message); setOdesilam(false); }
   };
+  const zavrit = async () => { await ulozKoncept(); onZavrit(); };
+  const zahodit = async () => {
+    const neco = telo.trim() || predmet.trim() || prilohy.length;
+    if (neco && !window.confirm("Zahodit rozepsaný e-mail?")) return;
+    zmenenoRef.current = false;
+    await ukladaniRef.current;
+    if (konceptRef.current) await supabase.from("posta_koncepty").delete().eq("id", konceptRef.current);
+    onKoncept?.();
+    onZavrit();
+  };
 
   const pole = { width: "100%", border: "none", borderBottom: `1px solid ${barvy.okrajJemny}`, padding: "9px 4px", fontSize: 14, fontFamily: pismo, outline: "none", background: "transparent", color: barvy.text, boxSizing: "border-box" };
+  const vyber = { border: `1px solid ${barvy.okraj}`, borderRadius: 8, padding: "6px 8px", fontSize: 13, fontFamily: pismo, background: "#fff", color: barvy.text, maxWidth: 200 };
   const radek = (popis, hodnota, set, ph) => (
     <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span style={{ width: 60, fontSize: 13, color: barvy.textSlaby }}>{popis}</span>
-      <input style={pole} value={hodnota} onChange={(e) => set(e.target.value)} placeholder={ph} />
+      <input style={pole} value={hodnota} onChange={(e) => zmen(set)(e.target.value)} placeholder={ph} />
     </label>
   );
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.35)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-      <div style={{ background: "#fff", borderRadius: 12, width: "min(760px, 100%)", maxHeight: "94vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 50px rgba(0,0,0,.25)", fontFamily: pismo }}>
-        <div style={{ display: "flex", alignItems: "center", padding: "12px 16px", borderBottom: `1px solid ${barvy.okraj}` }}>
+      <div style={{ background: "#fff", borderRadius: 12, width: "min(780px, 100%)", maxHeight: "94vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 50px rgba(0,0,0,.25)", fontFamily: pismo }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: `1px solid ${barvy.okraj}` }}>
           <b style={{ flex: 1, fontSize: 15, color: barvy.text }}>{predloha.titulek || "Nová zpráva"}</b>
-          <button type="button" onClick={onZavrit} aria-label="Zavřít" style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer", color: barvy.textSlaby }}><i className="ti ti-x" /></button>
+          {ulozeno && <span style={{ fontSize: 12, color: barvy.textSlaby }}>{ulozeno}</span>}
+          <button type="button" onClick={zavrit} aria-label="Zavřít (koncept zůstane uložený)" title="Zavřít — rozepsaný e-mail zůstane v Rozepsaných" style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer", color: barvy.textSlaby }}><i className="ti ti-x" /></button>
         </div>
         <div style={{ padding: "4px 16px" }}>
           {radek("Komu", komu, setKomu, "adresa@example.cz, další…")}
           {radek("Kopie", kopie, setKopie, "")}
           {radek("Předmět", predmet, setPredmet, "")}
         </div>
-        <textarea ref={textRef} value={text} onChange={(e) => setText(e.target.value)} autoFocus={!!predloha.komu}
-          style={{ flex: 1, minHeight: 260, margin: "8px 16px", border: "none", outline: "none", resize: "vertical", fontFamily: pismo, fontSize: 14, lineHeight: 1.5, color: barvy.text }} />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "8px 16px 0" }}>
+          <select style={vyber} value="" onChange={(e) => vlozSablonu(e.target.value)} aria-label="Vložit šablonu">
+            <option value="">📄 Vložit šablonu…</option>
+            {sablony.map((s) => <option key={s.id} value={s.id}>{s.nazev}</option>)}
+          </select>
+          <select style={vyber} value={podpisId} onChange={(e) => zmen(setPodpisId)(e.target.value)} aria-label="Podpis">
+            <option value="">✍ Bez podpisu</option>
+            {podpisy.map((p) => <option key={p.id} value={p.id}>✍ {p.nazev}</option>)}
+          </select>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <textarea ref={textRef} value={telo} onChange={(e) => zmen(setTelo)(e.target.value)} autoFocus={!!predloha.komu} placeholder="Text e-mailu…"
+            style={{ minHeight: 220, margin: "8px 16px 0", border: "none", outline: "none", resize: "vertical", fontFamily: pismo, fontSize: 14, lineHeight: 1.5, color: barvy.text }} />
+          {podpis && <div style={{ margin: "0 16px", padding: "6px 0", whiteSpace: "pre-wrap", fontSize: 13.5, color: barvy.textMekky, borderTop: `1px dashed ${barvy.okraj}` }}>{podpis.text}</div>}
+          {citace && (
+            <div style={{ margin: "6px 16px" }}>
+              <button type="button" onClick={() => setUkazCitaci((v) => !v)} style={{ border: `1px solid ${barvy.okraj}`, background: barvy.pozadi, borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontSize: 12, color: barvy.textMekky, fontFamily: pismo }}>
+                {ukazCitaci ? "Skrýt původní zprávu" : "… původní zpráva"}
+              </button>
+              {ukazCitaci && <div style={{ whiteSpace: "pre-wrap", fontSize: 12.5, color: barvy.textSlaby, marginTop: 6 }}>{citace.trim()}</div>}
+            </div>
+          )}
+        </div>
         {prilohy.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 16px 8px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 16px" }}>
             {prilohy.map((p, i) => (
               <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: barvy.pozadi, borderRadius: 6, padding: "4px 8px", fontSize: 12.5 }}>
                 <i className="ti ti-paperclip" /> {p.nazev} <span style={{ color: barvy.textSlaby }}>{fmtVelikost(p.velikost || 0)}</span>
-                <button type="button" aria-label={`Odebrat ${p.nazev}`} onClick={() => setPrilohy((x) => x.filter((_, j) => j !== i))} style={{ border: "none", background: "none", cursor: "pointer", color: barvy.textSlaby }}><i className="ti ti-x" /></button>
+                <button type="button" aria-label={`Odebrat ${p.nazev}`} onClick={() => { zmenenoRef.current = true; setPrilohy((x) => x.filter((_, j) => j !== i)); }} style={{ border: "none", background: "none", cursor: "pointer", color: barvy.textSlaby }}><i className="ti ti-x" /></button>
               </span>
             ))}
           </div>
@@ -171,14 +262,75 @@ function Psani({ predloha, onZavrit, onOdeslano }) {
           </button>
           <input ref={souborRef} type="file" multiple style={{ display: "none" }} onChange={(e) => { pridej([...e.target.files]); e.target.value = ""; }} />
           <span style={{ flex: 1 }} />
-          <button type="button" onClick={onZavrit} style={{ border: "none", background: "none", color: barvy.textSlaby, cursor: "pointer", fontFamily: pismo, fontSize: 13 }}>Zahodit</button>
+          <button type="button" onClick={zavrit} style={{ border: "none", background: "none", color: barvy.primarni, cursor: "pointer", fontFamily: pismo, fontSize: 13 }}>Uložit koncept</button>
+          <button type="button" onClick={zahodit} style={{ border: "none", background: "none", color: barvy.textSlaby, cursor: "pointer", fontFamily: pismo, fontSize: 13 }}>Zahodit</button>
         </div>
       </div>
     </div>
   );
 }
 
-export default function Posta({ customers = [] }) {
+// Správa šablon (sdílené pro celou firmu) a podpisů (každý má své).
+function Sprava({ druh, polozky, onZmena, currentUser }) {
+  const jeSablona = druh === "sablony";
+  const tabulka = jeSablona ? "posta_sablony" : "posta_podpisy";
+  const [upravy, setUpravy] = useState({}); // id → rozpracované hodnoty
+  const [nova, setNova] = useState(null);
+  const [chyba, setChyba] = useState(null);
+  const predvyplnenyPodpis = `S pozdravem\n\n${currentUser?.name || ""}\n${COMPANY?.name || ""}${COMPANY?.phone ? `\ntel.: ${COMPANY.phone}` : ""}${COMPANY?.web ? `\n${COMPANY.web}` : ""}`;
+
+  const ulozit = async (p) => {
+    setChyba(null);
+    const radek = jeSablona ? { nazev: p.nazev?.trim() || "Bez názvu", predmet: p.predmet || "", text: p.text || "" } : { nazev: p.nazev?.trim() || "Podpis", text: p.text || "", vychozi: !!p.vychozi };
+    if (!jeSablona && radek.vychozi) await supabase.from("posta_podpisy").update({ vychozi: false }).neq("id", p.id || 0);
+    const { error } = p.id ? await supabase.from(tabulka).update(radek).eq("id", p.id) : await supabase.from(tabulka).insert(radek);
+    if (error) { setChyba("Uložení se nepovedlo: " + error.message); return; }
+    if (p.id) setUpravy((u) => { const n = { ...u }; delete n[p.id]; return n; }); else setNova(null);
+    onZmena();
+  };
+  const smazat = async (p) => {
+    if (!window.confirm(`Smazat ${jeSablona ? "šablonu" : "podpis"} „${p.nazev}“?`)) return;
+    const { error } = await supabase.from(tabulka).delete().eq("id", p.id);
+    if (error) { setChyba("Smazání se nepovedlo: " + error.message); return; }
+    onZmena();
+  };
+
+  const pole = { width: "100%", border: `1px solid ${barvy.okraj}`, borderRadius: 8, padding: "8px 10px", fontSize: 13.5, fontFamily: pismo, boxSizing: "border-box", color: barvy.text };
+  const tl = { border: `1px solid ${barvy.okraj}`, background: "#fff", borderRadius: 8, padding: "6px 12px", fontSize: 13, cursor: "pointer", fontFamily: pismo, color: barvy.text };
+  const karta = (p, set, jeNova) => (
+    <div key={p.id || "nova"} style={{ border: `1px solid ${barvy.okraj}`, borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8, background: "#fff" }}>
+      <input style={{ ...pole, fontWeight: 700 }} value={p.nazev || ""} placeholder={jeSablona ? "Název šablony (např. Poděkování za poptávku)" : "Název podpisu (např. Formální)"} onChange={(e) => set({ ...p, nazev: e.target.value })} />
+      {jeSablona && <input style={pole} value={p.predmet || ""} placeholder="Předmět (nepovinné)" onChange={(e) => set({ ...p, predmet: e.target.value })} />}
+      <textarea style={{ ...pole, minHeight: jeSablona ? 140 : 110, resize: "vertical", lineHeight: 1.5 }} value={p.text || ""} placeholder={jeSablona ? "Text šablony… {jmeno} = jméno příjemce, {datum} = dnešní datum" : "Text podpisu"} onChange={(e) => set({ ...p, text: e.target.value })} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {!jeSablona && <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6, color: barvy.textMekky }}><input type="checkbox" checked={!!p.vychozi} onChange={(e) => set({ ...p, vychozi: e.target.checked })} /> Výchozí — vloží se do každého nového e-mailu</label>}
+        <span style={{ flex: 1 }} />
+        {jeNova
+          ? <button type="button" style={tl} onClick={() => setNova(null)}>Zrušit</button>
+          : <button type="button" style={{ ...tl, color: barvy.chyba }} onClick={() => smazat(p)}><i className="ti ti-trash" /> Smazat</button>}
+        <button type="button" style={{ ...tl, background: barvy.primarni, color: "#fff", border: "none", fontWeight: 700 }} onClick={() => ulozit(p)}>Uložit</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 16, background: barvy.pozadi, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: barvy.text }}>{jeSablona ? "Šablony e-mailů" : "Moje podpisy"}</div>
+          <div style={{ fontSize: 12.5, color: barvy.textSlaby }}>{jeSablona ? "Sdílené pro celou kancelář. Při psaní je vložíte tlačítkem „Vložit šablonu“." : "Vaše vlastní podpisy. Výchozí se vloží do každého nového e-mailu, při psaní jde přepnout."}</div>
+        </div>
+        {!nova && <button type="button" style={{ ...tl, background: barvy.primarni, color: "#fff", border: "none", fontWeight: 700 }} onClick={() => setNova(jeSablona ? { nazev: "", predmet: "", text: "Dobrý den,\n\n" } : { nazev: polozky.length ? "" : "Můj podpis", text: predvyplnenyPodpis, vychozi: !polozky.length })}><i className="ti ti-plus" /> {jeSablona ? "Nová šablona" : "Nový podpis"}</button>}
+      </div>
+      {chyba && <div style={{ color: barvy.chyba, fontSize: 13 }}>{chyba}</div>}
+      {nova && karta(nova, setNova, true)}
+      {polozky.map((p) => karta(upravy[p.id] || p, (v) => setUpravy((u) => ({ ...u, [p.id]: v })), false))}
+      {!polozky.length && !nova && <div style={{ color: barvy.textSlaby, fontSize: 13 }}>{jeSablona ? "Zatím žádné šablony." : "Zatím nemáte podpis — přidejte si ho tlačítkem „Nový podpis“."}</div>}
+    </div>
+  );
+}
+
+export default function Posta({ customers = [], currentUser }) {
   const [slozka, setSlozka] = useState("prijate");
   const [zpravy, setZpravy] = useState([]);
   const [nacitam, setNacitam] = useState(true);
@@ -196,7 +348,27 @@ export default function Posta({ customers = [] }) {
 
   const zakaznici = useMemo(() => Object.fromEntries((customers || []).filter((c) => c.email).map((c) => [String(c.email).trim().toLowerCase(), c])), [customers]);
 
+  const [koncepty, setKoncepty] = useState([]);
+  const [sablony, setSablony] = useState([]);
+  const [podpisy, setPodpisy] = useState([]);
+  const nactiDoplnky = useCallback(async () => {
+    const [k, sa, po] = await Promise.all([
+      supabase.from("posta_koncepty").select("*").order("updated_at", { ascending: false }),
+      supabase.from("posta_sablony").select("*").order("poradi").order("nazev"),
+      supabase.from("posta_podpisy").select("*").order("id"),
+    ]);
+    setKoncepty(k.data || []); setSablony(sa.data || []); setPodpisy(po.data || []);
+  }, []);
+  useEffect(() => { Promise.resolve().then(nactiDoplnky); }, [nactiDoplnky]);
+  const otevriKoncept = (k) => setPsani({ titulek: "Rozepsaný e-mail", konceptId: k.id, komu: k.komu, kopie: k.kopie, predmet: k.predmet, telo: k.telo, citace: k.citace, podpisId: k.podpis_id ?? "", prilohy: k.prilohy || [], odpovedNaId: k.odpoved_na_id });
+  const smazatKoncept = async (k) => {
+    if (!window.confirm("Smazat rozepsaný e-mail?")) return;
+    await supabase.from("posta_koncepty").delete().eq("id", k.id);
+    nactiDoplnky();
+  };
+
   const nacti = useCallback(async () => {
+    if (slozka === "rozepsane" || slozka === "sablony" || slozka === "podpisy") { setNacitam(false); return; }
     const [{ data, error }, { count }, { data: st }] = await Promise.all([
       supabase.from("posta_zpravy").select("id, slozka, od_email, od_jmeno, komu, predmet, datum, nahled, precteno, oznaceno, prilohy, customer_id")
         .eq("slozka", slozka).eq("smazano", false).order("datum", { ascending: false }).limit(500),
@@ -209,21 +381,24 @@ export default function Posta({ customers = [] }) {
     setNacitam(false);
   }, [slozka]);
 
+  // stahování nezávisí na otevřené složce (jinak by se pošta stahovala při každém přepnutí)
+  const nactiRef = useRef(nacti);
+  useEffect(() => { nactiRef.current = nacti; }, [nacti]);
   const stahni = useCallback(async (tichy = false) => {
     setStahuji(true); if (!tichy) setChyba(null);
     try {
       for (const sl of ["prijate", "odeslane"]) {
         for (let i = 0; i < 20; i++) {
           const r = await volej("sync", { slozka: sl });
-          if (r.nove) await nacti();
+          if (r.nove) await nactiRef.current();
           if (!r.zbyva) break;
         }
       }
       setChyba(null);
     } catch (e) { setChyba("Stažení pošty se nepovedlo: " + e.message); }
     setStahuji(false);
-    nacti();
-  }, [nacti]);
+    nactiRef.current();
+  }, []);
 
   useEffect(() => { Promise.resolve().then(nacti); }, [nacti]);
   const zmenSlozku = (id) => { if (id === slozka) return; setNacitam(true); setVybranaId(null); setSlozka(id); };
@@ -264,11 +439,11 @@ export default function Posta({ customers = [] }) {
     const ja = new Set(); // vlastní adresu z kopie vyřadí server (je to odesílatel), stačí nevracet odesílatele dvakrát
     const komu = d.slozka === "odeslane" ? seznamAdres(d.komu) : (d.od_jmeno ? `${d.od_jmeno} <${d.od_email}>` : d.od_email);
     const kopie = vsem ? [...(d.slozka === "odeslane" ? [] : d.komu || []), ...(d.kopie || [])].filter((x) => x.email !== d.od_email && !ja.has(x.email)).map((x) => x.email).join(", ") : "";
-    setPsani({ titulek: vsem ? "Odpovědět všem" : "Odpovědět", komu, kopie, predmet: sPredponou("Re", d.predmet), text: citace(d), odpovedNaId: d.id });
+    setPsani({ titulek: vsem ? "Odpovědět všem" : "Odpovědět", komu, kopie, predmet: sPredponou("Re", d.predmet), citace: citace(d), odpovedNaId: d.id });
   };
   const preposlat = () => {
     const d = detail; if (!d) return;
-    setPsani({ titulek: "Přeposlat", predmet: sPredponou("Fwd", d.predmet), text: citace(d), prilohy: (d.prilohy || []).filter((p) => p.cesta && !p.cid) });
+    setPsani({ titulek: "Přeposlat", predmet: sPredponou("Fwd", d.predmet), citace: citace(d), prilohy: (d.prilohy || []).filter((p) => p.cesta && !p.cid) });
   };
   const smazat = async () => {
     const d = detail; if (!d || !window.confirm("Přesunout zprávu do koše?")) return;
@@ -300,6 +475,15 @@ export default function Posta({ customers = [] }) {
           <i className={`ti ${s.ikona}`} style={{ fontSize: 18 }} />
           <span style={{ flex: 1 }}>{s.nazev}</span>
           {s.id === "prijate" && neprecteno > 0 && <span style={{ fontWeight: 700, color: barvy.primarni }}>{neprecteno}</span>}
+          {s.id === "rozepsane" && koncepty.length > 0 && <span style={{ color: barvy.textSlaby }}>{koncepty.length}</span>}
+        </button>
+      ))}
+      {!uzke && <div style={{ height: 1, background: barvy.okraj, margin: "8px 4px" }} />}
+      {NASTAVENI.map((s) => (
+        <button key={s.id} type="button" onClick={() => zmenSlozku(s.id)}
+          style={{ display: "flex", alignItems: "center", gap: 10, border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontFamily: pismo, fontSize: 13.5, textAlign: "left",
+            background: slozka === s.id ? "#E6EEF5" : "transparent", color: slozka === s.id ? barvy.primarni : barvy.textMekky, fontWeight: slozka === s.id ? 700 : 500 }}>
+          <i className={`ti ${s.ikona}`} style={{ fontSize: 17 }} /> {s.nazev}
         </button>
       ))}
       {!uzke && (
@@ -356,6 +540,25 @@ export default function Posta({ customers = [] }) {
     </div>
   );
 
+  const seznamKonceptu = (
+    <div style={{ flex: 1, overflowY: "auto", background: "#fff" }}>
+      {!koncepty.length ? <div style={{ padding: 20, color: barvy.textSlaby, fontSize: 13 }}>Žádné rozepsané e-maily. Co začnete psát, se tu samo uloží.</div>
+        : koncepty.map((k) => (
+          <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: `1px solid ${barvy.okrajJemny}` }}>
+            <div role="button" tabIndex={0} onClick={() => otevriKoncept(k)} onKeyDown={(e) => { if (e.key === "Enter") otevriKoncept(k); }} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <span style={{ flex: 1, fontSize: 14, color: barvy.chyba, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>[Koncept] <span style={{ color: barvy.text }}>{k.komu || "(bez příjemce)"}</span></span>
+                <span style={{ fontSize: 12, color: barvy.textSlaby }}>{fmtKratce(k.updated_at)}</span>
+              </div>
+              <div style={{ fontSize: 13, color: barvy.textMekky, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.predmet || "(bez předmětu)"}</div>
+              <div style={{ fontSize: 12, color: barvy.textSlaby, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(k.telo || "").replace(/s+/g, " ").slice(0, 160)}</div>
+            </div>
+            <button type="button" onClick={() => smazatKoncept(k)} aria-label="Smazat koncept" title="Smazat koncept" style={{ border: "none", background: "none", cursor: "pointer", color: barvy.textSlaby, fontSize: 17 }}><i className="ti ti-trash" /></button>
+          </div>
+        ))}
+    </div>
+  );
+
   const cteni = detail ? (
     <div style={{ flex: 1, minWidth: 0, overflowY: "auto", background: "#fff", padding: uzke ? 12 : "16px 24px" }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
@@ -403,11 +606,13 @@ export default function Posta({ customers = [] }) {
       <div style={{ display: "flex", flexDirection: uzke ? "column" : "row", gap: uzke ? 10 : 14, flex: 1, minHeight: 0 }}>
         {panelSlozek}
         <div style={{ flex: 1, display: "flex", minHeight: 0, border: `1px solid ${barvy.okraj}`, borderRadius: 10, overflow: "hidden", background: "#fff" }}>
-          {(!uzke || !detail) && seznam}
-          {(!uzke || detail) && cteni}
+          {slozka === "rozepsane" ? seznamKonceptu
+            : slozka === "sablony" ? <Sprava key="s" druh="sablony" polozky={sablony} onZmena={nactiDoplnky} currentUser={currentUser} />
+            : slozka === "podpisy" ? <Sprava key="p" druh="podpisy" polozky={podpisy} onZmena={nactiDoplnky} currentUser={currentUser} />
+            : <>{(!uzke || !detail) && seznam}{(!uzke || detail) && cteni}</>}
         </div>
       </div>
-      {psani && <Psani predloha={psani} onZavrit={() => setPsani(null)} onOdeslano={() => { setPsani(null); if (slozka === "odeslane") nacti(); }} />}
+      {psani && <Psani predloha={psani} sablony={sablony} podpisy={podpisy} onKoncept={nactiDoplnky} onZavrit={() => { setPsani(null); nactiDoplnky(); }} onOdeslano={() => { setPsani(null); nactiDoplnky(); if (slozka === "odeslane") nacti(); }} />}
     </div>
   );
 }

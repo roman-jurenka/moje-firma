@@ -67,3 +67,61 @@ drop policy if exists posta_soubory on storage.objects;
 create policy posta_soubory on storage.objects for all to authenticated
   using (bucket_id = 'posta' and public.app_ma(array['posta','invoices']))
   with check (bucket_id = 'posta' and public.app_ma(array['posta','invoices']));
+
+-- Rozepsané e-maily (koncepty) — ukládají se samy při psaní, každý vidí jen své.
+create table if not exists public.posta_koncepty (
+  id bigint generated always as identity primary key,
+  autor uuid not null default auth.uid(),
+  komu text, kopie text, predmet text,
+  telo text,                       -- vlastní text (bez podpisu a citace)
+  citace text,                     -- citovaná původní zpráva u odpovědi / přeposlání
+  podpis_id bigint,
+  prilohy jsonb not null default '[]'::jsonb,
+  odpoved_na_id bigint references public.posta_zpravy(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists posta_koncepty_autor on public.posta_koncepty (autor, updated_at desc);
+alter table public.posta_koncepty enable row level security;
+drop policy if exists posta_koncepty_vlastni on public.posta_koncepty;
+create policy posta_koncepty_vlastni on public.posta_koncepty for all to authenticated
+  using (autor = auth.uid() and public.app_ma(array['posta','invoices']))
+  with check (autor = auth.uid() and public.app_ma(array['posta','invoices']));
+
+-- Šablony e-mailů — sdílené pro celou kancelář. {jmeno} = jméno příjemce, {datum} = dnešek.
+create table if not exists public.posta_sablony (
+  id bigint generated always as identity primary key,
+  nazev text not null,
+  predmet text,
+  text text not null default '',
+  poradi int not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table public.posta_sablony enable row level security;
+drop policy if exists posta_sablony_kancelar on public.posta_sablony;
+create policy posta_sablony_kancelar on public.posta_sablony for all to authenticated
+  using (public.app_ma(array['posta','invoices'])) with check (public.app_ma(array['posta','invoices']));
+
+insert into public.posta_sablony (nazev, predmet, text, poradi)
+select * from (values
+  ('Poděkování za poptávku', 'Vaše poptávka', E'Dobrý den,\n\nděkujeme za Vaši poptávku. Ozveme se Vám do 2 pracovních dnů a domluvíme termín prohlídky na místě.\n', 1),
+  ('Zaslání cenové nabídky', 'Cenová nabídka', E'Dobrý den,\n\nv příloze Vám zasíláme cenovou nabídku. Pokud budete mít jakékoli dotazy, rádi je s Vámi probereme po telefonu.\n', 2),
+  ('Domluva termínu', 'Termín realizace', E'Dobrý den,\n\nnavrhujeme termín realizace … . Vyhovuje Vám? Případně nám napište jiný termín, který by Vám vyhovoval.\n', 3),
+  ('Připomínka platby', 'Připomínka platby faktury', E'Dobrý den,\n\ndovolujeme si Vás upozornit, že faktura č. … je po splatnosti. Prosíme o její úhradu. Pokud jste již platbu odeslali, považujte tento e-mail za bezpředmětný.\n', 4)
+) as v(nazev, predmet, text, poradi)
+where not exists (select 1 from public.posta_sablony);
+
+-- Podpisy — každý uživatel má své, jeden může být výchozí.
+create table if not exists public.posta_podpisy (
+  id bigint generated always as identity primary key,
+  autor uuid not null default auth.uid(),
+  nazev text not null,
+  text text not null default '',
+  vychozi boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table public.posta_podpisy enable row level security;
+drop policy if exists posta_podpisy_vlastni on public.posta_podpisy;
+create policy posta_podpisy_vlastni on public.posta_podpisy for all to authenticated
+  using (autor = auth.uid() and public.app_ma(array['posta','invoices']))
+  with check (autor = auth.uid() and public.app_ma(array['posta','invoices']));
