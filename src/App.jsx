@@ -45,6 +45,7 @@ import { DOVEDNOSTI, dovednost, NA_STAROSTI, naStarosti, umi, seraditPodleDovedn
 import { PodkladyNahled } from "./PodkladyZakazky.jsx";
 import Navrh3D from "./Navrh3D.jsx";
 import StatikaFve from "./StatikaFve.jsx";
+import Posta from "./Posta.jsx";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -454,6 +455,7 @@ const NAV = [
   { id: "statika", label: "Statika FVE", icon: "ti-building-bridge", group: "Obchod" },
   // Zakázky: práce na zakázce od poptávky po předání je v Průběhu; modul
   // „contracts“ je ekonomika a archiv (rozpočet, náklady, fakturace).
+  { id: "posta", label: "Pošta", icon: "ti-mail", group: "Obchod" },
   { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "Zakázky" },
   { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Zakázky" },
   { id: "tasks", label: "Úkoly", icon: "ti-checkbox", group: "Zakázky" },
@@ -1169,7 +1171,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   const sServisem = !sFinanci.includes("servis") && (sFinanci.includes("contracts") || sFinanci.includes("attendance")) ? [...sFinanci, "servis"] : sFinanci;
   // 3D návrh FVE a hromosvodu a Statiku FVE vidí každý, kdo naceňuje.
   const allowedTabs = sServisem.includes("pricing") ? [...new Set([...sServisem, "navrh3d", "statika"])] : sServisem;
-  const visibleNav = NAV.filter(n => allowedTabs.includes(n.id));
+  // Pošta (firemní schránka WEDOS) — vidí kancelář, tj. kdo má Faktury (admin vše).
+  const sPostou = allowedTabs.includes("invoices") && !allowedTabs.includes("posta") ? [...allowedTabs, "posta"] : allowedTabs;
+  const visibleNav = NAV.filter(n => sPostou.includes(n.id));
   const groups = [...new Set(visibleNav.map(n => n.group))];
 
   const todayStr = fmt(new Date());
@@ -1707,6 +1711,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} contracts={contracts || []} customers={customers} />}
 
         {tab === "navrh3d" && allowedTabs.includes("navrh3d") && <Navrh3D currentUser={currentUser} />}
+        {tab === "posta" && sPostou.includes("posta") && <Posta customers={customers} />}
         {tab === "statika" && allowedTabs.includes("statika") && <StatikaFve contracts={contracts} customers={customers} currentUser={currentUser} />}
 
         {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents}

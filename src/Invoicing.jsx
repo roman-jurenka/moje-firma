@@ -271,13 +271,20 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
   const { lines, total, totalTax } = computeInvoiceTotals(f.items, f.prenesenaDph);
   const vybranaZakazka = (contracts || []).find(c => String(c.id) === String(fromContractId)) || null;
 
-  const submit = () => {
+  // Ochrana proti dvojímu kliknutí: dokud se faktura ukládá, tlačítko je
+  // zablokované — jinak každé další kliknutí vystavilo další kopii faktury
+  // s dalším číslem (9. 11. 2026 vzniklo 7 kopií za 3 sekundy).
+  const [ukladam, setUkladam] = useState(false);
+  const ukladamRef = useRef(false);
+  const submit = async () => {
+    if (ukladamRef.current) return;
     if (!f.customerId || lines.length === 0) { alert("Vyber zákazníka a přidej aspoň jednu položku."); return; }
     // Položky ze zakázky, které se do téhle faktury reálně dostaly (a
     // uživatel je mezitím nesmazal) — po uložení faktury se v Zakázkách
     // označí jako vyfakturované, ať se znovu nenabídnou do příští faktury.
     const billedEntryIds = lines.flatMap(l => l._entryIds || []);
-    onSave({
+    ukladamRef.current = true; setUkladam(true);
+    try { await onSave({
       ...(isEdit ? { id: editInvoice.id } : {}),
       customerId: f.customerId, invoiceType: f.invoiceType, isDeposit: f.isDeposit,
       orderRef: f.orderRef, issued: f.issued, due: f.due, status: f.status,
@@ -288,7 +295,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
       contractId: fromContractId ? Number(fromContractId) : null,
       billedEntryIds,
       dilci: !!f.dilci, pocitanoNaPapire: !!f.pocitanoNaPapire, papirFotkyIds, prenesenaDph: !!f.prenesenaDph,
-    });
+    }); } finally { ukladamRef.current = false; setUkladam(false); }
   };
 
   if (step === "choose") {
@@ -546,7 +553,7 @@ export default function InvoiceCreateFlow({ customers, contracts, costEntries, o
         {formTab === "historie" && isEdit && <InvoiceHistoryPanel invoiceId={editInvoice.id} onUpdated={handleHistoryUpdate} sentAt={effectiveSentAt} />}
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-          <button onClick={submit} style={btnPrimary}>{isEdit ? "Uložit změny" : "Vystavit fakturu"}</button>
+          <button onClick={submit} disabled={ukladam} style={{ ...btnPrimary, ...(ukladam ? { opacity: 0.6, cursor: "wait" } : {}) }}>{ukladam ? "Ukládám…" : isEdit ? "Uložit změny" : "Vystavit fakturu"}</button>
           <button onClick={onClose} style={btnGhost}>Zrušit</button>
         </div>
       </div>
