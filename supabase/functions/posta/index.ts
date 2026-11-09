@@ -14,6 +14,7 @@ import MailComposer from "npm:nodemailer@6.9.16/lib/mail-composer/index.js";
 //             — pošle přes SMTP a uloží kopii do Odeslaných na serveru
 //   precteno  { id, precteno } — nastaví/zruší příznak \Seen i na serveru
 //   smazat    { id } — přesune zprávu na serveru do Koše a v appce ji skryje
+//   (pg_cron každé 2 min s hlavičkou x-cron-secret: stáhne doručenou poštu a upozorní — app_settings „posta“)
 // Tajemství (Supabase → Edge Functions → Secrets), nastavuje majitel:
 //   SMTP_HOST, SMTP_PORT (465), SMTP_USER, SMTP_PASS, SMTP_FROM — už existují (servisní zprávy)
 //   IMAP_HOST (výchozí: SMTP_HOST s „smtp“ → „imap“, tj. wes1-imap.wedos.net), IMAP_PORT (993)
@@ -28,6 +29,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const esc = (t: unknown) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
 const DAVKA = 25;                 // zpráv na jedno volání (limit času edge funkce)
+const stejne = (a: string, b: string) => { if (a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 const PRVNI_SYNC_DNI = 60;        // při prvním stažení jen posledních 60 dní
 const MAX_PRILOHA = 15 * 1024 * 1024;
 const MAX_HTML = 400_000;
@@ -75,99 +77,175 @@ const adresy = (a: unknown) => (Array.isArray(a) ? a : a ? [a] : [])
 
 const bezpecneJmeno = (s: string) => (s || "priloha").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.-]+/g, "_").slice(-120);
 
-async function sync(db: Db, client: ImapFlow, schranka: string, slozka: "prijate" | "odeslane", imapSlozka: string) {
+const MAX_ZPRAVA = 8 * 1024 * 1024;   // větší zprávy se nestahují celé (jen hlavička + odkaz na webmail)
+const LIMIT_ZPRAVY_MS = 25_000;       // stažení jedné zprávy déle → uloží se jen hlavička
+const LIMIT_VOLANI_MS = 90_000;       // jedno volání funkce skončí včas před limitem 150 s
+
+const sCasem = <T>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<never>((_, chyba) => setTimeout(() => chyba(new Error("timeout")), ms))]);
+
+type Nova = { id: number; od: string; predmet: string };
+
+async function sync(db: Db, client: ImapFlow, schranka: string, slozka: "prijate" | "odeslane", imapSlozka: string, start = Date.now()) {
   const lock = await client.getMailboxLock(imapSlozka);
+  const noveZpravy: Nova[] = [];
+  let zaseknuto = false;
   try {
     const mb = client.mailbox as { uidValidity: bigint | number; exists: number };
     const validity = Number(mb.uidValidity);
     const { data: stav } = await db.from("posta_stav").select("*").eq("schranka", schranka).eq("imap_slozka", imapSlozka).maybeSingle();
     let posledni = Number(stav?.posledni_uid || 0);
     if (stav && Number(stav.uid_validity) !== validity) posledni = 0; // server složku přečísloval → stáhnout znovu
+    // upozorňovat jen na opravdu nové zprávy, ne na prvotní stažení posledních 60 dní
+    const upozornovat = slozka === "prijate" && posledni > 0;
+    const ulozStav = async () => {
+      const { error } = await db.from("posta_stav").upsert({ schranka, imap_slozka: imapSlozka, uid_validity: validity, posledni_uid: posledni, synchronizovano_at: new Date().toISOString(), chyba: null }, { onConflict: "schranka,imap_slozka" });
+      if (error) throw new Error("Uložení stavu: " + error.message);
+    };
 
-    if (!mb.exists) {
-      await db.from("posta_stav").upsert({ schranka, imap_slozka: imapSlozka, uid_validity: validity, posledni_uid: posledni, synchronizovano_at: new Date().toISOString(), chyba: null });
-      return { nove: 0, zbyva: 0 };
-    }
+    if (!mb.exists) { await ulozStav(); return { nove: 0, zbyva: 0, noveZpravy }; }
     const kriterium = posledni > 0 ? { uid: `${posledni + 1}:*` } : { since: new Date(Date.now() - PRVNI_SYNC_DNI * 864e5) };
     const uids = ((await client.search(kriterium, { uid: true })) || []).filter((u) => u > posledni).sort((a, b) => a - b);
     const davka = uids.slice(0, DAVKA);
-    let nove = 0;
+    if (!davka.length) { await ulozStav(); return { nove: 0, zbyva: 0, noveZpravy }; }
 
+    // nejdřív jedním příkazem hlavičky a velikosti celé dávky
+    const hlavicky = new Map<number, any>();
+    for await (const m of client.fetch(davka.join(","), { uid: true, flags: true, envelope: true, size: true, internalDate: true }, { uid: true })) hlavicky.set(m.uid, m);
+
+    let zpracovano = 0;
     for (const uid of davka) {
-      const msg = await client.fetchOne(String(uid), { uid: true, flags: true, source: true, internalDate: true }, { uid: true });
-      if (!msg || !msg.source) { posledni = uid; continue; }
-      const e = await PostalMime.parse(msg.source);
+      if (Date.now() - start > LIMIT_VOLANI_MS) break;
+      const h = hlavicky.get(uid);
+      zpracovano++;
+      if (!h) { posledni = uid; continue; }
+      const flags: Set<string> = h.flags instanceof Set ? h.flags : new Set<string>();
+      const env = h.envelope || {};
+      let e: any = null;
+      let poznamka = "";
+      if ((h.size || 0) > MAX_ZPRAVA) {
+        poznamka = `Zpráva je velká (${Math.round((h.size || 0) / 1048576)} MB) — celou ji otevřete ve webmailu WEDOS (https://webmail.wedos.net).`;
+      } else {
+        try {
+          const msg = await sCasem(client.fetchOne(String(uid), { uid: true, source: true }, { uid: true }), LIMIT_ZPRAVY_MS);
+          if (msg && (msg as any).source) e = await PostalMime.parse((msg as any).source);
+        } catch (chyba) {
+          poznamka = "Zprávu se nepodařilo stáhnout celou — otevřete ji ve webmailu WEDOS (https://webmail.wedos.net).";
+          if (String((chyba as Error)?.message) === "timeout") zaseknuto = true; // spojení může viset → ukončit dávku
+        }
+      }
+
       const prilohy: { nazev: string; typ: string; velikost: number; cesta: string | null; cid: string | null }[] = [];
-      for (const [i, a] of (e.attachments || []).entries()) {
+      for (const [i, a] of (e?.attachments || []).entries()) {
         const obsah = a.content as ArrayBuffer;
         const velikost = obsah?.byteLength || 0;
         const nazev = a.filename || (a.mimeType?.startsWith("image/") ? `obrazek-${i + 1}.${a.mimeType.split("/")[1]}` : `priloha-${i + 1}`);
         let cesta: string | null = null;
         if (velikost && velikost <= MAX_PRILOHA) {
           cesta = `prijate/${validity}-${uid}/${i}-${bezpecneJmeno(nazev)}`;
-          const { error } = await db.storage.from("posta").upload(cesta, new Uint8Array(obsah), { contentType: a.mimeType || "application/octet-stream", upsert: true });
-          if (error) cesta = null;
+          try {
+            const { error } = await sCasem(db.storage.from("posta").upload(cesta, new Uint8Array(obsah), { contentType: a.mimeType || "application/octet-stream", upsert: true }), 20_000);
+            if (error) cesta = null;
+          } catch { cesta = null; }
         }
         prilohy.push({ nazev, typ: a.mimeType || "", velikost, cesta, cid: a.contentId ? String(a.contentId).replace(/^<|>$/g, "") : null });
       }
-      const od = adresy(e.from)[0] || { email: "", jmeno: "" };
-      const text = (e.text || "").slice(0, 200_000);
-      const html = e.html && e.html.length <= MAX_HTML ? e.html : null;
-      const nahled = (text || (e.html || "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim().slice(0, 200);
+      const od = adresy(e ? e.from : (env.from || []).map((x: any) => ({ address: x.address, name: x.name })))[0] || { email: "", jmeno: "" };
+      const text = e ? (e.text || "").slice(0, 200_000) : poznamka;
+      const html = e?.html && e.html.length <= MAX_HTML ? e.html : null;
+      const nahled = (text || (e?.html || "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim().slice(0, 200);
       const { data: zak } = od.email
-        ? await db.from("customers").select("id").ilike("email", od.email).limit(1)
+        ? await db.from("customers").select("id").ilike("email", od.email.replace(/[%_\\]/g, "\\$&")).limit(1)
         : { data: null };
-      const flags = msg.flags instanceof Set ? msg.flags : new Set<string>();
-      const { error } = await db.from("posta_zpravy").upsert({
+      const predmet = (e ? e.subject : env.subject) || "";
+      const { data: radek, error } = await db.from("posta_zpravy").upsert({
         schranka, slozka, imap_slozka: imapSlozka, uid, uid_validity: validity,
-        message_id: e.messageId || null, in_reply_to: e.inReplyTo || null, reference: e.references || null,
-        od_email: od.email, od_jmeno: od.jmeno, komu: adresy(e.to), kopie: adresy(e.cc),
-        predmet: e.subject || "", datum: (e.date ? new Date(e.date) : msg.internalDate || new Date()).toISOString(),
+        message_id: (e ? e.messageId : env.messageId) || null, in_reply_to: (e ? e.inReplyTo : env.inReplyTo) || null, reference: e?.references || null,
+        od_email: od.email, od_jmeno: od.jmeno,
+        komu: adresy(e ? e.to : (env.to || []).map((x: any) => ({ address: x.address, name: x.name }))),
+        kopie: adresy(e ? e.cc : (env.cc || []).map((x: any) => ({ address: x.address, name: x.name }))),
+        predmet, datum: new Date(e?.date || env.date || h.internalDate || Date.now()).toISOString(),
         text, html, nahled, prilohy,
         precteno: slozka === "odeslane" || flags.has("\\Seen"), oznaceno: flags.has("\\Flagged"),
         customer_id: zak?.[0]?.id ?? null,
-      }, { onConflict: "schranka,imap_slozka,uid_validity,uid" });
+      }, { onConflict: "schranka,imap_slozka,uid_validity,uid" }).select("id").single();
       if (error) throw new Error("Uložení zprávy: " + error.message);
+      if (upozornovat && !flags.has("\\Seen")) noveZpravy.push({ id: radek.id, od: od.jmeno || od.email, predmet });
       posledni = uid;
-      nove++;
+      await ulozStav(); // postup po každé zprávě — při přerušení se příště pokračuje dál
+      if (zaseknuto) break;
     }
-    await db.from("posta_stav").upsert({ schranka, imap_slozka: imapSlozka, uid_validity: validity, posledni_uid: posledni, synchronizovano_at: new Date().toISOString(), chyba: null });
-    return { nove, zbyva: uids.length - davka.length };
+    return { nove: zpracovano, zbyva: uids.length - zpracovano, noveZpravy, zaseknuto };
   } finally {
-    lock.release();
+    try { lock.release(); } catch { /* spojení mohlo spadnout */ }
   }
+}
+
+// Upozornění (oznámení v appce → push na telefon) jen vybraným lidem z app_settings „posta“.
+async function upozornit(db: Db, nove: Nova[]) {
+  if (!nove.length) return;
+  const { data: nast } = await db.from("app_settings").select("value").eq("key", "posta").maybeSingle();
+  const komu: string[] = Array.isArray(nast?.value?.upozornit) ? nast.value.upozornit : [];
+  if (!komu.length) return;
+  const radky = nove.length > 3
+    ? komu.map((u) => ({ user_name: u, title: `📧 ${nove.length} nových e-mailů`, message: nove.slice(0, 3).map((n) => `${n.od}: ${n.predmet || "(bez předmětu)"}`).join(" · ") + " …", link_type: "posta", link_id: null }))
+    : komu.flatMap((u) => nove.map((n) => ({ user_name: u, title: `📧 ${n.od}`, message: n.predmet || "(bez předmětu)", link_type: "posta", link_id: n.id })));
+  await db.from("notifications").insert(radky);
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
+  const start = Date.now();
   const url = Deno.env.get("SUPABASE_URL")!;
-  const auth = req.headers.get("Authorization") || "";
-  const uzivatel = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
-  const { data: u } = await uzivatel.auth.getUser();
-  if (!u?.user) return json({ error: "unauthorized" }, 401);
-  const { data: smi } = await uzivatel.rpc("app_ma", { p_tabs: ["posta", "invoices"] });
-  if (!smi) return json({ error: "forbidden" }, 403);
-
   const db = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  // Dvě cesty: pg_cron každé 2 minuty (hlavička x-cron-secret = tajemství hlaseni_cron_secret
+  // z Vaultu) — jen stáhne poštu a upozorní; nebo přihlášený uživatel appky s Poštou/Fakturami.
+  // Funkce je nasazená s verify_jwt=false, přihlášení si ověřuje sama.
+  const cronTajemstvi = req.headers.get("x-cron-secret");
+  let jeCron = false;
+  if (cronTajemstvi) {
+    const { data: spravne } = await db.rpc("hlaseni_cron_tajemstvi");
+    if (!spravne || !stejne(cronTajemstvi, String(spravne))) return json({ error: "unauthorized" }, 401);
+    jeCron = true;
+  } else {
+    const auth = req.headers.get("Authorization") || "";
+    const uzivatel = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
+    const { data: u } = await uzivatel.auth.getUser();
+    if (!u?.user) return json({ error: "unauthorized" }, 401);
+    const { data: smi } = await uzivatel.rpc("app_ma", { p_tabs: ["posta", "invoices"] });
+    if (!smi) return json({ error: "forbidden" }, 403);
+  }
   const cfg = nastaveni();
   if (!cfg.imap.host || !cfg.imap.user || !cfg.imap.pass) return json({ error: "not_configured", detail: "Chybí nastavení schránky (SMTP_HOST / SMTP_USER / SMTP_PASS, případně IMAP_*)." }, 500);
   const schranka = cfg.imap.user.toLowerCase();
 
   let body: any = {};
   try { body = await req.json(); } catch { /* prázdné tělo */ }
-  const akce = body?.akce;
+  const akce = jeCron ? "cron" : body?.akce;
 
   let client: ImapFlow | null = null;
   try {
     client = await pripojit(cfg.imap);
     const cesty = await slozky(client);
 
+    if (akce === "cron") {
+      let nove = 0, zbyva = 0;
+      for (let i = 0; i < 10 && Date.now() - start < LIMIT_VOLANI_MS; i++) {
+        const r = await sync(db, client, schranka, "prijate", cesty.prijate, start);
+        nove += r.nove; zbyva = r.zbyva;
+        await upozornit(db, r.noveZpravy);
+        if (!r.zbyva || r.zaseknuto) break;
+      }
+      if (!zbyva && Date.now() - start < LIMIT_VOLANI_MS / 2) await sync(db, client, schranka, "odeslane", cesty.odeslane, start).catch(() => {});
+      return json({ ok: true, nove, zbyva });
+    }
+
     if (akce === "sync") {
       const slozka = body.slozka === "odeslane" ? "odeslane" : "prijate";
-      const r = await sync(db, client, schranka, slozka, cesty[slozka]);
-      return json({ ok: true, schranka, ...r });
+      const r = await sync(db, client, schranka, slozka, cesty[slozka], start);
+      await upozornit(db, r.noveZpravy);
+      return json({ ok: true, schranka, nove: r.nove, zbyva: r.zbyva });
     }
 
     if (akce === "precteno" || akce === "smazat") {
@@ -228,7 +306,7 @@ Deno.serve(async (req: Request) => {
       let ulozeno = true;
       try {
         await client.append(cesty.odeslane, raw, ["\\Seen"]);
-        await sync(db, client, schranka, "odeslane", cesty.odeslane);
+        await sync(db, client, schranka, "odeslane", cesty.odeslane, start);
       } catch { ulozeno = false; }
       if (body.odpovedNaId) await db.from("posta_zpravy").update({ precteno: true }).eq("id", body.odpovedNaId);
       return json({ ok: true, ulozenoDoOdeslanych: ulozeno });
@@ -240,6 +318,6 @@ Deno.serve(async (req: Request) => {
     await db.from("posta_stav").upsert({ schranka, imap_slozka: "INBOX", chyba: zprava }, { onConflict: "schranka,imap_slozka", ignoreDuplicates: false }).then(() => {}, () => {});
     return json({ error: "failed", detail: zprava }, 502);
   } finally {
-    try { await client?.logout(); } catch { /* nic */ }
+    try { if (client) await sCasem(client.logout(), 5000); } catch { try { client?.close(); } catch { /* nic */ } }
   }
 });

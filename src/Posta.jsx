@@ -330,13 +330,13 @@ function Sprava({ druh, polozky, onZmena, currentUser }) {
   );
 }
 
-export default function Posta({ customers = [], currentUser }) {
+export default function Posta({ customers = [], currentUser, otevritId = null }) {
   const [slozka, setSlozka] = useState("prijate");
   const [zpravy, setZpravy] = useState([]);
   const [nacitam, setNacitam] = useState(true);
   const [stahuji, setStahuji] = useState(false);
   const [chyba, setChyba] = useState(null);
-  const [vybranaId, setVybranaId] = useState(null);
+  const [vybranaId, setVybranaId] = useState(otevritId); // z oznámení „nový e-mail“ rovnou otevřít zprávu
   const [hledat, setHledat] = useState("");
   const [jenNeprectene, setJenNeprectene] = useState(false);
   const [psani, setPsani] = useState(null);

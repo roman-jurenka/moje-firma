@@ -839,6 +839,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     if (window.history.state?.appTab) window.history.back();
     else krokZpet();
   };
+  const [postaOtevrit, setPostaOtevrit] = useState(null); // {id} — otevřít zprávu v Poště (z oznámení)
+  const [postaNeprectene, setPostaNeprectene] = useState(0);
   const [prubehInitialId, setPrubehInitialId] = useState(null); // otevřít konkrétní zakázku v Průběhu (z Nacenění)
   // Rychlá obrazovka (Odchod / Fotky) – otevírá ji klepnutí na notifikaci o odpracovaném čase (?rychle=…)
   const [rychle, setRychle] = useState(false);
@@ -848,6 +850,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     const otevrit = (o) => {
       const [t, id] = String(o || "").split(":");
       if (t === "prubeh") { setPrubehInitialId(id ? Number(id) : null); setTab("prubeh"); }
+      else if (t === "posta") { setPostaOtevrit(id ? { id: Number(id) } : null); setTab("posta"); }
       else if (["tasks", "calendar", "notifications", "servis"].includes(t)) setTab(t);
     };
     const hledat = new URLSearchParams(window.location.search);
@@ -1174,6 +1177,15 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // Pošta (firemní schránka WEDOS) — vidí kancelář, tj. kdo má Faktury (admin vše).
   const sPostou = allowedTabs.includes("invoices") && !allowedTabs.includes("posta") ? [...allowedTabs, "posta"] : allowedTabs;
   const visibleNav = NAV.filter(n => sPostou.includes(n.id));
+  // počet nepřečtených e-mailů u položky Pošta v menu (obnova každé 2 minuty)
+  const maPostu = sPostou.includes("posta");
+  useEffect(() => {
+    if (!maPostu) return;
+    const nacti = () => supabase.from("posta_zpravy").select("id", { count: "exact", head: true }).eq("slozka", "prijate").eq("smazano", false).eq("precteno", false)
+      .then(({ count }) => setPostaNeprectene(count || 0), () => {});
+    const t0 = setTimeout(nacti, 0), t = setInterval(nacti, 120_000);
+    return () => { clearTimeout(t0); clearInterval(t); };
+  }, [maPostu, tab]);
   const groups = [...new Set(visibleNav.map(n => n.group))];
 
   const todayStr = fmt(new Date());
@@ -1538,6 +1550,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
             {visibleNav.filter(n => n.group === g).map(n => (
               <div key={n.id} style={S.navItem(tab === n.id)} onClick={() => { setTab(n.id); setSearch(""); setSidebarOpen(false); }}>
                 <i className={`ti ${n.icon}`} style={{ fontSize: 16, width: 18, textAlign: "center" }} aria-hidden="true"></i> {n.label}
+                {n.id === "posta" && postaNeprectene > 0 && <span style={{ marginLeft: "auto", background: "#F5821F", color: "#fff", borderRadius: 10, padding: "0 7px", fontSize: 11, fontWeight: 700, lineHeight: "18px" }} aria-label={`${postaNeprectene} nepřečtených`}>{postaNeprectene}</span>}
               </div>
             ))}
           </div>
@@ -1711,7 +1724,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "uctenky" && <ReceiptsModule currentUser={currentUser} contracts={contracts || []} customers={customers} />}
 
         {tab === "navrh3d" && allowedTabs.includes("navrh3d") && <Navrh3D currentUser={currentUser} />}
-        {tab === "posta" && sPostou.includes("posta") && <Posta customers={customers} currentUser={currentUser} />}
+        {tab === "posta" && sPostou.includes("posta") && <Posta key={postaOtevrit?.id || "posta"} customers={customers} currentUser={currentUser} otevritId={postaOtevrit?.id || null} />}
         {tab === "statika" && allowedTabs.includes("statika") && <StatikaFve contracts={contracts} customers={customers} currentUser={currentUser} />}
 
         {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents}
@@ -1824,10 +1837,11 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
               {notifications.filter(n => !n.user_name || n.user_name === currentUser?.name).map(n => (
                 <div key={n.id} role={n.link_type ? "button" : undefined} tabIndex={n.link_type ? 0 : undefined}
                   onClick={async () => {
-                    const cil = { prubeh: "prubeh", task: "tasks", calendar: "calendar" }[n.link_type];
+                    const cil = { prubeh: "prubeh", task: "tasks", calendar: "calendar", posta: "posta" }[n.link_type];
                     if (!cil) return;
                     if (!n.read) { await supabase.from("notifications").update({ read: true }).eq("id", n.id); setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x)); }
                     if (cil === "prubeh") setPrubehInitialId(n.link_id);
+                    if (cil === "posta") setPostaOtevrit(n.link_id ? { id: n.link_id } : null);
                     setTab(cil);
                   }}
                   style={{ ...S.card, borderLeft: `3px solid ${n.read ? "#cbd5e1" : "#0369a1"}`, padding: "14px 18px", cursor: n.link_type ? "pointer" : "default" }}>
