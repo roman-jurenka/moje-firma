@@ -108,14 +108,13 @@ async function sync(db: Db, client: ImapFlow, schranka: string, slozka: "prijate
     const davka = uids.slice(0, DAVKA);
     if (!davka.length) { await ulozStav(); return { nove: 0, zbyva: 0, noveZpravy }; }
 
-    // nejdřív jedním příkazem hlavičky a velikosti celé dávky
-    const hlavicky = new Map<number, any>();
-    for await (const m of client.fetch(davka.join(","), { uid: true, flags: true, envelope: true, size: true, internalDate: true }, { uid: true })) hlavicky.set(m.uid, m);
-
     let zpracovano = 0;
     for (const uid of davka) {
       if (Date.now() - start > LIMIT_VOLANI_MS) break;
-      const h = hlavicky.get(uid);
+      // hlavička a velikost po jedné zprávě (hromadný fetch před fetchOne na serveru zasekával další příkazy)
+      let h: any = null;
+      try { h = await sCasem(client.fetchOne(String(uid), { uid: true, flags: true, envelope: true, size: true, internalDate: true }, { uid: true }), LIMIT_ZPRAVY_MS); }
+      catch { zaseknuto = true; zpracovano++; posledni = uid; await ulozStav(); break; } // zaseknutou zprávu přeskočit, ať se na ní příště nezastaví
       zpracovano++;
       if (!h) { posledni = uid; continue; }
       const flags: Set<string> = h.flags instanceof Set ? h.flags : new Set<string>();
