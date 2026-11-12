@@ -4490,10 +4490,10 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
 
       <div style={S.card}>
         <table style={S.table}>
-          <thead><tr>{["Číslo", "Zakázka", "Částka", "DPH", "Splatnost", "Uhrazeno", "Datum úhrady", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr><th style={S.th}><div>Číslo</div><div style={{ borderTop: "1px solid #e2e8f0", marginTop: 4, paddingTop: 4 }}>Zakázka</div></th>{["Částka", "DPH", "Splatnost", "Uhrazeno", "Datum úhrady", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {visibleInvoices.length === 0 && (
-              <tr><td colSpan={10} style={{ ...S.td, textAlign: "center", color: "#64748b", padding: "24px 0" }}>Žádné faktury neodpovídají filtru.</td></tr>
+              <tr><td colSpan={9} style={{ ...S.td, textAlign: "center", color: "#64748b", padding: "24px 0" }}>Žádné faktury neodpovídají filtru.</td></tr>
             )}
             {visibleInvoices.map(inv => {
               const cust = customers.find(c => c.id === inv.customerId);
@@ -4501,8 +4501,8 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
               const info = getInvoicePaymentInfo(inv);
               return (
                 <tr key={inv.id}>
-                  <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{cisloFaktury(inv)}{inv.cislo_ucetni && <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }} title="Interní číslo v appce">({inv.number})</div>}<div style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>{cust?.name || "—"}</div></td>
-                  <td style={S.td}>{linkedContract ? (linkedContract.code || linkedContract.name) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                  <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{cisloFaktury(inv)}{inv.cislo_ucetni && <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }} title="Interní číslo v appce">({inv.number})</div>}<div style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>{cust?.name || "—"}</div>
+                    <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 4, paddingTop: 4, fontWeight: 400, color: "#475569" }}>{linkedContract ? (linkedContract.code || linkedContract.name) : <span style={{ color: "#cbd5e1" }}>—</span>}</div></td>
                   <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>{fmtKc(inv.amount)}</td>
                   <td style={S.td}>{fmtKc(inv.tax)}</td>
                   <td style={S.td}>
