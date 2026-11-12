@@ -4400,10 +4400,13 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
     }
     return true;
   })
-    // nejnovější nahoře: datum vystavení, pak číslo faktury (i od účetní), pak čas založení
-    .sort((a, b) => String(b.issued || "").localeCompare(String(a.issued || ""))
-      || String(cisloFaktury(b)).localeCompare(String(cisloFaktury(a)), "cs", { numeric: true })
-      || String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    // vydané: nejvyšší číslo faktury (i od účetní) nahoře, pak čas založení;
+    // přijaté (čísla dodavatelů) dál podle data vystavení
+    .sort((a, b) => invTab === "vydané"
+      ? String(cisloFaktury(b)).localeCompare(String(cisloFaktury(a)), "cs", { numeric: true })
+        || String(b.created_at || "").localeCompare(String(a.created_at || ""))
+      : String(b.issued || "").localeCompare(String(a.issued || ""))
+        || String(b.created_at || "").localeCompare(String(a.created_at || "")));
 
   return (
     <>
@@ -4487,10 +4490,10 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
 
       <div style={S.card}>
         <table style={S.table}>
-          <thead><tr>{["Číslo", "Zákazník", "Zakázka", "Částka", "DPH", "Vystavena", "Splatnost", "Uhrazeno", "Datum úhrady", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Číslo", "Zakázka", "Částka", "DPH", "Splatnost", "Uhrazeno", "Datum úhrady", "Stav", "", ""].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {visibleInvoices.length === 0 && (
-              <tr><td colSpan={12} style={{ ...S.td, textAlign: "center", color: "#64748b", padding: "24px 0" }}>Žádné faktury neodpovídají filtru.</td></tr>
+              <tr><td colSpan={10} style={{ ...S.td, textAlign: "center", color: "#64748b", padding: "24px 0" }}>Žádné faktury neodpovídají filtru.</td></tr>
             )}
             {visibleInvoices.map(inv => {
               const cust = customers.find(c => c.id === inv.customerId);
@@ -4498,12 +4501,10 @@ function Invoices({ invoices, setInvoices, customers, contracts, costEntries, se
               const info = getInvoicePaymentInfo(inv);
               return (
                 <tr key={inv.id}>
-                  <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{cisloFaktury(inv)}{inv.cislo_ucetni && <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }} title="Interní číslo v appce">({inv.number})</div>}</td>
-                  <td style={S.td}>{cust?.name || "—"}</td>
+                  <td style={{ ...S.td, color: "#1e293b", fontWeight: 600 }}>{cisloFaktury(inv)}{inv.cislo_ucetni && <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }} title="Interní číslo v appce">({inv.number})</div>}<div style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>{cust?.name || "—"}</div></td>
                   <td style={S.td}>{linkedContract ? (linkedContract.code || linkedContract.name) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                   <td style={{ ...S.td, color: "#1e293b", fontWeight: 700 }}>{fmtKc(inv.amount)}</td>
                   <td style={S.td}>{fmtKc(inv.tax)}</td>
-                  <td style={S.td}>{fmtDateCz(inv.issued)}</td>
                   <td style={S.td}>
                     {fmtDateCz(inv.due)}
                     {info.isOverdue && <div style={{ color: "#ef4444", fontWeight: 700, fontSize: 11 }}>{info.daysOverdue} dní po splatnosti</div>}
