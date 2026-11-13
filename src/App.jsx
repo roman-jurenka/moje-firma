@@ -46,6 +46,7 @@ import { PodkladyNahled } from "./PodkladyZakazky.jsx";
 import Navrh3D from "./Navrh3D.jsx";
 import StatikaFve from "./StatikaFve.jsx";
 import Posta from "./Posta.jsx";
+import AutoDne from "./AutoDne.jsx";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -10209,6 +10210,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
     <div>
       <div style={S.header}><h1 style={S.h1}>🚗 Kniha jízd</h1></div>
       {zalozky}
+      <AutoDne currentUser={currentUser} employees={employees} />
       <JizdyGps currentUser={currentUser} employees={employees} contracts={contracts || []} />
     </div>
   );
@@ -10220,6 +10222,7 @@ function KnihaJizd({ currentUser, employees, contracts }) {
         <button style={S.btn()} onClick={() => setShowForm(!showForm)}>+ Přidat jízdu</button>
       </div>
       {zalozky}
+      <AutoDne currentUser={currentUser} employees={employees} />
 
       {/* Filtry */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
