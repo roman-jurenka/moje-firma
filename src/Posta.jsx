@@ -38,6 +38,29 @@ const kratkaAdresa = (a) => (a || []).map((x) => x.jmeno || x.email).join(", ");
 
 // HTML e-mailu se zobrazuje v izolovaném iframu bez skriptů; vzdálené obrázky
 // (sledovací pixely) jsou zablokované, dokud je uživatel nepovolí.
+// Telefon: přebíjí desktopové inline styly (proto !important)
+const POSTA_MOBIL = `
+@media (max-width: 899px) {
+  .posta-slozky { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+  .posta-slozky::-webkit-scrollbar { display: none; }
+  .posta-slozky > button { flex: none; white-space: nowrap; padding: 8px 12px !important; font-size: 14px !important; border: 1px solid #E3E6EA !important; border-radius: 999px !important; }
+  .posta-slozky > button.posta-novy { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 130; border: none !important; border-radius: 16px !important; padding: 15px 18px !important; font-size: 15px !important; box-shadow: 0 6px 18px rgba(14,59,94,.35); }
+  .posta-radek { padding: 12px 14px !important; }
+  .posta-od { font-size: 15.5px !important; }
+  .posta-predmet { font-size: 14.5px !important; }
+  .posta-nahled { font-size: 13.5px !important; }
+  .posta-cteni { padding: 0 12px 16px !important; }
+  .posta-cteni h2 { font-size: 18px !important; }
+  .posta-lista { position: sticky; top: 0; z-index: 2; background: #fff; margin: 0 -12px 12px !important; padding: 8px 12px; border-bottom: 1px solid #EEF0F2; flex-wrap: nowrap !important; justify-content: space-between; }
+  .posta-lista > button { padding: 9px 11px !important; font-size: 18px !important; }
+  .posta-lista .posta-popis { display: none; }
+  .posta-hlavicka { flex-wrap: wrap; }
+  .posta-datum { width: 100%; box-sizing: border-box; padding-left: 50px; margin-top: -4px; }
+  .posta-psani-pozadi { padding: 0 !important; align-items: stretch !important; }
+  .posta-psani { width: 100% !important; max-height: none !important; height: 100dvh; border-radius: 0 !important; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }
+}
+`;
+
 function TeloZpravy({ zprava, obrazky }) {
   const [cidStav, setCidStav] = useState({ id: null, mapa: {} });
   useEffect(() => {
@@ -60,19 +83,29 @@ function TeloZpravy({ zprava, obrazky }) {
   const csp = obrazky
     ? "default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline' https:; font-src https: data:"
     : `default-src 'none'; img-src data: ${supabaseHost}; style-src 'unsafe-inline'`;
-  html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>body{font-family:Arial,sans-serif;font-size:14px;color:#1F2937;margin:0;word-break:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
+  html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>body{font-family:Arial,sans-serif;font-size:14px;color:#1F2937;margin:0;word-break:break-word;overflow-wrap:anywhere}img{max-width:100%;height:auto}@media (max-width:600px){body{font-size:15px}table,tbody,tr,td,th,div,p,img{max-width:100%!important;box-sizing:border-box}table{width:100%!important;table-layout:auto}td,th{width:auto!important}pre{white-space:pre-wrap}}</style></head><body>${html}</body></html>`;
   return <IframeAutoVyska html={html} />;
 }
 
 function IframeAutoVyska({ html }) {
   const ref = useRef(null);
   const [vyska, setVyska] = useState(300);
+  // Široký e-mail (pevná šířka 600–700 px) se na telefonu zmenší na šířku displeje,
+  // jinak by roztáhl celou stránku do šířky („oddálená“ appka).
   const prizpusob = () => {
-    try { const d = ref.current?.contentDocument; if (d) setVyska(Math.max(120, d.documentElement.scrollHeight + 8)); } catch { /* jiný původ */ }
+    try {
+      const el = ref.current, d = el?.contentDocument;
+      if (!d) return;
+      const koren = d.documentElement;
+      koren.style.zoom = "";
+      const sirka = el.clientWidth, obsah = koren.scrollWidth;
+      if (sirka > 0 && obsah > sirka + 4) koren.style.zoom = String(sirka / obsah);
+      requestAnimationFrame(() => setVyska(Math.max(120, Math.ceil(koren.getBoundingClientRect().height) + 16)));
+    } catch { /* jiný původ */ }
   };
   // allow-same-origin jen kvůli měření výšky; skripty zůstávají zakázané
   return <iframe ref={ref} title="Obsah e-mailu" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcDoc={html} onLoad={prizpusob}
-    style={{ width: "100%", height: vyska, border: "none", background: "#fff" }} />;
+    style={{ width: 1, minWidth: "100%", maxWidth: "100%", height: vyska, border: "none", background: "#fff", display: "block" }} />;
 }
 
 function Prilohy({ prilohy }) {
@@ -205,8 +238,8 @@ function Psani({ predloha, sablony, podpisy, onZavrit, onOdeslano, onKoncept }) 
     </label>
   );
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.35)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-      <div style={{ background: "#fff", borderRadius: 12, width: "min(780px, 100%)", maxHeight: "94vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 50px rgba(0,0,0,.25)", fontFamily: pismo }}>
+    <div className="posta-psani-pozadi" style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.35)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+      <div className="posta-psani" style={{ background: "#fff", borderRadius: 12, width: "min(780px, 100%)", maxHeight: "94vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 50px rgba(0,0,0,.25)", fontFamily: pismo }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: `1px solid ${barvy.okraj}` }}>
           <b style={{ flex: 1, fontSize: 15, color: barvy.text }}>{predloha.titulek || "Nová zpráva"}</b>
           {ulozeno && <span style={{ fontSize: 12, color: barvy.textSlaby }}>{ulozeno}</span>}
@@ -464,9 +497,9 @@ export default function Posta({ customers = [], currentUser, otevritId = null })
   const tlacitko = { display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${barvy.okraj}`, background: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, cursor: "pointer", fontFamily: pismo, color: barvy.text };
 
   const panelSlozek = (
-    <div style={{ width: uzke ? "auto" : 210, flexShrink: 0, display: "flex", flexDirection: uzke ? "row" : "column", gap: 4, flexWrap: "wrap" }}>
-      <button type="button" onClick={() => setPsani({})} style={{ ...tlacitko, background: barvy.primarni, color: "#fff", border: "none", fontWeight: 700, padding: "10px 14px", justifyContent: "center", marginBottom: uzke ? 0 : 10 }}>
-        <i className="ti ti-pencil" /> Nový e-mail
+    <div className="posta-slozky" style={{ width: uzke ? "auto" : 210, flexShrink: 0, display: "flex", flexDirection: uzke ? "row" : "column", gap: 4, flexWrap: "wrap" }}>
+      <button type="button" className="posta-novy" aria-label="Nový e-mail" onClick={() => setPsani({})} style={{ ...tlacitko, background: barvy.primarni, color: "#fff", border: "none", fontWeight: 700, padding: "10px 14px", justifyContent: "center", marginBottom: uzke ? 0 : 10 }}>
+        <i className="ti ti-pencil" /> <span>Nový e-mail</span>
       </button>
       {SLOZKY.map((s) => (
         <button key={s.id} type="button" onClick={() => zmenSlozku(s.id)}
@@ -518,20 +551,20 @@ export default function Posta({ customers = [], currentUser, otevritId = null })
             const zak = zakaznikZpravy(z);
             const aktivni = z.id === vybranaId;
             return (
-              <div key={z.id} role="button" tabIndex={0} onClick={() => setVybranaId(z.id)} onKeyDown={(e) => { if (e.key === "Enter") setVybranaId(z.id); }}
+              <div key={z.id} className="posta-radek" role="button" tabIndex={0} onClick={() => setVybranaId(z.id)} onKeyDown={(e) => { if (e.key === "Enter") setVybranaId(z.id); }}
                 style={{ padding: "10px 12px 10px 14px", borderBottom: `1px solid ${barvy.okrajJemny}`, cursor: "pointer", position: "relative",
                   background: aktivni ? "#E6EEF5" : "#fff", borderLeft: `3px solid ${!z.precteno ? barvy.primarni : "transparent"}` }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                  <span style={{ flex: 1, fontSize: 14, fontWeight: z.precteno ? 500 : 700, color: barvy.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span className="posta-od" style={{ flex: 1, fontSize: 14, fontWeight: z.precteno ? 500 : 700, color: barvy.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {slozka === "odeslane" ? `Komu: ${kratkaAdresa(z.komu)}` : (z.od_jmeno || z.od_email)}
                   </span>
                   <span style={{ fontSize: 12, color: !z.precteno ? barvy.primarni : barvy.textSlaby, fontWeight: z.precteno ? 400 : 700, flexShrink: 0 }}>{fmtKratce(z.datum)}</span>
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <span style={{ flex: 1, fontSize: 13, color: z.precteno ? barvy.textMekky : barvy.primarni, fontWeight: z.precteno ? 400 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{z.predmet || "(bez předmětu)"}</span>
+                  <span className="posta-predmet" style={{ flex: 1, fontSize: 13, color: z.precteno ? barvy.textMekky : barvy.primarni, fontWeight: z.precteno ? 400 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{z.predmet || "(bez předmětu)"}</span>
                   {(z.prilohy || []).some((p) => !p.cid) && <i className="ti ti-paperclip" style={{ color: barvy.textSlaby, fontSize: 14 }} title="Má přílohu" />}
                 </div>
-                <div style={{ fontSize: 12, color: barvy.textSlaby, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{z.nahled}</div>
+                <div className="posta-nahled" style={{ fontSize: 12, color: barvy.textSlaby, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{z.nahled}</div>
                 {zak && <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, background: "#FFF4E8", color: "#9A4A06", borderRadius: 4, padding: "1px 6px" }}><i className="ti ti-user" /> {zak.name}</span>}
               </div>
             );
@@ -560,17 +593,17 @@ export default function Posta({ customers = [], currentUser, otevritId = null })
   );
 
   const cteni = detail ? (
-    <div style={{ flex: 1, minWidth: 0, overflowY: "auto", background: "#fff", padding: uzke ? 12 : "16px 24px" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-        {uzke && <button type="button" onClick={() => setVybranaId(null)} style={tlacitko}><i className="ti ti-arrow-left" /> Zpět</button>}
-        <button type="button" onClick={() => odpovedet(false)} style={tlacitko}><i className="ti ti-arrow-back-up" /> Odpovědět</button>
-        <button type="button" onClick={() => odpovedet(true)} style={tlacitko}><i className="ti ti-arrow-back-up-double" /> Všem</button>
-        <button type="button" onClick={preposlat} style={tlacitko}><i className="ti ti-arrow-forward-up" /> Přeposlat</button>
-        <button type="button" onClick={() => { nastavPrecteno(detail, false); setVybranaId(null); }} style={tlacitko}><i className="ti ti-mail" /> Nepřečtené</button>
-        <button type="button" onClick={smazat} style={{ ...tlacitko, color: barvy.chyba }}><i className="ti ti-trash" /> Smazat</button>
+    <div className="posta-cteni" style={{ flex: 1, minWidth: 0, overflowY: "auto", background: "#fff", padding: uzke ? 12 : "16px 24px" }}>
+      <div className="posta-lista" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+        {uzke && <button type="button" aria-label="Zpět na seznam" onClick={() => setVybranaId(null)} style={tlacitko}><i className="ti ti-arrow-left" /> <span className="posta-popis">Zpět</span></button>}
+        <button type="button" aria-label="Odpovědět" title="Odpovědět" onClick={() => odpovedet(false)} style={tlacitko}><i className="ti ti-arrow-back-up" /> <span className="posta-popis">Odpovědět</span></button>
+        <button type="button" aria-label="Odpovědět všem" title="Odpovědět všem" onClick={() => odpovedet(true)} style={tlacitko}><i className="ti ti-arrow-back-up-double" /> <span className="posta-popis">Všem</span></button>
+        <button type="button" aria-label="Přeposlat" title="Přeposlat" onClick={preposlat} style={tlacitko}><i className="ti ti-arrow-forward-up" /> <span className="posta-popis">Přeposlat</span></button>
+        <button type="button" aria-label="Označit jako nepřečtené" title="Označit jako nepřečtené" onClick={() => { nastavPrecteno(detail, false); setVybranaId(null); }} style={tlacitko}><i className="ti ti-mail" /> <span className="posta-popis">Nepřečtené</span></button>
+        <button type="button" aria-label="Smazat" title="Smazat" onClick={smazat} style={{ ...tlacitko, color: barvy.chyba }}><i className="ti ti-trash" /> <span className="posta-popis">Smazat</span></button>
       </div>
       <h2 style={{ fontSize: 19, fontWeight: 700, color: barvy.text, margin: "0 0 12px", wordBreak: "break-word" }}>{detail.predmet || "(bez předmětu)"}</h2>
-      <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 6 }}>
+      <div className="posta-hlavicka" style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 6 }}>
         <div style={{ width: 38, height: 38, borderRadius: "50%", background: barvy.primarni, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}>
           {(detail.od_jmeno || detail.od_email || "?").trim().charAt(0).toUpperCase()}
         </div>
@@ -580,7 +613,7 @@ export default function Posta({ customers = [], currentUser, otevritId = null })
           {detail.kopie?.length > 0 && <div style={{ wordBreak: "break-word" }}>Kopie: {seznamAdres(detail.kopie)}</div>}
           {zakaznikZpravy(detail) && <div style={{ color: "#9A4A06" }}><i className="ti ti-user" /> Zákazník: {zakaznikZpravy(detail).name}</div>}
         </div>
-        <div style={{ fontSize: 12, color: barvy.textSlaby, flexShrink: 0 }}>{fmtDlouze(detail.datum)}</div>
+        <div className="posta-datum" style={{ fontSize: 12, color: barvy.textSlaby, flexShrink: 0 }}>{fmtDlouze(detail.datum)}</div>
       </div>
       <Prilohy prilohy={detail.prilohy} />
       {detail.html && !obrazky[detail.id] && /<img[^>]+src=["']?https?:/i.test(detail.html) && (
@@ -600,8 +633,8 @@ export default function Posta({ customers = [], currentUser, otevritId = null })
   );
 
   return (
-    <div style={{ fontFamily: pismo, display: "flex", flexDirection: "column", gap: 10, height: uzke ? "auto" : "calc(100vh - 120px)", minHeight: 480 }}>
-      <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+    <div style={{ fontFamily: pismo, textAlign: "left", display: "flex", flexDirection: "column", gap: 10, height: uzke ? "auto" : "calc(100vh - 120px)", minHeight: 480 }}>
+      <style>{"@keyframes spin{to{transform:rotate(360deg)}}" + POSTA_MOBIL}</style>
       {chyba && <div style={{ background: "#FEF3F2", color: barvy.chyba, border: "1px solid #FECDCA", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>{chyba}</div>}
       <div style={{ display: "flex", flexDirection: uzke ? "column" : "row", gap: uzke ? 10 : 14, flex: 1, minHeight: 0 }}>
         {panelSlozek}
