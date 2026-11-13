@@ -2,6 +2,7 @@ import { StrictMode, Component } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { spustitMobilniTabulky } from './mobilTabulky.js'
 
 // Pokud appka někde spadne na neošetřené chybě, React bez tohoto boundary
 // smaže celou stránku (zůstane úplně bílá, beze slova). Tohle místo toho
@@ -48,6 +49,7 @@ class ErrorBoundary extends Component {
   }
 }
 
+spustitMobilniTabulky()
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>

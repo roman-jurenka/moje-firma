@@ -62,3 +62,23 @@ button, input, select, textarea {
   outline: 2px solid var(--primarni);
   outline-offset: 2px;
 }
+
+/* Tabulky na telefonu jako karty — buňky označuje src/mobilTabulky.js (data-label
+   z hlavičky sloupce). Přebíjí nouzové vodorovné posouvání tabulek z App.jsx. */
+@media (max-width: 768px) {
+  table.mobil-karty { display: block; overflow: visible; white-space: normal; width: 100% !important; border: none !important; }
+  table.mobil-karty thead { display: none; }
+  /* karta kolem tabulky by byla zbytečný druhý rámeček — řádky jsou karty samy */
+  div:has(> table.mobil-karty) { padding: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important; overflow: visible !important; }
+  table.mobil-karty tbody, table.mobil-karty tfoot { display: block; }
+  table.mobil-karty tr { display: block; background: #fff; border: 1px solid #E3E6EA; border-radius: 10px; padding: 8px 12px; margin: 0 0 10px; }
+  table.mobil-karty td { display: block !important; width: auto !important; min-width: 0 !important; max-width: none !important; border: none !important; padding: 5px 0 !important; text-align: right !important; white-space: normal !important; overflow: hidden; overflow-wrap: anywhere; position: static !important; }
+  table.mobil-karty td::before { content: attr(data-label); float: left; margin-right: 12px; max-width: 48%; text-align: left; color: #64748b; font-size: 12px; font-weight: 600; line-height: 1.6; }
+  table.mobil-karty td[data-label=""]::before { content: none; }
+  table.mobil-karty td:first-child { text-align: left !important; font-size: 15px; padding-bottom: 8px !important; margin-bottom: 2px; border-bottom: 1px solid #F1F5F9 !important; }
+  table.mobil-karty td:first-child::before { content: none; }
+  table.mobil-karty td[colspan] { text-align: center !important; }
+  table.mobil-karty td:empty { display: none; }
+  table.mobil-karty td > [style*="display: flex"], table.mobil-karty td > [style*="display:flex"] { justify-content: flex-end; flex-wrap: wrap; }
+  table.mobil-karty td:first-child > [style*="display: flex"] { justify-content: flex-start; }
+}
