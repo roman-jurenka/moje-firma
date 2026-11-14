@@ -14,6 +14,7 @@ import UkolyFazi from "./UkolyFazi.jsx";
 import { PodkladyNahled } from "./PodkladyZakazky.jsx";
 import { nahratFotkuZakazky } from "./fotkyZakazky.js";
 import { dovednost, naStarosti } from "./dovednosti.js";
+import JarvisNavrhy from "./JarvisNavrhy.jsx";
 
 const dnesIso = () => new Date().toLocaleDateString("sv-SE");
 const hm = (t) => String(t || "").slice(0, 5);
@@ -181,6 +182,7 @@ export default function MujDen({ currentUser, employees = [], attendance = [], s
         {pocasi && <span style={{ ...st.chip, background: "#FFF8E1", color: "#8A5A00" }}>{pocasi.dnes.ikona} dnes {pocasi.dnes.max}°</span>}
         {pocasi && <span style={{ ...st.chip, background: "#FFF1E6", color: "#9A3412" }}>{pocasi.zitra.ikona} zítra {pocasi.zitra.max}°</span>}
       </div>
+      {currentUser?.role === "admin" && <JarvisNavrhy />}
       {akce && akce.length > 0 && <div style={st.m}>{souhrn.hot} z {souhrn.celk} úkolů hotovo · {akce.length} {akce.length === 1 ? "zakázka" : akce.length < 5 ? "zakázky" : "zakázek"}</div>}
 
       {akce === null ? <div style={st.m}>Načítám dnešní den…</div> : akce.length === 0 ? (
