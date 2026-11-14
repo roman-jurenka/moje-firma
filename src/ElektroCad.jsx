@@ -16,7 +16,7 @@ import {
 } from "./elektroCad/znacky.js";
 import { svgObsah, exportPdf, exportDxf, exportWord, stahni, nazevSouboru } from "./elektroCad/exporty.js";
 import { spocitejVyvody, bilance, ULOZENI, PRUREZY, cislo } from "./elektroCad/vypocty.js";
-import { SABLONY, vychoziProjekt } from "./elektroCad/sablony.js";
+import { SABLONY, PREDULOZENE, vychoziProjekt } from "./elektroCad/sablony.js";
 
 const KLIC = "elektroCad.projekty";
 const KLIC_POSLEDNI = "elektroCad.posledni";
@@ -107,7 +107,7 @@ export default function ElektroCad({ contracts = [], customers = [], currentUser
   const [vse, setVse] = useState(nactiVse);
   const [projekt, setProjektRaw] = useState(() => {
     const v = nactiVse(), id = localStorage.getItem(KLIC_POSLEDNI);
-    return (id && v[id]) || SABLONY[1].vytvor(uzivatel);
+    return (id && (v[id] || PREDULOZENE.find(x => x.id === id)?.vytvor())) || PREDULOZENE[0].vytvor();
   });
   const historie = useRef({ zpet: [], vpred: [] });
   const [zalozka, setZalozka] = useState("vykres");
@@ -138,8 +138,10 @@ export default function ElektroCad({ contracts = [], customers = [], currentUser
   // automatické uložení do zařízení
   useEffect(() => {
     const t = setTimeout(() => {
-      setVse(prev => { const v = { ...prev, [projekt.id]: { ...projekt, upraveno: new Date().toISOString() } }; ulozVse(v); return v; });
       localStorage.setItem(KLIC_POSLEDNI, projekt.id);
+      // předuložený projekt se ukládá až po první úpravě
+      if (projekt.predulozeny && !projekt.upraveno && !historie.current.zpet.length) return;
+      setVse(prev => { const v = { ...prev, [projekt.id]: { ...projekt, upraveno: new Date().toISOString() } }; ulozVse(v); return v; });
     }, 500);
     return () => clearTimeout(t);
   }, [projekt]);
@@ -383,7 +385,20 @@ export default function ElektroCad({ contracts = [], customers = [], currentUser
   const zmenZpravu = (zm) => zmen(p => ({ ...p, zprava: { ...p.zprava, ...zm } }));
 
   // ── projekty ──
-  const otevri = (id) => { if (!vse[id]) return; historie.current = { zpet: [], vpred: [] }; setProjektRaw(vse[id]); setVyber(null); };
+  const otevri = (id) => {
+    const pred = PREDULOZENE.find(x => x.id === id);
+    const p = vse[id] || pred?.vytvor();
+    if (!p) return;
+    historie.current = { zpet: [], vpred: [] }; setProjektRaw(p); setVyber(null);
+  };
+  // předuložený projekt zpět do původní podoby (uložené úpravy se zahodí)
+  const obnovPredulozeny = (id) => {
+    const pred = PREDULOZENE.find(x => x.id === id); if (!pred) return;
+    setVse(prev => { const v = { ...prev }; delete v[id]; ulozVse(v); return v; });
+    historie.current = { zpet: [], vpred: [] };
+    setProjektRaw(pred.vytvor()); setVyber(null);
+    setZprava({ text: "Projekt obnoven do původní podoby." });
+  };
   const novy = (sablonaId) => {
     const s = SABLONY.find(x => x.id === sablonaId) || SABLONY[0];
     historie.current = { zpet: [], vpred: [] };
@@ -441,9 +456,15 @@ export default function ElektroCad({ contracts = [], customers = [], currentUser
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h1 style={{ ...ui.nadpis, fontSize: 20 }}>Elektro CAD</h1>
         <select style={{ ...S.pole, width: 260 }} value={projekt.id} onChange={e => otevri(e.target.value)}>
-          {!vse[projekt.id] && <option value={projekt.id}>{projekt.nazev}</option>}
-          {Object.values(vse).sort((a, b) => String(b.upraveno).localeCompare(String(a.upraveno))).map(p => <option key={p.id} value={p.id}>{p.nazev || "(bez názvu)"}</option>)}
+          <optgroup label="Předuložené projekty">
+            {PREDULOZENE.map(p => <option key={p.id} value={p.id}>{p.nazev}{vse[p.id] ? " (upraveno)" : ""}</option>)}
+          </optgroup>
+          <optgroup label="Moje schémata">
+            {!vse[projekt.id] && !PREDULOZENE.some(x => x.id === projekt.id) && <option value={projekt.id}>{projekt.nazev}</option>}
+            {Object.values(vse).filter(p => !PREDULOZENE.some(x => x.id === p.id)).sort((a, b) => String(b.upraveno).localeCompare(String(a.upraveno))).map(p => <option key={p.id} value={p.id}>{p.nazev || "(bez názvu)"}</option>)}
+          </optgroup>
         </select>
+        {PREDULOZENE.some(x => x.id === projekt.id) && vse[projekt.id] && <ObnovitPredulozeny onObnov={() => obnovPredulozeny(projekt.id)} />}
         <button style={S.obrys} onClick={() => setNovySablona("fveTuv")}><i className="ti ti-file-plus" /> Nové</button>
         <label style={S.obrys}><i className="ti ti-upload" /> Otevřít soubor<input type="file" accept=".json,application/json" style={{ display: "none" }} onChange={importJson} /></label>
         <button style={S.obrys} onClick={exportJson} title="Uložit schéma jako soubor .elcad.json"><i className="ti ti-device-floppy" /> Uložit soubor</button>
@@ -603,6 +624,12 @@ export default function ElektroCad({ contracts = [], customers = [], currentUser
 }
 
 function Pole({ n, children }) { return <label style={{ display: "block" }}><span style={S.popisek}>{n}</span>{children}</label>; }
+
+function ObnovitPredulozeny({ onObnov }) {
+  const [jiste, setJiste] = useState(false);
+  if (!jiste) return <button style={S.obrys} onClick={() => setJiste(true)} title="Zahodit úpravy a vrátit původní podobu"><i className="ti ti-restore" /> Obnovit původní</button>;
+  return <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 12 }}>Zahodit úpravy? <button style={S.btn(B.varovani)} onClick={() => { setJiste(false); onObnov(); }}>Obnovit</button><button style={S.obrys} onClick={() => setJiste(false)}>Ne</button></span>;
+}
 
 function SmazatProjekt({ onSmaz }) {
   const [jiste, setJiste] = useState(false);

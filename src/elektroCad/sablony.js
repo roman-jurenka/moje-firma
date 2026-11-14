@@ -103,6 +103,65 @@ function rozvadecRd(uzivatel) {
   };
 }
 
+// ── předuložené projekty (hotové zakázky jako vzor) ──
+// Otevřou se s pevným id, takže se po úpravě uloží do zařízení a příště se
+// otevře uložená verze; „Obnovit původní“ vrátí tuto podobu.
+
+// Vantová, Přítoky 70 – FVE ohřev TUV včetně stávajícího domovního rozvaděče
+function vantovaPritoky70() {
+  const p = fveTuv("Roman Jurenka");
+  return {
+    ...p,
+    id: "pred-vantova-pritoky-70",
+    predulozeny: "vantova",
+    nazev: "Vantová, Přítoky 70 – FVE ohřev TUV",
+    razitko: {
+      ...p.razitko, investor: "Hana Vantová", adresa: "Přítoky 70", cisloZak: "JE-26-102", stupen: "RDS", datum: "2.2026",
+      projektant: "Roman Jurenka", vypracoval: "Roman Jurenka", zkratka: "R.J.", priloha: "1",
+    },
+    prvky: [
+      ...p.prvky,
+      // stávající domovní rozvaděč
+      P("qf2", "jistic", 198, 82, { ozn: "QF2", poly: 1, char: "B", In: 16 }),
+      P("fa01", "jistic", 215, 82, { ozn: "FA01", poly: 1, char: "B", In: 2 }),
+      P("hdo", "hdo", 215, 100, { ozn: "", popis: "Přijímač HDO", skrytPopis: false }),
+      P("ka1c", "rele", 215, 118, { ozn: "KA1", popisVlevo: true }),
+      P("ka1", "stykac", 240, 90, { ozn: "KA1", poly: 2, In: 25 }),
+      P("qf", "jistic", 258, 82, { ozn: "QF", poly: 3, char: "B", In: 32 }),
+      P("re", "elektromer", 258, 102, { ozn: "RE PJ" }),
+      P("fu", "pojistka", 258, 124, { ozn: "FU", poly: 3, char: "gG", In: 32 }),
+    ],
+    vodice: [
+      ...p.vodice,
+      W("pas", [[194, 78], [258, 78]], { styl: "pripojnice" }),
+      W("s1", [[198, 78], [198, 82]]), W("s2", [[215, 78], [215, 82]]), W("s3", [[240, 78], [240, 90]]), W("s4", [[258, 78], [258, 82]]),
+      W("s5", [[215, 98], [215, 100]]), W("s6", [[215, 116], [215, 118]]),
+      W("s7", [[258, 98], [258, 102]]), W("s8", [[258, 120], [258, 124]]),
+      W("qf2out", [[198, 98], [198, 112]], { popis: "→ R-DC1T1 vstup síť", lx: 0 }),
+      W("ntepel", [[240, 106], [240, 116]], { popis: "N-tepel", lx: 0 }),
+      W("dist", [[258, 140], [258, 150]], { popis: "Distribuce", lx: 0 }),
+    ],
+    ramecky: [
+      { ...p.ramecky[0], popis: "" },
+      { id: "r2", x: 186, y: 72, w: 102, h: 74, nazev: "Stávající domovní rozvaděč", popis: "" },
+    ],
+    texty: [
+      p.texty[0], p.texty[1],
+      ...["Typ: R-DC1T1-16P+BPAC", "Výrobce: A-Z TRADERS s.r.o., IČ 07462522", "Napětí: 500 V DC / 230 V AC, proud 15 A DC / 16 A AC", "Plastová rozvodnice s dveřmi BC-O-1/12-ECO, 1 × 12 modulů", "Krytí IP40/IP20"]
+        .map((t, i) => ({ id: `d${i}`, x: 178, y: 40 + i * 2.7, h: 1.9, t, a: "l" })),
+      { id: "t3", x: 178, y: 58, h: 2, t: "Přechod mezi režimem SÍŤ / FVE vždy přes stav 0 –", a: "l" },
+      { id: "t4", x: 178, y: 61, h: 2, t: "FVE je galvanicky oddělena od sítě.", a: "l" },
+      { id: "t5", x: 107, y: 28, h: 2, t: "Vstup – síť (z QF2 stáv. RD)", a: "c" },
+      { id: "t6", x: 229, y: 76, h: 1.7, t: "3PEN stř. 50 Hz 230 V // TN-C-S", a: "c" },
+      ...["Relé KA1:", "blokuje TUV", "min. nabití TUV", "odděluje N-tepel"].map((t, i) => ({ id: `k${i}`, x: 188, y: 122 + i * 2.5, h: 1.7, t, a: "l" })),
+    ],
+  };
+}
+
+export const PREDULOZENE = [
+  { id: "pred-vantova-pritoky-70", nazev: "Vantová, Přítoky 70 – FVE ohřev TUV", vytvor: vantovaPritoky70 },
+];
+
 export const SABLONY = [
   { id: "prazdny", nazev: "Prázdný výkres", vytvor: (u) => vychoziProjekt(u) },
   { id: "fveTuv", nazev: "FVE ohřev TUV (A-Z WATER INVERTER)", vytvor: fveTuv },
