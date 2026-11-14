@@ -158,7 +158,7 @@ export const ZNACKY = {
   stridac: {
     nazev: "Střídač", skupina: "Měření a zdroje", vychozi: { ozn: "GU", P: 3, popis: "", vyrobce: "", typ: "" },
     kresli: () => ({
-      prim: [R(-9, 0, 9, 18), L(-9, 18, 9, 0), T(-4.5, 7, 3, "DC"), T(4.5, 15, 3, "AC"), L(-7, 3.2, -2, 3.2), L(2, 13.8, 7, 13.8)],
+      prim: [R(-9, 0, 9, 18), L(-9, 18, 9, 0), T(-4.5, 7, 2.8, "DC"), T(4.5, 15.5, 2.8, "AC"), T(-4.5, 11, 2.2, "="), T(4.5, 10.5, 2.6, "~")],
       piny: [[-9, 6], [-9, 12], [9, 9], [0, 0], [0, 18]], bbox: [-9, 0, 9, 18],
     }),
   },
@@ -338,7 +338,8 @@ export function spojovaciBody(vodice) {
 // ── rozvaděč (čárkovaný rámeček s názvem) ──
 export function kresliRamecek(r) {
   const out = [{ k: "pl", b: [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]], z: true, s: r.styl === "plna" ? "plna" : "carka", w: 0.35, vr: "ROZVADECE" }];
-  if (r.nazev) out.push({ k: "t", x: r.x + r.w / 2, y: r.y - 1.5, h: 2.8, t: r.nazev, a: "c", rot: 0, vr: "ROZVADECE" });
+  const a = r.nazevA || "c";
+  if (r.nazev) out.push({ k: "t", x: a === "l" ? r.x + 3 : a === "r" ? r.x + r.w - 3 : r.x + r.w / 2, y: r.y - 1.5, h: 2.8, t: r.nazev, a, rot: 0, vr: "ROZVADECE" });
   let y = r.y + 4;
   for (const t of String(r.popis || "").split("\n")) if (t.trim()) { out.push({ k: "t", x: r.x + r.w + 2, y, h: 1.9, t: t.trim(), a: "l", rot: 0, vr: "POPISY" }); y += 2.6; }
   return out;

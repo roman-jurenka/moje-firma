@@ -125,7 +125,7 @@ export function spocitejVyvody(projekt) {
       Ia = vybavovaciProud(pristroj, koncovy);
       odpojeni = Ia ? Ik1 >= Ia : null;
     }
-    const maxDu = +nap.maxDu || (k.soustava === "DC" ? 1 : 3);
+    const maxDu = k.soustava === "DC" ? +nap.maxDuDc || 1 : +nap.maxDu || 3;
     const r = {
       id: w.id, nazev: k.nazev || popisVyvodu(w, pristroj), soustava: k.soustava, kabel: k, S, L, Ib, In, Iz: iz?.iz ?? null, iz,
       pristroj, koordinace: In && iz ? Ib <= In + 1e-9 && In <= iz.iz + 1e-9 : iz ? Ib <= iz.iz : null,

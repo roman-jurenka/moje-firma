@@ -95,7 +95,7 @@ function kresliDoPdf(doc, prim) {
   doc.setLineDashPattern([], 0);
 }
 
-export async function exportPdf(projekt, firma, { sVypocty = true } = {}) {
+export async function exportPdf(projekt, firma, { sVypocty = true, vratit = false } = {}) {
   const { jsPDF } = await import("jspdf");
   const f = FORMATY[projekt.format] || FORMATY.A4;
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [f.w, f.h], compress: true });
@@ -106,6 +106,7 @@ export async function exportPdf(projekt, firma, { sVypocty = true } = {}) {
   doc.setProperties({ title: projekt.razitko?.nazevVykresu || projekt.nazev || "Schéma", creator: "ProudOS – Elektro CAD", author: firma?.name || "" });
   kresliDoPdf(doc, vsechnyPrimitivy(projekt, firma));
   if (sVypocty) protokolDoPdf(doc, projekt, firma);
+  if (vratit) return doc.output("blob");
   doc.save(nazevSouboru(projekt, "pdf"));
 }
 
@@ -337,7 +338,7 @@ export async function exportWord(projekt, firma) {
     telo.push(odst(`Instalovaný příkon Pi = ${cislo(bil.Pi, 2)} kW, soudobost β = ${cislo(bil.betaC, 2)}, soudobý příkon Pp = ${cislo(bil.Pp, 2)} kW.`));
     telo.push(odst(`Výpočtový proud Ip = ${cislo(bil.Ip3, 1)} A (3f, cos φ = ${cislo(bil.cos, 2)}), doporučený hlavní jistič před elektroměrem ${bil.jistic3 ? "B" + bil.jistic3 + "/3" : "–"}.`));
   }
-  telo.push(nadp(`${c++}. Závěr`));
+  telo.push(nadp(`${c}. Závěr`));
   telo.push(odst(z.zaver || "Elektroinstalace bude provedena podle této dokumentace, platných norem ČSN a pokynů výrobců použitých zařízení. Před uvedením do provozu bude provedena výchozí revize podle ČSN 33 2000-6 ed. 2."));
   telo.push(odst(""));
   telo.push(odst(`Vypracoval: ${r.vypracoval || r.projektant || ""}`));
