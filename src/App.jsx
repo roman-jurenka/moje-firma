@@ -47,6 +47,7 @@ import Navrh3D from "./Navrh3D.jsx";
 import StatikaFve from "./StatikaFve.jsx";
 import Posta from "./Posta.jsx";
 import AutoDne from "./AutoDne.jsx";
+import Instagram from "./Instagram.jsx";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -454,6 +455,7 @@ const NAV = [
   { id: "pricing", label: "Nacenění", icon: "ti-calculator", group: "Obchod" },
   { id: "navrh3d", label: "3D návrh FVE", icon: "ti-3d-cube-sphere", group: "Obchod" },
   { id: "statika", label: "Statika FVE", icon: "ti-building-bridge", group: "Obchod" },
+  { id: "instagram", label: "Instagram", icon: "ti-brand-instagram", group: "Obchod" },
   // Zakázky: práce na zakázce od poptávky po předání je v Průběhu; modul
   // „contracts“ je ekonomika a archiv (rozpočet, náklady, fakturace).
   { id: "posta", label: "Pošta", icon: "ti-mail", group: "Obchod" },
@@ -1043,8 +1045,11 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   }, []);
 
   useEffect(() => {
+    // Návrat z přihlášení do Instagramu (state „ig-…“) — kód převezme záložka Instagram
+    if (new URLSearchParams(window.location.search).get("state")?.startsWith("ig-")) {
+      setTab("instagram");
     // Zpracuj OneDrive OAuth callback hned při načtení appky
-    if (window.location.search.includes("code=")) {
+    } else if (window.location.search.includes("code=")) {
       handleOAuthCallback().then(ok => {
         if (ok) {
           console.log("✅ OneDrive připojeno");
@@ -1174,7 +1179,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // Servis vidí každý, kdo pracuje se zakázkami nebo v terénu (kancelář i technici).
   const sServisem = !sFinanci.includes("servis") && (sFinanci.includes("contracts") || sFinanci.includes("attendance")) ? [...sFinanci, "servis"] : sFinanci;
   // 3D návrh FVE a hromosvodu a Statiku FVE vidí každý, kdo naceňuje.
-  const allowedTabs = sServisem.includes("pricing") ? [...new Set([...sServisem, "navrh3d", "statika"])] : sServisem;
+  const sNacenenim = sServisem.includes("pricing") ? [...new Set([...sServisem, "navrh3d", "statika"])] : sServisem;
+  // Instagram (plán příspěvků z fotek realizací) vidí obchod — kdo má Zákazníky.
+  const allowedTabs = sNacenenim.includes("customers") && !sNacenenim.includes("instagram") ? [...sNacenenim, "instagram"] : sNacenenim;
   // Pošta (firemní schránka WEDOS) — vidí kancelář, tj. kdo má Faktury (admin vše).
   const sPostou = allowedTabs.includes("invoices") && !allowedTabs.includes("posta") ? [...allowedTabs, "posta"] : allowedTabs;
   const visibleNav = NAV.filter(n => sPostou.includes(n.id));
@@ -1727,6 +1734,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "navrh3d" && allowedTabs.includes("navrh3d") && <Navrh3D currentUser={currentUser} />}
         {tab === "posta" && sPostou.includes("posta") && <Posta key={postaOtevrit?.id || "posta"} customers={customers} currentUser={currentUser} otevritId={postaOtevrit?.id || null} />}
         {tab === "statika" && allowedTabs.includes("statika") && <StatikaFve contracts={contracts} customers={customers} currentUser={currentUser} />}
+        {tab === "instagram" && allowedTabs.includes("instagram") && <Instagram currentUser={currentUser} />}
 
         {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents}
           onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
