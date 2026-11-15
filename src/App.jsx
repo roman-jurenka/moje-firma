@@ -7334,7 +7334,18 @@ function parseShorthandTask(rawText, { employees, todayDate }) {
   return { title: rawText.trim(), due, priority, assignedTo: assignee?.name || "" };
 }
 
-function CalendarModule({ currentUser, employees, contracts, customers, setCustomers, tasks, invoices, calendarEvents, setCalendarEvents, setTab }) {
+function CalendarModule({ currentUser, employees, contracts: contractsProp, customers, setCustomers, tasks, invoices, calendarEvents, setCalendarEvents, setTab }) {
+  // Seznam zakázek z App se načítá jen při spuštění — zakázka založená mezitím jinde
+  // (Průběh, nabídka, jiný uživatel) by ve výběru chyběla. Při otevření formuláře
+  // se proto zakázky načtou znovu.
+  const [cerstveZakazky, setCerstveZakazky] = useState(null);
+  const contracts = cerstveZakazky || contractsProp;
+  const obnovZakazky = useCallback(async () => {
+    const { data } = await supabase.from("contracts").select("id, name, status, customer_id, code, type, address").order("name");
+    if (data) setCerstveZakazky(data);
+    const { data: cs } = await supabase.from("customers").select("*").order("id");
+    if (cs && setCustomers) setCustomers((prev) => (cs.length > (prev || []).length ? cs.map((c) => ({ ...c, customerId: c.customer_id })) : prev));
+  }, [setCustomers]);
   const isAdmin = currentUser?.role === "admin" || currentUser?.role === "manager";
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -7342,6 +7353,7 @@ function CalendarModule({ currentUser, employees, contracts, customers, setCusto
   const [filterEmp, setFilterEmp] = useState(isAdmin ? "all" : String(currentUser?.id));
   const [eventSearch, setEventSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  useEffect(() => { if (showAdd) Promise.resolve().then(obnovZakazky); }, [showAdd, obnovZakazky]);
   const [editEventId, setEditEventId] = useState(null); // null = přidání nové události, id = úprava existující
   const [detailEvent, setDetailEvent] = useState(null);
   // Podklady k zakázce otevřené akce (předávací list, specifikace z nabídky)
