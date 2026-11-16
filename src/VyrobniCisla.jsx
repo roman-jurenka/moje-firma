@@ -24,6 +24,7 @@ export default function VyrobniCisla({ contractId, prubehId, currentUser }) {
   const [hledatFakturu, setHledatFakturu] = useState("");
   const [pracuji, setPracuji] = useState(false);
   const [chyba, setChyba] = useState("");
+  const [pidZakazky, setPidZakazky] = useState(null); // Průběh dohledaný k zakázce (otevřeno z Ekonomiky)
 
   const nacist = async () => {
     if (!contractId && !prubehId) { setZaznamy([]); return; }
@@ -33,6 +34,7 @@ export default function VyrobniCisla({ contractId, prubehId, currentUser }) {
       const { data: pr } = await supabase.from("zakazky_prubeh").select("id").eq("contract_id", contractId).limit(1);
       pid = pr?.[0]?.id || null;
     }
+    setPidZakazky(pid || null);
     const podminka = [contractId && `contract_id.eq.${contractId}`, pid && `prubeh_id.eq.${pid}`].filter(Boolean).join(",");
     const { data, error } = await supabase.from("vyrobni_cisla").select("*").or(podminka).order("druh").order("sn");
     if (error) setChyba(error.message);
@@ -46,7 +48,9 @@ export default function VyrobniCisla({ contractId, prubehId, currentUser }) {
   // faktury se načtou až při otevření formuláře
   const otevritFormular = async (z) => {
     setChyba("");
-    setForm(z ? { ...prazdny(), ...z, id: z.id, fakturaId: z.invoice_queue_id ? String(z.invoice_queue_id) : "", polozkaId: z.invoice_queue_item_id ? String(z.invoice_queue_item_id) : "", soubory: [] } : prazdny());
+    // null z databáze → výchozí "" (jinak úprava SN bez dodavatele / poznámky spadla na .trim())
+    const bezNull = z ? Object.fromEntries(Object.entries(z).filter(([, v]) => v !== null && v !== undefined)) : {};
+    setForm(z ? { ...prazdny(), ...bezNull, id: z.id, dokumenty: z.dokumenty || [], fakturaId: z.invoice_queue_id ? String(z.invoice_queue_id) : "", polozkaId: z.invoice_queue_item_id ? String(z.invoice_queue_item_id) : "", soubory: [] } : prazdny());
     if (!faktury.length) {
       const [{ data: f }, { data: prirazene }] = await Promise.all([
         supabase.from("invoice_queue").select("id, supplier_name, invoice_number, issue_date, pdf_storage_path, fotky").order("issue_date", { ascending: false, nullsFirst: false }).limit(1500),
@@ -80,6 +84,10 @@ export default function VyrobniCisla({ contractId, prubehId, currentUser }) {
     if (!sns.length) { setChyba("Zadej výrobní číslo (víc čísel = každé na nový řádek)."); return; }
     setPracuji(true); setChyba("");
     try {
+      // stejné SN už v evidenci (překlep, nebo zapsané dvakrát)?
+      const { data: duplicity } = await supabase.from("vyrobni_cisla").select("id, sn").in("sn", sns);
+      const jinde = (duplicity || []).filter((d) => d.id !== form.id);
+      if (jinde.length && !window.confirm(`Výrobní číslo ${[...new Set(jinde.map((d) => d.sn))].join(", ")} už je v evidenci zapsané. Přesto uložit znovu?`)) { setPracuji(false); return; }
       // dokumenty se nahrají jednou a sdílí je všechna SN z formuláře
       const nove = [];
       for (const soubor of form.soubory) {
@@ -88,17 +96,20 @@ export default function VyrobniCisla({ contractId, prubehId, currentUser }) {
         if (error) throw new Error(`Soubor ${soubor.name}: ${error.message}`);
         nove.push({ cesta, nazev: soubor.name });
       }
+      const puvodni = form.id ? zaznamy.find((x) => x.id === form.id) : null;
+      const t = (v) => String(v ?? "").trim() || null;
       const zaklad = {
-        nazev: form.nazev.trim() || null, druh: form.druh || null,
-        contract_id: contractId || null, prubeh_id: prubehId || null,
+        nazev: t(form.nazev), druh: form.druh || null,
+        // úprava nesmí odpojit SN od zakázky / Průběhu, když je otevřená jen z jedné strany
+        contract_id: contractId || puvodni?.contract_id || null,
+        prubeh_id: prubehId || pidZakazky || puvodni?.prubeh_id || null,
         invoice_queue_id: form.fakturaId ? Number(form.fakturaId) : null,
         invoice_queue_item_id: form.polozkaId ? Number(form.polozkaId) : null,
-        dodavatel: form.dodavatel.trim() || null, faktura_cislo: form.faktura_cislo.trim() || null,
-        datum_nakupu: form.datum_nakupu || null, zaruka_do: form.zaruka_do || null, poznamka: form.poznamka.trim() || null,
+        dodavatel: t(form.dodavatel), faktura_cislo: t(form.faktura_cislo),
+        datum_nakupu: form.datum_nakupu || null, zaruka_do: form.zaruka_do || null, poznamka: t(form.poznamka),
       };
       if (form.id) {
-        const puvodni = zaznamy.find((x) => x.id === form.id);
-        const { error } = await supabase.from("vyrobni_cisla").update({ ...zaklad, sn: sns[0], dokumenty: [...(puvodni?.dokumenty || []), ...nove] }).eq("id", form.id);
+        const { error } = await supabase.from("vyrobni_cisla").update({ ...zaklad, sn: sns[0], dokumenty: [...(form.dokumenty || []), ...nove] }).eq("id", form.id);
         if (error) throw error;
       } else {
         const radky = sns.map((sn) => ({ ...zaklad, sn, dokumenty: nove, zapsal: currentUser?.name || null }));
@@ -208,6 +219,18 @@ export default function VyrobniCisla({ contractId, prubehId, currentUser }) {
           </div>
           <div>
             <label style={lbl} htmlFor="sn-dok">Dokumenty (záruční list, datasheet, certifikát…)</label>
+            {form.id && (form.dokumenty || []).length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                {form.dokumenty.map((d) => (
+                  <span key={d.cesta} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, padding: "3px 4px 3px 8px", fontSize: 12 }}>
+                    📎 {d.nazev}
+                    <button type="button" aria-label={`Odebrat ${d.nazev}`} title="Odebrat (projeví se po Uložit)"
+                      onClick={() => setForm({ ...form, dokumenty: form.dokumenty.filter((x) => x.cesta !== d.cesta) })}
+                      style={{ background: "none", border: "none", color: "#b91c1c", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
             <input id="sn-dok" type="file" multiple accept=".pdf,image/*,.doc,.docx,.xls,.xlsx" onChange={(e) => setForm({ ...form, soubory: [...e.target.files] })} />
             {form.soubory.length > 0 && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{form.soubory.length} {form.soubory.length === 1 ? "soubor" : form.soubory.length < 5 ? "soubory" : "souborů"} se nahraje{form.id ? "" : " ke všem zadaným SN"}</div>}
           </div>
