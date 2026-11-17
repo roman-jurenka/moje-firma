@@ -28,7 +28,7 @@ import PenizeVisi from "./PenizeVisi.jsx";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
 import FirmaAres from "./FirmaAres.jsx";
 import { aktualizovatZakaznikyZAres, cisteIco } from "./ares.js";
-import { blokyDne, aktualniBlok, souhrnDne, hodinyDne, efektivniHodinyZaznamu, PAUZA_NAD_H, svatky } from "./denniZapis.js";
+import { blokyDne, aktualniBlok, souhrnDne, hodinyDne, efektivniHodinyZaznamu, PAUZA_NAD_H, svatky, nastavBezPauzy } from "./denniZapis.js";
 import DenniZapis from "./DenniZapis.jsx";
 import SchvalovaniDochazky from "./SchvalovaniDochazky.jsx";
 import MzdovePodklady from "./MzdovePodklady.jsx";
@@ -530,13 +530,14 @@ const S = {
 // Plat a hodinové sazby nejsou v tabulce employees čitelné pro každého —
 // vrací je jen funkce get_employees_full (všechny řádky HR a vedení, ostatním
 // jen jejich vlastní). Zbytek údajů o zaměstnancích vidí každý přihlášený.
-const EMPLOYEE_COLUMNS = "id, name, position, department, email, phone, status, start_date, created_at, role, archived, vacation_days, vacation_used, bio, specialization, notes_warning, photo_url, dovednosti";
+const EMPLOYEE_COLUMNS = "id, name, position, department, email, phone, status, start_date, created_at, role, archived, vacation_days, vacation_used, bio, specialization, notes_warning, photo_url, dovednosti, bez_pauzy";
 const loadEmployeesWithRates = async () => {
   const [{ data, error }, { data: rates }] = await Promise.all([
     supabase.from("employees").select(EMPLOYEE_COLUMNS).order("id"),
     supabase.rpc("get_employees_full"),
   ]);
   const byId = Object.fromEntries((rates || []).map(r => [r.id, r]));
+  nastavBezPauzy(data || []);
   return {
     data: (data || []).map(e => ({
       ...e,
@@ -1696,7 +1697,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         />}
 
         {/* ── HR ── */}
-        {tab === "hr" && <HR
+        {tab === "hr" && <HR currentUser={currentUser}
           employees={employees} setEmployees={setEmployees}
           modal={modal} setModal={setModal} closeModal={closeModal}
           costEntries={costEntries} attendance={attendance}
@@ -5338,7 +5339,7 @@ const firstOf = (full) => (full || "").trim().split(/\s+/)[0] || "";
 const lastOf = (full) => { const parts = (full || "").trim().split(/\s+/).filter(Boolean); return parts.length > 1 ? parts.slice(1).join(" ") : ""; };
 const joinName = (first, last) => [first, last].map(s => (s || "").trim()).filter(Boolean).join(" ");
 
-function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries, attendance, tasks, setTasks }) {
+function HR({ currentUser, employees, setEmployees, modal, setModal, closeModal, costEntries, attendance, tasks, setTasks }) {
   const [newE, setNewE] = useState({ name: "", position: "", department: "", email: "", phone: "", salary: "", status: "Aktivní", start: "" });
   const [detailEmp, setDetailEmp] = useState(null);
   const [editField, setEditField] = useState({});
@@ -5682,6 +5683,24 @@ function HR({ employees, setEmployees, modal, setModal, closeModal, costEntries,
                   <label style={S.label}>Datum nástupu</label>
                   <input type="date" style={S.input} value={editField.start || ""} onChange={e => setEditField({ ...editField, start: e.target.value })} />
                 </div>
+                {currentUser?.role === "admin" && (
+                  <div>
+                    <label style={S.label}>Pauza v docházce</label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, minHeight: 38, cursor: "pointer" }}>
+                      <input type="checkbox" checked={!!detailEmp.bez_pauzy} onChange={async (e) => {
+                        const v = e.target.checked;
+                        const { error } = await supabase.rpc("nastav_bez_pauzy", { p_employee_id: detailEmp.id, p_bez_pauzy: v });
+                        if (error) { alert("Nepodařilo se uložit: " + error.message); return; }
+                        const nove = employees.map(x => x.id === detailEmp.id ? { ...x, bez_pauzy: v } : x);
+                        nastavBezPauzy(nove);
+                        setEmployees(nove);
+                        setDetailEmp({ ...detailEmp, bez_pauzy: v });
+                      }} />
+                      Neodečítat 1 h pauzy (den nad 6 h)
+                    </label>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>Nastavuje jen administrátor. Platí pro výkaz, mzdy i náklady práce při schválení dne.</div>
+                  </div>
+                )}
                 <div>
                   <label style={S.label}>Stav</label>
                   <select style={S.select} value={editField.status || "Aktivní"} onChange={e => setEditField({ ...editField, status: e.target.value })}>

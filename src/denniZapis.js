@@ -8,6 +8,15 @@
 export const PAUZA_NAD_H = 6;
 export const PAUZA_H = 1;
 
+// Zaměstnanci bez odečtu pauzy (employees.bez_pauzy, nastavuje jen admin).
+// Plní App po načtení zaměstnanců; stejné pravidlo má DB funkce schvalit_den.
+const bezPauzy = new Set();
+export const nastavBezPauzy = (zamestnanci) => {
+  bezPauzy.clear();
+  for (const e of zamestnanci || []) if (e?.bez_pauzy) bezPauzy.add(String(e.id));
+};
+export const odecitaPauzu = (zamestnanecId) => !bezPauzy.has(String(zamestnanecId));
+
 const naMinuty = (t) => {
   if (!t) return null;
   const [h, m] = String(t).split(":").map(Number);
@@ -40,7 +49,8 @@ export const souhrnDne = (bloky) => {
 // hodiny dne: hrubé, pauza, efektivní
 export const hodinyDne = (bloky) => {
   const hrube = (bloky || []).reduce((s, b) => s + hodinyBloku(b.checkin, b.checkout), 0);
-  const pauza = hrube > PAUZA_NAD_H ? PAUZA_H : 0;
+  const prvni = (bloky || [])[0];
+  const pauza = hrube > PAUZA_NAD_H && (!prvni || odecitaPauzu(empId(prvni))) ? PAUZA_H : 0;
   return { hrube, pauza, efektivni: Math.max(0, hrube - pauza) };
 };
 
