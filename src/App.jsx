@@ -1205,6 +1205,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // Den může mít víc bloků (Přepnout zakázku) — „dnešní záznam“ = běžící blok, jinak poslední.
   const todayRecord = aktualniBlok(blokyDne(attendance, myEmpId, todayStr));
 
+  // Pojistka proti dvojímu klepnutí na Příchod (hook musí být před podmíněným return)
+  const zapisDochazkyBezi = useRef(false);
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "DM Sans, sans-serif" }}>
       <div style={{ textAlign: "center" }}>
@@ -1263,7 +1265,6 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // (Tlačítko FAB volá checkin jako onClick, proto bereme jen číslo, ne event.)
   // Pojistka proti dvojímu klepnutí: dokud zápis neskončí, další klepnutí se ignoruje
   // (15. 10. 2026 vznikly dva stejné příchody 0,09 s po sobě → výkaz +18 h).
-  const zapisDochazkyBezi = useRef(false);
   const checkin = async (contractId) => {
     if (zapisDochazkyBezi.current) return;
     zapisDochazkyBezi.current = true;
@@ -7361,9 +7362,17 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
   // se proto zakázky načtou znovu.
   const [cerstveZakazky, setCerstveZakazky] = useState(null);
   const contracts = cerstveZakazky || contractsProp;
+  // Průběh zakázek: nová zakázka (poptávka, příprava…) ještě nemusí mít zakázku
+  // v Ekonomice — i tak jde naplánovat do kalendáře (akce se uloží s prubeh_id
+  // a databáze ji ke zakázce připojí, jakmile vznikne).
+  const [prubehyKal, setPrubehyKal] = useState([]);
   const obnovZakazky = useCallback(async () => {
-    const { data } = await supabase.from("contracts").select("id, name, status, customer_id, code, type, address").order("name");
+    const [{ data }, { data: pr }] = await Promise.all([
+      supabase.from("contracts").select("id, name, status, customer_id, code, type, address").order("name"),
+      supabase.from("zakazky_prubeh").select("id, nazev, typ, faze, stav, contract_id, customer_id, misto_adresa, misto_telefon").neq("stav", "prohrana").neq("stav", "uzavrena"),
+    ]);
     if (data) setCerstveZakazky(data);
+    if (pr) setPrubehyKal(pr);
     const { data: cs } = await supabase.from("customers").select("*").order("id");
     if (cs && setCustomers) setCustomers((prev) => (cs.length > (prev || []).length ? cs.map((c) => ({ ...c, customerId: c.customer_id })) : prev));
   }, [setCustomers]);
@@ -7588,7 +7597,7 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
     }
     return dny;
   };
-  const prazdnyForm = () => ({ date: fmt(today), date_to: "", vikendy: false, dalsi_zamestnanci: [], work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", employee_id: currentUser?.id || "", na_starosti: "" });
+  const prazdnyForm = () => ({ date: fmt(today), date_to: "", vikendy: false, dalsi_zamestnanci: [], work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", prubeh_id: null, employee_id: currentUser?.id || "", na_starosti: "" });
 
   const poslatDoOutlooku = async (ev) => {
     if (!outlookConn || String(ev.employee_id) !== String(currentUser.id)) return;
@@ -8070,17 +8079,39 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
             <label style={S.label}>Zakázka{form.work_type === "Zakázka" ? <span style={{ color: "#b91c1c" }}> * povinné</span> : ""}</label>
             <SearchSelect
               placeholder="— napiš název, zákazníka nebo kód —"
-              options={contracts.filter(c => zakazkaVeVyberu(c, form.contract_id)).map(c => {
-                const zak = (customers || []).find(x => x.id === c.customer_id);
-                return { id: c.id, label: c.name, popis: [c.code, zak?.company || zak?.name, c.status].filter(Boolean).join(" · "), hledat: [zak?.name, c.address].filter(Boolean).join(" ") };
-              })}
-              value={form.contract_id}
+              options={[
+                ...contracts.filter(c => zakazkaVeVyberu(c, form.contract_id)).map(c => {
+                  const zak = (customers || []).find(x => x.id === c.customer_id);
+                  return { id: c.id, label: c.name, popis: [c.code, zak?.company || zak?.name, c.status].filter(Boolean).join(" · "), hledat: [zak?.name, c.address].filter(Boolean).join(" ") };
+                }),
+                // zakázky jen v Průběhu (bez zakázky v Ekonomice)
+                ...prubehyKal.filter(p => !p.contract_id).map(p => {
+                  const zak = (customers || []).find(x => x.id === p.customer_id);
+                  return { id: "p:" + p.id, label: p.nazev, popis: ["Průběh", p.typ, zak?.company || zak?.name, p.faze].filter(Boolean).join(" · "), hledat: [zak?.name, p.misto_adresa].filter(Boolean).join(" ") };
+                }),
+              ]}
+              value={form.contract_id || (form.prubeh_id ? "p:" + form.prubeh_id : "")}
               onChange={cid => {
+              if (String(cid).startsWith("p:")) {
+                const p = prubehyKal.find(x => "p:" + x.id === cid);
+                const cust = p?.customer_id ? (customers || []).find(cu => cu.id === p.customer_id) : null;
+                setForm(f => ({
+                  ...f, contract_id: "", prubeh_id: p ? p.id : null,
+                  title: p ? p.nazev : f.title,
+                  address: p?.misto_adresa || f.address,
+                  customer_name: cust ? cust.name : f.customer_name,
+                  customer_company: cust ? (cust.company || "") : f.customer_company,
+                  contact_name: cust ? cust.name : f.contact_name,
+                  contact_phone: p?.misto_telefon || (cust ? (cust.phone || "") : f.contact_phone),
+                }));
+                return;
+              }
               const contract = contracts.find(c => String(c.id) === cid);
               const cust = contract?.customer_id ? (customers || []).find(cu => cu.id === contract.customer_id) : null;
               setForm(f => ({
                 ...f,
                 contract_id: cid,
+                prubeh_id: cid ? (prubehyKal.find(p => String(p.contract_id) === String(cid))?.id || null) : null,
                 title: contract ? (contract.code ? `${contract.code} – ${contract.name}` : contract.name) : f.title,
                 address: contract?.address || f.address,
                 customer_name: cust ? cust.name : f.customer_name,
