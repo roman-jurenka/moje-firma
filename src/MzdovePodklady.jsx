@@ -5,6 +5,7 @@
 // Export do CSV pro Excel / mzdovou účetní. Rozkliknutím se ukážou jednotlivé dny.
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase.js";
+import { svatky } from "./denniZapis.js";
 import { blokyDne, hodinyDne, hhmm } from "./denniZapis.js";
 
 const NORMA_DNE = 8; // přesčas = nad 8 h za den
@@ -12,18 +13,6 @@ const p2 = (n) => String(n).padStart(2, "0");
 const iso = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 const h1 = (h) => (Math.round((Number(h) || 0) * 100) / 100).toLocaleString("cs-CZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const kc = (v) => `${Math.round(Number(v) || 0).toLocaleString("cs-CZ")} Kč`;
-
-// státní svátky ČR (pevné + Velký pátek a Velikonoční pondělí)
-function svatky(rok) {
-  const a = rok % 19, b = Math.floor(rok / 100), c = rok % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const mesic = Math.floor((h + l - 7 * m + 114) / 31), den = ((h + l - 7 * m + 114) % 31) + 1;
-  const nedele = new Date(rok, mesic - 1, den);
-  const posun = (n) => { const x = new Date(nedele); x.setDate(x.getDate() + n); return iso(x); };
-  const pevne = ["01-01", "05-01", "05-08", "07-05", "07-06", "09-28", "10-28", "11-17", "12-24", "12-25", "12-26"].map((md) => `${rok}-${md}`);
-  return new Set([...pevne, posun(-2), posun(1)]);
-}
 
 export default function MzdovePodklady({ employees = [] }) {
   const dnes = new Date();

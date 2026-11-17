@@ -72,3 +72,17 @@ export const dnyKeSchvaleni = (zaznamy, materialy = []) => {
 export const hhmm = (t) => (t ? String(t).slice(0, 5) : "");
 export const fmtH = (h) => { const m = Math.round((Number(h) || 0) * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`; };
 export const bezDiakritiky = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+// státní svátky ČR (pevné + Velký pátek a Velikonoční pondělí)
+export function svatky(rok) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  const iso = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  const a = rok % 19, b = Math.floor(rok / 100), c = rok % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mesic = Math.floor((h + l - 7 * m + 114) / 31), den = ((h + l - 7 * m + 114) % 31) + 1;
+  const nedele = new Date(rok, mesic - 1, den);
+  const posun = (n) => { const x = new Date(nedele); x.setDate(x.getDate() + n); return iso(x); };
+  const pevne = ["01-01", "05-01", "05-08", "07-05", "07-06", "09-28", "10-28", "11-17", "12-24", "12-25", "12-26"].map((md) => `${rok}-${md}`);
+  return new Set([...pevne, posun(-2), posun(1)]);
+}

@@ -28,7 +28,7 @@ import PenizeVisi from "./PenizeVisi.jsx";
 import { nactiPrirazku, prodejniCena } from "./prirazkaMaterialu.js";
 import FirmaAres from "./FirmaAres.jsx";
 import { aktualizovatZakaznikyZAres, cisteIco } from "./ares.js";
-import { blokyDne, aktualniBlok, souhrnDne, hodinyDne, efektivniHodinyZaznamu, PAUZA_NAD_H } from "./denniZapis.js";
+import { blokyDne, aktualniBlok, souhrnDne, hodinyDne, efektivniHodinyZaznamu, PAUZA_NAD_H, svatky } from "./denniZapis.js";
 import DenniZapis from "./DenniZapis.jsx";
 import SchvalovaniDochazky from "./SchvalovaniDochazky.jsx";
 import MzdovePodklady from "./MzdovePodklady.jsx";
@@ -1112,7 +1112,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     initOfflineSync({
       attendance_checkin: async (payload) => {
         const { error } = await supabase.from("attendance").insert(payload.entry);
-        if (error) throw error;
+        if (error && error.code !== "23505") throw error; // 23505 = stejný příchod už v databázi je
         if (payload.vehicleLog) {
           const { error: vErr } = await supabase.from("vehicle_log").insert(payload.vehicleLog);
           if (vErr) throw vErr;
@@ -1259,7 +1259,15 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
 
   // Volitelný parametr: ID zakázky vybrané na rychlé obrazovce před zapsáním příchodu.
   // (Tlačítko FAB volá checkin jako onClick, proto bereme jen číslo, ne event.)
+  // Pojistka proti dvojímu klepnutí: dokud zápis neskončí, další klepnutí se ignoruje
+  // (15. 10. 2026 vznikly dva stejné příchody 0,09 s po sobě → výkaz +18 h).
+  const zapisDochazkyBezi = useRef(false);
   const checkin = async (contractId) => {
+    if (zapisDochazkyBezi.current) return;
+    zapisDochazkyBezi.current = true;
+    try { await checkinZapis(contractId); } finally { zapisDochazkyBezi.current = false; }
+  };
+  const checkinZapis = async (contractId) => {
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     // Odchod už je zapsaný — dřív se dalším klepnutím přepsal na aktuální čas.
@@ -8515,7 +8523,14 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
   };
 
 
+  const zapisBezi = useRef(false);
+  const [zapisuji, setZapisuji] = useState(false);
   const checkinNow = async () => {
+    if (zapisBezi.current) return; // dvojí klepnutí
+    zapisBezi.current = true; setZapisuji(true);
+    try { await checkinNowZapis(); } finally { zapisBezi.current = false; setZapisuji(false); }
+  };
+  const checkinNowZapis = async () => {
     const now = new Date();
     const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     if (todayRecord && !todayRecord.checkout) {
@@ -8530,7 +8545,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       // Náklad práce se zapíše až při schválení dne (Ke schválení).
     } else {
       // Příchod — volat přímo bez modalu
-      doCheckin();
+      await doCheckin();
     }
   };
 
@@ -8719,11 +8734,33 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
     }).sort((a,b) => a.date.localeCompare(b.date));
     const empObj = employees.find(e => e.id === empForReport);
     const totalH = recs.reduce((s,r) => s + hodinyZaznamu(r), 0);
-    const rows = recs.map(r => {
+    // Kontrola: zdvojené záznamy (stejný den, příchod i odchod) a pracovní dny bez záznamu
+    const klicZaznamu = (r) => r.date + "|" + r.checkin + "|" + r.checkout;
+    const pocty = recs.reduce((m, r) => m.set(klicZaznamu(r), (m.get(klicZaznamu(r)) || 0) + 1), new Map());
+    const sv = svatky(reportYear);
+    const prefix = reportYear + "-" + String(reportMonth).padStart(2, "0");
+    const dnyMesice = new Date(reportYear, reportMonth, 0).getDate();
+    const dnyZaznamu = new Set(recs.map(r => r.date));
+    const chybejici = [];
+    for (let d = 1; d <= dnyMesice; d++) {
+      const iso = prefix + "-" + String(d).padStart(2, "0");
+      const dt = new Date(reportYear, reportMonth - 1, d);
+      if (iso > todayStr || dt.getDay() === 0 || dt.getDay() === 6 || sv.has(iso) || dnyZaznamu.has(iso)) continue;
+      chybejici.push(iso);
+    }
+    const radkyVykazu = [...recs.map(r => ({ r })), ...chybejici.map(date => ({ chybi: date }))]
+      .sort((a, b) => (a.r ? a.r.date : a.chybi).localeCompare(b.r ? b.r.date : b.chybi));
+    const rows = radkyVykazu.map(({ r, chybi }) => {
+      if (chybi) return "<tr class='chybi'><td>" + fmtDateCz(chybi) + "</td><td colspan='5'>⚠ Chybí záznam docházky (pracovní den)</td></tr>";
       const h = hodinyZaznamu(r);
       const contract = contractOpts.find(c => c.id === r.contract_id);
-      return "<tr><td>" + fmtDateCz(r.date) + "</td><td>" + (r.checkin||"—") + "</td><td>" + (r.checkout||"—") + "</td><td><strong>" + fmtHours(h) + "</strong></td><td>" + (contract ? contract.name : "—") + "</td><td>" + (r.activity||"—") + "</td></tr>";
+      const dup = pocty.get(klicZaznamu(r)) > 1;
+      return "<tr" + (dup ? " class='dup'" : "") + "><td>" + fmtDateCz(r.date) + (dup ? " ⚠ duplicita" : "") + "</td><td>" + (r.checkin||"—") + "</td><td>" + (r.checkout||"—") + "</td><td><strong>" + fmtHours(h) + "</strong></td><td>" + (contract ? contract.name : "—") + "</td><td>" + (r.activity||"—") + "</td></tr>";
     }).join("");
+    const duplicit = [...pocty.values()].reduce((s, n) => s + (n > 1 ? n - 1 : 0), 0);
+    const kontrolaHtml = (duplicit || chybejici.length)
+      ? "<div class='vyplata vyplata-warn'>⚠️ Zkontrolujte před podpisem:" + (duplicit ? " " + duplicit + "× zdvojený záznam (počítá se dvakrát)" : "") + (duplicit && chybejici.length ? ";" : "") + (chybejici.length ? " " + chybejici.length + " pracovní " + (chybejici.length === 1 ? "den" : "dny") + " bez záznamu" : "") + ".</div>"
+      : "";
     const totalRow = "<tr class='total'><td colspan='3'>Celkem</td><td><strong>" + fmtHours(totalH) + "</strong></td><td colspan='2'>" + recs.length + " záznamů</td></tr>";
     const monthNames = ["","Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
     const sazba = Number(empObj?.hourly_rate_cost) || 0;
@@ -8732,7 +8769,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       ? "<div class='vyplata'>Celková částka k výplatě: <strong>" + castka.toLocaleString("cs-CZ") + " Kč</strong><span class='vyplata-detail'> (" + fmtHours(totalH) + " × " + sazba.toLocaleString("cs-CZ") + " Kč/h)</span></div>"
       : "<div class='vyplata vyplata-warn'>⚠️ Zaměstnanci není nastavena hodinová sazba — částku k výplatě nelze spočítat.</div>";
     const podpisyHtml = "<div class='podpisy'><div class='podpis'><div class='cara'></div><div class='popisek'>Podpis zaměstnance</div></div><div class='podpis'><div class='cara'></div><div class='popisek'>Podpis zaměstnavatele</div></div></div>";
-    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Výkaz práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}tr:nth-child(even) td{background:#f8fafc}.total{font-weight:bold}.vyplata{margin-top:18px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:15px}.vyplata strong{font-size:18px}.vyplata-detail{color:#475569;font-size:12px;margin-left:6px}.vyplata-warn{background:#fffbeb;border-color:#fde68a;font-size:13px}.podpisy{display:flex;justify-content:space-between;margin-top:64px}.podpis{width:42%}.cara{border-top:1px solid #111;margin-bottom:6px}.popisek{font-size:12px;color:#555;text-align:center}@media print{body{padding:16px}}</style></head><body><h1>Výkaz práce</h1><h2>" + (empObj ? empObj.name : "") + " · " + monthNames[reportMonth] + " " + reportYear + "</h2><table><thead><tr><th>Datum</th><th>Příchod</th><th>Odchod</th><th>Odpracováno</th><th>Zakázka</th><th>Popis</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table>" + castkaHtml + podpisyHtml + "<script>window.onload=function(){window.print();}<\/script></body></html>";
+    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Výkaz práce</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#555;font-weight:normal;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#0E3B5E;color:#fff;padding:8px 12px;text-align:left;font-size:13px}td{padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:13px}tr:nth-child(even) td{background:#f8fafc}.total{font-weight:bold}.vyplata{margin-top:18px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:15px}.vyplata strong{font-size:18px}.vyplata-detail{color:#475569;font-size:12px;margin-left:6px}.vyplata-warn{background:#fffbeb;border-color:#fde68a;font-size:13px}tr.chybi td{background:#fef2f2!important;color:#b91c1c;font-weight:600}tr.dup td{background:#fffbeb!important;color:#92400e}.podpisy{display:flex;justify-content:space-between;margin-top:64px}.podpis{width:42%}.cara{border-top:1px solid #111;margin-bottom:6px}.popisek{font-size:12px;color:#555;text-align:center}@media print{body{padding:16px}}</style></head><body><h1>Výkaz práce</h1><h2>" + (empObj ? empObj.name : "") + " · " + monthNames[reportMonth] + " " + reportYear + "</h2><table><thead><tr><th>Datum</th><th>Příchod</th><th>Odchod</th><th>Odpracováno</th><th>Zakázka</th><th>Popis</th></tr></thead><tbody>" + rows + totalRow + "</tbody></table>" + kontrolaHtml + castkaHtml + podpisyHtml + "<script>window.onload=function(){window.print();}<\/script></body></html>";
     const win = window.open("", "_blank");
     win.document.write(html);
     win.document.close();
@@ -8749,6 +8786,17 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
       return empMatch && dateMatch;
     }).sort((a,b) => a.date.localeCompare(b.date));
     const empObj = employees.find(e => e.id === empForReport);
+    // stejná kontrola jako v tisku výkazu: zdvojené záznamy a pracovní dny bez záznamu
+    const kl = new Map();
+    for (const r of recs) { const k = r.date + "|" + r.checkin + "|" + r.checkout; kl.set(k, (kl.get(k) || 0) + 1); }
+    const dupl = [...kl.values()].reduce((s, n) => s + (n > 1 ? n - 1 : 0), 0);
+    const sv = svatky(reportYear), dnyZ = new Set(recs.map(r => r.date)), prefix = reportYear + "-" + String(reportMonth).padStart(2, "0");
+    let chybi = 0;
+    for (let d = 1; d <= new Date(reportYear, reportMonth, 0).getDate(); d++) {
+      const iso = prefix + "-" + String(d).padStart(2, "0"), wd = new Date(reportYear, reportMonth - 1, d).getDay();
+      if (iso <= todayStr && wd !== 0 && wd !== 6 && !sv.has(iso) && !dnyZ.has(iso)) chybi++;
+    }
+    if ((dupl || chybi) && !window.confirm("Výkaz má chyby: " + [dupl ? dupl + "× zdvojený záznam (počítá se dvakrát)" : "", chybi ? chybi + " pracovní dny bez záznamu" : ""].filter(Boolean).join(", ") + ".\n\nPřesto poslat k podpisu?")) return;
     const totalH = recs.reduce((s,r) => s + hodinyZaznamu(r), 0);
     const monthNames = ["","Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
     const sazba = Number(empObj?.hourly_rate_cost) || 0;
@@ -8940,7 +8988,7 @@ function Attendance({ currentUser, attendance, setAttendance, employees, contrac
               </div>
             ))}
             <button style={{ ...S.btn(todayRecord?.checkin && !todayRecord?.checkout ? "#f59e0b" : "#0369a1"), width: "100%", padding: "14px", fontWeight: 800, marginTop: 8, fontSize: 16, minHeight: 52 }}
-              onClick={checkinNow}>
+              onClick={checkinNow} disabled={zapisuji} aria-busy={zapisuji}>
               {todayRecord?.checkin && !todayRecord?.checkout ? "⏱ Zapsat odchod (příchod " + (dnesniDen?.checkin || "").slice(0, 5) + ")"
                 : todayRecord?.checkout ? "▶ Nový příchod (odchod byl " + todayRecord.checkout.slice(0, 5) + ")" : "▶ Zapsat příchod"}
             </button>
