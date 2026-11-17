@@ -48,6 +48,7 @@ import StatikaFve from "./StatikaFve.jsx";
 import ElektroCad from "./ElektroCad.jsx";
 import Posta from "./Posta.jsx";
 import AutoDne from "./AutoDne.jsx";
+import NastaveniPauzy from "./NastaveniPauzy.jsx";
 import Instagram from "./Instagram.jsx";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
@@ -530,7 +531,7 @@ const S = {
 // Plat a hodinové sazby nejsou v tabulce employees čitelné pro každého —
 // vrací je jen funkce get_employees_full (všechny řádky HR a vedení, ostatním
 // jen jejich vlastní). Zbytek údajů o zaměstnancích vidí každý přihlášený.
-const EMPLOYEE_COLUMNS = "id, name, position, department, email, phone, status, start_date, created_at, role, archived, vacation_days, vacation_used, bio, specialization, notes_warning, photo_url, dovednosti, bez_pauzy";
+const EMPLOYEE_COLUMNS = "id, name, position, department, email, phone, status, start_date, created_at, role, archived, vacation_days, vacation_used, bio, specialization, notes_warning, photo_url, dovednosti, bez_pauzy, bez_pauzy_od";
 const loadEmployeesWithRates = async () => {
   const [{ data, error }, { data: rates }] = await Promise.all([
     supabase.from("employees").select(EMPLOYEE_COLUMNS).order("id"),
@@ -5686,19 +5687,12 @@ function HR({ currentUser, employees, setEmployees, modal, setModal, closeModal,
                 {currentUser?.role === "admin" && (
                   <div>
                     <label style={S.label}>Pauza v docházce</label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, minHeight: 38, cursor: "pointer" }}>
-                      <input type="checkbox" checked={!!detailEmp.bez_pauzy} onChange={async (e) => {
-                        const v = e.target.checked;
-                        const { error } = await supabase.rpc("nastav_bez_pauzy", { p_employee_id: detailEmp.id, p_bez_pauzy: v });
-                        if (error) { alert("Nepodařilo se uložit: " + error.message); return; }
-                        const nove = employees.map(x => x.id === detailEmp.id ? { ...x, bez_pauzy: v } : x);
-                        nastavBezPauzy(nove);
-                        setEmployees(nove);
-                        setDetailEmp({ ...detailEmp, bez_pauzy: v });
-                      }} />
-                      Neodečítat 1 h pauzy (den nad 6 h)
-                    </label>
-                    <div style={{ fontSize: 11, color: "#64748b" }}>Nastavuje jen administrátor. Platí pro výkaz, mzdy i náklady práce při schválení dne.</div>
+                    <NastaveniPauzy key={detailEmp.id} emp={detailEmp} onUlozeno={(v, od) => {
+                      const nove = employees.map(x => x.id === detailEmp.id ? { ...x, bez_pauzy: v, bez_pauzy_od: od } : x);
+                      nastavBezPauzy(nove);
+                      setEmployees(nove);
+                      setDetailEmp({ ...detailEmp, bez_pauzy: v, bez_pauzy_od: od });
+                    }} />
                   </div>
                 )}
                 <div>

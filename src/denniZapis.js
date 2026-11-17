@@ -8,14 +8,18 @@
 export const PAUZA_NAD_H = 6;
 export const PAUZA_H = 1;
 
-// Zaměstnanci bez odečtu pauzy (employees.bez_pauzy, nastavuje jen admin).
-// Plní App po načtení zaměstnanců; stejné pravidlo má DB funkce schvalit_den.
-const bezPauzy = new Set();
+// Zaměstnanci bez odečtu pauzy od data (employees.bez_pauzy + bez_pauzy_od,
+// nastavuje jen admin; prázdné datum = odjakživa). Plní App po načtení
+// zaměstnanců; stejné pravidlo má DB (schvalit_den, nastav_bez_pauzy).
+const bezPauzy = new Map(); // id → datum od ("" = vždy)
 export const nastavBezPauzy = (zamestnanci) => {
   bezPauzy.clear();
-  for (const e of zamestnanci || []) if (e?.bez_pauzy) bezPauzy.add(String(e.id));
+  for (const e of zamestnanci || []) if (e?.bez_pauzy) bezPauzy.set(String(e.id), e.bez_pauzy_od || "");
 };
-export const odecitaPauzu = (zamestnanecId) => !bezPauzy.has(String(zamestnanecId));
+export const odecitaPauzu = (zamestnanecId, datum) => {
+  const od = bezPauzy.get(String(zamestnanecId));
+  return od === undefined || (od !== "" && datum && datum < od);
+};
 
 const naMinuty = (t) => {
   if (!t) return null;
@@ -50,7 +54,7 @@ export const souhrnDne = (bloky) => {
 export const hodinyDne = (bloky) => {
   const hrube = (bloky || []).reduce((s, b) => s + hodinyBloku(b.checkin, b.checkout), 0);
   const prvni = (bloky || [])[0];
-  const pauza = hrube > PAUZA_NAD_H && (!prvni || odecitaPauzu(empId(prvni))) ? PAUZA_H : 0;
+  const pauza = hrube > PAUZA_NAD_H && (!prvni || odecitaPauzu(empId(prvni), prvni.date)) ? PAUZA_H : 0;
   return { hrube, pauza, efektivni: Math.max(0, hrube - pauza) };
 };
 
