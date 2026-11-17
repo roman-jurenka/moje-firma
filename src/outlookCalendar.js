@@ -200,8 +200,9 @@ export async function pushCalendarEvent(event) {
   const body = {
     subject: `${ns ? `${ns.ikona} ${ns.label} · ` : ""}${event.work_type || "Práce"}${event.customer_name ? " – " + event.customer_name : ""}${event.title ? ": " + event.title : ""}`,
     body: { contentType: "text", content: [ns && `Na starosti: ${ns.label}`, event.work_description, event.address, event.contact_name, event.contact_phone].filter(Boolean).join("\n") },
-    start: { dateTime: `${event.date}T08:00:00`, timeZone: "Europe/Prague" },
-    end: { dateTime: `${event.date}T17:00:00`, timeZone: "Europe/Prague" },
+    // celý den = jako dřív 8–17; akce s časem od–do (bez „do“ = 1 h)
+    start: { dateTime: `${event.date}T${event.cas_od ? String(event.cas_od).slice(0, 5) : "08:00"}:00`, timeZone: "Europe/Prague" },
+    end: { dateTime: `${event.date}T${event.cas_od ? (event.cas_do ? String(event.cas_do).slice(0, 5) : String(Math.min(23, Number(String(event.cas_od).slice(0, 2)) + 1)).padStart(2, "0") + String(event.cas_od).slice(2, 5)) : "17:00"}:00`, timeZone: "Europe/Prague" },
     isAllDay: false,
     ...(event.address ? { location: { displayName: event.address } } : {}),
   };

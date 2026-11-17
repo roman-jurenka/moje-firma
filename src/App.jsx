@@ -7405,7 +7405,7 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
     date: fmt(today), date_to: "", vikendy: false, dalsi_zamestnanci: [], work_type: "Zakázka", title: "",
     customer_name: "", customer_company: "", address: "",
     contact_name: "", contact_phone: "", work_description: "",
-    contract_id: "", employee_id: currentUser?.id || "", na_starosti: "",
+    contract_id: "", employee_id: currentUser?.id || "", na_starosti: "", cas_od: null, cas_do: null,
   });
 
   // Osobní Outlook připojení — každý zaměstnanec svoje, jednosměrně (appka → Outlook).
@@ -7572,7 +7572,7 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
     return String(e.employee_id) === filterEmp;
   });
 
-  const eventsOnDay = (dateStr) => visibleEvents.filter(e => e.date === dateStr);
+  const eventsOnDay = (dateStr) => visibleEvents.filter(e => e.date === dateStr).sort(poradiAkce);
 
   // Úkoly s termínem daný den (nedokončené) a vydané faktury po splatnosti se
   // stejným datem splatnosti — zobrazí se v mřížce vedle kalendářních událostí,
@@ -7597,7 +7597,7 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
     }
     return dny;
   };
-  const prazdnyForm = () => ({ date: fmt(today), date_to: "", vikendy: false, dalsi_zamestnanci: [], work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", prubeh_id: null, employee_id: currentUser?.id || "", na_starosti: "" });
+  const prazdnyForm = () => ({ date: fmt(today), date_to: "", vikendy: false, dalsi_zamestnanci: [], work_type: "Zakázka", title: "", customer_name: "", customer_company: "", address: "", contact_name: "", contact_phone: "", work_description: "", contract_id: "", prubeh_id: null, employee_id: currentUser?.id || "", na_starosti: "", cas_od: null, cas_do: null });
 
   const poslatDoOutlooku = async (ev) => {
     if (!outlookConn || String(ev.employee_id) !== String(currentUser.id)) return;
@@ -7616,6 +7616,8 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
   const saveEvent = async () => {
     const { date_to, vikendy, dalsi_zamestnanci, ...zaklad } = form;
     if (form.work_type === "Zakázka" && !form.contract_id && !form.prubeh_id) { alert("U typu „Zakázka“ vyber zakázku — jinak se akce nepropojí s Průběhem, docházkou ani jízdami. Pro obecnou akci zvol jiný typ práce."); return; }
+    if (form.cas_od !== null && !form.cas_od) { alert("Vyplň čas od (nebo zvol „Celý den“)."); return; }
+    if (form.cas_od && form.cas_do && form.cas_do <= form.cas_od) { alert("Čas do musí být později než čas od."); return; }
     const dny = dnyRozsahu(form.date, date_to, vikendy);
     if (dny.length === 0) { alert("V zadaném rozsahu není žádný pracovní den — zaškrtni „včetně víkendů“ nebo uprav datum."); return; }
     const hlavni = Number(isAdmin ? (form.employee_id || currentUser.id) : currentUser.id);
@@ -7625,7 +7627,7 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
     if (pocet > 1 && !window.confirm("Založí se " + pocet + " " + tvar(pocet, "akce", "akce", "akcí") + " (" + dny.length + " " + tvar(dny.length, "den", "dny", "dní") + " × " + lide.length + " " + tvar(lide.length, "člověk", "lidé", "lidí") + "). Pokračovat?")) return;
     const radek = (empId, date) => {
       const emp = employees.find(e => e.id === empId);
-      return { ...zaklad, date, employee_id: empId, employee_name: emp ? emp.name : currentUser.name, contract_id: form.contract_id ? Number(form.contract_id) : null, na_starosti: form.na_starosti || null };
+      return { ...zaklad, date, employee_id: empId, employee_name: emp ? emp.name : currentUser.name, contract_id: form.contract_id ? Number(form.contract_id) : null, na_starosti: form.na_starosti || null, cas_od: form.cas_od || null, cas_do: form.cas_od ? (form.cas_do || null) : null };
     };
     const nove = [];
     for (const empId of lide) for (const den of dny) nove.push(radek(empId, den));
@@ -7661,6 +7663,7 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
       contact_name: ev.contact_name || "", contact_phone: ev.contact_phone || "", work_description: ev.work_description || "",
       contract_id: ev.contract_id ? String(ev.contract_id) : "", employee_id: ev.employee_id || currentUser?.id || "",
       na_starosti: ev.na_starosti || "", prubeh_id: ev.prubeh_id || null,
+      cas_od: ev.cas_od ? String(ev.cas_od).slice(0, 5) : null, cas_do: ev.cas_do ? String(ev.cas_do).slice(0, 5) : null,
   });
   const startEditEvent = (ev) => {
     setForm(formZAkce(ev));
@@ -7953,7 +7956,7 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
                   return (
                     <div key={ev.id} onClick={() => setDetailEvent(ev)} title={[ev.employee_name, naStarosti(ev.na_starosti)?.label, ev.work_type, ev.customer_name].filter(Boolean).join(" · ")}
                       style={{ background: wt.bg, color: wt.color, borderLeft: `3px solid ${wt.color}`, borderRadius: 4, padding: "2px 5px", fontSize: 11, fontWeight: 600, marginBottom: 2, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {naStarosti(ev.na_starosti) ? `${naStarosti(ev.na_starosti).ikona} ` : ""}{filterEmp === "all" && ev.employee_name ? `${String(ev.employee_name).split(" ")[0]}: ` : ""}{ev.work_type}{ev.customer_name ? ` – ${ev.customer_name}` : ""}
+                      {casAkce(ev) ? <span style={{ fontWeight: 800 }}>{casAkce(ev)} </span> : null}{naStarosti(ev.na_starosti) ? `${naStarosti(ev.na_starosti).ikona} ` : ""}{filterEmp === "all" && ev.employee_name ? `${String(ev.employee_name).split(" ")[0]}: ` : ""}{ev.work_type}{ev.customer_name ? ` – ${ev.customer_name}` : ""}
                     </div>
                   );
                 })}
@@ -7997,6 +8000,35 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
                   <span>→ {dnyRozsahu(form.date, form.date_to, form.vikendy).length} dní v kalendáři{editEventId ? " (tato akce zůstane na prvním dni, na další dny se založí kopie)" : ""}</span>
                 </div>
               )}
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={S.label}>Čas</label>
+                <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
+                  <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                    <input type="radio" name="akce-cas" checked={form.cas_od === null} onChange={() => setForm(f => ({ ...f, cas_od: null, cas_do: null }))} /> Celý den
+                  </label>
+                  <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                    <input type="radio" name="akce-cas" checked={form.cas_od !== null} onChange={() => setForm(f => ({ ...f, cas_od: f.cas_od ?? "08:00", cas_do: f.cas_do ?? "12:00" }))} /> Od – do
+                  </label>
+                  {form.cas_od !== null && (
+                    <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input type="time" aria-label="Čas od" style={{ ...S.input, width: 110 }} value={form.cas_od || ""} onChange={e => setForm(f => ({ ...f, cas_od: e.target.value }))} />
+                      –
+                      <input type="time" aria-label="Čas do" style={{ ...S.input, width: 110 }} value={form.cas_do || ""} min={form.cas_od || undefined} onChange={e => setForm(f => ({ ...f, cas_do: e.target.value }))} />
+                    </span>
+                  )}
+                </div>
+                {form.cas_od !== null && (() => {
+                  const ostatni = calendarEvents.filter(e => e.date === form.date && String(e.employee_id) === String(form.employee_id || currentUser?.id) && e.id !== editEventId).sort(poradiAkce);
+                  if (!ostatni.length) return null;
+                  const kolize = ostatni.filter(e => e.cas_od && form.cas_od && String(e.cas_od).slice(0, 5) < (form.cas_do || "24:00") && (e.cas_do ? String(e.cas_do).slice(0, 5) : "24:00") > form.cas_od);
+                  return (
+                    <div style={{ fontSize: 12, color: kolize.length ? "#b45309" : "#475569", marginTop: 6 }}>
+                      {kolize.length ? "⚠ Překrývá se s: " : "Ten den už má: "}
+                      {(kolize.length ? kolize : ostatni).map(e => (casAkce(e) || "celý den") + " " + (e.title || e.customer_name || e.work_type)).join(" · ")}
+                    </div>
+                  );
+                })()}
+              </div>
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={S.label}>Typ práce</label>
                 <select style={S.input} value={form.work_type} onChange={e => setForm(f => ({...f, work_type: e.target.value}))}>
@@ -8143,7 +8175,7 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
             <div style={{ background: "#fff", borderRadius: 16, padding: 28, width: 560, maxWidth: "94vw", boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
                 <span style={{ background: wt.bg, color: wt.color, border: `1px solid ${wt.color}44`, borderRadius: 20, padding: "4px 14px", fontSize: 13, fontWeight: 700 }}>{detailEvent.work_type}</span>
-                <span style={{ fontSize: 14, color: "#475569" }}>{fmtDateCz(detailEvent.date)}</span>
+                <span style={{ fontSize: 14, color: "#475569" }}>{fmtDateCz(detailEvent.date)} · {casAkce(detailEvent) || "celý den"}</span>
               </div>
 
               {detailEvent.title && <div style={{ fontSize: 17, fontWeight: 700, color: "#1A1A1A", marginBottom: 16 }}>{detailEvent.title}</div>}
@@ -8227,6 +8259,10 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
 
 // ─── HELPERS PRO ČAS ─────────────────────────────────────────────────────────
 
+// Akce v kalendáři: celý den (bez času) nebo od–do; v rámci dne se řadí
+// celodenní první, pak podle času začátku (nová akce se tak sama zařadí).
+const casAkce = (ev) => (ev?.cas_od ? String(ev.cas_od).slice(0, 5) + (ev.cas_do ? "–" + String(ev.cas_do).slice(0, 5) : "") : "");
+const poradiAkce = (a, b) => String(a.cas_od || "").localeCompare(String(b.cas_od || "")) || String(a.cas_do || "").localeCompare(String(b.cas_do || "")) || (a.id || 0) - (b.id || 0);
 const calcHours = (checkin, checkout) => {
   if (!checkin || !checkout) return 0;
   const [h1, m1] = checkin.split(":").map(Number);

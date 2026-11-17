@@ -42,7 +42,7 @@ export default function MujDen({ currentUser, employees = [], attendance = [], s
     let zruseno = false;
     (async () => {
       const d = dnesIso();
-      const { data: vse } = await supabase.from("calendar_events").select("*").eq("date", d).order("id");
+      const { data: vse } = await supabase.from("calendar_events").select("*").eq("date", d).order("cas_od", { ascending: true, nullsFirst: true }).order("id");
       const moje = (vse || []).filter((e) => String(e.employee_id) === String(mojeId));
       const prubehIds = [...new Set(moje.map((e) => e.prubeh_id).filter(Boolean))];
       const contractIds = [...new Set(moje.map((e) => e.contract_id).filter(Boolean))];
