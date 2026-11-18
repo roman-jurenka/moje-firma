@@ -7383,7 +7383,8 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
   const [filterEmp, setFilterEmp] = useState(isAdmin ? "all" : String(currentUser?.id));
   const [eventSearch, setEventSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
-  useEffect(() => { if (showAdd) Promise.resolve().then(obnovZakazky); }, [showAdd, obnovZakazky]);
+  const [kopieZ, setKopieZ] = useState(null); // akce, ze které se dělá kopie
+  useEffect(() => { if (showAdd) Promise.resolve().then(obnovZakazky); else Promise.resolve().then(() => setKopieZ(null)); }, [showAdd, obnovZakazky]);
   const [editEventId, setEditEventId] = useState(null); // null = přidání nové události, id = úprava existující
   const [detailEvent, setDetailEvent] = useState(null);
   // Podklady k zakázce otevřené akce (předávací list, specifikace z nabídky)
@@ -7602,7 +7603,11 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
   const poslatDoOutlooku = async (ev) => {
     if (!outlookConn || String(ev.employee_id) !== String(currentUser.id)) return;
     try {
-      const outlookId = await outlookCal.pushCalendarEvent(ev);
+      // max. 10 s — zaseknutý Outlook (obnova přihlášení) nesmí blokovat kalendář
+      const outlookId = await Promise.race([
+        outlookCal.pushCalendarEvent(ev),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("Outlook neodpověděl do 10 s")), 10000)),
+      ]);
       if (outlookId !== ev.outlook_event_id) {
         await supabase.from("calendar_events").update({ outlook_event_id: outlookId }).eq("id", ev.id);
         setCalendarEvents(prev => prev.map(e => e.id === ev.id ? { ...e, outlook_event_id: outlookId } : e));
@@ -7620,7 +7625,8 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
     if (form.cas_od && form.cas_do && form.cas_do <= form.cas_od) { alert("Čas do musí být později než čas od."); return; }
     const dny = dnyRozsahu(form.date, date_to, vikendy);
     if (dny.length === 0) { alert("V zadaném rozsahu není žádný pracovní den — zaškrtni „včetně víkendů“ nebo uprav datum."); return; }
-    const hlavni = Number(isAdmin ? (form.employee_id || currentUser.id) : currentUser.id);
+    if (kopieZ && isAdmin && !form.employee_id && !(dalsi_zamestnanci || []).length) { alert("Vyber, komu se má akce zkopírovat."); return; }
+    const hlavni = Number(isAdmin ? (kopieZ ? form.employee_id : (form.employee_id || currentUser.id)) : currentUser.id);
     const lide = [hlavni, ...(isAdmin ? (dalsi_zamestnanci || []).map(Number) : [])].filter((id, i, a) => id && a.indexOf(id) === i);
     const pocet = dny.length * lide.length;
     const tvar = (n, j, d, m) => n === 1 ? j : n < 5 ? d : m;
@@ -7630,6 +7636,7 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
       return { ...zaklad, date, employee_id: empId, employee_name: emp ? emp.name : currentUser.name, contract_id: form.contract_id ? Number(form.contract_id) : null, na_starosti: form.na_starosti || null, cas_od: form.cas_od || null, cas_do: form.cas_od ? (form.cas_do || null) : null };
     };
     const nove = [];
+    const doOutlooku = [];
     for (const empId of lide) for (const den of dny) nove.push(radek(empId, den));
     if (editEventId) {
       const existing = calendarEvents.find(e => e.id === editEventId);
@@ -7640,17 +7647,19 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
       setCalendarEvents(prev => prev.map(e => e.id === editEventId ? updated : e));
       // Outlook PATCH namísto nové akce — pushCalendarEvent podle
       // outlook_event_id sám pozná, že se má existující akce jen upravit.
-      await poslatDoOutlooku(updated);
+      doOutlooku.push(updated);
     }
     if (nove.length > 0) {
       const { data, error } = await supabase.from("calendar_events").insert(nove).select();
       if (error) { alert("Akce se nepodařilo uložit: " + error.message); return; }
       setCalendarEvents(prev => [...prev, ...(data || [])]);
-      for (const ev of data || []) await poslatDoOutlooku(ev);
+      doOutlooku.push(...(data || []));
     }
     setShowAdd(false);
     setEditEventId(null);
     setForm(prazdnyForm());
+    // do Outlooku až po uložení všeho (dřív zaseknutý Outlook zastavil uložení kopií pro další lidi)
+    for (const ev of doOutlooku) await poslatDoOutlooku(ev);
   };
 
   // Předvyplní formulář daty existující události a otevře stejný modal jako
@@ -7675,7 +7684,9 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
   // Kopie akce — stejný formulář jako nová akce, předvyplněný; jde vybrat
   // další zaměstnance a rozsah dní.
   const startCopyEvent = (ev) => {
-    setForm(formZAkce(ev));
+    // u kopie se zaměstnanec vybírá znovu (dřív zůstal původní → duplicitní akce stejnému člověku)
+    setForm({ ...formZAkce(ev), employee_id: isAdmin ? "" : (ev.employee_id || currentUser?.id || "") });
+    setKopieZ(ev);
     setEditEventId(null);
     setDetailEvent(null);
     setShowAdd(true);
@@ -8054,8 +8065,10 @@ function CalendarModule({ currentUser, employees, contracts: contractsProp, cust
               const potreba = naStarosti(form.na_starosti)?.dovednost;
               return (
                 <div style={{ marginBottom: 12 }}>
+                  {kopieZ && <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0f766e", marginBottom: 6 }}>📋 Kopie akce ({kopieZ.employee_name || "?"}, {fmtDateCz(kopieZ.date)}) — vyber, komu ji zkopírovat.</div>}
                   <label style={S.label}>Zaměstnanec</label>
                   <select style={S.input} value={form.employee_id} onChange={e => setForm(f => ({...f, employee_id: e.target.value}))}>
+                    {kopieZ && <option value="">— vyber zaměstnance —</option>}
                     {serazeni.map(e => <option key={e.id} value={e.id}>{umi(e, form.na_starosti) === true ? "✓ " : ""}{e.name}{(e.dovednosti || []).length ? ` (${e.dovednosti.map(id => dovednost(id).ikona).join("")})` : ""}</option>)}
                   </select>
                   <label style={S.label}>Zkopírovat i pro další zaměstnance</label>
