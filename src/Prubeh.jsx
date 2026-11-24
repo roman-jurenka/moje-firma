@@ -203,7 +203,14 @@ export default function Prubeh({
   const [contracts, setContracts] = useState([]);
   const [nacteno, setNacteno] = useState(false);
   const [vybrano, setVybrano] = useState(null);
-  const [fronta, setFronta] = useState("vse");
+  // Záložka Průběhu: oddělení (ob / bo / re = nástěnka) nebo seznam (vse / moje).
+  // Pamatuje se v prohlížeči; poprvé vedení „Vše“, ostatní Realizace.
+  const [fronta, setFrontaStav] = useState(() => {
+    try { const f = localStorage.getItem("prubeh_fronta"); if (["ob", "bo", "re", "vse", "moje"].includes(f)) return f; } catch { /* bez úložiště */ }
+    return ["admin", "manager"].includes(currentUser?.role) ? "vse" : "re";
+  });
+  const setFronta = (f) => { setFrontaStav(f); try { localStorage.setItem("prubeh_fronta", f); } catch { /* bez úložiště */ } };
+  const deskOdd = ["ob", "bo", "re"].includes(fronta) ? fronta : null;
   const [uzavrene, setUzavrene] = useState(false);
   // Rychlý filtr seznamu: "" | "my" (na tahu my) | "po" (po termínu) | "dlouho" | "bezKroku"
   const [filtr, setFiltr] = useState("");
@@ -218,7 +225,6 @@ export default function Prubeh({
   const [vyberOkno, setVyberOkno] = useState(false);  // vyskakovací okno s výběrem zakázky
   const [vyberHledat, setVyberHledat] = useState("");
   const [oddVyber, setOddVyber] = useState(null);     // oddělení, na kterém se v otevřené zakázce pracuje (bo / re)
-  const [tabule, setTabule] = useState(false);        // 📊 Tabule oddělení místo seznamu
   const [editMisto, setEditMisto] = useState(null);
   const [novyUkol, setNovyUkol] = useState(null);
   const [zprava, setZprava] = useState("");
@@ -428,7 +434,25 @@ export default function Prubeh({
     { id: "dlouho", label: "Déle než obvykle", ikona: "🐢", test: dlouho },
     { id: "bezKroku", label: "Bez kroku / termínu", ikona: "❔", test: bezKroku },
   ];
-  const pocetFiltru = Object.fromEntries(FILTRY.map((f) => [f.id, otevrene.filter(f.test).length]));
+  // Na záložce oddělení se počítá jen s jeho zakázkami (obchod = před smlouvou, ostatní = po ní).
+  const vOddeleni = (z) => !deskOdd || (deskOdd === "ob" ? !soubezne(z) : soubezne(z) && !!stavOddeleni(z)[deskOdd] && stavOddeleni(z)[deskOdd].faze !== HOTOVO);
+  const pocetFiltru = Object.fromEntries(FILTRY.map((f) => [f.id, otevrene.filter((z) => vOddeleni(z) && f.test(z)).length]));
+  const filtryEl = (
+    <div role="group" aria-label="Rychlý filtr" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {FILTRY.map((f) => {
+        const akt = filtr === f.id;
+        const n = pocetFiltru[f.id];
+        const varovani = f.id !== "my" && n > 0;
+        return (
+          <button key={f.id} type="button" aria-pressed={akt} onClick={() => setFiltr(akt ? "" : f.id)}
+            style={{ borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+              border: `1px solid ${akt ? "#0f172a" : varovani ? "#fca5a5" : "#cbd5e1"}`, background: akt ? "#0f172a" : "#fff", color: akt ? "#fff" : varovani ? "#991b1b" : "#334155" }}>
+            {f.ikona} {f.label} {n}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   const q = hledat.trim().toLowerCase();
   const viditelne = jednaId ? rows.filter((z) => z.id === jednaId) : rows
@@ -1070,6 +1094,7 @@ export default function Prubeh({
     const duvod = await zeptat({
       titulek: "Zakázka nevyšla?", text: "Důvod se hodí pro vyhodnocení obchodu.",
       vstup: true, popisek: "Proč zakázka nevyšla", placeholder: "cena, konkurence, zákazník si to rozmyslel…", potvrdit: "Označit jako prohranou",
+      rychle: ["Cena", "Konkurence", "Odložil na později", "Nereaguje", "Technicky nejde", "Jiné"],
     });
     if (duvod == null || !String(duvod).trim()) return;
     await uloz(zak, { stav: "prohrana", prohra_duvod: duvod.trim(), dalsi_krok: null, dalsi_krok_termin: null }, `Prohráno: ${duvod.trim()}`);
@@ -2289,6 +2314,15 @@ export default function Prubeh({
             {dotaz.vstup && (
               <div>
                 <label style={lbl} htmlFor="pr-dotaz-vstup">{dotaz.popisek || "Text"} *</label>
+                {dotaz.rychle && (
+                  <div role="group" aria-label="Rychlá volba" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                    {dotaz.rychle.map((r) => {
+                      const akt = dotaz.hodnota.split(" — ")[0] === r;
+                      return <button key={r} type="button" aria-pressed={akt} onClick={() => setDotaz({ ...dotaz, hodnota: akt ? "" : r + (dotaz.hodnota.includes(" — ") ? " — " + dotaz.hodnota.split(" — ").slice(1).join(" — ") : "") })}
+                        style={{ borderRadius: 999, padding: "5px 11px", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer", border: `1px solid ${akt ? "#0369a1" : "#cbd5e1"}`, background: akt ? "#e0f2fe" : "#fff", color: akt ? "#075985" : "#334155" }}>{r}</button>;
+                    })}
+                  </div>
+                )}
                 <textarea id="pr-dotaz-vstup" autoFocus style={{ ...inp, minHeight: 70, resize: "vertical" }} value={dotaz.hodnota} placeholder={dotaz.placeholder || ""}
                   onChange={(e) => setDotaz({ ...dotaz, hodnota: e.target.value })} />
               </div>
@@ -2327,26 +2361,24 @@ export default function Prubeh({
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>🧭 Průběh zakázek</h1>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div role="group" aria-label="Fronta" style={{ display: "flex", gap: 4, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 4, flexWrap: "wrap" }}>
-            {frontaBtn("vse", "Všechny")}
-            {frontaBtn("moje", "Moje")}
             {frontaBtn("ob", "Obchod", "#0369a1")}
-            {frontaBtn("bo", "Kancelář", "#b45309")}
+            {frontaBtn("bo", "Back office", "#b45309")}
             {frontaBtn("re", "Realizace", "#15803d")}
+            {frontaBtn("vse", "Vše")}
+            {frontaBtn("moje", "Moje")}
           </div>
           {smiNastavit && <button type="button" style={btnGhost} onClick={() => setNastaveniForm(Object.fromEntries(FAZE.map((f) => [f.id, { dny: f.dny, typy: Object.fromEntries(TYPY.map((t) => [t.id, pravidlo(f, t.id)])), ukoly: f.ukoly.map((u) => ({ ...u })) }])))}>⚙️ Nastavení fází</button>}
           {smiNastavit && <button type="button" style={btnGhost} onClick={otevritRozpad} title="Šablony rozpadu materiálu (konstrukce na 1 panel)">🧩 Rozpad materiálu</button>}
           {smiNastavit && <button type="button" style={btnGhost} onClick={() => setKnihovna(true)} title="Certifikáty, návody, prohlášení — automaticky v Dokumentech každé zakázky daného typu">📚 Dokumenty dle typu</button>}
           {knihovna && <KnihovnaTypu currentUser={currentUser} onZavrit={() => setKnihovna(false)} />}
-          <button type="button" style={tabule ? btn("#0f172a") : btnGhost} aria-pressed={tabule} onClick={() => { setTabule((t) => !t); setJednaId(null); }}
-            title="Všechny zakázky po odděleních — obchod, kancelář, realizace — ve sloupcích podle fází">{tabule ? "☰ Seznam zakázek" : "📊 Tabule oddělení"}</button>
           <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "", zakRezim: null, zakHledat: "", novyZak: { name: "", phone: "", email: "", adresa: "" }, telefonZak: null, kontakt: { jmeno: "", telefon: "", vztah: "" } })}>+ Nová poptávka</button>
         </div>
       </div>
 
       <div className="pr-kpi">
         <button type="button" onClick={() => setFronta("moje")} style={{ ...karta, padding: "12px 18px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}><div style={{ fontSize: 13, color: "#475569", fontWeight: 600 }}>Čeká na mě</div><div style={{ fontSize: 28, fontWeight: 800, color: "#b45309" }}>{kpi.naMe}</div></button>
-        <button type="button" onClick={() => { setFronta("vse"); setUzavrene(false); setFiltr("po"); }} style={{ ...karta, padding: "12px 18px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", borderColor: kpi.poTerminu ? "#fca5a5" : "#e2e8f0" }}><div style={{ fontSize: 13, color: kpi.poTerminu ? "#991b1b" : "#475569", fontWeight: 600 }}>Po termínu</div><div style={{ fontSize: 28, fontWeight: 800, color: kpi.poTerminu ? "#b91c1c" : "#0f172a" }}>{kpi.poTerminu}</div></button>
-        <button type="button" onClick={() => { setFronta("vse"); setUzavrene(false); setFiltr("dlouho"); }} title="Zakázky, které jsou ve fázi déle, než je u ní obvyklé" style={{ ...karta, padding: "12px 18px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", borderColor: kpi.dlouho ? "#fdba74" : "#e2e8f0" }}><div style={{ fontSize: 13, color: kpi.dlouho ? "#9a3412" : "#475569", fontWeight: 600 }}>Déle než obvykle</div><div style={{ fontSize: 28, fontWeight: 800, color: kpi.dlouho ? "#c2410c" : "#0f172a" }}>{kpi.dlouho}</div></button>
+        <button type="button" onClick={() => { setUzavrene(false); setFiltr("po"); }} style={{ ...karta, padding: "12px 18px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", borderColor: kpi.poTerminu ? "#fca5a5" : "#e2e8f0" }}><div style={{ fontSize: 13, color: kpi.poTerminu ? "#991b1b" : "#475569", fontWeight: 600 }}>Po termínu</div><div style={{ fontSize: 28, fontWeight: 800, color: kpi.poTerminu ? "#b91c1c" : "#0f172a" }}>{kpi.poTerminu}</div></button>
+        <button type="button" onClick={() => { setUzavrene(false); setFiltr("dlouho"); }} title="Zakázky, které jsou ve fázi déle, než je u ní obvyklé" style={{ ...karta, padding: "12px 18px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", borderColor: kpi.dlouho ? "#fdba74" : "#e2e8f0" }}><div style={{ fontSize: 13, color: kpi.dlouho ? "#9a3412" : "#475569", fontWeight: 600 }}>Déle než obvykle</div><div style={{ fontSize: 28, fontWeight: 800, color: kpi.dlouho ? "#c2410c" : "#0f172a" }}>{kpi.dlouho}</div></button>
         <div style={{ ...karta, padding: "12px 18px" }}><div style={{ fontSize: 13, color: "#475569", fontWeight: 600 }}>Připraveno k realizaci</div><div style={{ fontSize: 28, fontWeight: 800, color: "#15803d" }}>{kpi.pripraveno}</div></div>
         <div style={{ ...karta, padding: "12px 18px" }}><div style={{ fontSize: 13, color: "#475569", fontWeight: 600 }}>Otevřené zakázky (hodnota)</div><div style={{ fontSize: 24, fontWeight: 800 }}>{fmtKc(kpi.hodnota)}</div></div>
       </div>
@@ -2366,11 +2398,18 @@ export default function Prubeh({
         </div>
       )}
 
-      {tabule && (
-        <TabuleOddeleni rows={rows} zakaznik={zakaznik} kodZakazky={(r) => contractById(r.contract_id)?.code} dnes={dnes} ja={ja}
-          onOtevrit={(id, odd) => { setTabule(false); otevritOkno(id); setOddVyber(odd === "ob" ? null : odd); }} />
+      {deskOdd && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            {filtryEl}
+            <button type="button" style={{ ...btnGhost, padding: "6px 12px", fontSize: 13 }} onClick={() => { setVyberHledat(""); setVyberOkno(true); }}>🎯 Najít zakázku</button>
+          </div>
+          <TabuleOddeleni rows={rows} zakaznik={zakaznik} kodZakazky={(r) => contractById(r.contract_id)?.code} dnes={dnes} ja={ja}
+            jenOdd={deskOdd} filtrKarty={filtr ? FILTRY.find((f) => f.id === filtr)?.test : null}
+            onOtevrit={(id, odd) => { otevritOkno(id); setOddVyber(odd === "ob" ? null : odd); }} />
+        </div>
       )}
-      <div className="pr-grid pr-jedna" style={tabule ? { display: "none" } : undefined}>
+      <div className="pr-grid pr-jedna" style={deskOdd ? { display: "none" } : undefined}>
         <div style={{ ...karta, padding: 0, overflow: "hidden" }}>
           <div style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #e2e8f0", alignItems: "center", flexWrap: "wrap" }}>
             <button type="button" style={btn("#0f172a")} onClick={() => { setVyberHledat(""); setVyberOkno(true); }} title="Najít zakázku a otevřít ji">🎯 Najít zakázku</button>
@@ -2380,22 +2419,7 @@ export default function Prubeh({
                 <input type="checkbox" checked={uzavrene} onChange={(e) => setUzavrene(e.target.checked)} /> Uzavřené a prohrané
               </label>
             )}
-            {!jednaId && !uzavrene && (
-              <div role="group" aria-label="Rychlý filtr" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {FILTRY.map((f) => {
-                  const akt = filtr === f.id;
-                  const n = pocetFiltru[f.id];
-                  const varovani = f.id !== "my" && n > 0;
-                  return (
-                    <button key={f.id} type="button" aria-pressed={akt} onClick={() => setFiltr(akt ? "" : f.id)}
-                      style={{ borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
-                        border: `1px solid ${akt ? "#0f172a" : varovani ? "#fca5a5" : "#cbd5e1"}`, background: akt ? "#0f172a" : "#fff", color: akt ? "#fff" : varovani ? "#991b1b" : "#334155" }}>
-                      {f.ikona} {f.label} {n}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {!jednaId && !uzavrene && filtryEl}
           </div>
           {jednaId && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "10px 16px", background: "#eff6ff", borderBottom: "1px solid #bfdbfe", fontSize: 14, color: "#1e3a8a" }}>
@@ -2800,7 +2824,7 @@ export default function Prubeh({
           </div>
           <div style={{ fontSize: 13, color: "#475569" }}>{[k?.code, zakaznik(z.customer_id)?.name, z.hodnota ? fmtKc(z.hodnota) : null].filter(Boolean).join(" · ")}</div>
           <div style={{ fontSize: 13, color: "#334155", marginTop: 2 }}>
-            {otevrena ? <>{z._odd ? "Pracuješ na: " : "Teď: "}<b style={{ color: s.tmava }}>{z._odd ? (z._odd === "bo" ? "Kancelář" : "Realizace") : s.nazev} · {nazevFaze(f, z.typ)}</b> · ve fázi {dny(dniFaze)} <span style={{ color: dniFaze > f.dny ? "#c2410c" : "#64748b" }}>(obvykle {dny(f.dny)})</span></>
+            {otevrena ? <>{z._odd ? "Pracuješ na: " : "Teď: "}<b style={{ color: s.tmava }}>{z._odd ? (z._odd === "bo" ? "Back office" : "Realizace") : s.nazev} · {nazevFaze(f, z.typ)}</b> · ve fázi {dny(dniFaze)} <span style={{ color: dniFaze > f.dny ? "#c2410c" : "#64748b" }}>(obvykle {dny(f.dny)})</span></>
               : z.stav === "prohrana" ? <b>Prohráno: {z.prohra_duvod}</b> : <b style={{ color: "#15803d" }}>Uzavřená zakázka</b>}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
@@ -3461,7 +3485,7 @@ export default function Prubeh({
       const st = z._st || stavOddeleni(z);
       const nove = { bo: st.bo, re: st.re, [odd]: { ...st[odd], ...zmena } };
       const popis = zmena.termin !== undefined ? `termín ${zmena.termin ? fmtDatum(zmena.termin) : "smazán"}` : `má na starosti ${zmena.kdo || "nikdo"}`;
-      return uloz(z, { oddeleni: nove }, `${odd === "bo" ? "Kancelář" : "Realizace"}: ${popis}.`);
+      return uloz(z, { oddeleni: nove }, `${odd === "bo" ? "Back office" : "Realizace"}: ${popis}.`);
     };
     const kOddeleni = z._st && (
       <StavZakazkyGraf z={z} st={z._st} vybrane={z._odd} dnes={dnes} lide={lide} otevrena={otevrena}

@@ -232,12 +232,12 @@ export const fazeSekce = (z, sekceId) => platneFaze(z).filter((f) => f.sekce ===
 // ── Souběžná oddělení ──
 // Po obchodu běží kancelář (bo) a realizace (re) souběžně, každá ve své fázi
 // (zakazky_prubeh.oddeleni, logika v oddeleniZakazky.js). Materiál a termín
-// patří realizaci; uzavření (připojení, vyúčtování, archiv) kanceláři, ta na
-// něj čeká, až realizace skončí. Řádek „pohled oddělení“ (z._odd) má ve faze
+// patří back office (objednává kancelář), stejně jako uzavření (připojení, vyúčtování, archiv), na
+// které back office čeká, až realizace skončí. Řádek „pohled oddělení“ (z._odd) má ve faze
 // fázi daného oddělení — dalsiFaze / predchoziFaze pak chodí jen po ní.
 export const CEKA = "__ceka";       // oddělení čeká (na obchod / na dokončení realizace)
 export const HOTOVO = "__hotovo";   // oddělení má hotovo
-export const oddFaze = (f) => (!f ? null : f.id === "material" ? "re" : f.sekce === "ob" ? "ob" : f.sekce === "re" ? "re" : "bo");
+export const oddFaze = (f) => (!f ? null : f.sekce === "ob" ? "ob" : f.sekce === "re" ? "re" : "bo");
 export const FAZE_CEKA_RE = { id: CEKA, sekce: "bo", nazev: "Čeká na dokončení realizace", ukoly: [], dny: 999 };
 export const FAZE_RE_HOTOVO = { id: HOTOVO, sekce: "re", nazev: "Realizace hotová", ukoly: [], dny: 999 };
 

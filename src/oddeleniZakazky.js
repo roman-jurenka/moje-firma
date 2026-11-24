@@ -11,7 +11,7 @@ import { FAZE, fazeById, fazePlati, oddFaze, CEKA, HOTOVO, nazevFaze } from "./p
 export { CEKA, HOTOVO, oddFaze };
 export const ODDELENI = [
   { id: "ob", nazev: "Obchod", barva: "#0369a1", svetla: "#e0f2fe", tmava: "#075985", vlastnik: "vlastnik_obchod" },
-  { id: "bo", nazev: "Kancelář", barva: "#b45309", svetla: "#fef3c7", tmava: "#92400e", vlastnik: "vlastnik_bo" },
+  { id: "bo", nazev: "Back office", barva: "#b45309", svetla: "#fef3c7", tmava: "#92400e", vlastnik: "vlastnik_bo" },
   { id: "re", nazev: "Realizace", barva: "#15803d", svetla: "#dcfce7", tmava: "#166534", vlastnik: "vlastnik_re" },
 ];
 export const oddeleniById = Object.fromEntries(ODDELENI.map((o) => [o.id, o]));
