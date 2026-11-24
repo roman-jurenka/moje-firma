@@ -14,7 +14,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //     dotahnout        — { dni } dotáhne leady za posledních N dní (max 90)
 //     tick             — cron každých 15 min: dotáhne leady, které webhook nedoručil
 // Tajemství (Supabase → Edge Functions → Secrets), nastavuje majitel:
-//   META_APP_ID, META_APP_SECRET (Meta for Developers → aplikace → Nastavení → Základní).
+//   META_APP_SECRET (Meta for Developers → aplikace → Nastavení → Základní);
+//   META_APP_ID volitelně, jinak se použije ID aplikace ProudOS Leady.
 // Nasazuje se s verify_jwt = false (Meta i cron nemají JWT), ověřuje se tady.
 
 const GRAPH = "https://graph.facebook.com/v23.0";
@@ -26,7 +27,8 @@ const CORS = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-const APP_ID = Deno.env.get("META_APP_ID") ?? "";
+// Aplikace „ProudOS Leady“ v Meta for Developers (ID je veřejné, tajemství jen v Secrets).
+const APP_ID = Deno.env.get("META_APP_ID") || "1297552155884729";
 const APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const WEBHOOK_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/meta-leady`;
 
@@ -275,7 +277,7 @@ async function dotahnout(od: Date | null) {
 // ─── Připojení ───────────────────────────────────────────────────────────────
 
 async function pripojit(code: string, redirectUri: string, kdo?: string) {
-  if (!APP_ID || !APP_SECRET) throw new Error("Chybí tajemství META_APP_ID / META_APP_SECRET v Supabase.");
+  if (!APP_ID || !APP_SECRET) throw new Error("Chybí tajemství META_APP_SECRET v Supabase.");
   const kratky = await fb(`${GRAPH}/oauth/access_token?client_id=${enc(APP_ID)}&client_secret=${enc(APP_SECRET)}&redirect_uri=${enc(redirectUri)}&code=${enc(code)}`);
   const dlouhy = await fb(`${GRAPH}/oauth/access_token?grant_type=fb_exchange_token&client_id=${enc(APP_ID)}&client_secret=${enc(APP_SECRET)}&fb_exchange_token=${enc(kratky.access_token)}`);
   // Tokeny stránek z dlouhodobého tokenu uživatele nevyprší.

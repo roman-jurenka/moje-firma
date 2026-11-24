@@ -17,7 +17,9 @@ async function volat(akce, extra = {}) {
 
 const FB_STATE = "fb_oauth_state";
 const REDIRECT = window.location.origin + "/";
-const SCOPE = "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_manage_ads,leads_retrieval,ads_read,business_management";
+// Konfigurace „Přihlášení k Facebooku pro firmy“ v aplikaci ProudOS Leady
+// (oprávnění: stránky, leady, reklamy) — veřejný identifikátor, ne tajemství.
+const FB_CONFIG_ID = "1144105911697208";
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
 
 export default function FacebookLeady({ currentUser, onOtevritPrubeh }) {
@@ -65,7 +67,7 @@ export default function FacebookLeady({ currentUser, onOtevritPrubeh }) {
   const pripojit = () => {
     const state = "fb-" + crypto.randomUUID();
     try { localStorage.setItem(FB_STATE, state); } catch { /* ověření pak selže a nabídne zkusit znovu */ }
-    const q = new URLSearchParams({ client_id: ucet.app_id, redirect_uri: REDIRECT, response_type: "code", scope: SCOPE, state });
+    const q = new URLSearchParams({ client_id: ucet.app_id, redirect_uri: REDIRECT, response_type: "code", config_id: FB_CONFIG_ID, state });
     window.location.href = `https://www.facebook.com/v23.0/dialog/oauth?${q}`;
   };
   const odpojit = async () => {
@@ -100,7 +102,7 @@ export default function FacebookLeady({ currentUser, onOtevritPrubeh }) {
       <div style={{ ...ui.karta, margin: "14px 0" }}>
         {!ucet ? "Načítám…" : ucet.chyba ? <span style={{ color: "#991b1b" }}>{ucet.chyba}</span> : !ucet.nastaveno ? (
           <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-            <b>Ještě není nastavené.</b> V Supabase → Edge Functions → Secrets doplňte <code>META_APP_ID</code> a <code>META_APP_SECRET</code> z aplikace v Meta for Developers (Nastavení → Základní).
+            <b>Ještě není nastavené.</b> V Supabase → Edge Functions → Secrets doplňte <code>META_APP_SECRET</code> (tajemství aplikace ProudOS Leady z Meta for Developers → Nastavení aplikace → Základní).
           </div>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
