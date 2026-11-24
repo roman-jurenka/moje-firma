@@ -182,14 +182,18 @@ export const normalizujTyp = (t) => {
   return TYPY.find((x) => s.startsWith(x.id))?.id || (s.includes("FVE") ? "FVE" : "");
 };
 
+// Kdo je na tahu (sloupec duvod_cekani): prázdné = my (firma), jinak na koho čekáme.
+// kratky = štítek v seznamu a v okně zakázky.
 export const DUVODY_CEKANI = [
-  { id: "zakaznik", label: "Čeká na zákazníka" },
-  { id: "distributor", label: "Čeká na distributora" },
-  { id: "material", label: "Čeká na materiál" },
-  { id: "podklady", label: "Chybí podklady" },
-  { id: "jine", label: "Jiné" },
+  { id: "zakaznik", label: "Čeká na zákazníka", kratky: "Zákazník" },
+  { id: "distributor", label: "Čeká na distributora", kratky: "Distributor" },
+  { id: "material", label: "Čeká na dodavatele (materiál)", kratky: "Dodavatel" },
+  { id: "podklady", label: "Chybí podklady", kratky: "Podklady" },
+  { id: "jine", label: "Čeká na něco jiného", kratky: "Jiné" },
 ];
 export const nazevDuvodu = (id) => DUVODY_CEKANI.find((d) => d.id === id)?.label || "";
+export const naTahuMy = (z) => !z.duvod_cekani;
+export const naTahuKratky = (z) => (naTahuMy(z) ? "My" : DUVODY_CEKANI.find((d) => d.id === z.duvod_cekani)?.kratky || "Jiné");
 
 // Plánované člověko-dny (MD) z nabídky: u FVE/FVR z kalkulace (elektro +
 // střecha + instalatér), jinak z interního nacenění (dny × lidi u řádků v MD
