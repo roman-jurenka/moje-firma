@@ -50,6 +50,7 @@ import Posta from "./Posta.jsx";
 import AutoDne from "./AutoDne.jsx";
 import NastaveniPauzy from "./NastaveniPauzy.jsx";
 import Instagram from "./Instagram.jsx";
+import FacebookLeady from "./FacebookLeady.jsx";
 
 // ─── ZNAČKA ProudOS — modrý jistič s oranžovým bleskem ───────────────────────
 function ProudOSMark({ size = 28, outline = true }) {
@@ -459,6 +460,7 @@ const NAV = [
   { id: "statika", label: "Statika FVE", icon: "ti-building-bridge", group: "Obchod" },
   { id: "elektrocad", label: "Elektro CAD", icon: "ti-schema", group: "Obchod" },
   { id: "instagram", label: "Instagram", icon: "ti-brand-instagram", group: "Obchod" },
+  { id: "facebook", label: "Facebook leady", icon: "ti-brand-facebook", group: "Obchod" },
   // Zakázky: práce na zakázce od poptávky po předání je v Průběhu; modul
   // „contracts“ je ekonomika a archiv (rozpočet, náklady, fakturace).
   { id: "posta", label: "Pošta", icon: "ti-mail", group: "Obchod" },
@@ -1052,6 +1054,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
     // Návrat z přihlášení do Instagramu (state „ig-…“) — kód převezme záložka Instagram
     if (new URLSearchParams(window.location.search).get("state")?.startsWith("ig-")) {
       setTab("instagram");
+    // Návrat z přihlášení Facebookem (state „fb-…“) — kód převezme záložka Facebook leady
+    } else if (new URLSearchParams(window.location.search).get("state")?.startsWith("fb-")) {
+      setTab("facebook");
     // Zpracuj OneDrive OAuth callback hned při načtení appky
     } else if (window.location.search.includes("code=")) {
       handleOAuthCallback().then(ok => {
@@ -1185,7 +1190,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // 3D návrh FVE a hromosvodu a Statiku FVE vidí každý, kdo naceňuje.
   const sNacenenim = sServisem.includes("pricing") ? [...new Set([...sServisem, "navrh3d", "statika", "elektrocad"])] : sServisem;
   // Instagram (plán příspěvků z fotek realizací) vidí obchod — kdo má Zákazníky.
-  const allowedTabs = sNacenenim.includes("customers") && !sNacenenim.includes("instagram") ? [...sNacenenim, "instagram"] : sNacenenim;
+  // Facebook leady (poptávky z reklam) vidí taky obchod.
+  const allowedTabs = sNacenenim.includes("customers") ? [...new Set([...sNacenenim, "instagram", "facebook"])] : sNacenenim;
   // Pošta (firemní schránka WEDOS) — vidí kancelář, tj. kdo má Faktury (admin vše).
   const sPostou = allowedTabs.includes("invoices") && !allowedTabs.includes("posta") ? [...allowedTabs, "posta"] : allowedTabs;
   const visibleNav = NAV.filter(n => sPostou.includes(n.id));
@@ -1749,6 +1755,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "statika" && allowedTabs.includes("statika") && <StatikaFve contracts={contracts} customers={customers} currentUser={currentUser} />}
         {tab === "elektrocad" && allowedTabs.includes("elektrocad") && <ElektroCad contracts={contracts} customers={customers} currentUser={currentUser} />}
         {tab === "instagram" && allowedTabs.includes("instagram") && <Instagram currentUser={currentUser} />}
+        {tab === "facebook" && allowedTabs.includes("facebook") && <FacebookLeady currentUser={currentUser} onOtevritPrubeh={(id) => { setPrubehInitialId(id); setTab("prubeh"); }} />}
 
         {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents}
           onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
