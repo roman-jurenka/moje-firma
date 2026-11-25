@@ -775,6 +775,8 @@ export default function Prubeh({
       cena: kc(bez), dph: String(d.cena.dphPct), cenaSDph: kc(d.cena.sDph || bez * (1 + d.cena.dphPct / 100)),
       cisloNabidky: d.nabidka?.cislo || "", obchodnik: d.zastupce,
       cisloOP: d.cisloOP || d.cisloZakazky, specifikace: d.specifikace,
+      zarukaPanely: d.podklady?.technicka?.zaruka_panely || "25 let",
+      zarukaStridac: d.podklady?.technicka?.zaruka_stridac || "10 let",
       dodatekCislo: dod ? String(dod.cislo) : "", dodatekPopis: dod?.popis || "",
       cenaPuvodni: dod ? kc(dod.cena_puvodni) || "…………" : "", cenaNova: dod ? kc(dod.cena_nova) : "",
       // Věta v předávacím protokolu FVE („… JE PŘEDÁNA A PŘEVZATA / PŘEVZETÍ … BYLO ODMÍTNUTO“)

@@ -18,7 +18,9 @@ export const BODY_PROHLASENI = [
   { id: "azrouter", nazev: "AZrouter",
     text: "V systému fotovoltaické elektrárny [**JE**|**NENÍ**] použita jednotka AZrouter. V případě použití AZrouter jednotky: [**JE** zapojena v měření FVE a chová se jako běžný spotřebič, může využívat energii z baterií|**NENÍ** zapojena v měření a nemůže využívat energii z baterií]." },
   { id: "wallbox", nazev: "Dobíjecí stanice",
-    text: "V systému fotovoltaické elektrárny [**JE**|**NENÍ**] nainstalována dobíjecí stanice. V případě použití dobíjecí stanice: [**JE** zapojena v měření FVE a chová se jako běžný spotřebič, může využívat energii z baterií|**NENÍ** zapojena v měření a nemůže využívat energii z baterií]." },
+    text: "V systému fotovoltaické elektrárny [**JE**|**NENÍ**] nainstalována dobíjecí stanice. V případě použití dobíjecí stanice: [**MŮŽE**|**NEMŮŽE**] využívat energii z baterií." },
+  { id: "baterie-wifi", nazev: "Baterie na WiFi",
+    text: "Baterie [**JE**|**NENÍ**] připojená na WiFi. Pokud není, důvodem je ……………………………………………." },
 ];
 
 export const BODY_PREJIMAJICI = [
@@ -72,6 +74,7 @@ function coDodavame(fve) {
     sit: aktivni(f.stridac) || aktivni(f.baterie),
     azrouter: aktivni(f.regulace) && /az/i.test(f.regulace.name),
     wallbox: aktivni(f.wallbox),
+    baterie: aktivni(f.baterie),
   };
 }
 export function vychoziProhlaseni(typ, fve) {
@@ -86,6 +89,7 @@ export function vychoziProhlaseni(typ, fve) {
     if (b.id === "zalohovane") zahrnout = bezNabidky || ma.zalohovane;
     if (b.id === "sit") zahrnout = bezNabidky || ma.sit || !rozsireni;
     if (b.id === "funkcni") volby[0] = 0;
+    if (b.id === "baterie-wifi") zahrnout = bezNabidky || ma.baterie;
     if (b.id === "azrouter" || b.id === "wallbox") {
       zahrnout = bezNabidky || ma[b.id] || !rozsireni;
       if (!bezNabidky) volby[0] = ma[b.id] ? 0 : 1;
