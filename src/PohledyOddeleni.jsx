@@ -227,6 +227,61 @@ function zNabidky(quote) {
   return radky;
 }
 
+// Stringy: počet + u každého směr (a volitelně počet panelů). Ukládá se jako
+// text do podklady.technicka.stringy („String 1: J (8 panelů)“ po řádcích),
+// takže ho dál čte náhled podkladů v kalendáři i formulář v Průběhu.
+const SMERY = ["J", "JV", "JZ", "V", "Z", "S", "SV", "SZ"];
+const SMERY_NAZEV = { J: "jih", JV: "jihovýchod", JZ: "jihozápad", V: "východ", Z: "západ", S: "sever", SV: "severovýchod", SZ: "severozápad" };
+const parsujStringy = (text) => {
+  const radky = String(text || "").split("\n").map((r) => r.trim()).filter(Boolean);
+  const out = radky.map((r) => r.match(/^String\s+\d+:\s*([A-Z]{1,2})?\s*(?:\((\d+)\s*panel[^)]*\))?\s*$/i));
+  if (!radky.length || out.some((m) => !m)) return null;
+  return out.map((m) => ({ smer: (m[1] || "").toUpperCase(), panelu: m[2] || "" }));
+};
+const textStringu = (arr) => arr.map((s, i) => `String ${i + 1}: ${s.smer || ""}${s.panelu ? ` (${s.panelu} panelů)` : ""}`.trim()).join("\n");
+
+function StringyEditor({ idPrefix, text, panelu, onChange }) {
+  const parsed = parsujStringy(text);
+  const puvodni = !parsed && String(text || "").trim() ? text : "";
+  const arr = parsed || [];
+  const nastavit = (nove) => onChange(nove.length ? textStringu(nove) : "");
+  const pocet = (n) => nastavit(Array.from({ length: n }, (_, i) => arr[i] || { smer: "", panelu: "" }));
+  const zmen = (i, k, v) => nastavit(arr.map((s, j) => (j === i ? { ...s, [k]: v } : s)));
+  const soucet = arr.reduce((s, x) => s + (Number(x.panelu) || 0), 0);
+  return (
+    <div style={{ gridColumn: "1 / -1", fontSize: 12, color: C.sub }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span>Počet stringů</span>
+        {[1, 2, 3, 4, 5, 6].map((n) => (
+          <button key={n} type="button" aria-pressed={arr.length === n} onClick={() => pocet(arr.length === n ? 0 : n)}
+            style={{ ...btnS(arr.length === n), padding: "3px 10px", fontSize: 12 }}>{n}</button>
+        ))}
+        {panelu > 0 && arr.length > 0 && (
+          <span style={{ marginLeft: 6, color: soucet === panelu ? "#166534" : soucet > panelu ? C.red : C.sub, fontWeight: 600 }}>
+            rozděleno {soucet} z {panelu} panelů{soucet === panelu ? " ✓" : ""}
+          </span>
+        )}
+      </div>
+      {puvodni && <div style={{ marginTop: 4, color: C.org }}>Původní zápis: „{puvodni}“ — výběrem počtu stringů se nahradí.</div>}
+      {arr.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 6, marginTop: 6 }}>
+          {arr.map((s, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 8px", background: C.bg }}>
+              <b style={{ color: C.text, whiteSpace: "nowrap" }}>String {i + 1}</b>
+              <select id={`${idPrefix}-${i}-smer`} aria-label={`Směr stringu ${i + 1}`} style={{ ...inpS, padding: "4px 6px" }} value={s.smer} onChange={(e) => zmen(i, "smer", e.target.value)}>
+                <option value="">směr…</option>
+                {SMERY.map((x) => <option key={x} value={x}>{x} — {SMERY_NAZEV[x]}</option>)}
+              </select>
+              <input aria-label={`Počet panelů ve stringu ${i + 1}`} type="number" min="0" placeholder="panelů" style={{ ...inpS, width: 70, padding: "4px 6px" }}
+                value={s.panelu} onChange={(e) => zmen(i, "panelu", e.target.value.replace(/\D/g, ""))} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SpecifikaceZakazky({ z, quote, onUlozit }) {
   const sekce = sekceProTyp(z.typ || null).filter((s) => SEKCE_SPECIFIKACE.includes(s.id));
   const vychozi = useMemo(() => predvyplnitZNabidky(z.podklady, quote, z).podklady, [z, quote]);
@@ -264,6 +319,9 @@ function SpecifikaceZakazky({ z, quote, onUlozit }) {
             {s.pole.map((f) => {
               const id = `sp-${z.id}-${s.id}-${f.id}`;
               const moz = moznostiPole(f, {});
+              if (s.id === "technicka" && f.id === "stringy") {
+                return <StringyEditor key={f.id} idPrefix={id} text={klic(s.id, f.id)} panelu={Number(quote?.data?.fve?.panel?.qty) || 0} onChange={(t) => nastav(s.id, f.id, t)} />;
+              }
               return (
                 <label key={f.id} htmlFor={id} style={{ fontSize: 12, color: C.sub, gridColumn: f.dlouhe ? "1 / -1" : undefined, minWidth: 0 }}>
                   {f.label}
