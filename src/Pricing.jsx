@@ -543,7 +543,7 @@ function NahledSekcove({ type, data, setData, cilovaCena, dphPct, sleva, custome
   );
 }
 
-export default function Pricing({ customers, currentUser, onConvertToDeal, initialQuoteId, onClearInitial }) {
+export default function Pricing({ customers, currentUser, onConvertToDeal, initialQuoteId, onClearInitial, navrhZObchodu, onClearNavrh, onZpetDoObchodu }) {
   const [quotes, setQuotes] = useState([]);
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState(null);
@@ -790,6 +790,12 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     }
     await nactiOdeslane(activeId);
     await nactiOdCeka();
+    const posunuto = await posunoutObchodPoOdeslani(activeId);
+    if (posunuto && onZpetDoObchodu && od.url) {
+      ukazHlasku("✓ Nabídka odeslaná — zakázka je v Obchodě ve fázi Jednání, termín za 3 pracovní dny");
+      setTimeout(() => onZpetDoObchodu(), 1200);
+      return;
+    }
     if (od.url) ukazHlasku(`${status === "Návrh" ? "✓ Označeno jako odeslané (stav Odesláno)" : "✓ Odeslání zaznamenáno"} — kopie uložena i na OneDrive do složky Dokumenty`);
     else setChybaOneDrive(`Odeslání je zaznamenané a kopie nabídky je uložená v appce, ale do složky Dokumenty na OneDrivu se neuložila.\n\nDůvod: ${od.chyba}\n\nU nabídky zůstane upozornění, dokud se kopie nenahraje — tlačítkem „Zkusit znovu“ (nebo se nahraje sama, až bude OneDrive připojený).`);
   };
@@ -811,6 +817,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     const ty = q.type || "";
     const normalized = normalize(q.data);
     setActiveId(q.id);
+    if (prubehRef.current && q.id !== activeId) { prubehRef.current = null; setNavrhInfo(null); }
     setName(q.name);
     setCustomerId(cId);
     setStatus(st);
@@ -824,6 +831,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
   const newQuote = () => {
     if (!confirmDiscardChanges()) return;
     const fresh = PRAZDNA_NABIDKA();
+    prubehRef.current = null; setNavrhInfo(null);
     setActiveId(null);
     setName("");
     setCustomerId("");
@@ -831,6 +839,68 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     setType("");
     setData(fresh);
     savedSnapshotRef.current = JSON.stringify({ name: "", customerId: "", status: "Návrh", type: "", data: fresh });
+  };
+
+  // „Nacenit“ z Obchodu: nová nabídka předvyplněná ze zakázky; po prvním
+  // uložení se se zakázkou sama propojí (zakazky_prubeh.quote_id).
+  const prubehRef = useRef(null);
+  const [navrhInfo, setNavrhInfo] = useState(null);
+  useEffect(() => {
+    if (!navrhZObchodu) return;
+    const n = navrhZObchodu;
+    onClearNavrh?.();
+    Promise.resolve().then(() => {
+      const fresh = PRAZDNA_NABIDKA();
+      setActiveId(null);
+      setName(n.nazev || "");
+      setCustomerId(n.customerId ? String(n.customerId) : "");
+      setStatus("Návrh");
+      setType(n.typ || "");
+      setData(fresh);
+      setNahledOtevren(false);
+      savedSnapshotRef.current = JSON.stringify({ name: "", customerId: "", status: "Návrh", type: "", data: fresh });
+      prubehRef.current = n.prubehId;
+      setNavrhInfo(n);
+    });
+  }, [navrhZObchodu]); // eslint-disable-line react-hooks/exhaustive-deps
+  const zaPracDni = (k) => { const d = new Date(); let i = 0; while (i < k) { d.setDate(d.getDate() + 1); if (d.getDay() % 6 !== 0) i++; } return d.toLocaleDateString("sv-SE"); };
+  const propojitSObchodem = async (q, cenaBez) => {
+    const prubehId = prubehRef.current;
+    prubehRef.current = null;
+    if (!prubehId || !q?.id) return;
+    const { data: z } = await supabase.from("zakazky_prubeh").select("id, faze, quote_id, hotove_ukoly").eq("id", prubehId).maybeSingle();
+    if (!z || z.quote_id) return;
+    const patch = { quote_id: q.id, updated_at: new Date().toISOString(), ...(cenaBez > 0 ? { hodnota: cenaBez } : {}) };
+    if (["poptavka", "obhlidka"].includes(z.faze) && fazeById.nabidka) {
+      Object.assign(patch, { faze: "nabidka", faze_od: new Date().toISOString(), dalsi_krok: "Nabídka odeslaná zákazníkovi", dalsi_krok_termin: zaPracDni(2), duvod_cekani: null });
+    }
+    const { error } = await supabase.from("zakazky_prubeh").update(patch).eq("id", prubehId);
+    if (error) { alert("Nabídka je uložená, ale se zakázkou v Obchodě se nepropojila: " + error.message); return; }
+    await supabase.from("zakazky_poznamky").insert({ prubeh_id: prubehId, kdo: currentUser?.name || "Systém", system: true,
+      text: `Založena nabídka ${q.cislo || q.name}${patch.faze ? " — fáze → Nabídka" : ""}.` });
+  };
+  // Nabídka odeslaná zákazníkovi → zakázka v Obchodě jde do Jednání a termín
+  // dalšího kroku (zavolat, jak se rozhodl) je za 3 pracovní dny.
+  const posunoutObchodPoOdeslani = async (quoteId) => {
+    const q = quotes.find((x) => x.id === quoteId);
+    const skupina = q ? verzeNabidky(q).map((x) => x.id) : [quoteId];
+    const { data: zak } = await supabase.from("zakazky_prubeh").select("id, faze, stav, hotove_ukoly").in("quote_id", skupina.length ? skupina : [quoteId]).eq("stav", "otevrena");
+    for (const z of zak || []) {
+      if (!["poptavka", "obhlidka", "nabidka"].includes(z.faze)) continue;
+      const text = `nabídka ${q?.cislo || q?.name || ""} odeslána zákazníkovi`.replace(/\s+/g, " ");
+      const patch = {
+        dalsi_krok: text, dalsi_krok_termin: zaPracDni(3), duvod_cekani: null, updated_at: new Date().toISOString(),
+        hotove_ukoly: { ...(z.hotove_ukoly || {}), "nabidka.nacenena": true, "nabidka.odeslana": true },
+        ...(fazeById.jednani ? { faze: "jednani", faze_od: new Date().toISOString() } : {}),
+      };
+      const { error } = await supabase.from("zakazky_prubeh").update(patch).eq("id", z.id);
+      if (error) { console.warn("Posun zakázky po odeslání nabídky:", error.message); continue; }
+      await supabase.from("zakazky_poznamky").insert([
+        { prubeh_id: z.id, kdo: currentUser?.name || null, system: false, text },
+        ...(patch.faze ? [{ prubeh_id: z.id, kdo: currentUser?.name || "Systém", system: true, text: "Fáze → Jednání (nabídka odeslána)." }] : []),
+      ]);
+    }
+    return (zak || []).length > 0;
   };
 
   // Otevřít konkrétní nabídku po příchodu odjinud (např. „Nacenit“ ze servisního ticketu).
@@ -841,7 +911,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     onClearInitial?.();
   }, [initialQuoteId, quotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const closeQuote = () => { setActiveId(null); setData(null); setNahledOtevren(false); savedSnapshotRef.current = null; };
+  const closeQuote = () => { setActiveId(null); setData(null); setNahledOtevren(false); savedSnapshotRef.current = null; prubehRef.current = null; setNavrhInfo(null); };
 
   // ── Výpočty ──
   const sazbaMd = data?.interni?.sazbaMd || 0;
@@ -953,7 +1023,7 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
       await zapsatHistorii(idNabidky, zmeny);
       const ulozena = { ...(puvodni || inserted), ...row };
       if (activeId) setQuotes(qs => qs.map(q => q.id === activeId ? ulozena : q));
-      else if (inserted) { setQuotes(qs => [inserted, ...qs]); setActiveId(inserted.id); }
+      else if (inserted) { setQuotes(qs => [inserted, ...qs]); setActiveId(inserted.id); await propojitSObchodem(inserted, cenaBezFinal); }
       setName(row.name);
       setData(dataUloz);
       savedSnapshotRef.current = JSON.stringify({ name: row.name, customerId, status, type, data: dataUloz });
@@ -1210,7 +1280,10 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
         {vykresliOdCeka(odCeka)}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1A1A1A", margin: 0 }}>💰 Nacenění</h1>
-          <button style={S.btn()} onClick={newQuote}>+ Nová nabídka</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {onZpetDoObchodu && <button style={S.btnGhost} onClick={onZpetDoObchodu}>← Zpět do Obchodu</button>}
+            <button style={S.btn()} onClick={newQuote}>+ Nová nabídka</button>
+          </div>
         </div>
         <p style={{ color: "#475569", fontSize: 13, marginBottom: 18 }}>Interní nacenění po MD (člověko-dnech) + rozvrh po dnech + volné sekce pro zákazníka. Následně překlop na obchodní případ.</p>
 
@@ -1305,7 +1378,22 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
     <div style={S.app}>
       {hlaskaEl}
       {vykresliOdCeka(odCeka.filter((p) => p.quote_id === activeId))}
-      <button onClick={() => { if (confirmDiscardChanges()) closeQuote(); }} style={{ ...S.btnGhost, padding: "6px 14px", marginBottom: 14 }}>← Zpět na seznam</button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        {onZpetDoObchodu && <button onClick={() => { if (confirmDiscardChanges()) { closeQuote(); onZpetDoObchodu(); } }} style={{ ...S.btn(), padding: "6px 14px" }}>← Zpět do Obchodu</button>}
+        <button onClick={() => { if (confirmDiscardChanges()) closeQuote(); }} style={{ ...S.btnGhost, padding: "6px 14px" }}>← Zpět na seznam</button>
+      </div>
+      {navrhInfo && (
+        <div style={{ ...S.card, background: "#f0f9ff", borderColor: "#bae6fd", marginBottom: 12, fontSize: 13, lineHeight: 1.5 }}>
+          <b>Nabídka pro zakázku „{navrhInfo.zakazka}“ z Obchodu.</b>{" "}
+          {activeId ? "Je propojená se zakázkou — hodnota se v Obchodě počítá z ní." : "Zákazník a typ jsou předvyplněné. Po uložení se nabídka se zakázkou sama propojí."}
+          {navrhInfo.info?.length > 0 && (
+            <div style={{ marginTop: 6, color: "#334155" }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#475569" }}>Poznámky z Obchodu:</div>
+              {navrhInfo.info.map((t, i) => <div key={i}>• {t}</div>)}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ ...S.card, display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
         <div><label style={S.label}>Název nabídky</label><input style={S.input} value={name} onChange={e => setName(e.target.value)} placeholder="např. FVE Novák 9kWp" /></div>

@@ -464,6 +464,10 @@ const NAV = [
   // Zakázky: práce na zakázce od poptávky po předání je v Průběhu; modul
   // „contracts“ je ekonomika a archiv (rozpočet, náklady, fakturace).
   { id: "posta", label: "Pošta", icon: "ti-mail", group: "Obchod" },
+  // Obchod / Back office / Realizace: pohledy oddělení nad Průběhem (ten je celkový pohled).
+  { id: "obchod", label: "Obchod", icon: "ti-briefcase", group: "Zakázky" },
+  { id: "backoffice", label: "Back office", icon: "ti-files", group: "Zakázky" },
+  { id: "realizace", label: "Realizace", icon: "ti-tools", group: "Zakázky" },
   { id: "prubeh", label: "Průběh zakázek", icon: "ti-route", group: "Zakázky" },
   { id: "calendar", label: "Kalendář", icon: "ti-calendar", group: "Zakázky" },
   { id: "tasks", label: "Úkoly", icon: "ti-checkbox", group: "Zakázky" },
@@ -925,6 +929,10 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // "Otevřít modul Fakturace" na záložce Faktury u zakázky v Contracts.jsx).
   // detail.quoteId = rovnou otevřít konkrétní nabídku v Nacenění (např. ze servisního ticketu).
   const [pricingInitialId, setPricingInitialId] = useState(null);
+  // „Nacenit“ z Obchodu: nová nabídka předvyplněná ze zakázky + návrat zpět do Obchodu.
+  const [pricingNavrh, setPricingNavrh] = useState(null);
+  const [navratZNaceneni, setNavratZNaceneni] = useState(null);
+  useEffect(() => { if (tab !== "pricing") Promise.resolve().then(() => setNavratZNaceneni(null)); }, [tab]);
   useEffect(() => {
     const handler = (e) => {
       if (e.detail?.quoteId) setPricingInitialId(e.detail.quoteId);
@@ -1193,7 +1201,9 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
   // Facebook leady (poptávky z reklam) vidí taky obchod.
   const allowedTabs = sNacenenim.includes("customers") ? [...new Set([...sNacenenim, "instagram", "facebook"])] : sNacenenim;
   // Pošta (firemní schránka WEDOS) — vidí kancelář, tj. kdo má Faktury (admin vše).
-  const sPostou = allowedTabs.includes("invoices") && !allowedTabs.includes("posta") ? [...allowedTabs, "posta"] : allowedTabs;
+  const sPostouZaklad = allowedTabs.includes("invoices") && !allowedTabs.includes("posta") ? [...allowedTabs, "posta"] : allowedTabs;
+  // Kdo vidí Průběh zakázek, vidí i pohledy oddělení (Obchod, Back office, Realizace).
+  const sPostou = sPostouZaklad.includes("prubeh") ? [...new Set([...sPostouZaklad, "obchod", "backoffice", "realizace"])] : sPostouZaklad;
   const visibleNav = NAV.filter(n => sPostou.includes(n.id));
   // počet nepřečtených e-mailů u položky Pošta v menu (obnova každé 2 minuty)
   const maPostu = sPostou.includes("posta");
@@ -1657,6 +1667,8 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "pricing" && <Pricing
           customers={customers} employees={employees} currentUser={currentUser}
           initialQuoteId={pricingInitialId} onClearInitial={() => setPricingInitialId(null)}
+          navrhZObchodu={pricingNavrh} onClearNavrh={() => setPricingNavrh(null)}
+          onZpetDoObchodu={navratZNaceneni ? () => { const t = navratZNaceneni; setNavratZNaceneni(null); setTab(t); } : null}
           onConvertToDeal={(deal, cust, prubehId) => {
             if (deal) setDeals(prev => (prev.some(d => d.id === deal.id) ? prev : [deal, ...prev]));
             if (allowedTabs.includes("prubeh")) { setPrubehInitialId(prubehId || null); setTab("prubeh"); } else setTab("deals");
@@ -1899,6 +1911,19 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
           onOtevritZakazku={(id) => { setContractInitialId(id); setTab("contracts"); }}
           onOtevritNaceneni={(id) => { if (id) setPricingInitialId(id); setTab("pricing"); }}
+        />}
+
+        {/* ── OBCHOD / BACK OFFICE / REALIZACE (pohledy oddělení nad Průběhem) ── */}
+        {["obchod", "backoffice", "realizace"].includes(tab) && sPostou.includes(tab) && <Prubeh
+          key={tab} pohled={{ obchod: "ob", backoffice: "bo", realizace: "re" }[tab]}
+          customers={customers} employees={employees} currentUser={currentUser}
+          tasks={tasks} setTasks={setTasks} calendarEvents={calendarEvents} setCalendarEvents={setCalendarEvents}
+          dealMsgs={dealMsgs} setDealMsgs={setDealMsgs} contractMsgs={contractMsgs} setContractMsgs={setContractMsgs}
+          onDealZalozen={(d) => setDeals(prev => (prev.some(x => x.id === d.id) ? prev : [d, ...prev]))}
+          onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
+          onOtevritZakazku={(id) => { setContractInitialId(id); setTab("contracts"); }}
+          onOtevritNaceneni={(id) => { if (id) setPricingInitialId(id); setNavratZNaceneni(tab); setTab("pricing"); }}
+          onNacenit={(navrh) => { setPricingNavrh(navrh); setNavratZNaceneni(tab); setTab("pricing"); }}
         />}
 
         {/* ── ZAKÁZKY ── */}

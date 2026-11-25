@@ -11,6 +11,7 @@ import { KartaMilniky, KartaPlatby } from "./KartyMilnikyPlatby.jsx";
 import { autoMilniku, stitkyZakazky } from "./milnikyZakazky.js";
 import StavZakazkyGraf from "./StavZakazkyGraf.jsx";
 import TabuleOddeleni from "./TabuleOddeleni.jsx";
+import { PohledObchod, PohledOddeleni } from "./PohledyOddeleni.jsx";
 import { soubezne, stavOddeleni, hlavniFaze, pohledOdd, stavFazeOdd, postupOdd, oddPoTerminu, posunOdd, oddFaze, aktivni, HOTOVO, CEKA, naRadeOdd, oddeleniById } from "./oddeleniZakazky.js";
 import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
@@ -195,6 +196,7 @@ export default function Prubeh({
   tasks = [], setTasks, dealMsgs = [], setDealMsgs, contractMsgs = [], setContractMsgs,
   calendarEvents = [], setCalendarEvents,
   initialId, onClearInitial, onDealZalozen, onZakaznikZalozen,
+  pohled = null, onNacenit,
 }) {
   const ja = currentUser?.name || "";
   const [rows, setRows] = useState([]);
@@ -318,7 +320,7 @@ export default function Prubeh({
       const [pr, pz, q, c, d, nast] = await Promise.all([
         supabase.from("zakazky_prubeh").select("*").order("updated_at", { ascending: false }),
         supabase.from("zakazky_poznamky").select("*").order("created_at", { ascending: false }).limit(1000),
-        supabase.from("quotes").select("id, name, cislo, status, customer_id, type, data, deal_id, updated_at"),
+        supabase.from("quotes").select("id, name, cislo, status, customer_id, type, data, deal_id, updated_at, verze_od, verze"),
         supabase.from("contracts").select("id, code, name, status, price, type, customer_id, deal_id, address"),
         supabase.from("deals").select("id, name, value, stage, customer_id, type, assigned_to, site_address, site_contact_name, site_contact_phone"),
         supabase.from("app_settings").select("value").eq("key", NASTAVENI_KEY).maybeSingle(),
@@ -516,8 +518,8 @@ export default function Prubeh({
     }
     return true;
   };
-  const pridatPoznamku = async (zak, text, system = false) => {
-    const row = { prubeh_id: zak.id, kdo: system ? (ja || "Systém") : ja, duvod: system ? null : (nazevDuvodu(zak.duvod_cekani) || null), text, system };
+  const pridatPoznamku = async (zak, text, system = false, datum = null) => {
+    const row = { prubeh_id: zak.id, kdo: system ? (ja || "Systém") : ja, duvod: system ? null : (nazevDuvodu(zak.duvod_cekani) || null), text, system, ...(datum ? { datum } : {}) };
     const { data, error } = await supabase.from("zakazky_poznamky").insert(row).select().single();
     if (error) { alert("Poznámku se nepodařilo uložit: " + error.message); return false; }
     setPoznamky((p) => [data, ...p]);
@@ -1137,6 +1139,99 @@ export default function Prubeh({
       qq ? `Propojeno s nabídkou ${qq.cislo || qq.name}.` : "Nabídka odpojená.");
     if (ok) ukazHlasku(qq ? "✓ Nabídka propojená" : "Nabídka odpojená");
     if (ok && qq) nabidnoutPodklady({ ...zak, quote_id: qq.id });
+  };
+
+  // ── Pohledy Obchod / Back office / Realizace (PohledyOddeleni.jsx) ──
+  // Poznámka „25.11. RJ – text“: u obchodu se zároveň stane dalším krokem
+  // (text + termín), u back office / realizace se termín zapíše oddělení.
+  const zapsatPoznamku = async (zak0, { text, datum, termin, odd }) => {
+    const zak = rows.find((r) => r.id === zak0.id) || zak0;
+    const patch = {};
+    if (odd === "bo" || odd === "re") {
+      const st = stavOddeleni(zak);
+      if (termin && aktivni(st[odd]) && termin !== st[odd].termin) patch.oddeleni = { bo: st.bo, re: st.re, [odd]: { ...st[odd], termin } };
+    } else {
+      patch.dalsi_krok = text;
+      if (termin) patch.dalsi_krok_termin = termin;
+    }
+    if (Object.keys(patch).length && !(await uloz(zak, patch))) return false;
+    return pridatPoznamku(zak, text, false, datum);
+  };
+  const zaPracDni = (n) => { const d = new Date(); let k = 0; while (k < n) { d.setDate(d.getDate() + 1); if (d.getDay() % 6 !== 0) k++; } return d.toLocaleDateString("sv-SE"); };
+  const kratceD = (iso) => { const [, m, d] = iso.split("-"); return `${+d}.${+m}.`; };
+  const obchodAkce = async (zak0, akce, data = {}) => {
+    const zak = rows.find((r) => r.id === zak0.id) || zak0;
+    const hotove = (klice) => ({ hotove_ukoly: { ...(zak.hotove_ukoly || {}), ...Object.fromEntries(klice.map((k) => [k, true])) } });
+    const krok = (text, termin, navic = {}) => uloz(zak, { dalsi_krok: text, dalsi_krok_termin: termin, duvod_cekani: null, ...navic });
+    // Posun v obchodě: do cílové fáze (když ji typ zakázky má), jinak do další platné.
+    const posun = async (cilId, text, termin, klice, navic = {}) => {
+      let cil = fazeById[cilId];
+      if (!cil || !fazePlati(cil, zak)) cil = dalsiFaze(zak);
+      const ext = { dalsi_krok: text, dalsi_krok_termin: termin, ...hotove(klice), ...navic };
+      if (!cil || cil.sekce !== "ob" || cil.id === zak.faze) return krok(text, termin, ext);
+      return presun(zak, cil, `Fáze → ${nazevFaze(cil, zak.typ)}`, ext);
+    };
+    setPracuji(true);
+    try {
+      let text = null, ok = true;
+      if (akce === "nezvedá") { text = "volán, nezvedá telefon"; ok = await krok(text, zaPracDni(1)); }
+      if (akce === "obhlidka") {
+        text = `domluvena obhlídka na ${kratceD(data.datum)}`;
+        ok = zak.faze === "poptavka" ? await posun("obhlidka", text, data.datum, ["poptavka.kontakt", "poptavka.pozadavek"]) : await krok(text, data.datum);
+      }
+      if (akce === "obhlidkaHotova") { text = "obhlídka provedena, připravit nabídku"; ok = await posun("nabidka", text, zaPracDni(2), ["obhlidka.provedena"]); }
+      if (akce === "odeslana") { text = "nabídka odeslána zákazníkovi"; ok = await posun("jednani", text, zaPracDni(3), ["nabidka.nacenena", "nabidka.odeslana"]); }
+      if (akce === "pripomenout") { text = "zákazník se ještě rozhoduje — připomenout"; ok = await krok(text, zaPracDni(3)); }
+      if (akce === "souhlasi") {
+        const q = data.quoteId ? quoteById(data.quoteId) : null;
+        let navic = {};
+        if (q) {
+          const koren = q.verze_od || q.id;
+          const ostatni = quotes.filter((x) => (x.verze_od || x.id) === koren && x.id !== q.id && x.status !== "Zamítnuto");
+          const t = tedIso();
+          const { error } = await supabase.from("quotes").update({ status: "Schváleno", updated_at: t }).eq("id", q.id);
+          if (error) { alert("Nabídku se nepodařilo označit jako schválenou: " + error.message); return; }
+          if (ostatni.length) await supabase.from("quotes").update({ status: "Zamítnuto", updated_at: t }).in("id", ostatni.map((x) => x.id));
+          await supabase.from("nabidky_historie").insert([
+            { quote_id: q.id, kdo: ja || null, typ: "stav", text: `Stav: ${q.status || "Návrh"} → Schváleno (z Obchodu).` },
+            ...ostatni.map((x) => ({ quote_id: x.id, kdo: ja || null, typ: "stav", text: `Stav: ${x.status || "Návrh"} → Zamítnuto — zákazník vybral ${q.cislo || q.name}.` })),
+          ]);
+          setQuotes((qs) => qs.map((x) => (x.id === q.id ? { ...x, status: "Schváleno" } : ostatni.some((o) => o.id === x.id) ? { ...x, status: "Zamítnuto" } : x)));
+          const cena = konecnaCenaNabidky(q.data).bez;
+          navic = { quote_id: q.id, ...(cena > 0 ? { hodnota: cena } : {}) };
+        }
+        text = `zákazník souhlasí${q ? ` — vybrána ${q.cislo || q.name}` : ""}, připravit smlouvu`;
+        ok = await posun("smlouva", text, zaPracDni(2), ["jednani.odpoved"], navic);
+      }
+      if (akce === "podepsano") {
+        const h = hotove(["smlouva.podpis"]);
+        if (!(await uloz(zak, h))) return;
+        await pridatPoznamku(zak, "smlouva podepsána — předat back office");
+        setPracuji(false);
+        await posunDal({ ...zak, ...h });
+        return;
+      }
+      if (ok && text) await pridatPoznamku(zak, text);
+      if (ok && text) ukazHlasku("✓ " + text.charAt(0).toUpperCase() + text.slice(1));
+    } finally { setPracuji(false); }
+  };
+  const zmenitObchodnika = async (zak, kdo) => {
+    const ok = await uloz(zak, { vlastnik_obchod: kdo || null, dalsi_krok_kdo: kdo || null }, `Obchodník: ${zak.vlastnik_obchod || "—"} → ${kdo || "—"}.`);
+    if (ok) ukazHlasku(kdo ? `✓ Předáno: ${kdo}` : "Obchodník odebrán");
+  };
+  const nacenitZObchodu = (zak) => {
+    const c = zakaznik(zak.customer_id);
+    const info = poznamky.filter((p) => p.prubeh_id === zak.id && !p.system).slice(0, 6).map((p) => `${kratceD(p.datum || String(p.created_at).slice(0, 10))} ${p.text}`);
+    onNacenit?.({ prubehId: zak.id, customerId: zak.customer_id || null, typ: zak.typ || "", nazev: `${zak.typ ? zak.typ + " " : ""}${c?.name || zak.nazev}`.trim(), info, zakazka: zak.nazev });
+  };
+  const akcePohledu = {
+    zapsatPoznamku, obchod: obchodAkce, zmenitObchodnika, nacenit: nacenitZObchodu,
+    otevritNabidku: (id) => onOtevritNaceneni?.(id), vygenerovatSmlouvu: (zak) => vygenerovatSmlouvu(zak),
+    prohra: (zak) => prohrano(zak),
+    otevrit: (id, odd) => { otevritOkno(id); if (odd && odd !== "ob") setOddVyber(odd); },
+    toggleUkol: (zv, f, u) => toggleUkol(zv, f, u),
+    posunOdd: (zak, odd) => { const real = rows.find((r) => r.id === zak.id) || zak; return posunDal(pohledOdd(real, odd)); },
+    naplanovat: (zak) => otevritPlan(zak),
   };
 
   // ── Podklady pro realizaci (předávací list) ──
@@ -2355,6 +2450,24 @@ export default function Prubeh({
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{z.nazev}</h1>
           </div>
           {vykresliPanel(true)}
+        </div>
+      ) : pohled ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>
+              {pohled === "ob" ? "💼 Obchod" : pohled === "bo" ? "🗂️ Back office" : "🛠️ Realizace"}
+            </h1>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" style={btnGhost} onClick={() => { setVyberHledat(""); setVyberOkno(true); }}>🎯 Najít zakázku</button>
+              {pohled === "ob" && <button type="button" style={btn("#0369a1")} onClick={() => setNova({ nazev: "", customer_id: "", typ: "", hodnota: "", obchodnik: ja, termin: "", adresa: "", zakRezim: null, zakHledat: "", novyZak: { name: "", phone: "", email: "", adresa: "" }, telefonZak: null, kontakt: { jmeno: "", telefon: "", vztah: "" } })}>+ Nová poptávka</button>}
+            </div>
+          </div>
+          {!nacteno ? <div style={{ ...karta, color: "#64748b" }}>Načítám…</div> : pohled === "ob" ? (
+            <PohledObchod rows={rows} quotes={quotes} poznamky={poznamky} zakaznik={zakaznik} ja={ja} lide={lide} dnes={dnes} currentUser={currentUser} akce={akcePohledu} />
+          ) : (
+            <PohledOddeleni odd={pohled} rows={rows} poznamky={poznamky} zakaznik={zakaznik} ja={ja} dnes={dnes} autoZ={autoZ}
+              calendarEvents={calendarEvents} kodZakazky={(r) => contractById(r.contract_id)?.code} akce={akcePohledu} />
+          )}
         </div>
       ) : <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
