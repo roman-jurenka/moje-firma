@@ -114,6 +114,66 @@ ${podpisy(d)}`;
   return obal(`Smlouva o dílo ${d.cisloZakazky || ""}`, telo);
 }
 
+// ── Plná moc (zákazník zmocňuje firmu k jednání s distributorem, případně
+// se stavebním úřadem a SFŽP kvůli dotaci). Rozsah podle podkladů zakázky.
+const DISTRIBUTORI = {
+  "ČEZ": "ČEZ Distribuce, a. s., IČO 24729035",
+  "EG.D": "EG.D, a. s., IČO 28085400",
+  "PRE": "PREdistribuce, a. s., IČO 27376516",
+};
+export function htmlPlneMoci(d) {
+  const z = d.zakaznik || {};
+  const p = d.podklady || {};
+  const o = p.odberne || {};
+  const a = p.adresa || {};
+  const distributor = DISTRIBUTORI[o.distribuce] || (o.distribuce ? esc(o.distribuce) : `provozovatelem distribuční soustavy ${MEZERA}`);
+  const ano = (v) => String(v || "").toLowerCase() === "ano";
+  const fv = ["FVE", "FVR", "FVO"].includes(d.typ);
+  const body = [
+    `jednat jeho jménem s provozovatelem distribuční soustavy — <b>${distributor}</b> — ve věci ${fv ? "připojení výrobny elektřiny (fotovoltaické elektrárny)" : "úprav odběrného místa"}: podávat a podepisovat žádosti o připojení a o změnu rezervovaného příkonu či výkonu, uzavírat a podepisovat smlouvy o připojení, přijímat jejich návrhy, žádat o uvedení výrobny do provozu a výměnu elektroměru, předkládat potřebné dokumenty (revize, instalační dokumenty, protokoly) a přebírat písemnosti`,
+    `podávat žádosti a jednat v zákaznickém portálu distributora za odběrné místo uvedené níže`,
+  ];
+  if (ano(p.fakturace?.stavebni_povoleni)) body.push(`jednat s příslušným stavebním úřadem ve věci povolení či ohlášení stavby souvisejícího s dílem, podávat žádosti a přebírat písemnosti`);
+  if (ano(p.dotace?.vyrizeni)) body.push(`jednat se Státním fondem životního prostředí ČR ve věci dotace z programu Nová zelená úsporám (Light) na realizované opatření — podat žádost, doložit podklady a přebírat písemnosti; dotace bude vyplacena na účet zmocnitele`);
+  const adresaMista = [a.ulice && `${a.ulice} ${a.cp || ""}`.trim(), a.mesto, a.psc].filter(Boolean).join(", ") || d.misto;
+  const telo = `${NAVRH}
+<h1>PLNÁ MOC</h1>
+<div class="pod">k zastupování ve věci ${fv ? "připojení fotovoltaické elektrárny" : "odběrného místa"}${d.cisloZakazky ? ` · zakázka ${esc(d.cisloZakazky)}` : ""}</div>
+
+<h2>Zmocnitel</h2>
+<table class="bez">
+<tr><td style="width:40%">Jméno a příjmení / firma:</td><td><b>${hod(z.company || z.name)}</b></td></tr>
+<tr><td>Datum narození / IČO:</td><td>${MEZERA}</td></tr>
+<tr><td>Trvalé bydliště / sídlo:</td><td>${hod(z.address)}</td></tr>
+<tr><td>Telefon, e-mail:</td><td>${[z.phone, z.email].filter(Boolean).map(esc).join(", ") || MEZERA}</td></tr>
+</table>
+
+<h2>Zmocněnec</h2>
+<table class="bez">
+<tr><td style="width:40%">Firma:</td><td><b>${esc(COMPANY.name)}</b></td></tr>
+<tr><td>Sídlo:</td><td>${esc(COMPANY.addressLine)}, ${esc(COMPANY.city)}</td></tr>
+<tr><td>IČO / DIČ:</td><td>${esc(COMPANY.ico)} / ${esc(COMPANY.dic)}</td></tr>
+</table>
+
+<h2>Odběrné místo</h2>
+<table>
+<tr><th style="width:40%">Adresa odběrného místa</th><td>${hod(adresaMista)}</td></tr>
+<tr><th>EAN</th><td>${hod(o.ean || d.udaje?.ean)}</td></tr>
+${o.sop ? `<tr><th>Číslo SoP</th><td>${esc(o.sop)}</td></tr>` : ""}
+${a.parcela ? `<tr><th>Parcela / katastrální území</th><td>${esc(a.parcela)}${a.nazev_ku ? `, k. ú. ${esc(a.nazev_ku)}` : ""}</td></tr>` : ""}
+</table>
+
+<h2>Rozsah zmocnění</h2>
+<p>Zmocnitel tímto zmocňuje zmocněnce, aby jej zastupoval a za něj:</p>
+${body.map((b, i) => `<p>${i + 1}. ${b}.</p>`).join("")}
+<p>Zmocněnec je oprávněn pověřit dalším jednáním svého zaměstnance. Plná moc se uděluje na dobu do dokončení a uvedení díla do provozu, nejdéle však do ${MEZERA}.</p>
+
+<p style="margin-top:14pt">V ${MEZERA} dne ${hod(d.datum)}</p>
+<table class="podpisy"><tr><td><div class="cara">zmocnitel<br>${hod(z.company || z.name)}</div></td>
+<td><div class="cara">plnou moc přijímám — zmocněnec<br>${esc(COMPANY.name)}</div></td></tr></table>`;
+  return obal(`Plná moc ${z.name || ""}`, telo);
+}
+
 // ── Předávací protokol ──
 export function htmlProtokolu(d) {
   const radky = Array.from({ length: 4 }, () => "<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>").join("");

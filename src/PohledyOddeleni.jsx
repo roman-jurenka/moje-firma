@@ -539,6 +539,23 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
                   {lide.map((l) => <option key={l} value={l}>{l}</option>)}
                 </select>
               </label>
+              <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, fontSize: 13 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Dokumenty</div>
+                {[["smlouva", "Smlouva o dílo", () => akce.vygenerovatSmlouvu(z)], ["plna_moc", "Plná moc", () => akce.vygenerovatPlnouMoc?.(z)]].map(([k, l, fn]) => {
+                  const hot = z.dokumenty?.[k];
+                  return (
+                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0" }}>
+                      <span style={{ flex: 1, minWidth: 0 }} className="po-ell">
+                        {l}
+                        <span style={{ fontSize: 11, color: hot ? "#166534" : C.mu, marginLeft: 6 }}>{hot?.at ? `✓ ${kratce(hot.at.slice(0, 10))}` : "zatím ne"}</span>
+                      </span>
+                      <button type="button" style={{ ...btnS(!hot), padding: "3px 10px", fontSize: 12 }}
+                        onClick={() => (z.customer_id ? fn() : alert("Nejdřív doplň zákazníka — dokument se z něj vyplňuje."))}>{hot ? "Znovu" : "Vygenerovat"}</button>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 11, color: C.mu, marginTop: 4 }}>Stáhne se Word k úpravě a uloží na OneDrive. Plná moc bere distributora, EAN a rozsah (dotace, stavební úřad) ze specifikace.</div>
+              </div>
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", gap: 3, marginBottom: 10 }}>

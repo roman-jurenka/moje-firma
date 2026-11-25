@@ -13,7 +13,7 @@ import StavZakazkyGraf from "./StavZakazkyGraf.jsx";
 import TabuleOddeleni from "./TabuleOddeleni.jsx";
 import { PohledObchod, PohledOddeleni } from "./PohledyOddeleni.jsx";
 import { soubezne, stavOddeleni, hlavniFaze, pohledOdd, stavFazeOdd, postupOdd, oddPoTerminu, posunOdd, oddFaze, aktivni, HOTOVO, CEKA, naRadeOdd, oddeleniById } from "./oddeleniZakazky.js";
-import { htmlSmlouvy, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
+import { htmlSmlouvy, htmlPlneMoci, htmlProtokolu, htmlDodatku, stahnoutWord, specifikaceZNabidky, pocetVeSlozce } from "./dokumentyZakazky.js";
 import { kontrolyZakazky, NAVOD } from "./prubehKontroly.js";
 import { aktualniFirma, aktualizujOdkazy, upozorneniFirmy } from "./firmaDokumenty.js";
 import { vychoziProhlaseni, vychoziPrejimajici, vychoziPredmet, vychoziZaver, znackyProhlaseni, volbyTextu, vyresit, bezZnacek } from "./protokolProhlaseni.js";
@@ -611,6 +611,7 @@ export default function Prubeh({
       cisloOP: q?.data?.fve?.cisloOP || "",
       specifikace: specifikaceZNabidky(q?.data, TYPY.find((t) => t.id === zak.typ)?.label.replace(/^[A-Z]+ — /, "")),
       zastupce: zak.vlastnik_obchod || ja || "",
+      podklady: zak.podklady || {},
     };
   };
   // Firemní Word šablona, když v appce je — nejdřív pro typ zakázky
@@ -667,6 +668,7 @@ export default function Prubeh({
     const jmeno = d.zakaznik.name || zak.nazev || "";
     const cislo = d.cisloOP || d.cisloZakazky;
     const [nazev, html] = druh === "smlouva" ? [`Smlouva o dílo ${cislo} ${jmeno}`, () => htmlSmlouvy(d)]
+      : druh === "plna_moc" ? [`Plná moc ${jmeno}`, () => htmlPlneMoci(d)]
       : druh === "protokol" ? [`Předávací protokol ${cislo} ${jmeno}`, () => htmlProtokolu(d)]
       : [`Dodatek ${dod.cislo} ${d.cisloZakazky} ${jmeno}`, () => htmlDodatku(d, dod)];
     return (await zVlastniSablony(druh, znackySablony(d, druh === "dodatek" ? dod : undefined), nazev, zak.typ, stahnout)) || stahnoutWord(nazev, html(), stahnout);
@@ -685,7 +687,7 @@ export default function Prubeh({
   // Dokumenty, které se nepovedlo uložit na OneDrive — drží se v dokumenty.onedriveCeka,
   // dokud se nenahrají (upozornění v zakázce i v seznamu, Zkusit znovu).
   const klicCeka = (druh, cislo) => (druh === "dodatek" ? `dodatek-${cislo}` : druh);
-  const NAZEV_DRUHU = { smlouva: "Smlouva o dílo", protokol: "Předávací protokol", dodatek: "Dodatek" };
+  const NAZEV_DRUHU = { smlouva: "Smlouva o dílo", plna_moc: "Plná moc", protokol: "Předávací protokol", dodatek: "Dodatek" };
   const popisCeka = (c) => (c.druh === "dodatek" ? `Dodatek č. ${c.cislo}` : NAZEV_DRUHU[c.druh] || c.druh);
   const sCekanim = (dokumenty, druh, cislo, od, soubor) => {
     const id = klicCeka(druh, cislo);
@@ -795,12 +797,12 @@ export default function Prubeh({
       const zaznam = { at: new Date().toISOString(), kdo: ja || null };
       let od = {};
       let popis = NAZEV_DRUHU[druh];
-      if (druh === "smlouva" || druh === "protokol") {
+      if (druh === "smlouva" || druh === "protokol" || druh === "plna_moc") {
         const soubor = await souborDokumentu(zak, druh, dodatek);
         od = await naOneDrive(zak, soubor);
         const nastaveni = druh === "protokol" && dodatek ? { nastaveni: dodatek } : {};
         const dokumenty = sCekanim({ ...(zak.dokumenty || {}), [druh]: { ...zaznam, soubor: soubor.soubor, onedrive: od.onedrive || null, ...nastaveni } }, druh, null, od, soubor.soubor);
-        await uloz(zak, { dokumenty }, `${druh === "smlouva" ? "Vygenerovaný návrh smlouvy o dílo" : "Vygenerovaný předávací protokol"}${od.onedrive ? " — uložený na OneDrive (Dokumenty)" : " — na OneDrive se NEuložil"}.`);
+        await uloz(zak, { dokumenty }, `${druh === "smlouva" ? "Vygenerovaný návrh smlouvy o dílo" : druh === "plna_moc" ? "Vygenerovaná plná moc" : "Vygenerovaný předávací protokol"}${od.onedrive ? " — uložený na OneDrive (Dokumenty)" : " — na OneDrive se NEuložil"}.`);
       } else if (druh === "dodatek") {
         const dodatky = zak.dokumenty?.dodatky || [];
         const { aktualizovatCenu, ...udajeDodatku } = dodatek;
@@ -823,6 +825,7 @@ export default function Prubeh({
     setGeneruji(false);
   };
   const vygenerovatSmlouvu = (zak) => vygenerovatDokument(zak, "smlouva");
+  const vygenerovatPlnouMoc = (zak) => vygenerovatDokument(zak, "plna_moc");
 
   const toggleUkol = async (zak, faze, ukol) => {
     const klic = `${faze.id}.${ukol.id}`;
@@ -1235,7 +1238,7 @@ export default function Prubeh({
       const ok = await uloz(zak, { zdroj, kampan }, `Kampaň: ${zdrojById[zdroj]?.label || "nezadáno"}${kampan ? ` (${kampan})` : ""}.`);
       if (ok) ukazHlasku("✓ Kampaň uložená");
     },
-    otevritNabidku: (id) => onOtevritNaceneni?.(id), vygenerovatSmlouvu: (zak) => vygenerovatSmlouvu(zak),
+    otevritNabidku: (id) => onOtevritNaceneni?.(id), vygenerovatSmlouvu: (zak) => vygenerovatSmlouvu(zak), vygenerovatPlnouMoc: (zak) => vygenerovatPlnouMoc(zak),
     prohra: (zak) => prohrano(zak),
     otevrit: (id, odd) => { otevritOkno(id); if (odd && odd !== "ob") setOddVyber(odd); },
     toggleUkol: (zv, f, u) => toggleUkol(zv, f, u),
@@ -3666,6 +3669,7 @@ export default function Prubeh({
       ...(!dokZ.smlouva && fazePlati(fazeById.smlouva, z) ? [{ klic: "g-smlouva-nova", nazev: "Smlouva o dílo", ikona: "smlouva", stitek: "+ vygenerovat", kategorie: "zatím nevygenerovaná", novy: true, otevrit: () => (zk ? vygenerovatSmlouvu(z) : alert("Nejdřív doplň zákazníka (Zákazník a místo → Upravit) — smlouva se z něj vyplňuje.")) }] : []),
       ...(!dokZ.protokol ? [{ klic: "g-protokol-novy", nazev: "Předávací protokol", ikona: "protokol", stitek: "+ vygenerovat", kategorie: "zatím nevygenerovaný", novy: true, otevrit: () => (zk ? otevritProtokol(z) : alert("Nejdřív doplň zákazníka (Zákazník a místo → Upravit) — protokol se z něj vyplňuje.")) }] : []),
       ...(dokZ.smlouva ? [{ klic: "g-smlouva", nazev: "Smlouva o dílo", ikona: "smlouva", stitek: "smlouva", kategorie: "vygenerovaná", datum: datumZ(dokZ.smlouva), soubor: () => souborDokumentu(z, "smlouva", undefined, false), stahnout: () => souborDokumentu(z, "smlouva") }] : []),
+      ...(dokZ.plna_moc ? [{ klic: "g-plna-moc", nazev: "Plná moc", ikona: "smlouva", stitek: "plná moc", kategorie: "vygenerovaná", datum: datumZ(dokZ.plna_moc), soubor: () => souborDokumentu(z, "plna_moc", undefined, false), stahnout: () => souborDokumentu(z, "plna_moc") }] : [{ klic: "g-plna-moc-nova", nazev: "Plná moc", ikona: "smlouva", stitek: "+ vygenerovat", kategorie: "zatím nevygenerovaná", novy: true, otevrit: () => (zk ? vygenerovatPlnouMoc(z) : alert("Nejdřív doplň zákazníka (Zákazník a místo → Upravit) — plná moc se z něj vyplňuje.")) }]),
       ...(dokZ.protokol ? [{ klic: "g-protokol", nazev: "Předávací protokol", ikona: "protokol", stitek: "protokol", kategorie: "vygenerovaný", datum: datumZ(dokZ.protokol), soubor: () => souborDokumentu(z, "protokol", undefined, false), stahnout: () => souborDokumentu(z, "protokol") }] : []),
       ...(dokZ.dodatky || []).map((dod) => ({ klic: `g-dodatek-${dod.cislo}`, nazev: `Dodatek č. ${dod.cislo}`, ikona: "dodatek", stitek: "dodatek", kategorie: dod.popis || "vygenerovaný", datum: datumZ(dod), soubor: () => souborDokumentu(z, "dodatek", dod, false), stahnout: () => souborDokumentu(z, "dodatek", dod) })),
       ...(qZ && onOtevritNaceneni ? [{ klic: "g-nabidka", nazev: `Nabídka ${qZ.cislo || qZ.name || ""}`.trim(), ikona: "nabidka", stitek: "nabídka", kategorie: qZ.status || "v Nacenění", otevrit: () => onOtevritNaceneni(z.quote_id) }] : []),
