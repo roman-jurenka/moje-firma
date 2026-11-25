@@ -227,27 +227,57 @@ function zNabidky(quote) {
   return radky;
 }
 
-// Stringy: počet + u každého směr (a volitelně počet panelů). Ukládá se jako
-// text do podklady.technicka.stringy („String 1: J (8 panelů)“ po řádcích),
+// Stringy: počet + u každého směr, počet a typ panelů a typ konstrukce.
+// Ukládá se jako text do podklady.technicka.stringy, jeden string na řádek:
+// „String 1: JV · 8× Aiko 500wp · konstrukce: Šikmá střecha – taška“,
 // takže ho dál čte náhled podkladů v kalendáři i formulář v Průběhu.
 const SMERY = ["J", "JV", "JZ", "V", "Z", "S", "SV", "SZ"];
 const SMERY_NAZEV = { J: "jih", JV: "jihovýchod", JZ: "jihozápad", V: "východ", Z: "západ", S: "sever", SV: "severovýchod", SZ: "severozápad" };
+const KONSTRUKCE = ["Šikmá střecha – taška", "Šikmá střecha – plech", "Šikmá střecha – eternit", "Šikmá střecha – šindel", "Plochá střecha – na jih", "Plochá střecha – východ/západ", "Pozemní konstrukce", "Fasáda", "Pergola / carport"];
+const prazdnyString = (vychozi) => ({ smer: "", panelu: "", panel: vychozi?.panel || "", konstrukce: vychozi?.konstrukce || "" });
 const parsujStringy = (text) => {
   const radky = String(text || "").split("\n").map((r) => r.trim()).filter(Boolean);
-  const out = radky.map((r) => r.match(/^String\s+\d+:\s*([A-Z]{1,2})?\s*(?:\((\d+)\s*panel[^)]*\))?\s*$/i));
-  if (!radky.length || out.some((m) => !m)) return null;
-  return out.map((m) => ({ smer: (m[1] || "").toUpperCase(), panelu: m[2] || "" }));
+  if (!radky.length) return null;
+  const out = [];
+  for (const r of radky) {
+    const m = r.match(/^String\s+\d+:\s*(.*)$/i);
+    if (!m) return null;
+    const s = { smer: "", panelu: "", panel: "", konstrukce: "" };
+    const casti = m[1].split(" · ").map((x) => x.trim()).filter(Boolean);
+    for (const c of casti) {
+      let x;
+      if (/^[A-Z]{1,2}$/i.test(c) && SMERY.includes(c.toUpperCase())) s.smer = c.toUpperCase();
+      else if ((x = c.match(/^([A-Z]{1,2})\s*\((\d+)\s*panel[^)]*\)$/i))) { s.smer = x[1].toUpperCase(); s.panelu = x[2]; } // starý zápis
+      else if ((x = c.match(/^\((\d+)\s*panel[^)]*\)$/i))) s.panelu = x[1];
+      else if ((x = c.match(/^(\d+)\s*×\s*(.*)$/))) { s.panelu = x[1]; s.panel = x[2] === "panel" ? "" : x[2]; }
+      else if ((x = c.match(/^konstrukce:\s*(.*)$/i))) s.konstrukce = x[1];
+      else if ((x = c.match(/^panel:\s*(.*)$/i))) s.panel = x[1];
+      else return null;
+    }
+    out.push(s);
+  }
+  return out;
 };
-const textStringu = (arr) => arr.map((s, i) => `String ${i + 1}: ${s.smer || ""}${s.panelu ? ` (${s.panelu} panelů)` : ""}`.trim()).join("\n");
+const textStringu = (arr) => arr.map((s, i) => {
+  const casti = [];
+  if (s.smer) casti.push(s.smer);
+  if (s.panelu) casti.push(`${s.panelu}× ${s.panel || "panel"}`);
+  else if (s.panel) casti.push(`panel: ${s.panel}`);
+  if (s.konstrukce) casti.push(`konstrukce: ${s.konstrukce}`);
+  return `String ${i + 1}: ${casti.join(" · ")}`.trim();
+}).join("\n");
 
-function StringyEditor({ idPrefix, text, panelu, onChange }) {
+function StringyEditor({ idPrefix, text, panelu, vychozi, onChange }) {
   const parsed = parsujStringy(text);
   const puvodni = !parsed && String(text || "").trim() ? text : "";
   const arr = parsed || [];
   const nastavit = (nove) => onChange(nove.length ? textStringu(nove) : "");
-  const pocet = (n) => nastavit(Array.from({ length: n }, (_, i) => arr[i] || { smer: "", panelu: "" }));
+  const pocet = (n) => nastavit(Array.from({ length: n }, (_, i) => arr[i] || prazdnyString(vychozi)));
   const zmen = (i, k, v) => nastavit(arr.map((s, j) => (j === i ? { ...s, [k]: v } : s)));
   const soucet = arr.reduce((s, x) => s + (Number(x.panelu) || 0), 0);
+  const panely = [...new Set([vychozi?.panel, ...arr.map((s) => s.panel)].filter(Boolean))];
+  const konstrukce = [...new Set([vychozi?.konstrukce, ...KONSTRUKCE, ...arr.map((s) => s.konstrukce)].filter(Boolean))];
+  const lbl = { display: "flex", flexDirection: "column", gap: 2, fontSize: 11, color: C.sub, minWidth: 0 };
   return (
     <div style={{ gridColumn: "1 / -1", fontSize: 12, color: C.sub }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -263,17 +293,31 @@ function StringyEditor({ idPrefix, text, panelu, onChange }) {
         )}
       </div>
       {puvodni && <div style={{ marginTop: 4, color: C.org }}>Původní zápis: „{puvodni}“ — výběrem počtu stringů se nahradí.</div>}
+      <datalist id={`${idPrefix}-panely`}>{panely.map((x) => <option key={x} value={x} />)}</datalist>
+      <datalist id={`${idPrefix}-konstr`}>{konstrukce.map((x) => <option key={x} value={x} />)}</datalist>
       {arr.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 6, marginTop: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))", gap: 6, marginTop: 6 }}>
           {arr.map((s, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 8px", background: C.bg }}>
-              <b style={{ color: C.text, whiteSpace: "nowrap" }}>String {i + 1}</b>
-              <select id={`${idPrefix}-${i}-smer`} aria-label={`Směr stringu ${i + 1}`} style={{ ...inpS, padding: "4px 6px" }} value={s.smer} onChange={(e) => zmen(i, "smer", e.target.value)}>
-                <option value="">směr…</option>
-                {SMERY.map((x) => <option key={x} value={x}>{x} — {SMERY_NAZEV[x]}</option>)}
-              </select>
-              <input aria-label={`Počet panelů ve stringu ${i + 1}`} type="number" min="0" placeholder="panelů" style={{ ...inpS, width: 70, padding: "4px 6px" }}
-                value={s.panelu} onChange={(e) => zmen(i, "panelu", e.target.value.replace(/\D/g, ""))} />
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "70px 1fr", gap: 6, alignItems: "end", border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 8px", background: C.bg }}>
+              <b style={{ color: C.text, whiteSpace: "nowrap", alignSelf: "center" }}>String {i + 1}</b>
+              <label style={lbl}>Směr
+                <select id={`${idPrefix}-${i}-smer`} style={{ ...inpS, padding: "4px 6px" }} value={s.smer} onChange={(e) => zmen(i, "smer", e.target.value)}>
+                  <option value="">vyber…</option>
+                  {SMERY.map((x) => <option key={x} value={x}>{x} — {SMERY_NAZEV[x]}</option>)}
+                </select>
+              </label>
+              <label style={lbl}>Počet
+                <input aria-label={`Počet panelů ve stringu ${i + 1}`} type="number" min="0" placeholder="ks" style={{ ...inpS, width: "100%", boxSizing: "border-box", padding: "4px 6px" }}
+                  value={s.panelu} onChange={(e) => zmen(i, "panelu", e.target.value.replace(/\D/g, ""))} />
+              </label>
+              <label style={lbl}>Typ panelu
+                <input aria-label={`Typ panelu ve stringu ${i + 1}`} list={`${idPrefix}-panely`} placeholder="např. Aiko 500wp" style={{ ...inpS, width: "100%", boxSizing: "border-box", padding: "4px 6px" }}
+                  value={s.panel} onChange={(e) => zmen(i, "panel", e.target.value.replace(/ · /g, " "))} />
+              </label>
+              <label style={{ ...lbl, gridColumn: "1 / -1" }}>Typ konstrukce
+                <input aria-label={`Typ konstrukce u stringu ${i + 1}`} list={`${idPrefix}-konstr`} placeholder="vyber nebo napiš" style={{ ...inpS, width: "100%", boxSizing: "border-box", padding: "4px 6px" }}
+                  value={s.konstrukce} onChange={(e) => zmen(i, "konstrukce", e.target.value.replace(/ · /g, " "))} />
+              </label>
             </div>
           ))}
         </div>
@@ -320,7 +364,7 @@ function SpecifikaceZakazky({ z, quote, onUlozit }) {
               const id = `sp-${z.id}-${s.id}-${f.id}`;
               const moz = moznostiPole(f, {});
               if (s.id === "technicka" && f.id === "stringy") {
-                return <StringyEditor key={f.id} idPrefix={id} text={klic(s.id, f.id)} panelu={Number(quote?.data?.fve?.panel?.qty) || 0} onChange={(t) => nastav(s.id, f.id, t)} />;
+                return <StringyEditor key={f.id} idPrefix={id} text={klic(s.id, f.id)} panelu={Number(quote?.data?.fve?.panel?.qty) || 0} vychozi={{ panel: quote?.data?.fve?.panel?.name || "", konstrukce: quote?.data?.fve?.konstrukce?.name || "" }} onChange={(t) => nastav(s.id, f.id, t)} />;
               }
               return (
                 <label key={f.id} htmlFor={id} style={{ fontSize: 12, color: C.sub, gridColumn: f.dlouhe ? "1 / -1" : undefined, minWidth: 0 }}>
