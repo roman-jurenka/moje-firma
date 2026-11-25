@@ -182,6 +182,16 @@ export const normalizujTyp = (t) => {
   return TYPY.find((x) => s.startsWith(x.id))?.id || (s.includes("FVE") ? "FVE" : "");
 };
 
+// Odkud poptávka přišla (sloupec zdroj) + podrobnost v kampan (název kampaně, kdo doporučil…).
+export const ZDROJE = [
+  { id: "facebook", label: "Facebook", kratky: "Facebook", barva: "#1877F2", svetla: "#e7f0fe" },
+  { id: "instagram", label: "Instagram", kratky: "Instagram", barva: "#c13584", svetla: "#fce7f3" },
+  { id: "web", label: "Formulář webu", kratky: "Web", barva: "#0f766e", svetla: "#ccfbf1" },
+  { id: "doporuceni", label: "Doporučení", kratky: "Doporučení", barva: "#7c3aed", svetla: "#ede9fe" },
+  { id: "jine", label: "Jiné", kratky: "Jiné", barva: "#475569", svetla: "#f1f5f9" },
+];
+export const zdrojById = Object.fromEntries(ZDROJE.map((z) => [z.id, z]));
+
 // Kdo je na tahu (sloupec duvod_cekani): prázdné = my (firma), jinak na koho čekáme.
 // kratky = štítek v seznamu a v okně zakázky.
 export const DUVODY_CEKANI = [

@@ -39,7 +39,7 @@ import {
   SEKCE, sekceById, FAZE, fazeById, PRVNI_FAZE, TYPY, normalizujTyp, DUVODY_CEKANI, nazevDuvodu, naTahuMy, naTahuKratky,
   nazevFaze, ukolyPro, nazevCasti, CASTI_MONTAZE, fazeSekce, dalsiFaze, predchoziFaze, fazeKRozhodnuti, ukolHotovy, fazeHotova, prvniNehotovy,
   branaSekce, NAZEV_BRANY, postupSekce, FAZE_ZE_STAVU_ZAKAZKY, FAZE_ZE_STAGE, STAV_ZAKAZKY_ZE_SEKCE, STAGE_Z_FAZE,
-  NASTAVENI_KEY, pouzijNastaveni, zakladFaze, pravidlo, PRAVIDLA_TYPU, terminFaze, planovaneMd, fazePlati,
+  NASTAVENI_KEY, pouzijNastaveni, zakladFaze, pravidlo, PRAVIDLA_TYPU, terminFaze, planovaneMd, fazePlati, ZDROJE, zdrojById,
 } from "./prubehFaze.js";
 
 // ─── Průběh zakázek (varianta D: přehled + panel dalšího kroku) ─────────────
@@ -1226,6 +1226,10 @@ export default function Prubeh({
   };
   const akcePohledu = {
     zapsatPoznamku, obchod: obchodAkce, zmenitObchodnika, nacenit: nacenitZObchodu,
+    zmenitZdroj: async (zak, zdroj, kampan) => {
+      const ok = await uloz(zak, { zdroj, kampan }, `Kampaň: ${zdrojById[zdroj]?.label || "nezadáno"}${kampan ? ` (${kampan})` : ""}.`);
+      if (ok) ukazHlasku("✓ Kampaň uložená");
+    },
     otevritNabidku: (id) => onOtevritNaceneni?.(id), vygenerovatSmlouvu: (zak) => vygenerovatSmlouvu(zak),
     prohra: (zak) => prohrano(zak),
     otevrit: (id, odd) => { otevritOkno(id); if (odd && odd !== "ob") setOddVyber(odd); },
@@ -1680,6 +1684,7 @@ export default function Prubeh({
       hodnota: nova.hodnota ? Number(nova.hodnota) : null, faze: PRVNI_FAZE, stav: "otevrena",
       vlastnik_obchod: nova.obchodnik || ja || null, dalsi_krok: FAZE[0].ukoly[0].text, dalsi_krok_kdo: nova.obchodnik || ja || null,
       dalsi_krok_termin: nova.termin || terminFaze(FAZE[0]),
+      zdroj: nova.zdroj || null, kampan: nova.zdroj && nova.kampan?.trim() ? nova.kampan.trim() : null,
     };
     const { data, error } = await supabase.from("zakazky_prubeh").insert(row).select().single();
     setPracuji(false);
@@ -2741,6 +2746,13 @@ export default function Prubeh({
                   {lide.map((j) => <option key={j} value={j}>{j}</option>)}
                 </select></div>
               <div><label style={lbl} htmlFor="pr-ter">Ozvat se zákazníkovi do</label><input id="pr-ter" type="date" style={inp} value={nova.termin} onChange={(e) => setNova({ ...nova, termin: e.target.value })} /></div>
+              <div><label style={lbl} htmlFor="pr-zdroj">Kampaň (odkud přišel)</label>
+                <select id="pr-zdroj" style={inp} value={nova.zdroj || ""} onChange={(e) => setNova({ ...nova, zdroj: e.target.value })}>
+                  <option value="">— nezadáno —</option>
+                  {ZDROJE.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                </select></div>
+              {nova.zdroj && <div><label style={lbl} htmlFor="pr-kampan">{nova.zdroj === "doporuceni" ? "Kdo doporučil" : nova.zdroj === "web" ? "Stránka / formulář" : nova.zdroj === "jine" ? "Odkud" : "Název kampaně"}</label>
+                <input id="pr-kampan" style={inp} value={nova.kampan || ""} onChange={(e) => setNova({ ...nova, kampan: e.target.value })} /></div>}
             </div>
             <div><label style={lbl} htmlFor="pr-adr">Místo realizace (adresa)</label><input id="pr-adr" style={inp} value={nova.adresa} placeholder="předvyplní se ze zákazníka, jde přepsat" onChange={(e) => setNova({ ...nova, adresa: e.target.value })} /></div>
             {/* Kontaktní osoba na místě — když to není přímo zákazník (manželka, soused, stavbyvedoucí…) */}

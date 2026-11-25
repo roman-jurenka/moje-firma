@@ -4,7 +4,7 @@
 // práci se zakázkou: zápis poznámky (datum · iniciály · text · termín), rychlé
 // akce a historii. Veškeré zápisy dělá Průběh (prop „akce“), tady je jen pohled.
 import { useMemo, useState } from "react";
-import { FAZE, fazeById, fazePlati, nazevFaze, ukolyPro, ukolHotovy } from "./prubehFaze.js";
+import { FAZE, fazeById, fazePlati, nazevFaze, ukolyPro, ukolHotovy, ZDROJE, zdrojById } from "./prubehFaze.js";
 import { soubezne, stavOddeleni, aktivni, pohledOdd, oddeleniById, CEKA } from "./oddeleniZakazky.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { bezDiakritiky } from "./hledani.js";
@@ -34,7 +34,7 @@ const btnS = (hl, barva = "#0369a1") => ({
 const inpS = { border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 8px", fontSize: 13, fontFamily: "inherit", minWidth: 0, background: "#fff", color: C.text };
 const CSS = `
 .po-g{display:grid;gap:10px;align-items:center;padding:8px 14px;font-size:13px}
-.po-ob{grid-template-columns:minmax(0,1.5fr) 44px 92px 112px minmax(0,2.4fr) 108px}
+.po-ob{grid-template-columns:minmax(0,1.5fr) 44px 104px 92px 112px minmax(0,2.3fr) 108px}
 .po-od{grid-template-columns:minmax(0,1.5fr) 44px minmax(0,1.4fr) 40px minmax(0,2.2fr) 108px}
 .po-th{font-size:11px;color:${C.sub};font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding-top:6px;padding-bottom:6px;border-bottom:1px solid ${C.line}}
 .po-r{border-top:1px solid #f1f5f9;cursor:pointer}.po-r:hover{background:${C.bg}}
@@ -44,8 +44,8 @@ const CSS = `
 .po-tyden{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
 @media(max-width:860px){
   .po-ob,.po-od{grid-template-columns:minmax(0,1fr) auto auto}
-  .po-ob>:nth-child(2),.po-od>:nth-child(2),.po-ob>:nth-child(3),.po-od>:nth-child(4){display:none}
-  .po-ob>:nth-child(5),.po-od>:nth-child(5),.po-od>:nth-child(3){grid-column:1/-1}
+  .po-ob>:nth-child(2),.po-ob>:nth-child(3),.po-ob>:nth-child(4),.po-od>:nth-child(2),.po-od>:nth-child(4){display:none}
+  .po-ob>:nth-child(6),.po-od>:nth-child(5),.po-od>:nth-child(3){grid-column:1/-1}
   .po-th{display:none}
   .po-det{grid-template-columns:1fr}
   .po-frm{grid-template-columns:1fr 44px}.po-frm>.po-txt{grid-column:1/-1}
@@ -189,6 +189,37 @@ const StitekFaze = ({ z }) => {
   return <span style={{ background: bg, color: fg, fontSize: 11, fontWeight: 700, borderRadius: 6, padding: "2px 7px", whiteSpace: "nowrap" }}>{nazevFaze(fazeById[z.faze], z.typ) || z.faze}</span>;
 };
 
+const StitekZdroje = ({ z }) => {
+  const x = zdrojById[z.zdroj];
+  if (!x) return <span style={{ fontSize: 12, color: C.mu }}>—</span>;
+  return (
+    <span title={[x.label, z.kampan].filter(Boolean).join(" · ")} style={{ display: "inline-block", maxWidth: "100%", background: x.svetla, color: x.barva, fontSize: 11, fontWeight: 700, borderRadius: 6, padding: "2px 7px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", verticalAlign: "middle" }}>
+      {x.kratky}{z.kampan && z.zdroj === "doporuceni" ? ` · ${z.kampan}` : ""}
+    </span>
+  );
+};
+
+// Kampaň v detailu obchodu: odkud poptávka přišla + podrobnost (název kampaně, kdo doporučil…).
+function UpravaZdroje({ z, onUlozit }) {
+  const [zd, setZd] = useState(z.zdroj || "");
+  const [kampan, setKampan] = useState(z.kampan || "");
+  const zmeneno = zd !== (z.zdroj || "") || kampan.trim() !== (z.kampan || "");
+  const popisek = zd === "doporuceni" ? "Kdo doporučil" : zd === "web" ? "Stránka / formulář" : zd === "jine" ? "Odkud" : "Název kampaně";
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, fontSize: 13 }}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>Kampaň</div>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
+        {ZDROJE.map((x) => (
+          <button key={x.id} type="button" aria-pressed={zd === x.id} onClick={() => setZd(zd === x.id ? "" : x.id)}
+            style={{ ...btnS(zd === x.id, x.barva), padding: "3px 8px", fontSize: 12 }}>{x.label}</button>
+        ))}
+      </div>
+      {zd && <input aria-label={popisek} placeholder={popisek} value={kampan} onChange={(e) => setKampan(e.target.value)} style={{ ...inpS, width: "100%", boxSizing: "border-box" }} />}
+      {zmeneno && <button type="button" style={{ ...btnS(true), marginTop: 6 }} onClick={() => onUlozit(zd || null, zd ? kampan.trim() || null : null)}>Uložit kampaň</button>}
+    </div>
+  );
+}
+
 export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes, currentUser, akce }) {
   const vedeni = ["admin", "manager"].includes(currentUser?.role);
   const obchody = useMemo(() => rows.filter((z) => z.stav === "otevrena" && !soubezne(z) && fazeById[z.faze]?.sekce === "ob"), [rows]);
@@ -199,6 +230,8 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
   const [razeni, setRazeniS] = useState(() => ulozene("obchod_razeni", "termin"));
   const setRazeni = (v) => { setRazeniS(v); ulozit("obchod_razeni", v); };
   const [hledat, setHledat] = useState("");
+  const [zdroj, setZdrojS] = useState(() => ulozene("obchod_zdroj", "vse"));
+  const setZdroj = (v) => { setZdrojS(v); ulozit("obchod_zdroj", v); };
   const [otevreno, setOtevreno] = useState(null);
   const [dotaz, setDotaz] = useState(null); // { id, typ: "obhlidka" | "varianta", datum }
 
@@ -211,8 +244,10 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
   const lidskePozn = (z) => (poznZ[z.id] || []).filter((p) => !p.system);
 
   const h = bezDiakritiky(hledat.trim().toLowerCase());
-  const vybrane = obchody.filter((z) => (kdo === "vse" || !obchodnici.includes(kdo) || kdoZ(z) === kdo)
-    && (!h || bezDiakritiky(`${z.nazev} ${zakaznik(z.customer_id)?.name || ""} ${z.misto_adresa || ""}`.toLowerCase()).includes(h)));
+  const vZdroji = (z) => zdroj === "vse" || (zdroj === "nezadano" ? !z.zdroj : z.zdroj === zdroj);
+  const vybrane = obchody.filter((z) => (kdo === "vse" || !obchodnici.includes(kdo) || kdoZ(z) === kdo) && vZdroji(z)
+    && (!h || bezDiakritiky(`${z.nazev} ${zakaznik(z.customer_id)?.name || ""} ${z.misto_adresa || ""} ${z.kampan || ""}`.toLowerCase()).includes(h)));
+  const pocetZdroje = (id) => obchody.filter((z) => (id === "nezadano" ? !z.zdroj : z.zdroj === id)).length;
   const poradiF = (z) => FAZE.findIndex((f) => f.id === z.faze);
   const ser = {
     termin: (a, b) => (a.dalsi_krok_termin || "9999").localeCompare(b.dalsi_krok_termin || "9999"),
@@ -249,6 +284,15 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
         {[["termin", "Termín"], ["faze", "Fáze"], ["hodnota", "Hodnota"]].map(([v, l]) => <button key={v} type="button" style={chip(razeni === v, "#334155")} onClick={() => setRazeni(v)}>{l}</button>)}
         <input type="search" aria-label="Hledat obchod" placeholder="Hledat…" value={hledat} onChange={(e) => setHledat(e.target.value)} style={{ ...inpS, width: 170 }} />
       </div>
+      <div role="group" aria-label="Kampaň" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: -4 }}>
+        <span style={{ fontSize: 13, color: C.sub }}>Kampaň:</span>
+        <button type="button" style={chip(zdroj === "vse", "#334155")} onClick={() => setZdroj("vse")}>Vše ({obchody.length})</button>
+        {[...ZDROJE, { id: "nezadano", label: "Nezadáno", barva: "#94a3b8" }].map((x) => {
+          const n = pocetZdroje(x.id);
+          if (!n && zdroj !== x.id) return null;
+          return <button key={x.id} type="button" style={chip(zdroj === x.id, x.barva)} onClick={() => setZdroj(x.id)}>{x.label} ({n})</button>;
+        })}
+      </div>
 
       {!skupiny.length && <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: 24, color: C.sub, fontSize: 14 }}>Žádné rozjednané obchody{hledat ? " pro hledaný text" : ""}.</div>}
 
@@ -260,7 +304,7 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
             <Hlavicka jmeno={o} barva="#0369a1" pocet={`${ks.length} ${ks.length === 1 ? "obchod" : ks.length < 5 ? "obchody" : "obchodů"}`}
               doplnek={sMax ? `rozjednáno ${sMin === sMax ? tis(sMin) : `${tis(sMin)}–${tis(sMax)}`} tis. Kč bez DPH` : ""}
               poTerminu={ks.filter((z) => z.dalsi_krok_termin && z.dalsi_krok_termin < dnes).length} dnes={ks.filter((z) => z.dalsi_krok_termin === dnes).length} />
-            <div className="po-g po-ob po-th"><span>Zákazník</span><span>Typ</span><span>Fáze</span><span style={{ textAlign: "right" }}>Hodnota</span><span>Poslední poznámka</span><span>Termín</span></div>
+            <div className="po-g po-ob po-th"><span>Zákazník</span><span>Typ</span><span>Kampaň</span><span>Fáze</span><span style={{ textAlign: "right" }}>Hodnota</span><span>Poslední poznámka</span><span>Termín</span></div>
             {ks.map((z) => {
               const pz = lidskePozn(z);
               const posl = pz[0];
@@ -279,6 +323,7 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
                       {c?.name && !z.nazev?.includes(c.name) && <span style={{ color: C.sub }}> · {c.name}</span>}
                     </span>
                     <span style={{ color: z.typ ? C.sub : C.org, fontSize: 12, fontWeight: z.typ ? 400 : 700 }}>{z.typ || "⚠ typ"}</span>
+                    <span className="po-ell"><StitekZdroje z={z} /></span>
                     <span><StitekFaze z={z} /></span>
                     <span style={{ textAlign: "right", lineHeight: 1.25 }}><BunkaHodnoty h={hz} onNacenit={() => akce.nacenit(z)} /></span>
                     <span className="po-ell">{posl ? <Poznamka p={posl} ja={ja} /> : <span style={{ color: C.mu }}>{z.dalsi_krok || "zatím bez poznámky — klikněte a zapište"}</span>}{pz.length > 1 && <span style={{ fontSize: 11, color: C.mu, marginLeft: 6 }}>+{pz.length - 1}</span>}</span>
@@ -300,6 +345,7 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
                           )) : <div style={{ color: C.sub }}>{hz?.odhad ? `Odhad ${tis(hz.min)} tis. — nabídka zatím není.` : "Zatím bez nabídky."}</div>}
                           {!z.quote_id && <button type="button" style={{ ...btnS(true), marginTop: 8 }} onClick={() => akce.nacenit(z)}>Nacenit ↗</button>}
                         </div>
+                        <UpravaZdroje key={`zd-${z.id}`} z={z} onUlozit={(zd, kampan) => akce.zmenitZdroj(z, zd, kampan)} />
                         <label style={{ fontSize: 12, color: C.sub }}>Obchodník
                           <select style={{ ...inpS, width: "100%", marginTop: 3 }} value={z.vlastnik_obchod || ""} onChange={(e) => akce.zmenitObchodnika(z, e.target.value)}>
                             <option value="">— nepřiřazeno —</option>

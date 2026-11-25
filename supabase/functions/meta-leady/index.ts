@@ -162,6 +162,7 @@ async function zpracovat(lead: Record<string, unknown>, pageId: string, formNaze
 
     const { data: pr, error: ePr } = await db.from("zakazky_prubeh").insert({
       nazev, customer_id: customerId, typ, deal_id: deal.id, faze: "poptavka", stav: "otevrena",
+      zdroj: String(lead.platform || "").toLowerCase() === "ig" ? "instagram" : "facebook", kampan: (lead.campaign_name as string) || formNazev || null,
       vlastnik_obchod: obchodnik, dalsi_krok: "Zavolat zákazníkovi (lead z Facebooku)", dalsi_krok_kdo: obchodnik, dalsi_krok_termin: zitra(),
       misto_adresa: r.mesto || null, misto_kontakt: jmeno, misto_telefon: r.telefon || null,
     }).select("id").single();
@@ -189,7 +190,7 @@ async function zpracovat(lead: Record<string, unknown>, pageId: string, formNaze
   }
 }
 
-const POLE_LEADU = "id,created_time,field_data,ad_id,ad_name,campaign_name,form_id";
+const POLE_LEADU = "id,created_time,field_data,ad_id,ad_name,campaign_name,form_id,platform";
 const POLE_ZAKLAD = "id,created_time,field_data,ad_id,form_id";
 // Název reklamy a kampaně Meta vrací jen s oprávněním k reklamám — bez něj stačí základ.
 async function nacistLead(cesta: string, token: string, extra = "") {
