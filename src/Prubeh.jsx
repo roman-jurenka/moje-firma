@@ -1226,6 +1226,11 @@ export default function Prubeh({
   };
   const akcePohledu = {
     zapsatPoznamku, obchod: obchodAkce, zmenitObchodnika, nacenit: nacenitZObchodu,
+    ulozitPodklady: async (zak, podklady) => {
+      const ok = await uloz(zak, { podklady }, "Specifikace / podklady pro realizaci upravené.");
+      if (ok) ukazHlasku("✓ Specifikace uložená");
+      return ok;
+    },
     zmenitZdroj: async (zak, zdroj, kampan) => {
       const ok = await uloz(zak, { zdroj, kampan }, `Kampaň: ${zdrojById[zdroj]?.label || "nezadáno"}${kampan ? ` (${kampan})` : ""}.`);
       if (ok) ukazHlasku("✓ Kampaň uložená");

@@ -8,6 +8,8 @@ import { FAZE, fazeById, fazePlati, nazevFaze, ukolyPro, ukolHotovy, ZDROJE, zdr
 import { soubezne, stavOddeleni, aktivni, pohledOdd, oddeleniById, CEKA } from "./oddeleniZakazky.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { bezDiakritiky } from "./hledani.js";
+import { sekceProTyp, moznostiPole, predvyplnitZNabidky } from "./podkladyZakazky.js";
+import { specifikaceZNabidky } from "./dokumentyZakazky.js";
 
 // ── drobnosti ──
 const inicialy = (jmeno) => {
@@ -188,6 +190,99 @@ const StitekFaze = ({ z }) => {
   const [bg, fg] = FAZE_BARVY[z.faze] || ["#f1f5f9", "#334155"];
   return <span style={{ background: bg, color: fg, fontSize: 11, fontWeight: 700, borderRadius: 6, padding: "2px 7px", whiteSpace: "nowrap" }}>{nazevFaze(fazeById[z.faze], z.typ) || z.faze}</span>;
 };
+
+// ── Specifikace elektrárny / zakázky ──
+// Nahoře co je v propojené nabídce (jen ke čtení, mění se v Nacenění), pod tím
+// ruční údaje. Ty se ukládají do podkladů pro realizaci (zakazky_prubeh.podklady),
+// takže je pak vidí back office, plánovač i montéři.
+const SEKCE_SPECIFIKACE = ["technicka", "hromosvod", "elektroinstalace", "servis", "realizace", "odberne"];
+const cislo = (v) => Math.round(v * 100) / 100;
+const fmtCislo = (v) => String(cislo(v)).replace(".", ",");
+function zNabidky(quote) {
+  const fve = quote?.data?.fve;
+  const ks = (x) => Number(x?.qty) || 0;
+  const realne = (x) => ks(x) > 0 && x?.name && !/^bez\b/i.test(x.name);
+  if (!fve) {
+    const t = specifikaceZNabidky(quote?.data, "");
+    return t ? t.split("\n").filter(Boolean).map((r) => ["", r]) : [];
+  }
+  const radky = [];
+  const wp = Number((String(fve.panel?.name || "").match(/(\d{3})\s*w/i) || [])[1]) || 0;
+  if (realne(fve.panel)) {
+    if (wp) radky.push(["Výkon", `${fmtCislo((ks(fve.panel) * wp) / 1000)} kWp`]);
+    radky.push(["Panely", `${ks(fve.panel)} × ${fve.panel.name}`]);
+  }
+  if (realne(fve.stridac)) radky.push(["Střídač", `${ks(fve.stridac)} × ${fve.stridac.name}`]);
+  if (realne(fve.baterie)) {
+    const kwh = Number((String(fve.baterie.name).match(/(\d+(?:[.,]\d+)?)\s*kWh/i) || [])[1]?.replace(",", ".")) || 0;
+    radky.push(["Baterie", `${ks(fve.baterie)} × ${fve.baterie.name}${kwh ? ` (celkem ${fmtCislo(kwh * ks(fve.baterie))} kWh)` : ""}${ks(fve.bms) > 0 ? " + BMS" : ""}`]);
+  } else radky.push(["Baterie", "bez baterie"]);
+  if (realne(fve.backup)) radky.push(["Back-up", fve.backup.name.replace(/\s*\(\)\s*$/, "")]);
+  if (realne(fve.wallbox)) radky.push(["Wallbox", fve.wallbox.name]);
+  if (realne(fve.regulace)) radky.push(["Regulace", fve.regulace.name]);
+  if (realne(fve.bojler)) radky.push(["Ohřev vody", fve.bojler.name]);
+  if (realne(fve.konstrukce)) radky.push(["Konstrukce", `${fve.konstrukce.name} (${ks(fve.konstrukce)} ks)`]);
+  if (fve.elmr && !/^bez\b/i.test(fve.elmr)) radky.push(["Úprava ELMR", fve.elmr]);
+  (fve.customRows || []).filter((r) => r.sekce === "material" && r.name && ks(r) > 0).forEach((r) => radky.push(["Navíc", `${ks(r)} × ${r.name}`]));
+  return radky;
+}
+
+function SpecifikaceZakazky({ z, quote, onUlozit }) {
+  const sekce = sekceProTyp(z.typ || null).filter((s) => SEKCE_SPECIFIKACE.includes(s.id));
+  const vychozi = useMemo(() => predvyplnitZNabidky(z.podklady, quote, z).podklady, [z, quote]);
+  const [p, setP] = useState(vychozi);
+  const [ukladam, setUkladam] = useState(false);
+  const auto = quote ? zNabidky(quote) : [];
+  const fv = ["FVE", "FVR", "FVO"].includes(z.typ) || !!quote?.data?.fve;
+  const klic = (s, f) => p?.[s]?.[f] ?? "";
+  const zmeneno = sekce.some((s) => s.pole.some((f) => String(klic(s.id, f.id)) !== String(z.podklady?.[s.id]?.[f.id] ?? "")));
+  const nastav = (s, f, v) => setP((x) => ({ ...x, [s]: { ...(x?.[s] || {}), [f]: v } }));
+  const ulozitSpec = async () => { setUkladam(true); await onUlozit(p); setUkladam(false); };
+  if (!sekce.length && !auto.length) return null;
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+        <b style={{ fontSize: 15 }}>{fv ? "⚡ Specifikace elektrárny" : "Specifikace zakázky"}</b>
+        <span style={{ fontSize: 12, color: C.sub }}>{quote ? `podle nabídky ${quote.cislo || quote.name}` : "zatím bez nabídky — po nacenění se doplní sama"}</span>
+        <span style={{ flex: 1 }} />
+        {zmeneno && <button type="button" style={btnS(true)} disabled={ukladam} onClick={ulozitSpec}>{ukladam ? "Ukládám…" : "Uložit specifikaci"}</button>}
+      </div>
+      {auto.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "4px 18px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13 }}>
+          {auto.map(([k, v], i) => (
+            <div key={i} style={{ display: "flex", gap: 6, minWidth: 0 }}>
+              {k && <span style={{ color: C.sub, flexShrink: 0 }}>{k}:</span>}
+              <b style={{ fontWeight: k === "Výkon" ? 800 : 600 }} className="po-ell" title={v}>{v}</b>
+            </div>
+          ))}
+        </div>
+      )}
+      {sekce.map((s) => (
+        <div key={s.id} style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 4 }}>{s.ikona} {s.nazev} <span style={{ fontWeight: 400, color: C.mu }}>— doplnit ručně</span></div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
+            {s.pole.map((f) => {
+              const id = `sp-${z.id}-${s.id}-${f.id}`;
+              const moz = moznostiPole(f, {});
+              return (
+                <label key={f.id} htmlFor={id} style={{ fontSize: 12, color: C.sub, gridColumn: f.dlouhe ? "1 / -1" : undefined, minWidth: 0 }}>
+                  {f.label}
+                  {f.dlouhe
+                    ? <textarea id={id} rows={2} style={{ ...inpS, width: "100%", boxSizing: "border-box", marginTop: 2, resize: "vertical" }} value={klic(s.id, f.id)} onChange={(e) => nastav(s.id, f.id, e.target.value)} />
+                    : <>
+                      <input id={id} list={moz.length ? `${id}-m` : undefined} style={{ ...inpS, width: "100%", boxSizing: "border-box", marginTop: 2 }} value={klic(s.id, f.id)} onChange={(e) => nastav(s.id, f.id, e.target.value)} />
+                      {moz.length > 0 && <datalist id={`${id}-m`}>{moz.map((m) => <option key={m} value={m} />)}</datalist>}
+                    </>}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {zmeneno && <div style={{ display: "flex", justifyContent: "flex-end" }}><button type="button" style={btnS(true)} disabled={ukladam} onClick={ulozitSpec}>{ukladam ? "Ukládám…" : "Uložit specifikaci"}</button></div>}
+    </div>
+  );
+}
 
 const StitekZdroje = ({ z }) => {
   const x = zdrojById[z.zdroj];
@@ -392,6 +487,9 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
                           </div>
                         )}
                         <Historie pozn={poznZ[z.id] || []} ja={ja} />
+                        <div style={{ marginTop: 12 }}>
+                          <SpecifikaceZakazky key={`sp-${z.id}-${z.quote_id || 0}`} z={z} quote={hz?.q || null} onUlozit={(p) => akce.ulozitPodklady(z, p)} />
+                        </div>
                       </div>
                     </div>
                   )}
