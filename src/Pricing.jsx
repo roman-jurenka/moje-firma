@@ -8,6 +8,7 @@ import { fazeById, terminFaze, planovaneMd } from "./prubehFaze.js";
 import { vypocetSlevy, textSlevy } from "./slevaNabidky.js";
 import * as ui from "./ui.js";
 import { ulozitDoDokumentu } from "./dokumentyOneDrive.js";
+import { stahnoutPorovnani } from "./porovnaniNabidek.js";
 import { isConnected } from "./onedrive.js";
 
 const S = {
@@ -1334,8 +1335,9 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {filtered.length === 0 && <div style={{ color: "#64748b", fontSize: 13 }}>Zatím žádné nabídky.</div>}
-          {filtered.map(q => {
+          {filtered.filter((q, i) => filtered.findIndex(x => korenVerze(x) === korenVerze(q)) === i).map(q => {
             const cust = customers.find(c => c.id === q.customer_id);
+            const varianty = verzeNabidky(q);
             return (
               <div key={q.id} onClick={() => openQuote(q)}
                 style={{ ...S.card, marginBottom: 0, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1360,6 +1362,23 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
                     )}
                   </div>
                   <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{q.cislo ? <b>{q.cislo} · </b> : ""}{cust ? cust.name : "bez zákazníka"} · {fmtKc(computeQuoteTotals(q.data, q.type).cilovaCena)} bez DPH</div>
+                  {varianty.length > 1 && (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>Varianty:</span>
+                      {varianty.map(v => (
+                        <button key={v.id} type="button" onClick={e => { e.stopPropagation(); openQuote(v); }}
+                          title={`${v.name} · otevřít variantu`}
+                          style={{ border: "1px solid #cbd5e1", background: "#fff", color: "#334155", borderRadius: 8, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                          V{v.verze || 1} · {fmtKc(computeQuoteTotals(v.data, v.type).cilovaCena)}
+                          <span style={{ marginLeft: 5, color: statusColor(v.status) }}>{v.status}</span>
+                        </button>
+                      ))}
+                      <button type="button" onClick={e => { e.stopPropagation(); stahnoutPorovnani(varianty, "pdf", { zakaznik: cust?.name }); }}
+                        title="Porovnání variant vedle sebe — otevře tisk, ulož jako PDF" style={{ ...S.btnGhost, padding: "2px 10px", fontSize: 11 }}>⬇ Porovnání PDF</button>
+                      <button type="button" onClick={e => { e.stopPropagation(); stahnoutPorovnani(varianty, "word", { zakaznik: cust?.name }); }}
+                        title="Porovnání variant jako dokument Wordu" style={{ ...S.btnGhost, padding: "2px 10px", fontSize: 11 }}>⬇ Word</button>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button onClick={e => { e.stopPropagation(); duplicateQuote(q); }} title="Duplikovat nabídku" style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 11 }}>📋 Duplikovat</button>
@@ -1439,7 +1458,18 @@ export default function Pricing({ customers, currentUser, onConvertToDeal, initi
                 </button>
               );
             })}
-            <button type="button" style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12, marginLeft: "auto" }} disabled={saving} onClick={novaVerze}
+            {skupina.length > 1 && (() => {
+              const zak = customers.find(c => c.id === aktivni?.customer_id)?.name;
+              return (
+                <span style={{ display: "inline-flex", gap: 6, marginLeft: "auto" }}>
+                  <button type="button" style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12 }} onClick={() => stahnoutPorovnani(skupina, "pdf", { zakaznik: zak })}
+                    title="Porovnání variant vedle sebe (uložené podoby) — otevře tisk, ulož jako PDF">⬇ Porovnání PDF</button>
+                  <button type="button" style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12 }} onClick={() => stahnoutPorovnani(skupina, "word", { zakaznik: zak })}
+                    title="Porovnání variant jako dokument Wordu">⬇ Word</button>
+                </span>
+              );
+            })()}
+            <button type="button" style={{ ...S.btnGhost, padding: "5px 12px", fontSize: 12, marginLeft: skupina.length > 1 ? 0 : "auto" }} disabled={saving} onClick={novaVerze}
               title="Kopie téhle nabídky jako další verze se stejným zákazníkem a číslem s příponou -V2, -V3…">➕ Nová verze</button>
           </div>
         );
