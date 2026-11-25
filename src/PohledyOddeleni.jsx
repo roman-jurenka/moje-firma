@@ -45,6 +45,8 @@ const CSS = `
 .po-det{display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px;padding:14px;background:${C.bg};border-top:1px solid ${C.line}}
 .po-frm{display:grid;grid-template-columns:132px 44px minmax(0,1fr) 140px auto;gap:6px;align-items:center}
 .po-tyden{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.po-pole-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:8px 28px;align-items:start}
+.po-pole{display:grid;grid-template-columns:170px minmax(0,1fr);gap:10px;align-items:start}.po-pole>label{padding-top:6px}
 @media(max-width:860px){
   .po-ob,.po-od{grid-template-columns:minmax(0,1fr) auto auto}
   .po-ob>:nth-child(2),.po-ob>:nth-child(3),.po-ob>:nth-child(4),.po-od>:nth-child(2),.po-od>:nth-child(4){display:none}
@@ -53,6 +55,7 @@ const CSS = `
   .po-det{grid-template-columns:1fr}
   .po-frm{grid-template-columns:1fr 44px}.po-frm>.po-txt{grid-column:1/-1}
   .po-tyden{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .po-pole{grid-template-columns:1fr;gap:2px}.po-pole>label{padding-top:0}
 }`;
 
 export function Termin({ iso, dnes, prazdne = "bez termínu" }) {
@@ -196,7 +199,7 @@ const StitekFaze = ({ z }) => {
 // Nahoře co je v propojené nabídce (jen ke čtení, mění se v Nacenění), pod tím
 // ruční údaje. Ty se ukládají do podkladů pro realizaci (zakazky_prubeh.podklady),
 // takže je pak vidí back office, plánovač i montéři.
-const SEKCE_SPECIFIKACE = ["technicka", "hromosvod", "elektroinstalace", "servis", "realizace", "odberne"];
+const SEKCE_SPECIFIKACE = ["adresa", "technicka", "hromosvod", "elektroinstalace", "servis", "realizace", "odberne", "planovac", "sklad", "strechar", "elektrikar", "instalater", "zmeny", "fakturace", "dotace", "marketing", "obecne"];
 const cislo = (v) => Math.round(v * 100) / 100;
 const fmtCislo = (v) => String(cislo(v)).replace(".", ",");
 function zNabidky(quote) {
@@ -328,7 +331,8 @@ function StringyEditor({ idPrefix, text, panelu, vychozi, onChange }) {
 }
 
 function SpecifikaceZakazky({ z, quote, onUlozit }) {
-  const sekce = sekceProTyp(z.typ || null).filter((s) => SEKCE_SPECIFIKACE.includes(s.id));
+  const sekce = sekceProTyp(z.typ || null).filter((s) => SEKCE_SPECIFIKACE.includes(s.id))
+    .sort((a, b) => SEKCE_SPECIFIKACE.indexOf(a.id) - SEKCE_SPECIFIKACE.indexOf(b.id));
   const vychozi = useMemo(() => predvyplnitZNabidky(z.podklady, quote, z).podklady, [z, quote]);
   const [p, setP] = useState(vychozi);
   const [ukladam, setUkladam] = useState(false);
@@ -347,36 +351,49 @@ function SpecifikaceZakazky({ z, quote, onUlozit }) {
         <span style={{ flex: 1 }} />
         {zmeneno && <button type="button" style={btnS(true)} disabled={ukladam} onClick={ulozitSpec}>{ukladam ? "Ukládám…" : "Uložit specifikaci"}</button>}
       </div>
-      {auto.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "4px 18px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13 }}>
-          {auto.map(([k, v], i) => (
-            <div key={i} style={{ display: "flex", gap: 6, minWidth: 0 }}>
-              {k && <span style={{ color: C.sub, flexShrink: 0 }}>{k}:</span>}
-              <b style={{ fontWeight: k === "Výkon" ? 800 : 600 }} className="po-ell" title={v}>{v}</b>
-            </div>
-          ))}
-        </div>
-      )}
       {sekce.map((s) => (
-        <div key={s.id} style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 4 }}>{s.ikona} {s.nazev} <span style={{ fontWeight: 400, color: C.mu }}>— doplnit ručně</span></div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
+        <div key={s.id} style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10, marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 8 }}>{s.ikona} {s.nazev}</div>
+          <div className="po-pole-grid">
             {s.pole.map((f) => {
               const id = `sp-${z.id}-${s.id}-${f.id}`;
               const moz = moznostiPole(f, {});
+              const v = klic(s.id, f.id);
+              if (s.id === "obecne" && f.id === "oz") return null;
               if (s.id === "technicka" && f.id === "stringy") {
-                return <StringyEditor key={f.id} idPrefix={id} text={klic(s.id, f.id)} panelu={Number(quote?.data?.fve?.panel?.qty) || 0} vychozi={{ panel: quote?.data?.fve?.panel?.name || "", konstrukce: quote?.data?.fve?.konstrukce?.name || "" }} onChange={(t) => nastav(s.id, f.id, t)} />;
+                return <StringyEditor key={f.id} idPrefix={id} text={v} panelu={Number(quote?.data?.fve?.panel?.qty) || 0} vychozi={{ panel: quote?.data?.fve?.panel?.name || "", konstrukce: quote?.data?.fve?.konstrukce?.name || "" }} onChange={(t) => nastav(s.id, f.id, t)} />;
               }
+              const pole = { ...inpS, width: "100%", boxSizing: "border-box" };
+              let vstup;
+              if (f.dlouhe) vstup = <textarea id={id} rows={3} style={{ ...pole, resize: "vertical" }} value={v} onChange={(e) => nastav(s.id, f.id, e.target.value)} />;
+              else if (f.vyber) vstup = (
+                <select id={id} style={pole} value={v} onChange={(e) => nastav(s.id, f.id, e.target.value)}>
+                  <option value="">—</option>
+                  {[...new Set([...moz, ...(v && !moz.includes(v) ? [v] : [])])].map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              );
+              else if (f.typ === "datum") vstup = <input id={id} type="date" style={pole} value={v} onChange={(e) => nastav(s.id, f.id, e.target.value)} />;
+              else if (f.typ === "odkaz") {
+                const adresa = klic("adresa", "adresa") || z.misto_adresa;
+                vstup = (
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <input id={id} type="url" placeholder="https://…" style={pole} value={v} onChange={(e) => nastav(s.id, f.id, e.target.value)} />
+                    {/^https?:\/\//.test(v) && <a href={v} target="_blank" rel="noreferrer" style={{ ...btnS(false), textDecoration: "none" }} aria-label={`Otevřít ${f.label}`}>↗</a>}
+                    {!v && f.id === "mapy" && adresa && <a href={`https://mapy.cz/zakladni?q=${encodeURIComponent(adresa)}`} target="_blank" rel="noreferrer" style={{ ...btnS(false), textDecoration: "none", whiteSpace: "nowrap" }}>Najít ↗</a>}
+                  </div>
+                );
+              } else vstup = <>
+                <input id={id} list={moz.length ? `${id}-m` : undefined} style={pole} value={v} onChange={(e) => nastav(s.id, f.id, e.target.value)} />
+                {moz.length > 0 && <datalist id={`${id}-m`}>{moz.map((m) => <option key={m} value={m} />)}</datalist>}
+              </>;
               return (
-                <label key={f.id} htmlFor={id} style={{ fontSize: 12, color: C.sub, gridColumn: f.dlouhe ? "1 / -1" : undefined, minWidth: 0 }}>
-                  {f.label}
-                  {f.dlouhe
-                    ? <textarea id={id} rows={2} style={{ ...inpS, width: "100%", boxSizing: "border-box", marginTop: 2, resize: "vertical" }} value={klic(s.id, f.id)} onChange={(e) => nastav(s.id, f.id, e.target.value)} />
-                    : <>
-                      <input id={id} list={moz.length ? `${id}-m` : undefined} style={{ ...inpS, width: "100%", boxSizing: "border-box", marginTop: 2 }} value={klic(s.id, f.id)} onChange={(e) => nastav(s.id, f.id, e.target.value)} />
-                      {moz.length > 0 && <datalist id={`${id}-m`}>{moz.map((m) => <option key={m} value={m} />)}</datalist>}
-                    </>}
-                </label>
+                <div key={f.id} className="po-pole">
+                  <label htmlFor={id} style={{ fontSize: 13, color: f.zbytecne ? C.mu : C.text }}>
+                    {f.label}
+                    {f.zbytecne && <span title={`Navrženo k odstranění: ${f.zbytecne}`} style={{ display: "block", fontSize: 10, fontWeight: 700, color: C.org, marginTop: 1 }}>🗑 k odstranění? – {f.zbytecne}</span>}
+                  </label>
+                  <div style={{ minWidth: 0 }}>{vstup}</div>
+                </div>
               );
             })}
           </div>
