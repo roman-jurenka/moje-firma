@@ -10,6 +10,7 @@ import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { bezDiakritiky } from "./hledani.js";
 import { sekceProTyp, moznostiPole, predvyplnitZNabidky } from "./podkladyZakazky.js";
 import { specifikaceZNabidky } from "./dokumentyZakazky.js";
+import { radkyPorovnani, stahnoutPorovnani } from "./porovnaniNabidek.js";
 
 // ── drobnosti ──
 const inicialy = (jmeno) => {
@@ -430,7 +431,10 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
   const [zdroj, setZdrojS] = useState(() => ulozene("obchod_zdroj", "vse"));
   const setZdroj = (v) => { setZdrojS(v); ulozit("obchod_zdroj", v); };
   const [otevreno, setOtevreno] = useState(null);
+  const [zalozka, setZalozka] = useState("prehled");
   const [dotaz, setDotaz] = useState(null); // { id, typ: "obhlidka" | "varianta", datum }
+  const otevritDetail = (id) => { setOtevreno(id); setZalozka("prehled"); setDotaz(null); window.scrollTo?.(0, 0); };
+  const zavritDetail = () => { setOtevreno(null); setDotaz(null); };
 
   const poznZ = useMemo(() => {
     const m = {};
@@ -469,6 +473,164 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
     return A.filter(Boolean);
   };
 
+  // ── Detail leadu na celou stránku: nahoře menu Přehled · Nabídka · Informace elektrárny
+  const detailZ = otevreno ? obchody.find((z) => z.id === otevreno) : null;
+  if (detailZ) {
+    const z = detailZ;
+    const hz = hodnotaObchodu(z, quotes);
+    const c = zakaznik(z.customer_id);
+    const fve = /^FV/.test(z.typ || "") || !!hz?.q?.data?.fve;
+    const menu = [["prehled", "Přehled"], ["nabidka", `Nabídka${hz?.skupina?.length > 1 ? ` (${hz.skupina.length} varianty)` : ""}`], ["elektrarna", fve ? "Informace elektrárny" : "Informace k zakázce"]];
+    const karta = { background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: 14 };
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <style>{CSS}</style>
+        <div style={{ ...karta, padding: "12px 14px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <button type="button" style={btnS(false)} onClick={zavritDetail}>← Zpět na seznam</button>
+            <div style={{ minWidth: 0, flex: "1 1 200px" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.text, overflowWrap: "anywhere" }}>{z.nazev}</div>
+              <div style={{ fontSize: 12, color: C.sub }} className="po-ell">
+                {[c?.name && !z.nazev?.includes(c.name) ? c.name : null, z.misto_adresa, z.typ, kdoZ(z)].filter(Boolean).join(" · ")}
+              </div>
+            </div>
+            <StitekZdroje z={z} />
+            <StitekFaze z={z} />
+            <span style={{ textAlign: "right", lineHeight: 1.25 }}><BunkaHodnoty h={hz} onNacenit={() => akce.nacenit(z)} /></span>
+            <Termin iso={z.dalsi_krok_termin} dnes={dnes} />
+          </div>
+          <div role="tablist" aria-label="Detail leadu" style={{ display: "flex", gap: 4, marginTop: 10, overflowX: "auto" }}>
+            {menu.map(([id, l]) => {
+              const ted = zalozka === id;
+              return (
+                <button key={id} type="button" role="tab" aria-selected={ted} onClick={() => setZalozka(id)}
+                  style={{ border: "none", borderBottom: `3px solid ${ted ? "#0369a1" : "transparent"}`, background: "none", padding: "8px 14px", fontSize: 14,
+                    fontWeight: ted ? 700 : 500, color: ted ? "#0369a1" : C.sub, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{l}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        {zalozka === "prehled" && (
+          <div className="po-det" style={{ ...karta, borderTop: undefined, background: "#fff" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <KartaKontaktu z={z} zakaznik={zakaznik} />
+              <UpravaZdroje key={`zd-${z.id}`} z={z} onUlozit={(zd, kampan) => akce.zmenitZdroj(z, zd, kampan)} />
+              <label style={{ fontSize: 12, color: C.sub }}>Obchodník
+                <select style={{ ...inpS, width: "100%", marginTop: 3 }} value={z.vlastnik_obchod || ""} onChange={(e) => akce.zmenitObchodnika(z, e.target.value)}>
+                  <option value="">— nepřiřazeno —</option>
+                  {lide.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </label>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", gap: 3, marginBottom: 10 }}>
+                {FAZE.filter((f) => f.sekce === "ob" && fazePlati(f, z)).map((f) => {
+                  const i = FAZE.indexOf(f), ted = FAZE.findIndex((x) => x.id === z.faze);
+                  return <span key={f.id} style={{ flex: 1, textAlign: "center", fontSize: 11, padding: "4px 0", borderRadius: 6, fontWeight: i === ted ? 700 : 500,
+                    background: i < ted ? "#dcfce7" : i === ted ? "#0369a1" : "#f1f5f9", color: i < ted ? "#166534" : i === ted ? "#fff" : C.mu }}>{nazevFaze(f, z.typ)}</span>;
+                })}
+              </div>
+              <ZapisPoznamky key={z.id} idPrefix={`po-${z.id}`} ja={ja} dnes={dnes} termin={z.dalsi_krok_termin}
+                onZapsat={(d) => akce.zapsatPoznamku(z, { ...d, odd: "ob" })} />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                {akceFaze(z).map(([l, fn, hl]) => <button key={l} type="button" style={btnS(!!hl)} onClick={fn}>{l}</button>)}
+                <span style={{ flex: 1 }} />
+                <button type="button" style={{ ...btnS(false), color: C.red }} onClick={() => akce.prohra(z)}>Prohráno…</button>
+                <button type="button" style={btnS(false)} onClick={() => akce.otevrit(z.id)}>Celá zakázka ↗</button>
+              </div>
+              {dotaz?.id === z.id && dotaz.typ === "obhlidka" && (
+                <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: "#f1f5f9", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13 }}>Obhlídka kdy?</span>
+                  <input type="date" autoFocus style={inpS} value={dotaz.datum} min={dnes} onChange={(e) => setDotaz({ ...dotaz, datum: e.target.value })} />
+                  <button type="button" style={btnS(true)} disabled={!dotaz.datum} onClick={() => { akce.obchod(z, "obhlidka", { datum: dotaz.datum }); setDotaz(null); }}>Uložit</button>
+                  <button type="button" style={btnS(false)} onClick={() => setDotaz(null)}>Zrušit</button>
+                  <span style={{ fontSize: 11, color: C.mu }}>zapíše poznámku, termín = den obhlídky{z.faze === "poptavka" ? ", fáze → Obhlídka" : ""}</span>
+                </div>
+              )}
+              {dotaz?.id === z.id && dotaz.typ === "varianta" && hz?.varianty && (
+                <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: "#f1f5f9" }}>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>Kterou variantu zákazník vybral? Ostatní se v Nacenění označí jako Zamítnuto.</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {hz.varianty.map((q) => (
+                      <button key={q.id} type="button" style={{ ...btnS(false), textAlign: "left", padding: "8px 12px" }} onClick={() => { akce.obchod(z, "souhlasi", { quoteId: q.id }); setDotaz(null); }}>
+                        <div>{q.cislo || q.name}</div><b>{cenaNabidky(q) ? `${tis(cenaNabidky(q))} tis. Kč` : "—"}</b>
+                      </button>
+                    ))}
+                    <button type="button" style={btnS(false)} onClick={() => setDotaz(null)}>Zrušit</button>
+                  </div>
+                </div>
+              )}
+              <Historie pozn={poznZ[z.id] || []} ja={ja} />
+            </div>
+          </div>
+        )}
+
+        {zalozka === "nabidka" && (
+          <div style={karta}>
+            {hz?.q ? (() => {
+              const sk = hz.skupina;
+              const radky = radkyPorovnani(sk);
+              return (
+                <>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+                    <b style={{ fontSize: 15 }}>{sk.length > 1 ? `Varianty nabídky (${sk.length})` : "Nabídka"}</b>
+                    <span style={{ flex: 1 }} />
+                    {sk.length > 1 && <>
+                      <button type="button" style={btnS(false)} onClick={() => stahnoutPorovnani(sk, "pdf", { zakaznik: c?.name })}>⬇ Porovnání PDF</button>
+                      <button type="button" style={btnS(false)} onClick={() => stahnoutPorovnani(sk, "word", { zakaznik: c?.name })}>⬇ Word</button>
+                    </>}
+                  </div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: sk.length > 2 ? 560 : undefined }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: "22%" }} />
+                          {sk.map((q) => (
+                            <th key={q.id} style={{ textAlign: "left", padding: "6px 8px", borderBottom: `2px solid ${C.line}`, verticalAlign: "top", opacity: q.status === "Zamítnuto" ? 0.55 : 1 }}>
+                              <button type="button" onClick={() => akce.otevritNabidku(q.id)} style={{ background: "none", border: "none", padding: 0, color: "#0369a1", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700, textAlign: "left" }}>
+                                {sk.length > 1 ? `Varianta ${q.verze || 1}` : (q.cislo || q.name)} ↗
+                              </button>
+                              <div style={{ fontSize: 11, fontWeight: 500, color: q.status === "Schváleno" ? "#166534" : C.sub }}>{sk.length > 1 && q.cislo ? `${q.cislo} · ` : ""}{q.status}</div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {radky.map(([l, hodn, druh]) => {
+                          const lisi = sk.length > 1 && !druh && new Set(hodn.map((v) => v || "—")).size > 1;
+                          return (
+                            <tr key={l} style={{ background: lisi ? "#fffbeb" : undefined }}>
+                              <td style={{ padding: "6px 8px", borderBottom: `1px solid ${C.line}`, fontWeight: 700, color: C.sub, verticalAlign: "top" }}>{l}</td>
+                              {hodn.map((v, i) => <td key={i} style={{ padding: "6px 8px", borderBottom: `1px solid ${C.line}`, verticalAlign: "top", fontWeight: druh ? 800 : 400, color: druh === "cenaS" ? "#0E3B5E" : C.text }}>{v || "—"}</td>)}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {sk.length > 1 && <div style={{ fontSize: 11, color: C.mu, marginTop: 6 }}>Žlutě jsou řádky, kde se varianty liší.</div>}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+                    {akceFaze(z).filter(([l]) => /nabíd|Nacenit|variant/i.test(l)).map(([l, fn, hl]) => <button key={l} type="button" style={btnS(!!hl)} onClick={fn}>{l}</button>)}
+                  </div>
+                </>
+              );
+            })() : (
+              <div style={{ color: C.sub, fontSize: 14 }}>
+                {hz?.odhad ? `Odhad ${tis(hz.min)} tis. Kč — nabídka zatím není.` : "Zatím bez nabídky."}
+                <div><button type="button" style={{ ...btnS(true), marginTop: 10 }} onClick={() => akce.nacenit(z)}>Nacenit ↗</button></div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {zalozka === "elektrarna" && (
+          <SpecifikaceZakazky key={`sp-${z.id}-${z.quote_id || 0}`} z={z} quote={hz?.q || null} onUlozit={(p) => akce.ulozitPodklady(z, p)} />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <style>{CSS}</style>
@@ -506,14 +668,13 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
               const pz = lidskePozn(z);
               const posl = pz[0];
               const hz = hodnotaObchodu(z, quotes);
-              const otev = otevreno === z.id;
               const c = zakaznik(z.customer_id);
               return (
                 <div key={z.id}>
-                  <div className="po-g po-ob po-r" role="button" tabIndex={0} aria-expanded={otev}
-                    onClick={() => { setOtevreno(otev ? null : z.id); setDotaz(null); }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOtevreno(otev ? null : z.id); } }}
-                    style={{ boxShadow: pruhTerminu(z.dalsi_krok_termin, dnes), background: otev ? C.bg : undefined }}>
+                  <div className="po-g po-ob po-r" role="button" tabIndex={0}
+                    onClick={() => otevritDetail(z.id)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); otevritDetail(z.id); } }}
+                    style={{ boxShadow: pruhTerminu(z.dalsi_krok_termin, dnes) }}>
                     <span className="po-ell">
                       {!pz.length && z.faze === "poptavka" && <span style={{ background: "#0369a1", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 5, padding: "1px 5px", marginRight: 6, letterSpacing: ".03em" }}>NOVÝ</span>}
                       <b style={{ fontWeight: 700 }}>{z.nazev}</b>
@@ -526,75 +687,6 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
                     <span className="po-ell">{posl ? <Poznamka p={posl} ja={ja} /> : <span style={{ color: C.mu }}>{z.dalsi_krok || "zatím bez poznámky — klikněte a zapište"}</span>}{pz.length > 1 && <span style={{ fontSize: 11, color: C.mu, marginLeft: 6 }}>+{pz.length - 1}</span>}</span>
                     <span><Termin iso={z.dalsi_krok_termin} dnes={dnes} /></span>
                   </div>
-                  {otev && (
-                    <div className="po-det">
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <KartaKontaktu z={z} zakaznik={zakaznik} />
-                        <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, fontSize: 13 }}>
-                          <div style={{ fontWeight: 700, marginBottom: 6 }}>Nabídka</div>
-                          {hz?.q ? hz.skupina.map((q) => (
-                            <div key={q.id} style={{ display: "flex", gap: 6, alignItems: "center", padding: "3px 0", opacity: q.status === "Zamítnuto" ? 0.5 : 1 }}>
-                              <button type="button" onClick={() => akce.otevritNabidku(q.id)} style={{ background: "none", border: "none", padding: 0, color: "#0369a1", cursor: "pointer", fontFamily: "inherit", fontSize: 13, textAlign: "left" }} className="po-ell">{q.cislo || q.name}</button>
-                              <span style={{ flex: 1 }} />
-                              <b style={{ fontWeight: 700 }}>{cenaNabidky(q) ? `${tis(cenaNabidky(q))} tis.` : "—"}</b>
-                              <span style={{ fontSize: 11, color: q.status === "Schváleno" ? "#166534" : C.sub }}>{q.status}</span>
-                            </div>
-                          )) : <div style={{ color: C.sub }}>{hz?.odhad ? `Odhad ${tis(hz.min)} tis. — nabídka zatím není.` : "Zatím bez nabídky."}</div>}
-                          {!z.quote_id && <button type="button" style={{ ...btnS(true), marginTop: 8 }} onClick={() => akce.nacenit(z)}>Nacenit ↗</button>}
-                        </div>
-                        <UpravaZdroje key={`zd-${z.id}`} z={z} onUlozit={(zd, kampan) => akce.zmenitZdroj(z, zd, kampan)} />
-                        <label style={{ fontSize: 12, color: C.sub }}>Obchodník
-                          <select style={{ ...inpS, width: "100%", marginTop: 3 }} value={z.vlastnik_obchod || ""} onChange={(e) => akce.zmenitObchodnika(z, e.target.value)}>
-                            <option value="">— nepřiřazeno —</option>
-                            {lide.map((l) => <option key={l} value={l}>{l}</option>)}
-                          </select>
-                        </label>
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ display: "flex", gap: 3, marginBottom: 10 }}>
-                          {FAZE.filter((f) => f.sekce === "ob" && fazePlati(f, z)).map((f) => {
-                            const i = FAZE.indexOf(f), ted = FAZE.findIndex((x) => x.id === z.faze);
-                            return <span key={f.id} style={{ flex: 1, textAlign: "center", fontSize: 11, padding: "4px 0", borderRadius: 6, fontWeight: i === ted ? 700 : 500,
-                              background: i < ted ? "#dcfce7" : i === ted ? "#0369a1" : "#f1f5f9", color: i < ted ? "#166534" : i === ted ? "#fff" : C.mu }}>{nazevFaze(f, z.typ)}</span>;
-                          })}
-                        </div>
-                        <ZapisPoznamky key={z.id} idPrefix={`po-${z.id}`} ja={ja} dnes={dnes} termin={z.dalsi_krok_termin}
-                          onZapsat={(d) => akce.zapsatPoznamku(z, { ...d, odd: "ob" })} />
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                          {akceFaze(z).map(([l, fn, hl]) => <button key={l} type="button" style={btnS(!!hl)} onClick={fn}>{l}</button>)}
-                          <span style={{ flex: 1 }} />
-                          <button type="button" style={{ ...btnS(false), color: C.red }} onClick={() => akce.prohra(z)}>Prohráno…</button>
-                          <button type="button" style={btnS(false)} onClick={() => akce.otevrit(z.id)}>Celá zakázka ↗</button>
-                        </div>
-                        {dotaz?.id === z.id && dotaz.typ === "obhlidka" && (
-                          <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: "#f1f5f9", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 13 }}>Obhlídka kdy?</span>
-                            <input type="date" autoFocus style={inpS} value={dotaz.datum} min={dnes} onChange={(e) => setDotaz({ ...dotaz, datum: e.target.value })} />
-                            <button type="button" style={btnS(true)} disabled={!dotaz.datum} onClick={() => { akce.obchod(z, "obhlidka", { datum: dotaz.datum }); setDotaz(null); }}>Uložit</button>
-                            <button type="button" style={btnS(false)} onClick={() => setDotaz(null)}>Zrušit</button>
-                            <span style={{ fontSize: 11, color: C.mu }}>zapíše poznámku, termín = den obhlídky{z.faze === "poptavka" ? ", fáze → Obhlídka" : ""}</span>
-                          </div>
-                        )}
-                        {dotaz?.id === z.id && dotaz.typ === "varianta" && hz?.varianty && (
-                          <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: "#f1f5f9" }}>
-                            <div style={{ fontSize: 13, marginBottom: 6 }}>Kterou variantu zákazník vybral? Ostatní se v Nacenění označí jako Zamítnuto.</div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              {hz.varianty.map((q) => (
-                                <button key={q.id} type="button" style={{ ...btnS(false), textAlign: "left", padding: "8px 12px" }} onClick={() => { akce.obchod(z, "souhlasi", { quoteId: q.id }); setDotaz(null); }}>
-                                  <div>{q.cislo || q.name}</div><b>{cenaNabidky(q) ? `${tis(cenaNabidky(q))} tis. Kč` : "—"}</b>
-                                </button>
-                              ))}
-                              <button type="button" style={btnS(false)} onClick={() => setDotaz(null)}>Zrušit</button>
-                            </div>
-                          </div>
-                        )}
-                        <Historie pozn={poznZ[z.id] || []} ja={ja} />
-                        <div style={{ marginTop: 12 }}>
-                          <SpecifikaceZakazky key={`sp-${z.id}-${z.quote_id || 0}`} z={z} quote={hz?.q || null} onUlozit={(p) => akce.ulozitPodklady(z, p)} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}
