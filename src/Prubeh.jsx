@@ -1259,6 +1259,7 @@ export default function Prubeh({
     toggleUkol: (zv, f, u) => toggleUkol(zv, f, u),
     posunOdd: (zak, odd) => { const real = rows.find((r) => r.id === zak.id) || zak; return posunDal(pohledOdd(real, odd)); },
     naplanovat: (zak) => otevritPlan(zak),
+    ulozitZakaznika: async (zak, e) => { const ok = await ulozZakaznikaAMisto(zak, e); if (ok) ukazHlasku("✓ Údaje zákazníka uložené"); return ok; },
   };
 
   // ── Podklady pro realizaci (předávací list) ──
@@ -1573,43 +1574,47 @@ export default function Prubeh({
 
   const bezMezer = (a) => bezDiakritiky(String(a || "")).replace(/[\s,.]+/g, "");
   const stejnaAdresa = (a, b) => bezMezer(a) === bezMezer(b);
-  const ulozMisto = async () => {
+  // Uložení zákazníka (úprava / výběr / nový), adresy realizace, kontaktu na místě a smluvních
+  // údajů — z karty zakázky i z detailu leadu v Obchodu. e = stav formuláře. Vrací true/false.
+  const ulozZakaznikaAMisto = async (z, e) => {
     // údaje stávajícího zákazníka (jméno, kontakt, bydliště) — upravené přímo v kartě zakázky
     const zakTed = zakaznik(z.customer_id);
-    const u = editMisto.zakUdaje;
+    const u = e.zakUdaje;
     let bydliste = zakTed?.address || "";
-    if (zakTed && u && !editMisto.zakRezim && !editMisto.customer_id) {
-      if (!u.name.trim()) { alert("Jméno zákazníka nesmí být prázdné."); return; }
-      const zmena = { name: u.name.trim(), phone: u.phone.trim() || null, email: u.email.trim() || null, address: u.address.trim() };
+    if (zakTed && u && !e.zakRezim && !e.customer_id) {
+      if (!u.name.trim()) { alert("Jméno zákazníka nesmí být prázdné."); return false; }
+      const zmena = { name: u.name.trim(), phone: (u.phone || "").trim() || null, email: (u.email || "").trim() || null, address: (u.address || "").trim() };
       if (["name", "phone", "email", "address"].some((k) => (zmena[k] || "") !== (zakTed[k] || ""))) {
         const { data: c, error: cErr } = await supabase.from("customers").update(zmena).eq("id", zakTed.id).select().single();
-        if (cErr) { alert("Údaje zákazníka se nepodařilo uložit: " + cErr.message); return; }
+        if (cErr) { alert("Údaje zákazníka se nepodařilo uložit: " + cErr.message); return false; }
         if (onZakaznikZalozen) onZakaznikZalozen(c);
       }
       bydliste = zmena.address;
     }
-    if (editMisto.zakRezim === "novy") bydliste = editMisto.novyZak?.adresa?.trim() || "";
-    else if (editMisto.customer_id) bydliste = zakaznik(Number(editMisto.customer_id))?.address || "";
-    const adresaRealizace = editMisto.stejna ? bydliste : editMisto.adresa.trim();
-    const m = { misto_adresa: adresaRealizace || null, misto_kontakt: editMisto.kontakt.trim() || null, misto_telefon: editMisto.telefon.trim() || null, misto_vztah: (editMisto.vztah || "").trim() || null };
+    if (e.zakRezim === "novy") bydliste = e.novyZak?.adresa?.trim() || "";
+    else if (e.customer_id) bydliste = zakaznik(Number(e.customer_id))?.address || "";
+    const adresaRealizace = e.stejna ? bydliste : String(e.adresa || "").trim();
+    const m = { misto_adresa: adresaRealizace || null, misto_kontakt: String(e.kontakt || "").trim() || null, misto_telefon: String(e.telefon || "").trim() || null, misto_vztah: (e.vztah || "").trim() || null };
+    // smluvní údaje (datum narození, účet) do specifikace
+    if (e.smluvni) m.podklady = { ...(z.podklady || {}), smluvni: { ...(z.podklady?.smluvni || {}), ...Object.fromEntries(Object.entries(e.smluvni).map(([k, v]) => [k, String(v || "").trim()])) } };
     // změna / doplnění zákazníka (stávající nebo nový)
-    let noveZakId = editMisto.customer_id ? Number(editMisto.customer_id) : null;
-    if (editMisto.zakRezim === "novy") {
-      const nz = editMisto.novyZak;
-      if (!nz.name.trim()) { alert("Zadej jméno nového zákazníka."); return; }
+    let noveZakId = e.customer_id ? Number(e.customer_id) : null;
+    if (e.zakRezim === "novy") {
+      const nz = e.novyZak;
+      if (!nz.name.trim()) { alert("Zadej jméno nového zákazníka."); return false; }
       const { data: c, error: cErr } = await supabase.from("customers").insert({
         name: nz.name.trim(), company: nz.company.trim() || null, phone: nz.phone.trim() || null, email: nz.email.trim() || null,
         address: nz.adresa.trim() || m.misto_adresa || "", tag: "Nový",
       }).select().single();
-      if (cErr) { alert("Zákazníka se nepodařilo založit: " + cErr.message); return; }
+      if (cErr) { alert("Zákazníka se nepodařilo založit: " + cErr.message); return false; }
       noveZakId = c.id;
       if (onZakaznikZalozen) onZakaznikZalozen(c);
     }
     const zmenaZak = noveZakId && noveZakId !== z.customer_id;
     if (zmenaZak) m.customer_id = noveZakId;
-    const novyZakaznik = zmenaZak ? (customers.find((c) => c.id === noveZakId) || { name: editMisto.novyZak?.name }) : null;
+    const novyZakaznik = zmenaZak ? (customers.find((c) => c.id === noveZakId) || { name: e.novyZak?.name }) : null;
     const ok = await uloz(z, m, zmenaZak ? `Zákazník ${z.customer_id ? "změněn" : "doplněn"}: ${novyZakaznik?.company || novyZakaznik?.name || ""}.` : undefined);
-    if (!ok) return;
+    if (!ok) return false;
     if (zmenaZak) {
       if (z.deal_id) await supabase.from("deals").update({ customer_id: noveZakId }).eq("id", z.deal_id);
       if (z.contract_id) {
@@ -1623,6 +1628,10 @@ export default function Prubeh({
       await supabase.from("contracts").update({ address: m.misto_adresa }).eq("id", z.contract_id);
       setContracts((ks) => ks.map((k) => (k.id === z.contract_id ? { ...k, address: m.misto_adresa } : k)));
     }
+    return true;
+  };
+  const ulozMisto = async () => {
+    if (!(await ulozZakaznikaAMisto(z, editMisto))) return;
     setEditMisto(null);
     ukazHlasku("✓ Místo realizace uložené");
   };
@@ -2510,7 +2519,7 @@ export default function Prubeh({
             </div>
           </div>
           {!nacteno ? <div style={{ ...karta, color: "#64748b" }}>Načítám…</div> : pohled === "ob" ? (
-            <PohledObchod rows={rows} quotes={quotes} poznamky={poznamky} zakaznik={zakaznik} ja={ja} lide={lide} dnes={dnes} currentUser={currentUser} akce={akcePohledu} />
+            <PohledObchod rows={rows} quotes={quotes} poznamky={poznamky} zakaznik={zakaznik} zakaznici={customers} ja={ja} lide={lide} dnes={dnes} currentUser={currentUser} akce={akcePohledu} />
           ) : (
             <PohledOddeleni odd={pohled} rows={rows} poznamky={poznamky} zakaznik={zakaznik} ja={ja} dnes={dnes} autoZ={autoZ}
               calendarEvents={calendarEvents} kodZakazky={(r) => contractById(r.contract_id)?.code} akce={akcePohledu} />

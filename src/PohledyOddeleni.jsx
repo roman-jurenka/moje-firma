@@ -142,6 +142,133 @@ function KartaKontaktu({ z, zakaznik, children }) {
   );
 }
 
+// Karta zákazníka v detailu leadu: údaje pro smlouvu a plnou moc + úprava na místě.
+// Ukládá se přes akce.ulozitZakaznika (stejně jako karta „Zákazník a místo“ v zakázce).
+const bezMezer = (a) => bezDiakritiky(String(a || "")).replace(/[\s,.]+/g, "");
+function KartaZakaznika({ z, zakaznik, zakaznici = [], onUlozit }) {
+  const c = zakaznik(z.customer_id) || null;
+  const sm = z.podklady?.smluvni || {};
+  const [e, setE] = useState(null);
+  const [ukladam, setUkladam] = useState(false);
+  const stejna = !!c?.address && !!z.misto_adresa && bezMezer(c.address) === bezMezer(z.misto_adresa);
+  const otevrit = (rezim = null) => setE({
+    zakRezim: rezim, customer_id: null, zakHledat: "",
+    zakUdaje: c ? { name: c.name || "", phone: c.phone || "", email: c.email || "", address: c.address || "" } : null,
+    novyZak: { name: "", company: "", phone: "", email: "", adresa: "" },
+    stejna: !!c?.address && (!z.misto_adresa || stejna),
+    adresa: z.misto_adresa || "", kontakt: z.misto_kontakt || "", telefon: z.misto_telefon || "", vztah: z.misto_vztah || "",
+    smluvni: { datum_narozeni: sm.datum_narozeni || "", bankovni_ucet: sm.bankovni_ucet || "" },
+  });
+  const set = (patch) => setE((x) => ({ ...x, ...patch }));
+  const ulozit = async () => { setUkladam(true); const ok = await onUlozit(e); setUkladam(false); if (ok) setE(null); };
+  const chybi = (t) => <span style={{ color: C.org, fontWeight: 600 }}>{t}</span>;
+  const radek = { display: "flex", gap: 8, alignItems: "baseline" };
+  const ikona = { width: 18, flexShrink: 0, textAlign: "center" };
+  const lbl = { fontSize: 12, color: C.sub, display: "block" };
+  const pole = (id, label, hodnota, onChange, extra = {}) => (
+    <label style={{ ...lbl, ...(extra.cela ? { gridColumn: "1 / -1" } : {}) }} htmlFor={id}>{label}
+      <input id={id} type={extra.typ || "text"} placeholder={extra.placeholder} style={{ ...inpS, width: "100%", boxSizing: "border-box", marginTop: 2 }} value={hodnota} onChange={(ev) => onChange(ev.target.value)} />
+    </label>
+  );
+  const karta = { background: "#fff", border: `1px solid ${e ? "#7dd3fc" : C.line}`, borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 1.7, alignSelf: "start" };
+
+  if (!e) return (
+    <div style={karta}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ width: 34, height: 34, borderRadius: "50%", background: "#e0f2fe", color: "#0369a1", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, flexShrink: 0 }}>{inicialy(c?.name || z.nazev)}</span>
+        <div style={{ flex: 1, minWidth: 0, lineHeight: 1.3 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, overflowWrap: "anywhere" }}>{c ? c.name : "Bez zákazníka"}</div>
+          <div style={{ fontSize: 11, color: C.sub }}>{c ? (c.company || "zákazník") : "doplň ho pro smlouvu a plnou moc"}</div>
+        </div>
+        {c ? <button type="button" style={{ ...btnS(false), padding: "3px 10px", fontSize: 12 }} onClick={() => otevrit()}>✏️ Upravit</button>
+          : <>
+            <button type="button" style={{ ...btnS(true), padding: "3px 10px", fontSize: 12 }} onClick={() => otevrit("stavajici")}>Vybrat</button>
+            <button type="button" style={{ ...btnS(false), padding: "3px 10px", fontSize: 12 }} onClick={() => otevrit("novy")}>+ Nový</button>
+          </>}
+      </div>
+      {c && <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 6 }}>
+        <div style={radek}><span style={ikona}>📞</span>{c.phone ? <a href={`tel:${String(c.phone).replace(/\s/g, "")}`} style={{ color: "#0369a1", fontWeight: 600 }}>{c.phone}</a> : chybi("telefon chybí")}</div>
+        <div style={radek} className="po-ell"><span style={ikona}>✉️</span>{c.email ? <a href={`mailto:${c.email}`} style={{ color: "#0369a1" }}>{c.email}</a> : chybi("e-mail chybí")}</div>
+        <div style={radek}><span style={ikona}>🏠</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}><span style={{ color: C.sub }}>Bydliště: </span>{c.address || chybi("chybí")}</span></div>
+      </div>}
+      <div style={radek}><span style={ikona}>📍</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}><span style={{ color: C.sub }}>Realizace: </span>
+        {stejna ? <span style={{ color: C.sub }}>stejná jako bydliště</span>
+          : z.misto_adresa ? <a href={`https://mapy.cz/zakladni?q=${encodeURIComponent(z.misto_adresa)}`} target="_blank" rel="noreferrer" style={{ color: "#0369a1" }}>{z.misto_adresa}</a> : chybi("chybí")}</span></div>
+      {(z.misto_kontakt || z.misto_telefon) && <div style={radek}><span style={ikona}>👷</span><span>Na místě: <b>{z.misto_kontakt || ""}</b>{z.misto_vztah && <span style={{ color: C.sub }}> ({z.misto_vztah})</span>}{z.misto_telefon && <> · <a href={`tel:${String(z.misto_telefon).replace(/\s/g, "")}`} style={{ color: "#0369a1" }}>{z.misto_telefon}</a></>}</span></div>}
+      {c && <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 6, paddingTop: 6 }}>
+        <div style={{ fontSize: 11, color: C.sub }}>Do smlouvy a plné moci</div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: C.sub }}>Datum narození</span>{sm.datum_narozeni || chybi("chybí")}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: C.sub }}>Číslo účtu</span>{sm.bankovni_ucet || z.podklady?.dotace?.cislo_uctu || chybi("chybí")}</div>
+      </div>}
+    </div>
+  );
+
+  // ── úprava ──
+  const vybrany = e.customer_id ? zakaznici.find((x) => String(x.id) === String(e.customer_id)) : null;
+  const bydliste = e.zakRezim === "novy" ? e.novyZak.adresa : vybrany ? vybrany.address : e.zakUdaje?.address;
+  const q = bezDiakritiky(e.zakHledat || "");
+  const nalezeni = e.zakRezim === "stavajici" && !vybrany
+    ? zakaznici.filter((x) => !x.archived && (!q || bezDiakritiky([x.name, x.company, x.phone, x.email, x.address].filter(Boolean).join(" ")).includes(q))).slice(0, 8) : [];
+  const mrizka = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 };
+  return (
+    <div style={karta}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <b style={{ flex: 1 }}>{e.zakRezim === "novy" ? "Nový zákazník" : e.zakRezim === "stavajici" ? "Vybrat zákazníka" : "Upravit zákazníka"}</b>
+        {c && !e.zakRezim && <button type="button" style={{ ...btnS(false), padding: "2px 8px", fontSize: 11 }} onClick={() => set({ zakRezim: "stavajici" })}>Jiný zákazník</button>}
+        {c && e.zakRezim && <button type="button" style={{ ...btnS(false), padding: "2px 8px", fontSize: 11 }} onClick={() => set({ zakRezim: null, customer_id: null })}>Zpět</button>}
+      </div>
+      {!e.zakRezim && e.zakUdaje && <div style={mrizka}>
+        {pole(`kz-${z.id}-jm`, "Jméno a příjmení *", e.zakUdaje.name, (v) => set({ zakUdaje: { ...e.zakUdaje, name: v } }), { cela: true })}
+        {pole(`kz-${z.id}-tel`, "Telefon", e.zakUdaje.phone, (v) => set({ zakUdaje: { ...e.zakUdaje, phone: v } }), { typ: "tel" })}
+        {pole(`kz-${z.id}-em`, "E-mail", e.zakUdaje.email, (v) => set({ zakUdaje: { ...e.zakUdaje, email: v } }), { typ: "email", placeholder: "jan@email.cz" })}
+        {pole(`kz-${z.id}-byd`, "Bydliště (trvalé bydliště / sídlo)", e.zakUdaje.address, (v) => set({ zakUdaje: { ...e.zakUdaje, address: v } }), { cela: true, placeholder: "Ulice 12, 789 01 Obec" })}
+      </div>}
+      {e.zakRezim === "novy" && <div style={mrizka}>
+        {pole(`kz-${z.id}-njm`, "Jméno a příjmení *", e.novyZak.name, (v) => set({ novyZak: { ...e.novyZak, name: v } }))}
+        {pole(`kz-${z.id}-nfi`, "Firma (nepovinné)", e.novyZak.company, (v) => set({ novyZak: { ...e.novyZak, company: v } }))}
+        {pole(`kz-${z.id}-ntel`, "Telefon", e.novyZak.phone, (v) => set({ novyZak: { ...e.novyZak, phone: v } }), { typ: "tel" })}
+        {pole(`kz-${z.id}-nem`, "E-mail", e.novyZak.email, (v) => set({ novyZak: { ...e.novyZak, email: v } }), { typ: "email" })}
+        {pole(`kz-${z.id}-nbyd`, "Bydliště (trvalé bydliště / sídlo)", e.novyZak.adresa, (v) => set({ novyZak: { ...e.novyZak, adresa: v } }), { cela: true, placeholder: "Ulice 12, 789 01 Obec" })}
+      </div>}
+      {e.zakRezim === "stavajici" && (vybrany
+        ? <div style={{ display: "flex", gap: 8, alignItems: "center" }}><span style={{ flex: 1 }}>✓ <b>{vybrany.name}</b><span style={{ color: C.sub, fontSize: 12 }}>{vybrany.address ? ` · ${vybrany.address}` : ""}</span></span>
+          <button type="button" style={{ ...btnS(false), padding: "2px 8px", fontSize: 11 }} onClick={() => set({ customer_id: null })}>Jiný</button></div>
+        : <>
+          <input aria-label="Hledat zákazníka" autoFocus style={{ ...inpS, width: "100%", boxSizing: "border-box" }} placeholder="Hledat podle jména, telefonu, adresy…" value={e.zakHledat} onChange={(ev) => set({ zakHledat: ev.target.value })} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6, maxHeight: 200, overflowY: "auto" }}>
+            {nalezeni.length === 0 && <div style={{ fontSize: 12, color: C.sub }}>Nikdo nenalezen.{" "}<button type="button" style={{ ...btnS(false), padding: "1px 8px", fontSize: 11 }} onClick={() => set({ zakRezim: "novy" })}>+ Nový zákazník</button></div>}
+            {nalezeni.map((x) => (
+              <button key={x.id} type="button" onClick={() => set({ customer_id: String(x.id) })}
+                style={{ textAlign: "left", background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontFamily: "inherit", lineHeight: 1.35 }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{x.name}</div>
+                <div style={{ fontSize: 11, color: C.sub }}>{[x.company, x.phone, x.address].filter(Boolean).join(" · ")}</div>
+              </button>
+            ))}
+          </div>
+        </>)}
+      <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 10, paddingTop: 8, ...mrizka }}>
+        <label style={{ gridColumn: "1 / -1", display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+          <input type="checkbox" checked={!!e.stejna} onChange={(ev) => set({ stejna: ev.target.checked })} />
+          Adresa realizace je stejná jako bydliště
+        </label>
+        {!e.stejna && pole(`kz-${z.id}-mad`, "Adresa realizace (kde se bude stavět)", e.adresa, (v) => set({ adresa: v }), { cela: true, placeholder: "Ulice 12, 789 01 Obec" })}
+        {e.stejna && !String(bydliste || "").trim() && <div style={{ gridColumn: "1 / -1", fontSize: 12, color: C.org }}>Bydliště není vyplněné.</div>}
+        {pole(`kz-${z.id}-mko`, "Kontakt na místě", e.kontakt, (v) => set({ kontakt: v }))}
+        {pole(`kz-${z.id}-mte`, "Telefon na místě", e.telefon, (v) => set({ telefon: v }), { typ: "tel" })}
+      </div>
+      <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 10, paddingTop: 8, ...mrizka }}>
+        <div style={{ gridColumn: "1 / -1", fontSize: 11, color: C.sub }}>Do smlouvy a plné moci</div>
+        {pole(`kz-${z.id}-dn`, "Datum narození", e.smluvni.datum_narozeni, (v) => set({ smluvni: { ...e.smluvni, datum_narozeni: v } }), { placeholder: "1. 2. 1980" })}
+        {pole(`kz-${z.id}-ucet`, "Číslo účtu", e.smluvni.bankovni_ucet, (v) => set({ smluvni: { ...e.smluvni, bankovni_ucet: v } }), { placeholder: "123456789/0100" })}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button type="button" style={btnS(true)} disabled={ukladam} onClick={ulozit}>{ukladam ? "Ukládám…" : "Uložit"}</button>
+        <button type="button" style={btnS(false)} onClick={() => setE(null)}>Zrušit</button>
+      </div>
+    </div>
+  );
+}
+
 function Hlavicka({ jmeno, barva, pocet, doplnek, poTerminu, dnes }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", background: "#f1f5f9", flexWrap: "wrap" }}>
@@ -444,7 +571,7 @@ function UpravaZdroje({ z, onUlozit }) {
   );
 }
 
-export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes, currentUser, akce }) {
+export function PohledObchod({ rows, quotes, poznamky, zakaznik, zakaznici, ja, lide, dnes, currentUser, akce }) {
   const vedeni = ["admin", "manager"].includes(currentUser?.role);
   const obchody = useMemo(() => rows.filter((z) => z.stav === "otevrena" && !soubezne(z) && fazeById[z.faze]?.sekce === "ob"), [rows]);
   const kdoZ = (z) => z.vlastnik_obchod || z.dalsi_krok_kdo || "Nepřiřazeno";
@@ -540,7 +667,7 @@ export function PohledObchod({ rows, quotes, poznamky, zakaznik, ja, lide, dnes,
         {zalozka === "prehled" && (
           <div className="po-det" style={{ ...karta, borderTop: undefined, background: "#fff" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <KartaKontaktu z={z} zakaznik={zakaznik} />
+              <KartaZakaznika key={`kz-${z.id}`} z={z} zakaznik={zakaznik} zakaznici={zakaznici} onUlozit={(e) => akce.ulozitZakaznika(z, e)} />
               <UpravaZdroje key={`zd-${z.id}`} z={z} onUlozit={(zd, kampan) => akce.zmenitZdroj(z, zd, kampan)} />
               <label style={{ fontSize: 12, color: C.sub }}>Obchodník
                 <select style={{ ...inpS, width: "100%", marginTop: 3 }} value={z.vlastnik_obchod || ""} onChange={(e) => akce.zmenitObchodnika(z, e.target.value)}>
