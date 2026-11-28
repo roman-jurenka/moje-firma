@@ -1770,7 +1770,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
         {tab === "facebook" && allowedTabs.includes("facebook") && <FacebookLeady currentUser={currentUser} onOtevritPrubeh={(id) => { setPrubehInitialId(id); setTab("prubeh"); }} />}
 
         {tab === "servis" && <Servis contracts={contracts} customers={customers} employees={employees} currentUser={currentUser} setCalendarEvents={setCalendarEvents}
-          onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
+          onZakaznikZalozen={(c) => setCustomers(prev => (prev.some(x => x.id === c.id) ? prev.map(x => (x.id === c.id ? { ...x, ...c, customerId: c.customer_id } : x)) : [...prev, { ...c, customerId: c.customer_id }]))}
           onZakazkaZalozena={(k) => setContracts(prev => [...prev, k])}
           onFakturaVystavena={(inv) => setInvoices(prev => [...prev, { ...inv, customerId: inv.customer_id }])} />}
 
@@ -1908,7 +1908,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           dealMsgs={dealMsgs} setDealMsgs={setDealMsgs} contractMsgs={contractMsgs} setContractMsgs={setContractMsgs}
           initialId={prubehInitialId} onClearInitial={() => setPrubehInitialId(null)}
           onDealZalozen={(d) => setDeals(prev => (prev.some(x => x.id === d.id) ? prev : [d, ...prev]))}
-          onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
+          onZakaznikZalozen={(c) => setCustomers(prev => (prev.some(x => x.id === c.id) ? prev.map(x => (x.id === c.id ? { ...x, ...c, customerId: c.customer_id } : x)) : [...prev, { ...c, customerId: c.customer_id }]))}
           onOtevritZakazku={(id) => { setContractInitialId(id); setTab("contracts"); }}
           onOtevritNaceneni={(id) => { if (id) setPricingInitialId(id); setTab("pricing"); }}
         />}
@@ -1920,7 +1920,7 @@ function MainApp({ currentUser, setCurrentUser, onLogout }) {
           tasks={tasks} setTasks={setTasks} calendarEvents={calendarEvents} setCalendarEvents={setCalendarEvents}
           dealMsgs={dealMsgs} setDealMsgs={setDealMsgs} contractMsgs={contractMsgs} setContractMsgs={setContractMsgs}
           onDealZalozen={(d) => setDeals(prev => (prev.some(x => x.id === d.id) ? prev : [d, ...prev]))}
-          onZakaznikZalozen={(c) => setCustomers(prev => [...prev, { ...c, customerId: c.customer_id }])}
+          onZakaznikZalozen={(c) => setCustomers(prev => (prev.some(x => x.id === c.id) ? prev.map(x => (x.id === c.id ? { ...x, ...c, customerId: c.customer_id } : x)) : [...prev, { ...c, customerId: c.customer_id }]))}
           onOtevritZakazku={(id) => { setContractInitialId(id); setTab("contracts"); }}
           onOtevritNaceneni={(id) => { if (id) setPricingInitialId(id); setNavratZNaceneni(tab); setTab("pricing"); }}
           onNacenit={(navrh) => { setPricingNavrh(navrh); setNavratZNaceneni(tab); setTab("pricing"); }}

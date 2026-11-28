@@ -589,17 +589,16 @@ export default function Prubeh({
   // Smlouva: když je v appce firemní Word šablona (public/templates/smlouva_sablona.docx),
   // vyplní se ta; jinak obecný návrh z dokumentyZakazky.js. Vše se stáhne jako
   // Word a zapíše do z.dokumenty (podle toho pak kontroly ve fázích poznají, že existuje).
-  // Adresa objektu do dokumentů: místo realizace bývá jen obec („Zábřeh“) —
-  // pak se vezme celá instalační adresa ze specifikace, nebo adresa zákazníka v téže obci.
-  const adresaObjektu = (zak, zakaznikZ) => {
+  // Adresa objektu do dokumentů = adresa realizace; když je v ní jen obec („Zábřeh“),
+  // vezme se celá instalační adresa ze specifikace (bydliště zákazníka je jiný údaj).
+  const adresaObjektu = (zak) => {
     const a = zak.podklady?.adresa || {};
     const zeSpecifikace = [[a.ulice, a.cp].filter(Boolean).join(" "), [a.psc, a.mesto].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-    const misto = String(zak.misto_adresa || "").trim(), zakaznikova = String(zakaznikZ.address || "").trim();
+    const misto = String(zak.misto_adresa || "").trim();
     const uplna = (x) => /\d/.test(x);
     if (uplna(misto)) return misto;
     if (uplna(zeSpecifikace)) return zeSpecifikace;
-    if (zakaznikova && (!misto || zakaznikova.toLowerCase().includes(misto.toLowerCase()))) return zakaznikova;
-    return misto || zeSpecifikace || zakaznikova;
+    return misto || zeSpecifikace;
   };
   const podkladyDokumentu = (zak) => {
     const zak_ = zakaznik(zak.customer_id) || {};
@@ -613,7 +612,7 @@ export default function Prubeh({
       nazev: zak.nazev || "",
       typ: zak.typ,
       predmet: TYPY.find((t) => t.id === zak.typ)?.label.replace(/^[A-Z]+ — /, "") || zak.nazev || "",
-      misto: adresaObjektu(zak, zak_),
+      misto: adresaObjektu(zak),
       zakaznik: zak_,
       udaje: zak.udaje || {},
       cena: castNabidky
@@ -1573,8 +1572,27 @@ export default function Prubeh({
     return d.id;
   };
 
+  const bezMezer = (a) => bezDiakritiky(String(a || "")).replace(/[\s,.]+/g, "");
+  const stejnaAdresa = (a, b) => bezMezer(a) === bezMezer(b);
   const ulozMisto = async () => {
-    const m = { misto_adresa: editMisto.adresa.trim() || null, misto_kontakt: editMisto.kontakt.trim() || null, misto_telefon: editMisto.telefon.trim() || null, misto_vztah: (editMisto.vztah || "").trim() || null };
+    // údaje stávajícího zákazníka (jméno, kontakt, bydliště) — upravené přímo v kartě zakázky
+    const zakTed = zakaznik(z.customer_id);
+    const u = editMisto.zakUdaje;
+    let bydliste = zakTed?.address || "";
+    if (zakTed && u && !editMisto.zakRezim && !editMisto.customer_id) {
+      if (!u.name.trim()) { alert("Jméno zákazníka nesmí být prázdné."); return; }
+      const zmena = { name: u.name.trim(), phone: u.phone.trim() || null, email: u.email.trim() || null, address: u.address.trim() };
+      if (["name", "phone", "email", "address"].some((k) => (zmena[k] || "") !== (zakTed[k] || ""))) {
+        const { data: c, error: cErr } = await supabase.from("customers").update(zmena).eq("id", zakTed.id).select().single();
+        if (cErr) { alert("Údaje zákazníka se nepodařilo uložit: " + cErr.message); return; }
+        if (onZakaznikZalozen) onZakaznikZalozen(c);
+      }
+      bydliste = zmena.address;
+    }
+    if (editMisto.zakRezim === "novy") bydliste = editMisto.novyZak?.adresa?.trim() || "";
+    else if (editMisto.customer_id) bydliste = zakaznik(Number(editMisto.customer_id))?.address || "";
+    const adresaRealizace = editMisto.stejna ? bydliste : editMisto.adresa.trim();
+    const m = { misto_adresa: adresaRealizace || null, misto_kontakt: editMisto.kontakt.trim() || null, misto_telefon: editMisto.telefon.trim() || null, misto_vztah: (editMisto.vztah || "").trim() || null };
     // změna / doplnění zákazníka (stávající nebo nový)
     let noveZakId = editMisto.customer_id ? Number(editMisto.customer_id) : null;
     if (editMisto.zakRezim === "novy") {
@@ -3409,13 +3427,16 @@ export default function Prubeh({
     const kMisto = <div style={{ ...karta, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <span style={{ fontWeight: 800, fontSize: 16 }}>Zákazník a místo realizace</span>
-            {!editMisto && <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => setEditMisto({ adresa: z.misto_adresa || zakZ?.address || "", kontakt: z.misto_kontakt || "", telefon: z.misto_telefon || "", vztah: z.misto_vztah || "" })}>Upravit</button>}
+            {!editMisto && <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => setEditMisto({ adresa: z.misto_adresa || "", kontakt: z.misto_kontakt || "", telefon: z.misto_telefon || "", vztah: z.misto_vztah || "",
+              zakUdaje: zakZ ? { name: zakZ.name || "", phone: zakZ.phone || "", email: zakZ.email || "", address: zakZ.address || "" } : null,
+              stejna: !!zakZ?.address && (!z.misto_adresa || stejnaAdresa(z.misto_adresa, zakZ.address)) })}>Upravit</button>}
           </div>
           {zakZ ? (
             <div style={{ lineHeight: 1.5 }}>
               <b>{zakZ.name}</b>
               {zakZ.phone && <> · <a href={`tel:${zakZ.phone}`} style={{ color: "#0369a1" }}>{zakZ.phone}</a></>}
               {zakZ.email && <> · <a href={`mailto:${zakZ.email}`} style={{ color: "#0369a1" }}>{zakZ.email}</a></>}
+              {!editMisto && <div>🏠 Bydliště: {zakZ.address || <span style={{ color: "#b45309" }}>chybí — doplň tlačítkem Upravit</span>}</div>}
             </div>
           ) : <div style={{ color: "#b45309" }}>Bez zákazníka — doplň ho tlačítkem Upravit (stávající nebo nový).</div>}
           {editMisto ? (
@@ -3431,6 +3452,14 @@ export default function Prubeh({
                     <span style={{ flex: 1, minWidth: 160 }}>{vybrany || zakZ ? <><b>{(vybrany || zakZ).name}</b>{(vybrany || zakZ).company ? ` · ${(vybrany || zakZ).company}` : ""}</> : <span style={{ color: "#b45309" }}>Zakázka nemá zákazníka</span>}</span>
                     <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => set({ zakRezim: "stavajici", zakHledat: "" })}>{zakZ ? "Změnit zákazníka" : "Vybrat zákazníka"}</button>
                     <button type="button" style={{ ...btnGhost, padding: "4px 10px", fontSize: 13 }} onClick={() => set({ zakRezim: "novy", customer_id: null, novyZak: nz })}>+ Nový zákazník</button>
+                    {zakZ && !vybrany && editMisto.zakUdaje && (
+                      <div style={{ flexBasis: "100%", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 4 }}>
+                        {[["name", "Jméno a příjmení *"], ["phone", "Telefon"], ["email", "E-mail"], ["address", "Bydliště zákazníka (trvalé bydliště / sídlo)"]].map(([k, l]) => (
+                          <div key={k} style={k === "address" ? { gridColumn: "1 / -1" } : undefined}><label style={lbl} htmlFor={`pr-zu-${k}`}>{l}</label>
+                            <input id={`pr-zu-${k}`} style={inp} type={k === "email" ? "email" : k === "phone" ? "tel" : "text"} value={editMisto.zakUdaje[k]} onChange={(e) => set({ zakUdaje: { ...editMisto.zakUdaje, [k]: e.target.value } })} /></div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
                 if (rezim === "novy") return (
@@ -3473,7 +3502,20 @@ export default function Prubeh({
                   </div>
                 );
               })()}
-              <div><label style={lbl} htmlFor="pr-madr">Adresa realizace</label><input id="pr-madr" style={inp} value={editMisto.adresa} onChange={(e) => setEditMisto({ ...editMisto, adresa: e.target.value })} /></div>
+              {(() => {
+                const bydliste = editMisto.zakRezim === "novy" ? editMisto.novyZak?.adresa : editMisto.customer_id ? zakaznik(Number(editMisto.customer_id))?.address : editMisto.zakUdaje?.address;
+                return (
+                  <div>
+                    <label style={lbl} htmlFor="pr-madr">Adresa realizace (kde se bude stavět)</label>
+                    <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, margin: "2px 0 6px", cursor: "pointer" }}>
+                      <input type="checkbox" checked={!!editMisto.stejna} onChange={(e) => setEditMisto({ ...editMisto, stejna: e.target.checked })} />
+                      Stejná jako bydliště zákazníka{editMisto.stejna && bydliste ? `: ${bydliste}` : ""}
+                    </label>
+                    {!editMisto.stejna && <input id="pr-madr" style={inp} value={editMisto.adresa} placeholder="ulice a č. p., PSČ obec" onChange={(e) => setEditMisto({ ...editMisto, adresa: e.target.value })} />}
+                    {editMisto.stejna && !bydliste && <div style={{ fontSize: 12, color: "#b45309" }}>Bydliště zákazníka není vyplněné.</div>}
+                  </div>
+                );
+              })()}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <div><label style={lbl} htmlFor="pr-mkon">Kontaktní osoba na místě</label><input id="pr-mkon" style={inp} value={editMisto.kontakt} onChange={(e) => setEditMisto({ ...editMisto, kontakt: e.target.value })} /></div>
                 <div><label style={lbl} htmlFor="pr-mtel">Telefon</label><input id="pr-mtel" type="tel" style={inp} value={editMisto.telefon} onChange={(e) => setEditMisto({ ...editMisto, telefon: e.target.value })} /></div>
@@ -3487,7 +3529,7 @@ export default function Prubeh({
           ) : (
             <div style={{ lineHeight: 1.5, color: "#334155" }}>
               {z.misto_adresa
-                ? <div>📍 {z.misto_adresa} · <a href={`https://mapy.cz/zakladni?q=${encodeURIComponent(z.misto_adresa)}`} target="_blank" rel="noreferrer" style={{ color: "#0369a1" }}>mapa</a></div>
+                ? <div>📍 Realizace: {z.misto_adresa}{zakZ?.address && stejnaAdresa(z.misto_adresa, zakZ.address) ? <span style={{ color: "#64748b" }}> (= bydliště)</span> : null} · <a href={`https://mapy.cz/zakladni?q=${encodeURIComponent(z.misto_adresa)}`} target="_blank" rel="noreferrer" style={{ color: "#0369a1" }}>mapa</a></div>
                 : <div style={{ color: "#b45309" }}>📍 Chybí adresa realizace — doplň ji tlačítkem Upravit.</div>}
               {(z.misto_kontakt || z.misto_telefon) && <div>👷 Na místě: <b>{z.misto_kontakt || ""}</b>{z.misto_vztah && <span style={{ color: "#64748b" }}> ({z.misto_vztah})</span>}{z.misto_telefon && <> · <a href={`tel:${z.misto_telefon}`} style={{ color: "#0369a1" }}>{z.misto_telefon}</a></>}</div>}
             </div>
