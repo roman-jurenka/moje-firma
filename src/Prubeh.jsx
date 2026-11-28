@@ -589,6 +589,18 @@ export default function Prubeh({
   // Smlouva: když je v appce firemní Word šablona (public/templates/smlouva_sablona.docx),
   // vyplní se ta; jinak obecný návrh z dokumentyZakazky.js. Vše se stáhne jako
   // Word a zapíše do z.dokumenty (podle toho pak kontroly ve fázích poznají, že existuje).
+  // Adresa objektu do dokumentů: místo realizace bývá jen obec („Zábřeh“) —
+  // pak se vezme celá instalační adresa ze specifikace, nebo adresa zákazníka v téže obci.
+  const adresaObjektu = (zak, zakaznikZ) => {
+    const a = zak.podklady?.adresa || {};
+    const zeSpecifikace = [[a.ulice, a.cp].filter(Boolean).join(" "), [a.psc, a.mesto].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const misto = String(zak.misto_adresa || "").trim(), zakaznikova = String(zakaznikZ.address || "").trim();
+    const uplna = (x) => /\d/.test(x);
+    if (uplna(misto)) return misto;
+    if (uplna(zeSpecifikace)) return zeSpecifikace;
+    if (zakaznikova && (!misto || zakaznikova.toLowerCase().includes(misto.toLowerCase()))) return zakaznikova;
+    return misto || zeSpecifikace || zakaznikova;
+  };
   const podkladyDokumentu = (zak) => {
     const zak_ = zakaznik(zak.customer_id) || {};
     const k = contractById(zak.contract_id);
@@ -601,7 +613,7 @@ export default function Prubeh({
       nazev: zak.nazev || "",
       typ: zak.typ,
       predmet: TYPY.find((t) => t.id === zak.typ)?.label.replace(/^[A-Z]+ — /, "") || zak.nazev || "",
-      misto: zak.misto_adresa || zak_.address || "",
+      misto: adresaObjektu(zak, zak_),
       zakaznik: zak_,
       udaje: zak.udaje || {},
       cena: castNabidky
@@ -777,6 +789,9 @@ export default function Prubeh({
       cisloOP: d.cisloOP || d.cisloZakazky, specifikace: d.specifikace,
       zarukaPanely: d.podklady?.technicka?.zaruka_panely || "25 let",
       zarukaStridac: d.podklady?.technicka?.zaruka_stridac || "10 let",
+      // Smluvní údaje zákazníka (specifikace → Smluvní údaje zákazníka); prázdné = tečky k ručnímu vyplnění
+      zakaznikDatumNarozeni: d.podklady?.smluvni?.datum_narozeni || "…………………………",
+      zakaznikUcet: d.podklady?.smluvni?.bankovni_ucet || d.podklady?.dotace?.cislo_uctu || "…………………………",
       dodatekCislo: dod ? String(dod.cislo) : "", dodatekPopis: dod?.popis || "",
       cenaPuvodni: dod ? kc(dod.cena_puvodni) || "…………" : "", cenaNova: dod ? kc(dod.cena_nova) : "",
       // Věta v předávacím protokolu FVE („… JE PŘEDÁNA A PŘEVZATA / PŘEVZETÍ … BYLO ODMÍTNUTO“)

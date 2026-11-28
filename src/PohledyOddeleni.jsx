@@ -199,7 +199,7 @@ const StitekFaze = ({ z }) => {
 // Nahoře co je v propojené nabídce (jen ke čtení, mění se v Nacenění), pod tím
 // ruční údaje. Ty se ukládají do podkladů pro realizaci (zakazky_prubeh.podklady),
 // takže je pak vidí back office, plánovač i montéři.
-const SEKCE_SPECIFIKACE = ["adresa", "technicka", "hromosvod", "elektroinstalace", "servis", "realizace", "odberne", "planovac", "sklad", "strechar", "elektrikar", "instalater", "zmeny", "fakturace", "dotace", "marketing", "obecne"];
+const SEKCE_SPECIFIKACE = ["smluvni", "adresa", "technicka", "hromosvod", "elektroinstalace", "servis", "realizace", "odberne", "planovac", "sklad", "strechar", "elektrikar", "instalater", "zmeny", "fakturace", "dotace", "marketing", "obecne"];
 const cislo = (v) => Math.round(v * 100) / 100;
 const fmtCislo = (v) => String(cislo(v)).replace(".", ",");
 function zNabidky(quote) {
@@ -383,7 +383,7 @@ function SpecifikaceZakazky({ z, quote, onUlozit }) {
                   </div>
                 );
               } else vstup = <>
-                <input id={id} list={moz.length ? `${id}-m` : undefined} style={pole} value={v} onChange={(e) => nastav(s.id, f.id, e.target.value)} />
+                <input id={id} list={moz.length ? `${id}-m` : undefined} placeholder={f.napoveda} style={pole} value={v} onChange={(e) => nastav(s.id, f.id, e.target.value)} />
                 {moz.length > 0 && <datalist id={`${id}-m`}>{moz.map((m) => <option key={m} value={m} />)}</datalist>}
               </>;
               return (

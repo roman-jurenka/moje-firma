@@ -85,6 +85,11 @@ export const SEKCE_PODKLADU = [
     { id: "revize", label: "Revize", moznosti: ["Výchozí revize", "Bez revize (zajistí jiný)"] },
     { id: "rozpis", label: "Rozpis prací (místnosti, zásuvky, světla, spotřebiče)", dlouhe: true },
   ] },
+  // Údaje zákazníka do smlouvy o dílo a plné moci (v kartě zákazníka nejsou)
+  { id: "smluvni", nazev: "Smluvní údaje zákazníka", ikona: "✍️", pole: [
+    { id: "datum_narozeni", label: "Datum narození", napoveda: "do smlouvy a plné moci, např. 1. 2. 1980" },
+    { id: "bankovni_ucet", label: "Bankovní spojení (č. účtu)", napoveda: "do smlouvy o dílo" },
+  ] },
   { id: "adresa", nazev: "Instalační adresa", ikona: "📍", pole: [
     { id: "nazev", label: "Název", zbytecne: "je název zakázky" },
     { id: "ulice", label: "Ulice" },
