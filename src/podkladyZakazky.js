@@ -102,7 +102,7 @@ export const SEKCE_PODKLADU = [
     { id: "nazev_ku", label: "Název KÚ" },
     { id: "cislo_lv", label: "Číslo LV" },
     { id: "parcela", label: "Číslo parcely" },
-    { id: "adresa", label: "Adresa", zbytecne: "skládá se z ulice, ČP, města a PSČ (adresa místa je u zakázky)" },
+    { id: "adresa", label: "Adresa (složí se z údajů výše)", slozena: true },
     { id: "mapy", label: "Mapy.cz", typ: "odkaz" },
   ] },
   { id: "servis", nazev: "Servisní zásah", ikona: "🛠️", typy: ["SRV"], pole: [
@@ -241,6 +241,18 @@ export function moznostiPole(pole, ciselniky = {}) {
       : [];
   return [...new Set([...z, ...(pole.moznosti || [])])];
 }
+
+// Instalační adresa složená z ulice, ČP, PSČ a města („Ulice 12, 789 01 Město“).
+export const slozitAdresu = (a) => {
+  const x = a || {};
+  return [[x.ulice, x.cp].map((t) => String(t || "").trim()).filter(Boolean).join(" "),
+    [x.psc, x.mesto].map((t) => String(t || "").trim()).filter(Boolean).join(" ")].filter(Boolean).join(", ");
+};
+// Podklady s aktuální složenou adresou (pokud jsou vyplněné části adresy).
+export const sSlozenouAdresou = (p) => {
+  const slozena = slozitAdresu(p?.adresa);
+  return slozena ? { ...p, adresa: { ...(p?.adresa || {}), adresa: slozena } } : p;
+};
 
 // ── Předvyplnění z nabídky ──
 // Doplní jen prázdná pole (nic už zapsaného nepřepíše). Vrací

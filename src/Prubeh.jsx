@@ -23,7 +23,7 @@ import { isConnected, connectSharedAccount, odkazNaSlozku } from "./onedrive.js"
 import { STAVY_MATERIALU, JEDNOTKY_MATERIALU, stavMaterialu, VZTAHY_KONTAKTU, ROZPAD_KEY, polozkyZNabidky, prazdnaPolozka, souhrnMaterialu, stavSkladu, predvyplnitZeSkladu } from "./materialZakazky.js";
 import { OneDriveThumb, StorageLink } from "./storageUrl.jsx";
 import { NA_STAROSTI, naStarosti, umi, dovednost, seraditPodleDovednosti } from "./dovednosti.js";
-import { pocetVyplnenych, predvyplnitZNabidky } from "./podkladyZakazky.js";
+import { pocetVyplnenych, predvyplnitZNabidky, slozitAdresu } from "./podkladyZakazky.js";
 import DokumentyZakazky from "./DokumentyZakazky.jsx";
 import VyrobniCisla from "./VyrobniCisla.jsx";
 import KnihovnaTypu from "./KnihovnaTypu.jsx";
@@ -592,8 +592,7 @@ export default function Prubeh({
   // Adresa objektu do dokumentů = adresa realizace; když je v ní jen obec („Zábřeh“),
   // vezme se celá instalační adresa ze specifikace (bydliště zákazníka je jiný údaj).
   const adresaObjektu = (zak) => {
-    const a = zak.podklady?.adresa || {};
-    const zeSpecifikace = [[a.ulice, a.cp].filter(Boolean).join(" "), [a.psc, a.mesto].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const zeSpecifikace = slozitAdresu(zak.podklady?.adresa);
     const misto = String(zak.misto_adresa || "").trim();
     const uplna = (x) => /\d/.test(x);
     if (uplna(misto)) return misto;

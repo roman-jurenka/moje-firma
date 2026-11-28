@@ -8,7 +8,7 @@ import { FAZE, fazeById, fazePlati, nazevFaze, ukolyPro, ukolHotovy, ZDROJE, zdr
 import { soubezne, stavOddeleni, aktivni, pohledOdd, oddeleniById, CEKA } from "./oddeleniZakazky.js";
 import { konecnaCenaNabidky } from "./slevaNabidky.js";
 import { bezDiakritiky } from "./hledani.js";
-import { sekceProTyp, moznostiPole, predvyplnitZNabidky } from "./podkladyZakazky.js";
+import { sekceProTyp, moznostiPole, predvyplnitZNabidky, sSlozenouAdresou } from "./podkladyZakazky.js";
 import { specifikaceZNabidky } from "./dokumentyZakazky.js";
 import { radkyPorovnani, stahnoutPorovnani } from "./porovnaniNabidek.js";
 
@@ -339,9 +339,10 @@ function SpecifikaceZakazky({ z, quote, onUlozit }) {
   const auto = quote ? zNabidky(quote) : [];
   const fv = ["FVE", "FVR", "FVO"].includes(z.typ) || !!quote?.data?.fve;
   const klic = (s, f) => p?.[s]?.[f] ?? "";
-  const zmeneno = sekce.some((s) => s.pole.some((f) => String(klic(s.id, f.id)) !== String(z.podklady?.[s.id]?.[f.id] ?? "")));
+  const pS = sSlozenouAdresou(p);
+  const zmeneno = sekce.some((s) => s.pole.some((f) => String(pS?.[s.id]?.[f.id] ?? "") !== String(z.podklady?.[s.id]?.[f.id] ?? "")));
   const nastav = (s, f, v) => setP((x) => ({ ...x, [s]: { ...(x?.[s] || {}), [f]: v } }));
-  const ulozitSpec = async () => { setUkladam(true); await onUlozit(p); setUkladam(false); };
+  const ulozitSpec = async () => { setUkladam(true); await onUlozit(sSlozenouAdresou(p)); setUkladam(false); };
   if (!sekce.length && !auto.length) return null;
   return (
     <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>
@@ -360,6 +361,14 @@ function SpecifikaceZakazky({ z, quote, onUlozit }) {
               const moz = moznostiPole(f, {});
               const v = klic(s.id, f.id);
               if (s.id === "obecne" && f.id === "oz") return null;
+              if (f.slozena) {
+                return (
+                  <div key={f.id} className="po-pole">
+                    <label htmlFor={id} style={{ fontSize: 13, color: C.text }}>{f.label}</label>
+                    <div style={{ minWidth: 0 }}><input id={id} readOnly style={{ ...inpS, width: "100%", boxSizing: "border-box", background: "#f8fafc", color: C.sub }} value={pS?.[s.id]?.[f.id] ?? ""} /></div>
+                  </div>
+                );
+              }
               if (s.id === "technicka" && f.id === "stringy") {
                 return <StringyEditor key={f.id} idPrefix={id} text={v} panelu={Number(quote?.data?.fve?.panel?.qty) || 0} vychozi={{ panel: quote?.data?.fve?.panel?.name || "", konstrukce: quote?.data?.fve?.konstrukce?.name || "" }} onChange={(t) => nastav(s.id, f.id, t)} />;
               }
